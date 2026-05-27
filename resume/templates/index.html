@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Resume Generator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: #f5f5f5; color: #333; padding: 20px; }
+    .container { max-width: 800px; margin: 0 auto; }
+    header { background: #1a1a2e; color: #fff; padding: 24px 32px;
+             border-radius: 8px; margin-bottom: 20px; }
+    header h1 { font-size: 1.5rem; }
+    header p { font-size: 0.85rem; opacity: 0.8; margin-top: 6px; }
+    .card { background: #fff; padding: 24px 32px; border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    textarea { width: 100%; height: 360px; padding: 12px;
+               border: 1px solid #ddd; border-radius: 6px;
+               font-size: 0.9rem; line-height: 1.5; resize: vertical; }
+    button { margin-top: 16px; background: #1a1a2e; color: #fff; border: none;
+             padding: 12px 28px; border-radius: 6px; font-size: 1rem; cursor: pointer; }
+    button:hover { background: #2a2a4e; }
+    .error { margin-top: 16px; background: #fce4ec; color: #880e4f;
+             padding: 12px 16px; border-radius: 6px; font-size: 0.9rem; }
+    .loading { display: none; margin-top: 12px; font-size: 0.9rem; color: #666; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Resume &amp; Cover Letter Generator</h1>
+    <p>Paste a job posting below. Claude will generate a tailored resume + cover letter as a .zip download.</p>
+  </header>
+  <div class="card">
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+    <form method="POST" action="/generate" onsubmit="showLoading()">
+      <label for="job_posting" style="font-weight:600;font-size:0.9rem;display:block;margin-bottom:8px;">Job Posting</label>
+      <textarea id="job_posting" name="job_posting"
+        placeholder="Paste the full job description here...">{{ job_posting or "" }}</textarea>
+      <button type="submit">Generate Resume + Cover Letter</button>
+      <div class="loading" id="loading-msg">Generating with Claude... this takes 15&ndash;30 seconds.</div>
+    </form>
+  </div>
+</div>
+<script>
+function showLoading() {
+  document.getElementById("loading-msg").style.display = "block";
+}
+</script>
+</body>
+</html>

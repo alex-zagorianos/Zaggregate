@@ -17,6 +17,7 @@ EXPERIENCE_FILE = BASE_DIR / "experience.md"
 CACHE_DIR = BASE_DIR / "cache"
 OUTPUT_DIR = BASE_DIR / "output"
 COMPANIES_JSON = BASE_DIR / "companies.json"
+USER_CONFIG_JSON = BASE_DIR / "user_config.json"
 
 CACHE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -30,7 +31,7 @@ ADZUNA_RESULTS_PER_PAGE = 50
 
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 # JSearch (RapidAPI) — aggregates Indeed, LinkedIn, Glassdoor
 JSEARCH_RAPIDAPI_KEY = os.getenv("JSEARCH_RAPIDAPI_KEY")
