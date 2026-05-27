@@ -15,10 +15,16 @@ from search.report_csv import generate_csv_report
 from search.report_html import generate_html_report
 from search.search_engine import SearchEngine
 
-ALL_SOURCES = ["adzuna", "jsearch", "usajobs"]
+ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers"]
 
 
-def build_clients(sources: list[str], cache_enabled: bool) -> list[JobAPIClient]:
+def build_clients(
+    sources: list[str],
+    cache_enabled: bool,
+    top_n: int = 20,
+    industry_filter: str | None = None,
+    discovery_enabled: bool = True,
+) -> list[JobAPIClient]:
     clients: list[JobAPIClient] = []
 
     for source in sources:
@@ -43,6 +49,15 @@ def build_clients(sources: list[str], cache_enabled: bool) -> list[JobAPIClient]
                 clients.append(USAJobsClient(cache_enabled=cache_enabled))
             except ValueError as e:
                 print(f"  [usajobs] Skipping — {e}")
+
+        elif source == "careers":
+            from scrape.careers_client import CareersClient
+            clients.append(CareersClient(
+                cache_enabled=cache_enabled,
+                top_n=top_n,
+                industry_filter=industry_filter,
+                discovery_enabled=discovery_enabled,
+            ))
 
         else:
             print(f"  Unknown source {source!r} — ignoring.")
@@ -93,6 +108,23 @@ def main():
         default=",".join(ALL_SOURCES),
         help=f"Comma-separated sources to query (default: {','.join(ALL_SOURCES)})",
     )
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=20,
+        help="Max companies to scrape from career pages (default: 20)",
+    )
+    parser.add_argument(
+        "--industry",
+        type=str,
+        default=None,
+        help="Filter career page registry by industry (e.g. 'health_informatics', 'controls_engineering')",
+    )
+    parser.add_argument(
+        "--no-discover",
+        action="store_true",
+        help="Skip DuckDuckGo auto-discovery; use only curated registry",
+    )
     args = parser.parse_args()
 
     keywords = (
@@ -107,7 +139,13 @@ def main():
     today = date.today().isoformat()
 
     print(f"Sources requested: {sources}")
-    clients = build_clients(sources, cache_enabled=not args.no_cache)
+    clients = build_clients(
+        sources,
+        cache_enabled=not args.no_cache,
+        top_n=args.top_n,
+        industry_filter=args.industry,
+        discovery_enabled=not args.no_discover,
+    )
 
     if not clients:
         print("Error: no sources could be initialized. Check your .env credentials.")
