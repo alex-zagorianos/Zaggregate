@@ -27,7 +27,7 @@ def load_user_config(path=None) -> dict:
     try:
         return json.loads(target.read_text(encoding="utf-8"))
     except Exception as e:
-        print(f"  [config] Warning: could not load {target.name} — {e}")
+        print(f"  [config] Warning: could not load {target.name} - {e}")
         return {}
 
 

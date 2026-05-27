@@ -8,7 +8,7 @@ import hashlib
 import re
 import sys
 import webbrowser
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -18,10 +18,10 @@ from flask import Flask, request, jsonify
 from models import JobResult
 from search.report_html import generate_html_report
 from search.report_csv import generate_csv_report
-from config import OUTPUT_DIR
+from config import OUTPUT_DIR, PORT_RECEIVER
 
 app = Flask(__name__)
-PORT = 5002
+PORT = PORT_RECEIVER
 
 
 def _add_cors(response):
@@ -101,7 +101,7 @@ def _to_job_result(j: dict) -> JobResult | None:
     if salary_min is None:
         salary_min, salary_max = _parse_salary(j.get("salary_text", ""))
 
-    created = j.get("captured_at") or datetime.utcnow().isoformat()
+    created = j.get("captured_at") or datetime.now(timezone.utc).isoformat()
 
     uid = hashlib.md5(url.encode()).hexdigest()[:10]
     job_id = f"browser_{uid}"
@@ -124,10 +124,10 @@ def _to_job_result(j: dict) -> JobResult | None:
 def _parse_salary(text: str):
     if not text:
         return None, None
-    nums = re.findall(r"[\d,]+\.?\d*[Kk]?", text)
+    nums = re.findall(r"\$[\d,]+\.?\d*[Kk]?", text)
     parsed = []
     for n in nums:
-        n = n.replace(",", "")
+        n = n.replace("$", "").replace(",", "")
         if n.lower().endswith("k"):
             parsed.append(float(n[:-1]) * 1000)
         else:

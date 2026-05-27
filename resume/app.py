@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from flask import Flask, request, render_template, send_file, jsonify
 from resume.generator import generate_resume_and_cover_letter, ResumeGenerationError
 from resume.docx_builder import build_resume_docx, build_cover_letter_docx
+from config import PORT_RESUME
 
 app = Flask(__name__, template_folder="templates")
 
@@ -51,4 +52,5 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    print(f"Resume generator running at http://localhost:{PORT_RESUME}")
+    app.run(debug=False, port=PORT_RESUME)

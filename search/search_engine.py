@@ -48,7 +48,7 @@ class SearchEngine:
                 print(f"[{source}] Searching: {keyword!r} in {location}...")
                 for page in range(1, max_pages_per_keyword + 1):
                     try:
-                        raw = client.search(
+                        results = client.search_and_parse(
                             keyword=keyword,
                             location=location,
                             salary_min=salary_min,
@@ -58,7 +58,6 @@ class SearchEngine:
                         print(f"  Error on page {page}: {e}")
                         break
 
-                    results = client.parse_results(raw, keyword)
                     if not results:
                         break
                     all_results.extend(results)

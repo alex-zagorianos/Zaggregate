@@ -27,35 +27,29 @@ class CareersClient(JobAPIClient):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cache_enabled = cache_enabled
         self.top_n = top_n
-        self.industry_filter = industry_filter
         self.discovery_enabled = discovery_enabled
-        self.companies_file = companies_file
+        self._base_companies = get_registry(industry_filter, user_json=companies_file)
 
-    def search(
-        self,
-        keyword: str,
-        location: str = "",
-        salary_min: Optional[int] = None,
-        page: int = 1,
-    ) -> dict:
-        # location and salary_min are not used — career APIs don't support these filters
+    def search(self, keyword: str, location: str = "",
+               salary_min: Optional[int] = None, page: int = 1) -> dict:
+        # Satisfies the abstract interface; real work is in search_and_parse.
+        return {}
+
+    def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
+        return []
+
+    def search_and_parse(self, keyword: str, location: str = "",
+                         salary_min: Optional[int] = None, page: int = 1) -> list[JobResult]:
         if page > 1:
-            return {}
+            return []
 
-        companies = get_registry(self.industry_filter, user_json=self.companies_file)
-        known_slugs = {c.slug for c in companies}
-
+        companies = list(self._base_companies)
         if self.discovery_enabled:
+            known_slugs = {c.slug for c in companies}
             discovered = discover_companies(keyword, self.cache_dir, self.cache_enabled, known_slugs)
             companies = companies + discovered
 
-        companies = companies[: self.top_n]
-
-        jobs = self._scrape_all_parallel(companies, keyword)
-        return {"jobs": [_job_to_dict(j) for j in jobs]}
-
-    def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
-        return [JobResult(**d) for d in raw.get("jobs", [])]
+        return self._scrape_all_parallel(companies[: self.top_n], keyword)
 
     def _scrape_all_parallel(self, companies: list[CompanyEntry], keyword: str) -> list[JobResult]:
         results: list[JobResult] = []
@@ -86,17 +80,3 @@ class CareersClient(JobAPIClient):
             return scrape_direct(company, keyword, self.cache_dir, self.cache_enabled)
 
 
-def _job_to_dict(job: JobResult) -> dict:
-    return {
-        "title": job.title,
-        "company": job.company,
-        "location": job.location,
-        "salary_min": job.salary_min,
-        "salary_max": job.salary_max,
-        "description": job.description,
-        "url": job.url,
-        "source_keyword": job.source_keyword,
-        "created": job.created,
-        "job_id": job.job_id,
-        "source_api": job.source_api,
-    }

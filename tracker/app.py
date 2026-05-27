@@ -14,11 +14,12 @@ from tracker.db import (
     init_db, add_job, get_all, get_counts, update_job, delete_job,
     STATUSES, STATUS_LABELS,
 )
+from config import PORT_TRACKER
 
 app = Flask(__name__, template_folder="templates")
 init_db()
 
-PORT = 5001
+PORT = PORT_TRACKER
 
 
 # ── Main dashboard ────────────────────────────────────────────────────────────

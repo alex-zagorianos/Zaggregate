@@ -26,8 +26,8 @@ async function checkReceiver() {
   try {
     const r = await fetch(`${RECEIVER_URL}/status`, { signal: AbortSignal.timeout(1000) });
     if (r.ok) {
-      sendBtn.disabled = false;
       setStatus("Receiver running ✓", "ok");
+      // Don't enable button here — refreshCount() owns disabled state based on job count
       return true;
     }
   } catch (_) {}
