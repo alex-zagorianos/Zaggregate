@@ -42,6 +42,9 @@ desktop.ini
 *.swp
 *.swo
 
+# === TRACKER ===
+tracker.db
+
 # === LOGS ===
 *.log
 logs/

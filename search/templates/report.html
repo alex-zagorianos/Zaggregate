@@ -25,6 +25,8 @@
         .job-card .details span { display: flex; align-items: center; gap: 4px; }
         .job-card .description { font-size: 0.85rem; color: #555; line-height: 1.5; }
         .badge { display: inline-block; background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .track-btn { display: inline-block; background: #1a1a2e; color: #fff; padding: 3px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-decoration: none; vertical-align: middle; }
+        .track-btn:hover { background: #2d2d52; }
         .source-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
         .source-adzuna { background: #e8f5e9; color: #2e7d32; }
         .source-jsearch { background: #fff3e0; color: #e65100; }
@@ -91,6 +93,9 @@
                         <span class="source-badge source-{{ job.source_api }}">{{ job.source_api }}</span>
                     </div>
                     <div class="description">{{ job.description[:300] }}{% if job.description|length > 300 %}...{% endif %}</div>
+                    <div style="margin-top:8px;">
+                        <a class="track-btn" href="http://localhost:5001/add?title={{ job.title|urlencode }}&company={{ job.company|urlencode }}&location={{ job.location|urlencode }}&url={{ job.url|urlencode }}&salary={{ (job.salary_display())|urlencode }}" target="_blank">+ Track</a>
+                    </div>
                 </div>
                 {% endfor %}
             {% else %}
