@@ -24,6 +24,7 @@ def build_clients(
     top_n: int = 20,
     industry_filter: str | None = None,
     discovery_enabled: bool = True,
+    companies_file: Path | None = None,
 ) -> list[JobAPIClient]:
     clients: list[JobAPIClient] = []
 
@@ -57,6 +58,7 @@ def build_clients(
                 top_n=top_n,
                 industry_filter=industry_filter,
                 discovery_enabled=discovery_enabled,
+                companies_file=companies_file,
             ))
 
         else:
@@ -125,6 +127,12 @@ def main():
         action="store_true",
         help="Skip DuckDuckGo auto-discovery; use only curated registry",
     )
+    parser.add_argument(
+        "--companies-file",
+        type=str,
+        default=None,
+        help="Path to a companies.json file to merge with the built-in registry (default: ./companies.json)",
+    )
     args = parser.parse_args()
 
     keywords = (
@@ -135,6 +143,7 @@ def main():
     output_dir = Path(args.output_dir) if args.output_dir else OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     sources = [s.strip().lower() for s in args.sources.split(",")]
+    companies_file = Path(args.companies_file) if args.companies_file else None
 
     today = date.today().isoformat()
 
@@ -145,6 +154,7 @@ def main():
         top_n=args.top_n,
         industry_filter=args.industry,
         discovery_enabled=not args.no_discover,
+        companies_file=companies_file,
     )
 
     if not clients:

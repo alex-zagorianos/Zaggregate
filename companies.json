@@ -1,0 +1,35 @@
+{
+  "_comment": "Add your own companies here. They are merged with the built-in registry at runtime.",
+  "_instructions": [
+    "ats_type options: 'greenhouse', 'lever', 'workday', 'direct'",
+    "  greenhouse: slug = the board name from boards.greenhouse.io/YOUR_SLUG",
+    "  lever:      slug = the company slug from jobs.lever.co/YOUR_SLUG",
+    "  workday:    slug = 'tenant:N:site'  e.g. 'cat:5:CaterpillarCareers'",
+    "  direct:     slug = full careers page URL (best-effort HTML scrape)",
+    "industries: list of tags — used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",
+    "If a company name matches one already in the built-in registry, your entry overrides it."
+  ],
+  "companies": [
+    {
+      "_example": "Greenhouse company — remove _example key when using",
+      "name": "Example Greenhouse Co",
+      "ats_type": "greenhouse",
+      "slug": "exampleco",
+      "industries": ["health_informatics"]
+    },
+    {
+      "_example": "Lever company",
+      "name": "Example Lever Co",
+      "ats_type": "lever",
+      "slug": "exampleco",
+      "industries": ["controls_engineering"]
+    },
+    {
+      "_example": "Direct URL company (Workday with CSRF, custom portal, etc.)",
+      "name": "Example Direct Co",
+      "ats_type": "direct",
+      "slug": "https://careers.example.com/jobs",
+      "industries": ["health_informatics", "controls_engineering"]
+    }
+  ]
+}

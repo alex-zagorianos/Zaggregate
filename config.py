@@ -16,6 +16,7 @@ BASE_DIR = _get_base_dir()
 EXPERIENCE_FILE = BASE_DIR / "experience.md"
 CACHE_DIR = BASE_DIR / "cache"
 OUTPUT_DIR = BASE_DIR / "output"
+COMPANIES_JSON = BASE_DIR / "companies.json"
 
 CACHE_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)

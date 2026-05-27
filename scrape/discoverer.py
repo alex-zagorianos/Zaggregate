@@ -68,7 +68,12 @@ def _ddg_fetch(query: str) -> str:
             timeout=CAREERS_REQUEST_TIMEOUT,
         )
         resp.raise_for_status()
-        return resp.text
+        html = resp.text
+        # DDG returns a bot-challenge page when rate-limiting; detect and bail cleanly
+        if "anomaly.js" in html or "cc=botnet" in html:
+            print("  [discover] DuckDuckGo bot challenge — discovery skipped (try again later)")
+            return ""
+        return html
     except Exception as e:
         print(f"  [discover] DuckDuckGo request failed — {e}")
         return ""

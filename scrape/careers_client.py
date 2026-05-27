@@ -10,6 +10,7 @@ from scrape.discoverer import discover_companies
 from scrape.greenhouse_scraper import scrape_greenhouse
 from scrape.lever_scraper import scrape_lever
 from scrape.direct_scraper import scrape_direct
+from scrape.workday_scraper import scrape_workday
 
 
 class CareersClient(JobAPIClient):
@@ -20,6 +21,7 @@ class CareersClient(JobAPIClient):
         top_n: int = 20,
         industry_filter: Optional[str] = None,
         discovery_enabled: bool = True,
+        companies_file: Optional[Path] = None,
     ):
         self.cache_dir = (cache_dir or CACHE_DIR) / "careers"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -27,6 +29,7 @@ class CareersClient(JobAPIClient):
         self.top_n = top_n
         self.industry_filter = industry_filter
         self.discovery_enabled = discovery_enabled
+        self.companies_file = companies_file
 
     def search(
         self,
@@ -39,7 +42,7 @@ class CareersClient(JobAPIClient):
         if page > 1:
             return {}
 
-        companies = get_registry(self.industry_filter)
+        companies = get_registry(self.industry_filter, user_json=self.companies_file)
         known_slugs = {c.slug for c in companies}
 
         if self.discovery_enabled:
@@ -77,6 +80,8 @@ class CareersClient(JobAPIClient):
             return scrape_greenhouse(company, keyword, self.cache_dir, self.cache_enabled)
         elif company.ats_type == "lever":
             return scrape_lever(company, keyword, self.cache_dir, self.cache_enabled)
+        elif company.ats_type == "workday":
+            return scrape_workday(company, keyword, self.cache_dir, self.cache_enabled)
         else:
             return scrape_direct(company, keyword, self.cache_dir, self.cache_enabled)
 
