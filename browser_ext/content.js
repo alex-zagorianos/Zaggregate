@@ -1,71 +1,126 @@
 // Job Harvester — content script
-// Runs on linkedin.com/jobs/* and indeed.com/*
-// Collects job cards as the user browses and stores them in chrome.storage.local
+//
+// To add a new site: add one entry to SITES below. That's it.
+// Each entry needs: match (regex on hostname), name, baseUrl,
+// and selector lists for cards / titleLink / company / location / salary.
+// Selectors are tried in order — first match wins.
 
-const SITE = window.location.hostname.includes("linkedin") ? "linkedin" : "indeed";
-
-// ---------- Selectors ----------
-// Each is an ordered list of fallbacks — first match wins.
-const SEL = {
-  linkedin: {
+// ─────────────────────────────────────────────
+//  SITES REGISTRY
+// ─────────────────────────────────────────────
+const SITES = [
+  {
+    name:    "linkedin",
+    match:   /linkedin\.com/,
+    baseUrl: "https://www.linkedin.com",
     cards:    ["li.jobs-search-results__list-item", "li.scaffold-layout__list-item"],
     titleLink:["a.job-card-list__title--link", "a[class*='job-card-list__title']", ".job-card-list__title a", "h3 > a"],
     company:  [".job-card-container__primary-description", ".job-card-container__company-name", "h4 a", ".artdeco-entity-lockup__subtitle span"],
     location: ["li.job-card-container__metadata-item:first-child", ".job-search-card__location", ".artdeco-entity-lockup__caption li"],
     salary:   [".job-card-list__salary", "li.job-card-container__metadata-item:nth-child(2)"],
   },
-  indeed: {
+  {
+    name:    "indeed",
+    match:   /indeed\.com/,
+    baseUrl: "https://www.indeed.com",
     cards:    ["div.job_seen_beacon", "li[class*='JobListItem']", "td.resultContent"],
     titleLink:["h2.jobTitle a", "a[data-jk]", "[data-testid='jobTitle'] a"],
     company:  ["span.companyName", "[data-testid='company-name']", ".companyInfo a"],
     location: ["div.companyLocation", "[data-testid='text-location']"],
     salary:   [".salary-snippet-container span", "[data-testid='attribute_snippet_testid']"],
   },
-};
+  {
+    name:    "glassdoor",
+    match:   /glassdoor\.com/,
+    baseUrl: "https://www.glassdoor.com",
+    // data-test attributes are stable across React re-renders
+    cards:    ["[data-test='jobListing']", "li[class*='JobsList_jobListItem']", "li[class*='jobListItem']"],
+    titleLink:["a[data-test='job-link']", "a[class*='JobCard_jobTitle']", "a[class*='jobTitle']"],
+    company:  ["[data-test='employer-name']", "[class*='EmployerProfile_employerName']", "[class*='employerName']"],
+    location: ["[data-test='emp-location']", "[class*='JobCard_location']", "[class*='location']"],
+    salary:   ["[data-test='detailSalary']", "[class*='SalaryEstimate_salaryRange']", "[class*='salaryEstimate']"],
+  },
+  {
+    name:    "ziprecruiter",
+    match:   /ziprecruiter\.com/,
+    baseUrl: "https://www.ziprecruiter.com",
+    cards:    ["article[class*='job_result']", "[data-job-id]", "article.job_content"],
+    titleLink:["h2.job_title a", "a[class*='job_title']", "a[data-testid='job-title']"],
+    company:  [".hiring_company_text", "a[class*='company']", "[data-testid='job-employer']"],
+    location: [".location_name", "[class*='location']", "[data-testid='job-location']"],
+    salary:   [".job_salary", "[class*='salary']", "[data-testid='job-salary']"],
+  },
+  {
+    name:    "dice",
+    match:   /dice\.com/,
+    baseUrl: "https://www.dice.com",
+    // Dice uses custom elements (dhi-search-card) as well as data-cy attrs
+    cards:    ["dhi-search-card", "[data-cy='search-card']", "[class*='card-list-item']"],
+    titleLink:["a[data-cy='card-title-link']", "a.card-title-link", "a[class*='title-link']"],
+    company:  ["[data-cy='search-result-company-name']", ".company-name", "[class*='companyName']"],
+    location: ["[data-cy='search-result-location']", ".location-name", "[class*='location']"],
+    salary:   ["[data-cy='card-salary']", ".salary-snippet", "[class*='salary']"],
+  },
+];
 
+// ─────────────────────────────────────────────
+//  Detect which site we're on — bail if unsupported
+// ─────────────────────────────────────────────
+const SITE = SITES.find(s => s.match.test(location.hostname));
+if (!SITE) {
+  // Not a supported site — do nothing
+  // (content script only loads on listed domains anyway)
+  throw new Error("[Job Harvester] unsupported site — stopping.");
+}
+
+// ─────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────
 function first(el, selectors) {
   for (const s of selectors) {
-    const found = el.querySelector(s);
-    if (found) return found;
+    try {
+      const found = el.querySelector(s);
+      if (found) return found;
+    } catch (_) { /* invalid selector on this site's DOM — skip */ }
   }
   return null;
 }
 
 function parseSalary(text) {
   if (!text) return { min: null, max: null };
-  // Match patterns like $85,000, $85K, $45/hr, $85,000 - $110,000
   const nums = [...text.matchAll(/\$[\d,]+\.?\d*[Kk]?/g)].map(m => {
     let n = m[0].replace(/[$,]/g, "");
     if (n.toLowerCase().endsWith("k")) n = parseFloat(n) * 1000;
     else n = parseFloat(n);
-    // Convert hourly to annual
-    if (/hr|hour/i.test(text)) n = n * 2080;
+    if (/hr|hour/i.test(text) && n < 500) n = n * 2080;
     return n;
   });
-  return { min: nums[0] || null, max: nums[1] || null };
+  return { min: nums[0] ?? null, max: nums[1] ?? null };
 }
 
-function extractCard(card) {
-  const s = SEL[SITE];
+function resolveUrl(raw) {
+  if (!raw) return "";
+  if (raw.startsWith("http")) return raw.split("?")[0].replace(/\/$/, "");
+  if (raw.startsWith("/")) return SITE.baseUrl + raw.split("?")[0];
+  return "";
+}
 
-  const titleEl = first(card, s.titleLink);
+// ─────────────────────────────────────────────
+//  Card extraction
+// ─────────────────────────────────────────────
+function extractCard(card) {
+  const titleEl = first(card, SITE.titleLink);
   if (!titleEl) return null;
 
   const title = titleEl.innerText?.trim();
   if (!title) return null;
 
-  let url = titleEl.href || "";
-  if (SITE === "linkedin" && url.startsWith("/")) {
-    url = "https://www.linkedin.com" + url;
-  }
-  // Strip LinkedIn tracking params
-  url = url.split("?")[0].replace(/\/$/, "");
+  const url = resolveUrl(titleEl.href || titleEl.getAttribute("href") || "");
   if (!url) return null;
 
-  const company  = first(card, s.company)?.innerText?.trim() || "";
-  const location = first(card, s.location)?.innerText?.trim() || "";
-  const salaryEl = first(card, s.salary);
-  const salaryTxt = salaryEl?.innerText?.trim() || "";
+  const company  = first(card, SITE.company)?.innerText?.trim()  || "";
+  const location = first(card, SITE.location)?.innerText?.trim() || "";
+  const salaryTxt = first(card, SITE.salary)?.innerText?.trim()  || "";
   const { min, max } = parseSalary(salaryTxt);
 
   return {
@@ -74,27 +129,29 @@ function extractCard(card) {
     location,
     url,
     salary_text: salaryTxt,
-    salary_min: min,
-    salary_max: max,
-    source: SITE,
+    salary_min:  min,
+    salary_max:  max,
+    source:      SITE.name,
     captured_at: new Date().toISOString(),
   };
 }
 
+// ─────────────────────────────────────────────
+//  Harvest — find cards on the current page, store new ones
+// ─────────────────────────────────────────────
 async function harvest() {
-  const s = SEL[SITE];
   let cards = [];
-  for (const sel of s.cards) {
-    cards = [...document.querySelectorAll(sel)];
-    if (cards.length > 0) break;
+  for (const sel of SITE.cards) {
+    try {
+      cards = [...document.querySelectorAll(sel)];
+      if (cards.length > 0) break;
+    } catch (_) {}
   }
-
   if (cards.length === 0) return;
 
   const jobs = cards.map(extractCard).filter(Boolean);
   if (jobs.length === 0) return;
 
-  // Load existing stored jobs, merge by URL (dedup)
   const stored = await chrome.storage.local.get("jobs");
   const existing = stored.jobs || [];
   const existingUrls = new Set(existing.map(j => j.url));
@@ -104,23 +161,27 @@ async function harvest() {
 
   const merged = [...existing, ...newJobs];
   await chrome.storage.local.set({ jobs: merged });
-
-  // Update badge via background
   chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: merged.length });
 }
 
-// Run on load
+// ─────────────────────────────────────────────
+//  Triggers
+// ─────────────────────────────────────────────
 harvest();
 
-// Re-run as new cards load (infinite scroll / pagination)
-const observer = new MutationObserver(() => harvest());
+// Debounced MutationObserver — avoids thrashing on every DOM change
+let harvestTimer = null;
+const observer = new MutationObserver(() => {
+  clearTimeout(harvestTimer);
+  harvestTimer = setTimeout(harvest, 600);
+});
 observer.observe(document.body, { childList: true, subtree: true });
 
-// Also re-run on URL changes (LinkedIn is a SPA)
+// SPA URL change detection (LinkedIn, Glassdoor, ZipRecruiter are SPAs)
 let lastUrl = location.href;
 setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
-    setTimeout(harvest, 1000); // wait for new page content
+    setTimeout(harvest, 1200);
   }
 }, 1000);
