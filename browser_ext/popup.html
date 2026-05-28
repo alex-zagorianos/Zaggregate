@@ -14,10 +14,13 @@
     .count-box .label { font-size: 0.75rem; opacity: 0.8; margin-top: 2px; }
     button { width: 100%; padding: 9px; border: none; border-radius: 6px;
              font-size: 0.875rem; cursor: pointer; margin-bottom: 8px; }
-    #send-btn { background: #1a1a2e; color: #fff; }
+    #send-btn   { background: #1a1a2e; color: #fff; }
     #send-btn:hover { background: #2a2a4e; }
     #send-btn:disabled { background: #999; cursor: default; }
-    #clear-btn { background: #f0f0f0; color: #555; }
+    #track-btn  { background: #1565c0; color: #fff; }
+    #track-btn:hover { background: #0d47a1; }
+    #track-btn:disabled { background: #999; cursor: default; }
+    #clear-btn  { background: #f0f0f0; color: #555; }
     #clear-btn:hover { background: #e0e0e0; }
     #status { font-size: 0.78rem; min-height: 18px; color: #444; text-align: center; }
     #status.ok  { color: #2e7d32; }
@@ -32,6 +35,7 @@
     <div class="label">jobs collected</div>
   </div>
   <button id="send-btn" disabled>Send to Tool (start receiver first)</button>
+  <button id="track-btn" disabled>Track All as Interested</button>
   <button id="clear-btn">Clear collected jobs</button>
   <div id="status"></div>
   <script src="popup.js"></script>

@@ -1,22 +1,15 @@
-import time
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import urlparse
 
 import requests
-from bs4 import BeautifulSoup
 
-from config import CAREERS_DDG_SLEEP_SECONDS, CAREERS_REQUEST_TIMEOUT
+from config import BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_URL, CAREERS_REQUEST_TIMEOUT
 from scrape.cache_helpers import read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
 
-_DDG_URL = "https://html.duckduckgo.com/html/"
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept-Language": "en-US,en;q=0.9",
-}
 _ATS_SITES = {
     "greenhouse": "boards.greenhouse.io",
-    "lever": "jobs.lever.co",
+    "lever":      "jobs.lever.co",
 }
 
 
@@ -26,26 +19,28 @@ def discover_companies(
     cache_enabled: bool,
     known_slugs: set[str],
 ) -> list[CompanyEntry]:
+    if not BRAVE_SEARCH_API_KEY:
+        return []
+
     discovered: list[CompanyEntry] = []
 
     for ats_type, site in _ATS_SITES.items():
         query = f'site:{site} "{keyword}"'
-        cache_file = cache_dir / f"ddg_{ats_type}_{slug_safe(keyword)}.html"
+        cache_file = cache_dir / f"brave_{ats_type}_{slug_safe(keyword)}.json"
 
         if cache_enabled:
-            html = read_cache(cache_file)
+            data = read_cache(cache_file)
         else:
-            html = None
+            data = None
 
-        if html is None:
-            html = _ddg_fetch(query)
-            if html and cache_enabled:
-                write_cache(cache_file, html)
-            if not html:
+        if data is None:
+            data = _brave_fetch(query)
+            if data and cache_enabled:
+                write_cache(cache_file, data)
+            if not data:
                 continue
-            time.sleep(CAREERS_DDG_SLEEP_SECONDS)
 
-        slugs = _extract_slugs(html, site)
+        slugs = _extract_slugs(data, site)
         for slug in slugs:
             if slug not in known_slugs:
                 discovered.append(CompanyEntry(
@@ -59,48 +54,51 @@ def discover_companies(
     return discovered
 
 
-def _ddg_fetch(query: str) -> str:
+def _brave_fetch(query: str) -> dict | None:
+    headers = {
+        "Accept":               "application/json",
+        "Accept-Encoding":      "gzip",
+        "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
+    }
     try:
-        resp = requests.post(
-            _DDG_URL,
-            data={"q": query},
-            headers=_HEADERS,
+        resp = requests.get(
+            BRAVE_SEARCH_URL,
+            params={"q": query, "count": 20},
+            headers=headers,
             timeout=CAREERS_REQUEST_TIMEOUT,
         )
+        if resp.status_code == 401:
+            print("  [discover] Brave Search: invalid API key — check BRAVE_SEARCH_API_KEY in .env")
+            return None
+        if resp.status_code == 429:
+            print("  [discover] Brave Search: rate limit hit — discovery skipped")
+            return None
         resp.raise_for_status()
-        html = resp.text
-        # DDG returns a bot-challenge page when rate-limiting; detect and bail cleanly
-        if "anomaly.js" in html or "cc=botnet" in html:
-            print("  [discover] DuckDuckGo bot challenge — discovery skipped (try again later)")
-            return ""
-        return html
+        return resp.json()
     except Exception as e:
-        print(f"  [discover] DuckDuckGo request failed — {e}")
-        return ""
+        print(f"  [discover] Brave Search request failed - {e}")
+        return None
 
 
-def _extract_slugs(html: str, site: str) -> list[str]:
-    soup = BeautifulSoup(html, "html.parser")
+def _extract_slugs(data: dict, site: str) -> list[str]:
     slugs: list[str] = []
     seen: set[str] = set()
-
-    for a in soup.select("a.result__a, a.result__url"):
-        href = a.get("href", "") or a.get_text(strip=True)
-        slug = _slug_from_href(href, site)
+    for result in data.get("web", {}).get("results", []):
+        url = result.get("url", "")
+        slug = _slug_from_url(url, site)
         if slug and slug not in seen:
             seen.add(slug)
             slugs.append(slug)
-
     return slugs
 
 
-def _slug_from_href(href: str, site: str) -> str:
-    if site not in href:
+def _slug_from_url(url: str, site: str) -> str:
+    if site not in url:
         return ""
     try:
-        path = urlparse(href).path.strip("/")
+        path = urlparse(url).path.strip("/")
         parts = path.split("/")
-        if parts:
+        if parts and parts[0]:
             return parts[0]
     except Exception:
         pass

@@ -52,10 +52,6 @@
             <label for="source-filter">Source:</label>
             <select id="source-filter" onchange="filterJobs()">
                 <option value="all">All sources</option>
-                <option value="adzuna">Adzuna</option>
-                <option value="jsearch">JSearch</option>
-                <option value="usajobs">USAJobs</option>
-                <option value="careers">Careers</option>
             </select>
             <label for="keyword-filter">Keyword:</label>
             <select id="keyword-filter" onchange="filterJobs()">
@@ -106,6 +102,19 @@
     </div>
 
     <script>
+        // Build source filter options from the actual cards present in this report
+        (function buildSourceFilter() {
+            const counts = {};
+            document.querySelectorAll('.job-card').forEach(c => {
+                const s = c.dataset.source;
+                counts[s] = (counts[s] || 0) + 1;
+            });
+            const sel = document.getElementById('source-filter');
+            Object.keys(counts).sort().forEach(src => {
+                sel.add(new Option(`${src} (${counts[src]})`, src));
+            });
+        })();
+
         function filterJobs() {
             const source = document.getElementById('source-filter').value;
             const keyword = document.getElementById('keyword-filter').value;

@@ -1,9 +1,11 @@
 const RECEIVER_URL = "http://localhost:5002";
+const TRACKER_URL  = "http://localhost:5001";
 
-const countEl   = document.getElementById("count");
-const sendBtn   = document.getElementById("send-btn");
-const clearBtn  = document.getElementById("clear-btn");
-const statusEl  = document.getElementById("status");
+const countEl    = document.getElementById("count");
+const sendBtn    = document.getElementById("send-btn");
+const trackBtn   = document.getElementById("track-btn");
+const clearBtn   = document.getElementById("clear-btn");
+const statusEl   = document.getElementById("status");
 
 function setStatus(msg, cls = "") {
   statusEl.textContent = msg;
@@ -14,11 +16,15 @@ async function refreshCount() {
   const stored = await chrome.storage.local.get("jobs");
   const jobs = stored.jobs || [];
   countEl.textContent = jobs.length;
-  sendBtn.disabled = jobs.length === 0;
-  if (jobs.length > 0) {
-    sendBtn.textContent = `Send ${jobs.length} job${jobs.length === 1 ? "" : "s"} to Tool`;
+  const hasJobs = jobs.length > 0;
+  trackBtn.disabled = !hasJobs;
+  sendBtn.disabled  = !hasJobs;
+  if (hasJobs) {
+    sendBtn.textContent  = `Send ${jobs.length} job${jobs.length === 1 ? "" : "s"} to Tool`;
+    trackBtn.textContent = `Track All as Interested (${jobs.length})`;
   } else {
-    sendBtn.textContent = "Send to Tool (no jobs yet)";
+    sendBtn.textContent  = "Send to Tool (no jobs yet)";
+    trackBtn.textContent = "Track All as Interested";
   }
 }
 
@@ -27,7 +33,6 @@ async function checkReceiver() {
     const r = await fetch(`${RECEIVER_URL}/status`, { signal: AbortSignal.timeout(1000) });
     if (r.ok) {
       setStatus("Receiver running ✓", "ok");
-      // Don't enable button here — refreshCount() owns disabled state based on job count
       return true;
     }
   } catch (_) {}
@@ -36,9 +41,10 @@ async function checkReceiver() {
   return false;
 }
 
+// Send to receiver → HTML report
 sendBtn.addEventListener("click", async () => {
   sendBtn.disabled = true;
-  setStatus("Sending…");
+  setStatus("Sending...");
   const stored = await chrome.storage.local.get("jobs");
   const jobs = stored.jobs || [];
   if (jobs.length === 0) { setStatus("Nothing to send."); return; }
@@ -51,17 +57,63 @@ sendBtn.addEventListener("click", async () => {
     });
     const data = await resp.json();
     if (resp.ok) {
-      setStatus(`Sent ${data.received} jobs — report opening in browser ✓`, "ok");
-      // Clear after successful send
+      setStatus(`Sent ${data.received} jobs - report opening in browser`, "ok");
       await chrome.storage.local.set({ jobs: [] });
+      chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
       await refreshCount();
     } else {
       setStatus(`Error: ${data.error || resp.statusText}`, "err");
       sendBtn.disabled = false;
     }
   } catch (e) {
-    setStatus(`Could not reach receiver. Is it running?`, "err");
+    setStatus("Could not reach receiver. Is it running?", "err");
     sendBtn.disabled = false;
+  }
+});
+
+// Track all jobs directly in the tracker as "interested"
+trackBtn.addEventListener("click", async () => {
+  trackBtn.disabled = true;
+  setStatus("Adding to tracker...");
+  const stored = await chrome.storage.local.get("jobs");
+  const jobs = stored.jobs || [];
+  if (jobs.length === 0) { setStatus("Nothing to track."); return; }
+
+  let added = 0;
+  let failed = 0;
+  for (const job of jobs) {
+    try {
+      const resp = await fetch(`${TRACKER_URL}/api/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title:       job.title,
+          company:     job.company,
+          location:    job.location  || "",
+          url:         job.url       || "",
+          salary_text: job.salary_text || "",
+          source:      job.source    || "browser",
+          status:      "interested",
+        }),
+      });
+      if (resp.ok) added++;
+      else failed++;
+    } catch (_) {
+      failed++;
+    }
+  }
+
+  if (failed === 0) {
+    setStatus(`${added} jobs added to tracker`, "ok");
+    await chrome.storage.local.set({ jobs: [] });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
+    await refreshCount();
+  } else if (added > 0) {
+    setStatus(`${added} added, ${failed} failed - is tracker running?`, "err");
+    trackBtn.disabled = false;
+  } else {
+    setStatus("Could not reach tracker. Start it: py -m tracker.app", "err");
+    trackBtn.disabled = false;
   }
 });
 

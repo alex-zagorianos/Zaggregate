@@ -69,7 +69,11 @@ PORT_RESUME   = 5000
 PORT_TRACKER  = 5001
 PORT_RECEIVER = 5002
 
+# Brave Search API — free tier: 2,000 req/month at api.search.brave.com
+# Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY")
+BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+
 # Careers scraper
 CAREERS_MAX_WORKERS = 8
-CAREERS_DDG_SLEEP_SECONDS = 2
 CAREERS_REQUEST_TIMEOUT = 20
