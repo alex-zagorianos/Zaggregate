@@ -17,7 +17,7 @@ import webbrowser
 from datetime import date
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -1565,21 +1565,86 @@ class ApplyQueueTab(ttk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Job Search Tools")
         self.geometry("1280x780")
         self.minsize(980, 620)
 
-        init_db()
+        self._proj_var = None
+        self._build_projectbar()       # shown only when projects exist
 
         self._nb = ttk.Notebook(self)
         self._nb.pack(fill="both", expand=True)
+        self._build_tabs()
 
+        # Tracker/queue contents change from other tabs; refresh on focus.
+        self._nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._update_title()
+
+        # Open where the work is: inbox if the daily run found anything.
+        if inbox_count() == 0:
+            self._nb.select(self._search)
+
+    # ── project bar (switch campaigns without restarting) ──────────────────────
+    def _build_projectbar(self):
+        if not workspace.has_projects():
+            return  # pre-migration: single root workspace, no switcher
+        bar = tk.Frame(self, bg=DARK)
+        bar.pack(fill="x", side="top")
+        tk.Label(bar, text="Project:", bg=DARK, fg=WHITE,
+                 font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left")
+        self._proj_var = tk.StringVar()
+        self._proj_cb = ttk.Combobox(bar, textvariable=self._proj_var,
+                                     state="readonly", width=34)
+        self._proj_cb.pack(side="left", padx=4, pady=6)
+        self._proj_cb.bind("<<ComboboxSelected>>", self._on_project_change)
+        tk.Button(bar, text="+ New", bg=WHITE, fg=DARK, relief="flat",
+                  font=("Segoe UI", 9, "bold"), padx=10, pady=2,
+                  command=self._new_project).pack(side="left", padx=6)
+        self._refresh_projectbar()
+
+    def _refresh_projectbar(self):
+        if not self._proj_var:
+            return
+        projs = workspace.list_projects()
+        self._name_to_slug = {p["name"]: p["slug"] for p in projs}
+        self._proj_cb["values"] = [p["name"] for p in projs]
+        active = workspace.active_slug()
+        for p in projs:
+            if p["slug"] == active:
+                self._proj_var.set(p["name"])
+                break
+
+    def _on_project_change(self, _event=None):
+        slug = self._name_to_slug.get(self._proj_var.get())
+        if slug and slug != workspace.active_slug():
+            workspace.set_active(slug)
+            self._rebuild_tabs()
+            self._update_title()
+
+    def _new_project(self):
+        name = simpledialog.askstring(
+            "New Project", "Name for the new campaign:", parent=self)
+        if not name or not name.strip():
+            return
+        try:
+            # Seed from the current project so it opens with working keywords/resume.
+            workspace.create_project(name.strip(), config=workspace.load_config(),
+                                     copy_resume_from=workspace.active_slug(),
+                                     make_active=True)
+        except Exception as exc:
+            messagebox.showerror("New Project", str(exc))
+            return
+        self._refresh_projectbar()
+        self._rebuild_tabs()
+        self._update_title()
+
+    # ── tabs ───────────────────────────────────────────────────────────────────
+    def _build_tabs(self):
+        init_db()  # ensure the active project's tracker.db exists/upgraded
         self._inbox   = InboxTab(self._nb, on_change=self._update_badges)
         self._search  = SearchTab(self._nb)
         self._queue   = ApplyQueueTab(self._nb)
         self._tracker = TrackerTab(self._nb)
         self._resume  = ResumeTab(self._nb)
-
         self._nb.add(self._inbox,   text="  Inbox  ")
         self._nb.add(self._search,  text="  Search  ")
         self._nb.add(self._queue,   text="  Apply Queue  ")
@@ -1587,12 +1652,18 @@ class App(tk.Tk):
         self._nb.add(self._resume,  text="  Resume Generator  ")
         self._update_badges()
 
-        # Tracker/queue contents change from other tabs; refresh on focus.
-        self._nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-
-        # Open where the work is: inbox if the daily run found anything.
+    def _rebuild_tabs(self):
+        for tab in (self._inbox, self._search, self._queue, self._tracker, self._resume):
+            tab.destroy()
+        self._build_tabs()
         if inbox_count() == 0:
             self._nb.select(self._search)
+
+    def _update_title(self):
+        if workspace.has_projects():
+            self.title(f"Job Search Tools — {workspace.active_slug()}")
+        else:
+            self.title("Job Search Tools")
 
     def _update_badges(self):
         if not self._nb.tabs():
