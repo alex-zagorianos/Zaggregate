@@ -995,6 +995,123 @@ class InboxTab(ttk.Frame):
 
 
 # ── Search tab ────────────────────────────────────────────────────────────────
+class AddCompaniesDialog(tk.Toplevel):
+    """Paste career-page URLs -> auto-detect ATS + slug -> (optionally validate
+    the board is live) -> append to companies.json, tagged with the active
+    project's industry so they show up in this campaign's 'careers' searches."""
+
+    _COLS = [("name", "Name", 170, "w"), ("type", "Type", 95, "w"),
+             ("slug", "Slug", 230, "w"), ("status", "Status", 120, "w")]
+
+    def __init__(self, parent, default_industry=""):
+        super().__init__(parent)
+        self.title("Add Companies")
+        self.geometry("780x540")
+        self.transient(parent)
+        self.grab_set()
+        self._entries = []
+        self._build(default_industry)
+
+    def _build(self, default_industry):
+        tk.Label(self, justify="left", wraplength=740, fg="#444",
+                 text="Paste one career-page URL per line (or 'Name | URL'). "
+                      "Greenhouse / Lever / Ashby / SmartRecruiters / Workday are "
+                      "auto-detected; anything else is saved as a direct page.\n"
+                      "Examples:  boards.greenhouse.io/acme   jobs.lever.co/acme   "
+                      "Acme | acme.wd5.myworkdayjobs.com/Careers"
+                 ).pack(fill="x", padx=10, pady=(10, 4))
+        self._box = tk.Text(self, height=7, wrap="none")
+        self._box.pack(fill="x", padx=10)
+
+        row = tk.Frame(self)
+        row.pack(fill="x", padx=10, pady=6)
+        tk.Label(row, text="Industry tag:").pack(side="left")
+        self._industry = tk.StringVar(value=default_industry)
+        tk.Entry(row, textvariable=self._industry, width=22).pack(side="left", padx=6)
+        tk.Button(row, text="Detect", command=self._detect, bg=MID, fg=WHITE,
+                  relief="flat", padx=10).pack(side="left", padx=4)
+        self._val_btn = tk.Button(row, text="Validate", command=self._validate,
+                                  bg=MID, fg=WHITE, relief="flat", padx=10)
+        self._val_btn.pack(side="left", padx=4)
+        tk.Button(row, text="Add ▸ companies.json", command=self._add, bg=DARK,
+                  fg=WHITE, font=("Segoe UI", 9, "bold"), relief="flat",
+                  padx=10).pack(side="left", padx=4)
+        tk.Button(row, text="Close", command=self.destroy).pack(side="right")
+
+        tf = ttk.Frame(self)
+        tf.pack(fill="both", expand=True, padx=10, pady=(2, 4))
+        self._tree = ttk.Treeview(tf, columns=[c[0] for c in self._COLS],
+                                  show="headings", selectmode="browse")
+        for col, label, w, anc in self._COLS:
+            self._tree.heading(col, text=label)
+            self._tree.column(col, width=w, anchor=anc)
+        self._tree.pack(side="left", fill="both", expand=True)
+        vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+
+        self._status = tk.Label(self, text="", fg="#666", anchor="w")
+        self._status.pack(fill="x", padx=10, pady=(0, 8))
+
+    def _detect(self):
+        from scrape.ats_detect import parse_line
+        lines = self._box.get("1.0", "end").splitlines()
+        self._entries = [e for e in (parse_line(l) for l in lines) if e]
+        for r in self._tree.get_children():
+            self._tree.delete(r)
+        for i, e in enumerate(self._entries):
+            self._tree.insert("", "end", iid=str(i),
+                              values=(e.name, e.ats_type, e.slug, "—"))
+        direct = sum(1 for e in self._entries if e.ats_type == "direct")
+        self._status.config(
+            text=f"Detected {len(self._entries)} compan(ies); {direct} direct (uncountable).")
+
+    def _validate(self):
+        if not self._entries:
+            self._detect()
+        if not self._entries:
+            return
+        self._val_btn.config(state="disabled")
+        self._status.config(text="Validating…")
+        threading.Thread(target=self._validate_worker, daemon=True).start()
+
+    def _validate_worker(self):
+        from scrape.ats_detect import probe_count
+        for i, e in enumerate(self._entries):
+            if e.ats_type == "direct":
+                self.after(0, self._set_status_cell, i, "direct (manual)")
+                continue
+            n = probe_count(e)
+            self.after(0, self._set_status_cell, i,
+                       f"live ({n})" if n is not None else "unreachable")
+        self.after(0, lambda: self._val_btn.config(state="normal"))
+        self.after(0, lambda: self._status.config(text="Validation done."))
+
+    def _set_status_cell(self, i, txt):
+        if self._tree.exists(str(i)):
+            self._tree.set(str(i), "status", txt)
+
+    def _add(self):
+        from scrape.company_registry import save_companies
+        if not self._entries:
+            self._detect()
+        if not self._entries:
+            messagebox.showinfo("Add Companies", "Nothing to add — paste some URLs first.")
+            return
+        ind = self._industry.get().strip()
+        for e in self._entries:
+            e.industries = [ind] if ind else []
+        added = save_companies(self._entries)
+        skipped = len(self._entries) - added
+        messagebox.showinfo(
+            "Add Companies",
+            f"Added {added} compan(ies) to companies.json."
+            + (f"\nSkipped {skipped} already present." if skipped else ""))
+        if added:
+            self._status.config(
+                text=f"Added {added}. They're scraped on the next 'careers' search.")
+
+
 class SearchTab(ttk.Frame):
     """Run a multi-source search without leaving the app; Track or Dismiss each
     result. Dismissed/tracked jobs are hidden from future searches."""
@@ -1019,11 +1136,17 @@ class SearchTab(ttk.Frame):
         from search.cli import load_user_config
         return load_user_config()
 
+    def _add_companies(self):
+        AddCompaniesDialog(self, default_industry=self._user_cfg.get("industry", ""))
+
     def _build(self):
         hdr = tk.Frame(self, bg=DARK)
         hdr.pack(fill="x")
         tk.Label(hdr, text="Job Search", bg=DARK, fg=WHITE,
                  font=("Segoe UI", 13, "bold"), padx=14, pady=10).pack(side="left")
+        tk.Button(hdr, text="+ Add Companies", bg=WHITE, fg=DARK,
+                  font=("Segoe UI", 9, "bold"), relief="flat", padx=10, pady=3,
+                  command=self._add_companies).pack(side="right", padx=10, pady=8)
 
         cfg = self._user_cfg
         ctrl = ttk.Frame(self, padding=8)
