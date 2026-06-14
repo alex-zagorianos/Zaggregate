@@ -26,6 +26,7 @@ from typing import Iterable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from models import JobResult
+from search import query
 from search.search_engine import _EPOCH, _location_score, _parse_created
 
 # Words too generic to signal a title match on their own.
@@ -34,6 +35,20 @@ _STOPWORDS = {"engineer", "engineering", "senior", "junior", "lead", "staff",
 
 # Skill terms shorter than this are too ambiguous to substring-match ("c", "qt").
 _MIN_TERM_LEN = 3
+
+# ── Auto-strict relevance — downrank off-target titles, never hide ────────────
+# A title that satisfies none of the search queries (positive miss, or a NOT
+# term present) takes a heavy penalty so it sinks below the noise but stays
+# visible if you sort to it. exclude_titles / seniority_exclude are profile-
+# specific blocklists (Alex excludes "AI Engineer"; Dad's health-informatics
+# campaign may want data roles), so both default OFF here and are supplied per
+# profile from user_config.json. Only the title-miss gate is on by default —
+# it's relative to *your* keywords, so it's safe for every profile.
+DEFAULT_TITLE_MISS_PENALTY = 35
+DEFAULT_EXCLUDE_TITLES = ()      # per profile, e.g. ["ai", "machine learning", ...]
+EXCLUDE_TITLE_PENALTY = 30
+DEFAULT_SENIORITY_EXCLUDE = ()   # per profile, e.g. ["director", "manager", "intern"]
+SENIORITY_PENALTY = 20
 
 _cache: dict[tuple[str, float], frozenset[str]] = {}
 
@@ -72,22 +87,28 @@ def extract_skill_terms(experience_path=None) -> frozenset[str]:
     return _cache[key]
 
 
-def _title_score(title: str, keywords: Iterable[str]) -> float:
-    """1.0 = a search keyword appears (nearly) whole in the title;
-    partial credit for significant-token overlap."""
-    tl = (title or "").lower()
+def _term_present(term: str, tl: str) -> bool:
+    """A positive query term in the (lowercased) title: phrases match contiguously,
+    single words match as a substring with a trailing 's' stripped from long words."""
+    if " " in term:
+        return term in tl
+    s = term[:-1] if len(term) > 3 and term.endswith("s") else term
+    return s in tl
+
+
+def _title_score(queries, tl: str) -> float:
+    """1.0 = the title satisfies a whole search query; otherwise partial credit
+    for significant positive-term overlap. `queries` are pre-parsed query.Query."""
     best = 0.0
-    for kw in keywords:
-        kwl = kw.lower().strip()
-        if not kwl:
-            continue
-        if kwl in tl:
+    for q in queries:
+        if q.matches(tl):
             return 1.0
-        toks = [t for t in re.split(r"\W+", kwl) if t and t not in _STOPWORDS]
-        if not toks:
+        sig = [t for t in q.positive_terms()
+               if t not in _STOPWORDS and len(t) >= _MIN_TERM_LEN]
+        if not sig:
             continue
-        hit = sum(1 for t in toks if t in tl)
-        best = max(best, hit / len(toks))
+        hit = sum(1 for t in sig if _term_present(t, tl))
+        best = max(best, hit / len(sig))
     return best
 
 
@@ -177,6 +198,13 @@ def _recency_score(created: str) -> float:
     return 0.5 ** (age_days / 10.0)  # 10-day half-life
 
 
+def _title_blocklist_penalty(tl: str, terms) -> tuple[int, list[str]]:
+    """Word-boundary blocklist over the title. Returns (count, hits)."""
+    hits = [b for b in (t.lower().strip() for t in terms)
+            if b and _term_pattern(b).search(tl)]
+    return len(hits), hits
+
+
 def score_job(
     job: JobResult,
     *,
@@ -185,10 +213,19 @@ def score_job(
     salary_floor: Optional[int] = None,
     skill_terms: Optional[frozenset[str]] = None,
     exclude_keywords: Iterable[str] = (),
+    exclude_titles: Optional[Iterable[str]] = None,
+    title_miss_penalty: Optional[int] = None,
+    seniority_exclude: Optional[Iterable[str]] = None,
 ) -> tuple[int, str]:
     """Return (score 0-100, short breakdown string)."""
     if skill_terms is None:
         skill_terms = extract_skill_terms()
+    if exclude_titles is None:
+        exclude_titles = DEFAULT_EXCLUDE_TITLES
+    if title_miss_penalty is None:
+        title_miss_penalty = DEFAULT_TITLE_MISS_PENALTY
+    if seniority_exclude is None:
+        seniority_exclude = DEFAULT_SENIORITY_EXCLUDE
 
     # Recover pay ranges printed in the description when the API fields are
     # empty (fills the GUI salary column too, via salary_display()).
@@ -197,7 +234,10 @@ def score_job(
         if lo or hi:
             job.salary_min, job.salary_max = lo, hi
 
-    t = _title_score(job.title, keywords)
+    tl = (job.title or "").lower()
+    queries = [query.parse(kw) for kw in keywords if kw]
+    title_hit = any(q.matches(tl) for q in queries)  # full boolean (honors NOT)
+    t = _title_score(queries, tl)                     # graded positive overlap
     k = _skill_score(job.description, skill_terms)
     s = _salary_score(job, salary_floor)
     loc_raw = _location_score(job.location, location)
@@ -218,8 +258,28 @@ def score_job(
             size_adj = -6     # mega board
     score += size_adj
 
+    notes_extra = []
+
+    # Relevance gate: the title satisfies no search query (positive miss, or a
+    # NOT term present). Heavy penalty so off-target sinks but stays visible.
+    if queries and not title_hit:
+        score -= title_miss_penalty
+        notes_extra.append(f"title-miss -{title_miss_penalty}")
+
+    # Always-on role blocklist (kills "AI Engineer", "Data Scientist", ...).
+    n_block, block_hits = _title_blocklist_penalty(tl, exclude_titles)
+    if n_block:
+        score -= EXCLUDE_TITLE_PENALTY * n_block
+        notes_extra.append(f"excl-title({','.join(block_hits)}) -{EXCLUDE_TITLE_PENALTY * n_block}")
+
+    # Opt-in seniority blocklist.
+    n_sen, sen_hits = _title_blocklist_penalty(tl, seniority_exclude)
+    if n_sen:
+        score -= SENIORITY_PENALTY * n_sen
+        notes_extra.append(f"seniority({','.join(sen_hits)}) -{SENIORITY_PENALTY * n_sen}")
+
     penalties = []
-    blob = f"{(job.title or '').lower()} {(job.description or '').lower()}"
+    blob = f"{tl} {(job.description or '').lower()}"
     for bad in exclude_keywords:
         b = (bad or "").lower().strip()
         if b and b in blob:
@@ -230,6 +290,8 @@ def score_job(
     notes = f"title {t:.0%} | skills {k:.0%} | salary {s:.0%} | loc {l:.0%} | new {r:.0%}"
     if size_adj:
         notes += f" | size {size_adj:+d} ({bc} on board)"
+    for ne in notes_extra:
+        notes += f" | {ne}"
     if penalties:
         notes += f" | PENALTY: {', '.join(penalties)}"
     return score, notes
@@ -242,14 +304,19 @@ def score_jobs(
     location: str,
     salary_floor: Optional[int] = None,
     exclude_keywords: Iterable[str] = (),
+    exclude_titles: Optional[Iterable[str]] = None,
+    title_miss_penalty: Optional[int] = None,
+    seniority_exclude: Optional[Iterable[str]] = None,
 ) -> list[JobResult]:
     """Score in place and return the same list sorted best-first."""
     terms = extract_skill_terms()
+    kws = list(keywords)
     for job in jobs:
         job.score, job.score_notes = score_job(
-            job, keywords=keywords, location=location,
+            job, keywords=kws, location=location,
             salary_floor=salary_floor, skill_terms=terms,
-            exclude_keywords=exclude_keywords,
+            exclude_keywords=exclude_keywords, exclude_titles=exclude_titles,
+            title_miss_penalty=title_miss_penalty, seniority_exclude=seniority_exclude,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs

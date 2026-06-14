@@ -1,24 +1,14 @@
 """Shared keyword matching for career-page scrapers (greenhouse/lever/direct).
 
-The old per-scraper fallback was any(token in haystack), so the bare token
-"engineer" matched every engineering job on a board — Veeva alone returned
-200+ "matches" per keyword. The fallback now requires ALL significant tokens.
+Delegates to the boolean query engine (search.query), so a `keyword` may use
+"exact phrase", OR, NOT/-, and ( ) grouping. A plain keyword with no operators
+behaves exactly as before: every significant token must appear (trailing 's'
+stripped from longer words), so "controls engineer" still matches "Control
+Systems Engineer" and the bare token "engineer" no longer matches everything.
 """
+from search.query import parse
 
 
 def keyword_matches(keyword: str, haystack: str) -> bool:
-    """True if `keyword` matches `haystack` (case-insensitive).
-
-    Exact phrase match wins. Otherwise every significant token (>=3 chars)
-    must appear; a trailing 's' is stripped from longer tokens so
-    "controls engineer" still matches "Control Systems Engineer".
-    """
-    kw = keyword.lower().strip()
-    hay = haystack.lower()
-    if kw in hay:
-        return True
-    tokens = [t.rstrip("s") if len(t) > 3 else t
-              for t in kw.split() if len(t) >= 3]
-    if not tokens:
-        return False
-    return all(t in hay for t in tokens)
+    """True if the boolean `keyword` query matches `haystack` (case-insensitive)."""
+    return parse(keyword).matches(haystack)

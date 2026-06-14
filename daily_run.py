@@ -67,7 +67,10 @@ def main():
     )
     score_jobs(results, keywords=keywords, location=location,
                salary_floor=salary_min,
-               exclude_keywords=cfg.get("exclude_keywords", []))
+               exclude_keywords=cfg.get("exclude_keywords", []),
+               exclude_titles=cfg.get("exclude_titles"),
+               title_miss_penalty=cfg.get("title_miss_penalty"),
+               seniority_exclude=cfg.get("seniority_exclude"))
 
     qualified = [r for r in results if r.score >= min_score]
 

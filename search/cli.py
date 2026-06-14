@@ -340,6 +340,9 @@ def main():
         location=location,
         salary_floor=salary_min,
         exclude_keywords=user_cfg.get("exclude_keywords", []),
+        exclude_titles=user_cfg.get("exclude_titles"),
+        title_miss_penalty=user_cfg.get("title_miss_penalty"),
+        seniority_exclude=user_cfg.get("seniority_exclude"),
     )
     min_score = args.min_score
     if min_score is None:

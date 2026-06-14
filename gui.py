@@ -1117,8 +1117,10 @@ class SearchTab(ttk.Frame):
             if results:
                 score_jobs(results, keywords=keywords, location=location,
                            salary_floor=salary_min,
-                           exclude_keywords=self._user_cfg.get(
-                               "exclude_keywords", []))
+                           exclude_keywords=self._user_cfg.get("exclude_keywords", []),
+                           exclude_titles=self._user_cfg.get("exclude_titles"),
+                           title_miss_penalty=self._user_cfg.get("title_miss_penalty"),
+                           seniority_exclude=self._user_cfg.get("seniority_exclude"))
             self.after(0, self._on_done, results, bool(clients))
         except Exception as exc:
             self.after(0, self._on_error, str(exc))
