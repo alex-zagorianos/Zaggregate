@@ -10,18 +10,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import BASE_DIR
+import workspace
 from match.scorer import salary_from_text, score_job
 from models import JobResult
-from tracker.db import DB_PATH
+from tracker.db import current_db_path
 
 
 def _cfg() -> dict:
-    p = BASE_DIR / "user_config.json"
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    return workspace.load_config()
 
 
-def rescore(db_path=DB_PATH, cfg=None, dry_run=False):
+def rescore(db_path=None, cfg=None, dry_run=False):
+    db_path = db_path or current_db_path()
     cfg = cfg or _cfg()
     kws, loc, floor = cfg.get("keywords", []), cfg.get("location", ""), cfg.get("salary_min")
     conn = sqlite3.connect(str(db_path))

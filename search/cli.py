@@ -7,7 +7,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import DEFAULT_KEYWORDS, DEFAULT_LOCATION, OUTPUT_DIR, USER_CONFIG_JSON
+import workspace
+from config import DEFAULT_KEYWORDS, DEFAULT_LOCATION
 from search.adzuna_client import AdzunaClient
 from search.jsearch_client import JSearchClient
 from search.usajobs_client import USAJobsClient
@@ -21,8 +22,9 @@ ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers", "themuse", "remoteok",
 
 
 def load_user_config(path=None) -> dict:
-    """Load user_config.json. Returns {} if file missing or unreadable."""
-    target = Path(path) if path else USER_CONFIG_JSON
+    """Load the active project's config (or root user_config.json pre-migration).
+    Returns {} if file missing or unreadable."""
+    target = Path(path) if path else workspace.config_path()
     if not target.exists():
         return {}
     try:
@@ -199,7 +201,20 @@ def main():
         "--user-config",
         type=str,
         default=None,
-        help="Path to a user_config.json file (default: ./user_config.json)",
+        help="Path to a config file (default: the active project's config / "
+             "user_config.json). Overrides --project.",
+    )
+    parser.add_argument(
+        "--project",
+        type=str,
+        default=None,
+        help="Run against this project workspace (its config + inbox). "
+             "Default: the active project. See --list-projects.",
+    )
+    parser.add_argument(
+        "--list-projects",
+        action="store_true",
+        help="List job-search projects and exit.",
     )
     parser.add_argument(
         "--add-keyword",
@@ -226,6 +241,19 @@ def main():
         help="Open output CSV in default app after search completes (Windows only)",
     )
     args = parser.parse_args()
+
+    if args.list_projects:
+        active = workspace.active_slug()
+        projs = workspace.list_projects()
+        if not projs:
+            print("No projects yet (pre-migration: using root data).")
+        for p in projs:
+            print(f"  {'*' if p['slug'] == active else ' '} {p['slug']:28} {p['name']}")
+        sys.exit(0)
+
+    # Scope this run to a project workspace (unless an explicit --user-config wins).
+    if args.project and not args.user_config:
+        workspace.set_active(args.project)
 
     # Maintenance mode: prune dead/empty companies and exit (no search).
     if args.prune_companies:
@@ -268,7 +296,7 @@ def main():
     else:
         sources = [s for s in ALL_SOURCES if cfg_sources.get(s, True)]
 
-    output_dir = Path(args.output_dir) if args.output_dir else OUTPUT_DIR
+    output_dir = Path(args.output_dir) if args.output_dir else workspace.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)
     companies_file = Path(args.companies_file) if args.companies_file else None
 

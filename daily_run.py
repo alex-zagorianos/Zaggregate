@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from config import DAILY_MIN_SCORE, DAILY_SOURCES, DEFAULT_KEYWORDS, DEFAULT_LOCATION, OUTPUT_DIR
+import workspace
+from config import DAILY_MIN_SCORE, DAILY_SOURCES, DEFAULT_KEYWORDS, DEFAULT_LOCATION
 
 
 def log(msg: str):
@@ -23,7 +24,7 @@ def log(msg: str):
     line = f"[{stamp}] {msg}"
     print(line)
     try:
-        with open(OUTPUT_DIR / "daily_run.log", "a", encoding="utf-8") as f:
+        with open(workspace.output_dir() / "daily_run.log", "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except OSError:
         pass  # logging must never kill the run
@@ -32,10 +33,15 @@ def log(msg: str):
 def main():
     parser = argparse.ArgumentParser(description="Headless daily job search -> inbox")
     parser.add_argument("--user-config", type=str, default=None)
+    parser.add_argument("--project", type=str, default=None,
+                        help="Run against this project workspace (default: active).")
     parser.add_argument("--min-score", type=int, default=None,
                         help=f"Inbox threshold (default: user_config or {DAILY_MIN_SCORE})")
     parser.add_argument("--max-pages", type=int, default=1)
     args = parser.parse_args()
+
+    if args.project and not args.user_config:
+        workspace.set_active(args.project)
 
     from search.cli import build_clients, load_user_config
     from search.search_engine import SearchEngine

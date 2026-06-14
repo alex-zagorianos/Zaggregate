@@ -45,6 +45,10 @@ desktop.ini
 # === TRACKER ===
 tracker.db
 
+# === PROJECT WORKSPACES (local: per-project config/resume/tracker.db/output) ===
+projects/
+*.bak
+
 # === LOGS ===
 *.log
 logs/

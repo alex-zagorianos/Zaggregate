@@ -19,7 +19,8 @@ from flask import Flask, request, jsonify
 from models import JobResult
 from search.report_html import generate_html_report
 from search.report_csv import generate_csv_report
-from config import OUTPUT_DIR, PORT_RECEIVER
+import workspace
+from config import PORT_RECEIVER
 
 app = Flask(__name__)
 PORT = PORT_RECEIVER
@@ -85,8 +86,8 @@ def harvest():
         "sources": sources_used,
     }
 
-    html_path = OUTPUT_DIR / f"browser_harvest_{today}.html"
-    csv_path  = OUTPUT_DIR / f"browser_harvest_{today}.csv"
+    html_path = workspace.output_dir() / f"browser_harvest_{today}.html"
+    csv_path  = workspace.output_dir() / f"browser_harvest_{today}.csv"
 
     generate_html_report(results, html_path, search_params)
     generate_csv_report(results, csv_path)

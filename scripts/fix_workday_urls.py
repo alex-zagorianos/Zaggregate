@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scrape.company_registry import get_registry
 from scrape.workday_scraper import _job_url
-from tracker.db import DB_PATH, normalize_url
+from tracker.db import current_db_path, normalize_url
 
 _WD = re.compile(r"https://(?P<t>[^.]+)\.wd(?P<n>\d+)\.myworkdayjobs\.com(?P<path>/.*)$")
 
@@ -26,8 +26,9 @@ def _site_map() -> dict[tuple[str, str], str]:
     return m
 
 
-def fix(db_path=DB_PATH, dry_run=False) -> tuple[int, int, int]:
+def fix(db_path=None, dry_run=False) -> tuple[int, int, int]:
     """Returns (fixed, skipped, dropped_duplicates)."""
+    db_path = db_path or current_db_path()
     sites = _site_map()
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row

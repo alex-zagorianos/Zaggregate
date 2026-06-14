@@ -3,7 +3,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config import EXPERIENCE_FILE
+import workspace
 
 # Cache parsed sections keyed by (path, mtime) so repeated generations in one
 # session don't re-read and re-regex the file; auto-invalidates if it's edited.
@@ -12,7 +12,7 @@ _cache: dict[tuple[str, float], dict] = {}
 
 def load_experience(path=None) -> dict:
     """Parse experience.md into sections by ## heading (memoized on mtime)."""
-    target = Path(path) if path else EXPERIENCE_FILE
+    target = Path(path) if path else workspace.experience_file()
     key = (str(target), target.stat().st_mtime)
     if key not in _cache:
         sections = _split_by_h2(target.read_text(encoding="utf-8"))

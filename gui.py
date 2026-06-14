@@ -21,6 +21,7 @@ from tkinter import ttk, messagebox
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import workspace
 from tracker.db import (
     init_db, add_job, get_all, get_counts, update_job, delete_job, get_job,
     archive_job, unarchive_job,
@@ -28,7 +29,7 @@ from tracker.db import (
     inbox_all, inbox_count, inbox_track, inbox_dismiss, inbox_set_fit,
     STATUSES, STATUS_LABELS,
 )
-from config import OUTPUT_DIR, DEFAULT_LOCATION
+from config import DEFAULT_LOCATION
 from claude_bridge import (
     BridgeParseError, to_clipboard,
     build_fit_prompt, parse_fit_response, profile_summary,
@@ -556,7 +557,7 @@ class ResumeTab(ttk.Frame):
         from resume.service import data_from_paste, save_bundle_from_data
         try:
             data = data_from_paste(dlg.result)
-            resume_path, _cover = save_bundle_from_data(data, OUTPUT_DIR)
+            resume_path, _cover = save_bundle_from_data(data, workspace.output_dir())
         except BridgeParseError as e:
             messagebox.showerror("Parse failed", str(e), parent=self)
             return
@@ -580,8 +581,8 @@ class ResumeTab(ttk.Frame):
     def _worker(self, posting):
         try:
             from resume.service import save_bundle
-            save_bundle(posting, OUTPUT_DIR)
-            self.after(0, self._on_done, OUTPUT_DIR)
+            save_bundle(posting, workspace.output_dir())
+            self.after(0, self._on_done, workspace.output_dir())
         except Exception as exc:
             self.after(0, self._on_error, str(exc))
 
@@ -1379,7 +1380,7 @@ class ApplyQueueTab(ttk.Frame):
         try:
             data = parse_resume_response(dlg.result)
             resume_path, cover_path = save_bundle_from_data(
-                data, OUTPUT_DIR, company=j["company"])
+                data, workspace.output_dir(), company=j["company"])
         except BridgeParseError as e:
             messagebox.showerror("Parse failed", str(e), parent=self)
             return
@@ -1450,7 +1451,7 @@ class ApplyQueueTab(ttk.Frame):
                 continue
             try:
                 resume_path, cover_path = save_bundle_from_data(
-                    data, OUTPUT_DIR, company=j["company"])
+                    data, workspace.output_dir(), company=j["company"])
             except Exception as e:
                 failed.append(f"{j['company']}: {e}")
                 continue
@@ -1482,7 +1483,7 @@ class ApplyQueueTab(ttk.Frame):
         def worker():
             try:
                 from resume.service import save_bundle
-                resume_path, cover_path = save_bundle(posting, OUTPUT_DIR,
+                resume_path, cover_path = save_bundle(posting, workspace.output_dir(),
                                                       company=j["company"])
                 self.after(0, lambda: self._api_done(j["id"], resume_path, cover_path))
             except Exception as e:

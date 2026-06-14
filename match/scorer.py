@@ -58,8 +58,8 @@ def extract_skill_terms(experience_path=None) -> frozenset[str]:
     section (memoized on mtime). Terms come from comma/slash/bullet-separated
     fragments, e.g. 'SolidWorks 2024' -> 'solidworks 2024' and 'solidworks'."""
     from resume.experience_parser import load_experience
-    from config import EXPERIENCE_FILE
-    target = Path(experience_path) if experience_path else EXPERIENCE_FILE
+    import workspace
+    target = Path(experience_path) if experience_path else workspace.experience_file()
     if not target.exists():
         return frozenset()
     key = (str(target), target.stat().st_mtime)

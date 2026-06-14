@@ -4,9 +4,15 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from config import BASE_DIR
+import workspace
 
-DB_PATH = BASE_DIR / "tracker.db"
+# None = resolve the active project's DB at call-time (root tracker.db until a
+# project workspace exists). Tests set this to a temp path to override.
+DB_PATH = None
+
+
+def current_db_path() -> Path:
+    return Path(DB_PATH) if DB_PATH is not None else workspace.db_path()
 
 STATUSES = ["interested", "applied", "phone_screen", "interview", "offer", "rejected", "withdrawn"]
 STATUS_LABELS = {
@@ -42,7 +48,7 @@ _EDITABLE = {
 
 
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(current_db_path()))
     conn.row_factory = sqlite3.Row
     return conn
 
