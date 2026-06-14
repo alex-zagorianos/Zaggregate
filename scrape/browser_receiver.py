@@ -111,6 +111,9 @@ def harvest():
             location=cfg.get("location") or DEFAULT_LOCATION,
             salary_floor=cfg.get("salary_min"),
             exclude_keywords=cfg.get("exclude_keywords", []),
+            exclude_titles=cfg.get("exclude_titles"),
+            title_miss_penalty=cfg.get("title_miss_penalty"),
+            seniority_exclude=cfg.get("seniority_exclude"),
         )
         init_db()
         inboxed = inbox_add_many(scored)
