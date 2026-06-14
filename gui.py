@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from tracker.db import (
     init_db, add_job, get_all, get_counts, update_job, delete_job, get_job,
+    archive_job, unarchive_job,
     seen_urls, normalize_url, dismiss_url,
     inbox_all, inbox_count, inbox_track, inbox_dismiss, inbox_set_fit,
     STATUSES, STATUS_LABELS,
@@ -267,20 +268,36 @@ class TrackerTab(ttk.Frame):
         self._tree.bind("<Double-1>", lambda _e: self._edit())
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        # Action bar
-        abar = tk.Frame(self, bg=BG, pady=6)
-        abar.pack(fill="x", padx=6, side="bottom")
-        for text, cmd in [("Edit", self._edit), ("Delete", self._delete),
-                           ("Open URL", self._open_url)]:
-            tk.Button(abar, text=text, bg=DARK, fg=WHITE,
+        # Action bar — contents depend on the view (active vs archive), rebuilt
+        # by _rebuild_actionbar() when the view mode changes.
+        self._abar = tk.Frame(self, bg=BG, pady=6)
+        self._abar.pack(fill="x", padx=6, side="bottom")
+        self._qstatus = tk.StringVar()
+        self._abar_mode = None
+        self._rebuild_actionbar()
+
+    def _rebuild_actionbar(self):
+        for w in self._abar.winfo_children():
+            w.destroy()
+
+        def btn(text, cmd, bg=DARK):
+            tk.Button(self._abar, text=text, bg=bg, fg=WHITE,
                       font=("Segoe UI", 9), relief="flat",
                       padx=10, pady=3, command=cmd).pack(side="left", padx=2)
 
-        tk.Label(abar, text="   Quick status:", bg=BG,
+        if self._active == "archived":
+            btn("Restore", self._restore)
+            btn("Delete permanently", self._delete, bg=ERR)
+            btn("Open URL", self._open_url)
+            return
+
+        btn("Edit", self._edit)
+        btn("Archive", self._archive)
+        btn("Open URL", self._open_url)
+        tk.Label(self._abar, text="   Quick status:", bg=BG,
                  font=("Segoe UI", 9)).pack(side="left")
-        self._qstatus = tk.StringVar()
-        qcb = ttk.Combobox(abar, textvariable=self._qstatus,
-                            values=STATUSES, state="readonly", width=14)
+        qcb = ttk.Combobox(self._abar, textvariable=self._qstatus,
+                           values=STATUSES, state="readonly", width=14)
         qcb.pack(side="left", padx=4)
         qcb.bind("<<ComboboxSelected>>", self._quick_status)
 
@@ -289,6 +306,7 @@ class TrackerTab(ttk.Frame):
             w.destroy()
         tabs = [("all", f"All ({counts['all']})")] + [
             (s, f"{STATUS_LABELS[s]} ({counts[s]})") for s in STATUSES]
+        tabs.append(("archived", f"Archive ({counts.get('archived', 0)})"))
         for key, label in tabs:
             active = key == self._active
             tk.Button(self._fbar, text=label,
@@ -331,6 +349,12 @@ class TrackerTab(ttk.Frame):
         jobs = get_all(sf)
         key  = self._KEY.get(self._sort_col, "date_added")
         jobs.sort(key=lambda j: (j.get(key) or ""), reverse=not self._sort_asc)
+
+        # Swap the action bar when entering/leaving the archive view.
+        mode = "archived" if self._active == "archived" else "active"
+        if mode != self._abar_mode:
+            self._abar_mode = mode
+            self._rebuild_actionbar()
 
         counts = get_counts()
         self._rebuild_filters(counts)
@@ -376,13 +400,33 @@ class TrackerTab(ttk.Frame):
             update_job(int(iid), **dlg.result)
             self.refresh()
 
+    def _archive(self):
+        iid = self._sel_iid()
+        if not iid:
+            return
+        job = get_job(int(iid))
+        if messagebox.askyesno("Archive?",
+                f"Archive '{job['title']}' at {job['company']}?\n\n"
+                "It moves to the Archive view and stops showing in searches. "
+                "You can restore it any time."):
+            archive_job(int(iid))
+            self.refresh()
+
+    def _restore(self):
+        iid = self._sel_iid()
+        if not iid:
+            return
+        unarchive_job(int(iid))
+        self.refresh()
+
     def _delete(self):
         iid = self._sel_iid()
         if not iid:
             return
         job = get_job(int(iid))
-        if messagebox.askyesno("Delete?",
-                f"Delete '{job['title']}' at {job['company']}?"):
+        if messagebox.askyesno("Delete permanently?",
+                f"Permanently delete '{job['title']}' at {job['company']}?\n\n"
+                "This cannot be undone.", icon="warning"):
             delete_job(int(iid))
             self.refresh()
 

@@ -31,6 +31,7 @@ _EXTRA_COLUMNS = {
     "score":          "INTEGER DEFAULT -1",  # local match score (match/scorer)
     "fit_score":      "INTEGER DEFAULT -1",  # Claude fit score (claude_bridge)
     "fit_rationale":  "TEXT DEFAULT ''",     # Claude's 2-line why / red flags
+    "archived":       "INTEGER DEFAULT 0",   # soft-delete: hidden from normal views
 }
 
 _EDITABLE = {
@@ -134,15 +135,22 @@ def add_job(title, company, location="", url="", salary_text="",
 
 
 def get_all(status_filter=None):
+    """Active (non-archived) applications, newest first. status_filter="archived"
+    returns only archived rows; any other status filters within non-archived."""
     with get_conn() as conn:
-        if status_filter and status_filter != "all":
+        if status_filter == "archived":
             rows = conn.execute(
-                "SELECT * FROM applications WHERE status=? ORDER BY date_added DESC",
+                "SELECT * FROM applications WHERE archived=1 ORDER BY date_added DESC"
+            ).fetchall()
+        elif status_filter and status_filter != "all":
+            rows = conn.execute(
+                "SELECT * FROM applications WHERE status=? AND archived=0 "
+                "ORDER BY date_added DESC",
                 (status_filter,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM applications ORDER BY date_added DESC"
+                "SELECT * FROM applications WHERE archived=0 ORDER BY date_added DESC"
             ).fetchall()
     return [dict(r) for r in rows]
 
@@ -150,14 +158,19 @@ def get_all(status_filter=None):
 def get_counts():
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT status, COUNT(*) as n FROM applications GROUP BY status"
+            "SELECT status, COUNT(*) as n FROM applications "
+            "WHERE archived=0 GROUP BY status"
         ).fetchall()
+        archived = conn.execute(
+            "SELECT COUNT(*) FROM applications WHERE archived=1"
+        ).fetchone()[0]
     counts = {s: 0 for s in STATUSES}
     total = 0
     for r in rows:
         counts[r["status"]] = r["n"]
         total += r["n"]
     counts["all"] = total
+    counts["archived"] = archived
     return counts
 
 
@@ -174,7 +187,22 @@ def update_job(job_id, **fields):
         conn.commit()
 
 
+def archive_job(job_id):
+    """Soft-delete: hide from normal tracker views/counts but keep the row (and
+    its URL in the dedup set, so it won't resurface in searches)."""
+    with get_conn() as conn:
+        conn.execute("UPDATE applications SET archived=1 WHERE id=?", (job_id,))
+        conn.commit()
+
+
+def unarchive_job(job_id):
+    with get_conn() as conn:
+        conn.execute("UPDATE applications SET archived=0 WHERE id=?", (job_id,))
+        conn.commit()
+
+
 def delete_job(job_id):
+    """Permanent delete — reachable only from the archive view in the GUI."""
     with get_conn() as conn:
         conn.execute("DELETE FROM applications WHERE id=?", (job_id,))
         conn.commit()
