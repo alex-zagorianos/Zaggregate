@@ -200,9 +200,27 @@ Pipeline rebuilt around apply-throughput ([[../handoff_20260609_session7]]): sch
 - [ ] `BRAVE_SEARCH_API_KEY` in `.env` — optional, free at api.search.brave.com; enables company auto-discovery
 - [ ] **Commit `gui.py`** — currently untracked; also stage `experience.md` working-copy edits
 
+## Session 9 — 2026-06-14 (Opus 4.8) ✅ ALL COMMITTED + PUSHED through 1493571
+
+Caught up the repo and shipped four features + a bug fix. Spec: [[spec-2026-06-14-archive-search-projects]]. All verified; full suite **127 passing**.
+
+- **Committed the 4-session backlog** (`627bce6`) and pushed — repo was stuck at `8fa925b`. The 2026-06-10 uncompiled pass was py_compile'd + smoke-verified first.
+- **Fix: Workday/Caterpillar links** (`53e9469`). CXS `externalPath` is site-relative (`/job/...`) → `host+path` 404'd. `workday_scraper._job_url()` inserts the site (`/CaterpillarCareers/job/...`); `scripts/fix_workday_urls.py` backfilled **107/107** existing inbox links. Live-verified 200.
+- **Archive** (soft-delete) (`df6aa52`). `applications.archived` col; `archive_job`/`unarchive_job`; `get_all`/`get_counts` exclude archived + `"archived"` filter. Tracker tab: Delete→**Archive**, Archive(n) chip, archive view = Restore + Delete-permanently. Archived stays in `tracked_urls()` (no resurface).
+- **Search tightening** (`b74d696`). `search/query.py` boolean keywords (`"phrase"`, OR, NOT/-, ()) — back-compat; wired into `text_match` + scorer. Scorer downranks (never hides): `title_miss_penalty` (35), `exclude_titles` blocklist (profile-specific, **default empty** so Dad's data roles aren't hit; Alex's list in `user_config.json`), `seniority_exclude`. `scripts/rescore_inbox.py` ran → AI/ML/Data titles → 0, on-target kept (Mechatronics 79). `--list`/threaded through cli/daily/gui.
+- **Job-Search Projects** Phases 0–3 (`54200ca`, `1375889`). `workspace.py` = call-time per-project path resolution (root fallback pre-migration). `scripts/migrate_to_projects.py` ran: 1098 inbox → `projects/controls-cincinnati/` (active), `dad-health-informatics` empty; `.bak` + row-parity OK. Repointed db/experience/output/config seams. GUI **project switcher** header (dropdown + New) rebuilds tabs live (controls 1098 ↔ dad 0). `--project` on cli/daily. `projects/` + `*.bak` gitignored (local data). **Phase 4 (per-project scheduler) DEFERRED** — the only remaining Projects work.
+- **Add Companies via GUI** (`5457594`). `scrape/ats_detect.py`: `detect_ats` (greenhouse/lever/ashby/smartrecruiters/workday + direct), `parse_line`, `probe_count` (live count). Search tab **"+ Add Companies"** dialog: paste URLs → auto-detect → Validate → save to companies.json tagged with the project's industry. Live-verified counts.
+
+**Open / next:**
+
+- Projects **Phase 4** (per-project scheduler: `daily_run --project` is done; need per-project `setup_schedule.bat` + `daily` flag wiring).
+- `setup_schedule.bat` still never run (07:30 task unregistered).
+- Tooling could add: company **remove/edit** UI (currently hand-edit companies.json), Projects "Manage" (rename/delete).
+- `tracker.db.bak` left in root (safety; gitignored) — delete after a release.
+
 ## Git
 
-- Last commit: `8fa925b` (Update brain and add Session 6 handoff) on `master`
+- Last commit: `5457594` on `master`; pushed through `1493571` (Projects + Add-Companies commits `54200ca`/`1375889`/`5457594` local until next push).
 - Remote: `git@github.com:alex-zagorianos/Job-Program.git`
 - Uncommitted (working tree): the entire 2026-06-02 hardening pass — new `search/http_util.py`, `resume/service.py`, `tests/*`, `brain/{review,plan}-2026-06.md`; modified clients/engine/generator/gui/tracker/scrapers; plus the pre-existing `experience.md` (modified) and `gui.py` (was untracked). Nothing committed per instruction.
 - Also uncommitted: the entire 2026-06-09 throughput overhaul — new `match/`, `claude_bridge.py`, `daily_run.py`, `setup_schedule.bat`, `search/themuse_client.py`, `search/remoteok_client.py`, `handoff_20260609_session7.md`; modified `models.py`, `config.py`, `tracker/db.py`, `gui.py`, `search/cli.py`, `search/report_csv.py`, `search/templates/report.html`, `resume/service.py`, `user_config.json`.
