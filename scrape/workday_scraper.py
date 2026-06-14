@@ -12,7 +12,22 @@ from scrape.company_registry import CompanyEntry
 #   e.g. "cat:5:CaterpillarCareers"
 #   → POST https://cat.wd5.myworkdayjobs.com/wday/cxs/cat/CaterpillarCareers/jobs
 _WD_BASE = "https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
-_WD_JOB_URL = "https://{tenant}.wd{n}.myworkdayjobs.com{path}"
+
+
+def _job_url(tenant: str, n: str, site: str, external_path: str) -> str:
+    """Build the public posting URL from a CXS externalPath.
+
+    The CXS jobs endpoint returns externalPath site-relative ("/job/Loc/Title_R1")
+    with no site segment, so host+externalPath 404s. The browser-facing URL needs
+    the site inserted: ".../CaterpillarCareers/job/...". Some tenants already embed
+    the site (or a locale + site) in externalPath, so only insert when it's absent.
+    """
+    if not external_path:
+        return ""
+    host = f"https://{tenant}.wd{n}.myworkdayjobs.com"
+    if f"/{site}/" in external_path:
+        return host + external_path  # site (and any locale) already present
+    return f"{host}/{site}{external_path}"
 
 
 def _parse_slug(slug: str) -> tuple[str, str, str] | None:
@@ -48,7 +63,7 @@ def scrape_workday(
             return []  # known-dead this TTL window
         cached = read_cache(cache_file)
         if cached is not None:
-            return _map_results(cached, company, keyword, tenant, n)
+            return _map_results(cached, company, keyword, tenant, n, site)
 
     url = _WD_BASE.format(tenant=tenant, n=n, site=site)
     payload = {
@@ -80,7 +95,7 @@ def scrape_workday(
     if cache_enabled:
         write_cache(cache_file, data)
 
-    return _map_results(data, company, keyword, tenant, n)
+    return _map_results(data, company, keyword, tenant, n, site)
 
 
 def _map_results(
@@ -89,6 +104,7 @@ def _map_results(
     keyword: str,
     tenant: str,
     n: str,
+    site: str,
 ) -> list[JobResult]:
     results = []
     for job in data.get("jobPostings", []):
@@ -98,7 +114,7 @@ def _map_results(
 
         location = job.get("locationsText", "") or ""
         external_path = job.get("externalPath", "") or ""
-        job_url = _WD_JOB_URL.format(tenant=tenant, n=n, path=external_path) if external_path else ""
+        job_url = _job_url(tenant, n, site, external_path)
 
         req_id = job.get("reqId", "") or ""
         job_id = f"workday_{slug_safe(tenant)}_{req_id}" if req_id else f"workday_{slug_safe(title)}"
