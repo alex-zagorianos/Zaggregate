@@ -1,10 +1,15 @@
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
 from config import CACHE_TTL_HOURS
+
+# Characters that are illegal in Windows filenames (": " breaks Workday slugs
+# like "cat:5:CaterpillarCareers" -> [Errno 22] Invalid argument).
+_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*,\s]+')
 
 
 def read_cache(cache_file: Path) -> Optional[Any]:
@@ -32,4 +37,15 @@ def write_cache(cache_file: Path, data: Any) -> None:
 
 
 def slug_safe(text: str) -> str:
-    return text.lower().replace(" ", "_").replace("/", "_").replace(",", "").replace('"', "")
+    return _UNSAFE_CHARS.sub("_", text.lower()).strip("_")
+
+
+def mark_failed(cache_file: Path) -> None:
+    """Negative-cache a fetch failure. Dead slugs (404/timeout) were retried
+    for every keyword in a run — ~10 doomed requests per dead company per
+    day. The marker makes it one attempt per TTL window."""
+    write_cache(cache_file, {"_failed": True})
+
+
+def is_failed(cached) -> bool:
+    return isinstance(cached, dict) and cached.get("_failed") is True

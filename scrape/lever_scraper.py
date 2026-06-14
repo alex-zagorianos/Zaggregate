@@ -5,7 +5,7 @@ import requests
 
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import read_cache, slug_safe, write_cache
+from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
 
 _BASE_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
@@ -21,6 +21,8 @@ def scrape_lever(
 
     if cache_enabled:
         cached = read_cache(cache_file)
+        if is_failed(cached):
+            return []  # known-dead this TTL window
         if cached is not None:
             return _filter_and_map(cached, company, keyword)
 
@@ -30,10 +32,14 @@ def scrape_lever(
         resp.raise_for_status()
         data = resp.json()  # returns a list, not a dict
     except requests.HTTPError as e:
-        print(f"  [lever] {company.name}: HTTP {e.response.status_code} — skipping")
+        print(f"  [lever] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
+        if cache_enabled:
+            mark_failed(cache_file)
         return []
     except Exception as e:
         print(f"  [lever] {company.name}: error — {e}")
+        if cache_enabled:
+            mark_failed(cache_file)
         return []
 
     if cache_enabled:
@@ -43,6 +49,7 @@ def scrape_lever(
 
 
 def _filter_and_map(postings: list, company: CompanyEntry, keyword: str) -> list[JobResult]:
+    total = len(postings)  # company-size proxy: whole board is in hand
     results = []
     for posting in postings:
         title = posting.get("text", "") or ""
@@ -59,25 +66,25 @@ def _filter_and_map(postings: list, company: CompanyEntry, keyword: str) -> list
         else:
             created = ""
 
+        description = (posting.get("descriptionPlain")
+                      or posting.get("description") or "")[:3000]
         results.append(JobResult(
             title=title,
             company=company.name,
             location=cats.get("location", "") or "",
             salary_min=None,
             salary_max=None,
-            description="",
+            description=description,
             url=posting.get("hostedUrl") or "",
             source_keyword=keyword,
             created=created,
             job_id=f"lever_{posting.get('id', '')}",
             source_api="careers",
+            board_count=total,
         ))
     return results
 
 
 def _matches(keyword: str, title: str, categories: list[str]) -> bool:
-    kw = keyword.lower()
-    haystack = title.lower() + " " + " ".join(c.lower() for c in categories if c)
-    if kw in haystack:
-        return True
-    return any(part in haystack for part in kw.split() if len(part) >= 4)
+    from scrape.text_match import keyword_matches
+    return keyword_matches(keyword, title + " " + " ".join(c for c in categories if c))

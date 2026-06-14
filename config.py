@@ -38,6 +38,7 @@ JSEARCH_RAPIDAPI_KEY = os.getenv("JSEARCH_RAPIDAPI_KEY")
 JSEARCH_RAPIDAPI_HOST = "jsearch.p.rapidapi.com"
 JSEARCH_BASE_URL = "https://jsearch.p.rapidapi.com/search"
 JSEARCH_RATE_LIMIT = 5       # per minute (free tier: 200 req/month total)
+JSEARCH_MONTHLY_LIMIT = 200  # free-tier hard cap; tracked in cache/jsearch_usage.json
 JSEARCH_RESULTS_PER_PAGE = 10
 
 # USAJobs — federal job board (requires registration at usajobs.gov)
@@ -68,6 +69,47 @@ CACHE_TTL_HOURS = 24
 PORT_RESUME   = 5000
 PORT_TRACKER  = 5001
 PORT_RECEIVER = 5002
+
+# The Muse — free public API, no key. Keyword filtering is client-side.
+THEMUSE_BASE_URL = "https://www.themuse.com/api/public/jobs"
+THEMUSE_RATE_LIMIT = 20          # polite ceiling; unauthenticated tier
+THEMUSE_CATEGORIES = ["Engineering", "Science and Engineering"]
+
+# RemoteOK — free public JSON feed, no key. Remote-only postings.
+REMOTEOK_URL = "https://remoteok.com/api"
+REMOTEOK_RATE_LIMIT = 5
+
+# Remotive — free public API, no key. Remote-only. Their legal notice asks
+# for <=4 fetches/day; the 24h FileCache keeps us at ~1.
+REMOTIVE_URL = "https://remotive.com/api/remote-jobs"
+REMOTIVE_RATE_LIMIT = 2
+
+# Jobicy — free public API, no key. Remote-only, ~50 jobs/call max.
+JOBICY_URL = "https://jobicy.com/api/v2/remote-jobs"
+JOBICY_RATE_LIMIT = 2
+JOBICY_COUNT = 50                 # API max per request
+JOBICY_INDUSTRY = "engineering"   # server-side category filter
+
+# Himalayas — free public API, no key. Remote-only, paginated. The API
+# hard-caps each response at 20 jobs regardless of the `limit` param, so we
+# page by offset; 200 deep = 10 requests on a cold cache (once/day).
+HIMALAYAS_URL = "https://himalayas.app/jobs/api"
+HIMALAYAS_RATE_LIMIT = 5
+HIMALAYAS_PAGE_SIZE = 20          # server's hard per-response cap
+HIMALAYAS_MAX_JOBS = 200          # total feed depth fetched per cache cycle
+
+# Hacker News "Who is hiring?" via Algolia — free, no key. Monthly thread,
+# searched per-keyword against its comments.
+HN_ALGOLIA_URL = "https://hn.algolia.com/api/v1"
+HN_RATE_LIMIT = 10
+
+# Match scoring (match/scorer.py)
+MIN_SCORE_DEFAULT = 0            # CLI --min-score default (0 = show all)
+DAILY_MIN_SCORE = 40             # daily_run.py inbox threshold
+DAILY_SOURCES = ["adzuna", "usajobs", "careers", "themuse", "remoteok",
+                 "remotive", "jobicy", "himalayas", "hn"]
+# jsearch is excluded from DAILY_SOURCES: 10 keywords/day would blow the
+# 200/month free tier in ~3 weeks. Use it for manual searches only.
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.

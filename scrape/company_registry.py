@@ -7,8 +7,8 @@ from typing import Optional
 @dataclass
 class CompanyEntry:
     name: str
-    ats_type: str       # "greenhouse" | "lever" | "direct"
-    slug: str           # ATS slug for GH/Lever; full careers URL for direct
+    ats_type: str       # "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workday" | "direct"
+    slug: str           # ATS slug for GH/Lever/Ashby/SmartRecruiters; "tenant:N:site" for workday; full careers URL for direct
     industries: list[str] = field(default_factory=list)
 
 
@@ -59,8 +59,55 @@ _HEALTH_INFORMATICS: list[CompanyEntry] = [
 # ---------------------------------------------------------------------------
 # Controls & Automation Engineering
 # Greenhouse/Lever verified 2026-05-26 — most large industrials use Workday
+# Hardware/robotics/manufacturing GH+Lever boards added & verified 2026-06-09
+# against boards-api.greenhouse.io / api.lever.co (these are the only entries
+# in this registry the scraper can actually pull jobs from — the big
+# industrials below are all CSRF-protected Workday/custom portals).
 # ---------------------------------------------------------------------------
 _CONTROLS_ENGINEERING: list[CompanyEntry] = [
+    # --- Confirmed Greenhouse (verified 2026-06-09) ---
+    CompanyEntry("SpaceX",              "greenhouse", "spacex",            ["controls_engineering", "aerospace", "manufacturing"]),
+    CompanyEntry("Anduril Industries",  "greenhouse", "andurilindustries", ["controls_engineering", "robotics", "embedded", "defense"]),
+    CompanyEntry("Path Robotics",       "greenhouse", "pathrobotics",      ["controls_engineering", "robotics", "welding", "ohio"]),
+    CompanyEntry("Formlabs",            "greenhouse", "formlabs",          ["controls_engineering", "3d_printing", "hardware"]),
+    CompanyEntry("Zipline",             "greenhouse", "flyzipline",        ["controls_engineering", "robotics", "aerospace"]),
+    CompanyEntry("Nuro",                "greenhouse", "nuro",              ["controls_engineering", "robotics", "autonomy"]),
+    CompanyEntry("Redwood Materials",   "greenhouse", "redwoodmaterials",  ["controls_engineering", "manufacturing", "battery"]),
+    CompanyEntry("Relativity Space",    "greenhouse", "relativity",        ["controls_engineering", "aerospace", "additive_manufacturing"]),
+
+    # --- Confirmed Lever (verified 2026-06-09) ---
+    CompanyEntry("Zoox",                "lever", "zoox",           ["controls_engineering", "robotics", "autonomy"]),
+    CompanyEntry("Bright Machines",     "lever", "brightmachines", ["controls_engineering", "automation", "manufacturing"]),
+
+    # --- Small/mid robotics-automation-manufacturing (verified 2026-06-09
+    #     against boards-api.greenhouse.io / api.lever.co; job counts at
+    #     verification in comments — these are the small-company supply fix).
+    #     Dead slug guesses, do NOT re-add: scytherobotics, plusonerobotics,
+    #     picklerobot, realtimerobotics, standardbots, vecnarobotics, vention,
+    #     hadrian (left Lever), monarchtractor, mujin, burro, instrumental,
+    #     chefrobotics, mytra, rapidrobotics, sightmachine. On other ATSes:
+    #     geckorobotics -> Ashby (gecko-robotics), machinemetrics -> Workable.
+    CompanyEntry("Formic",              "greenhouse", "formic",           ["controls_engineering", "robotics", "manufacturing", "small_company", "midwest"]),  # 31
+    CompanyEntry("Agility Robotics",    "greenhouse", "agilityrobotics",  ["controls_engineering", "robotics", "small_company"]),                # 43
+    CompanyEntry("Apptronik",           "greenhouse", "apptronik",        ["controls_engineering", "robotics", "small_company"]),                # 90
+    CompanyEntry("Locus Robotics",      "greenhouse", "locusrobotics",    ["controls_engineering", "robotics", "small_company"]),                # 19
+    CompanyEntry("Carbon Robotics",     "greenhouse", "carbonrobotics",   ["controls_engineering", "robotics", "agriculture", "small_company"]), # 24
+    CompanyEntry("Tulip Interfaces",    "greenhouse", "tulip",            ["controls_engineering", "manufacturing", "software", "small_company"]),  # 60
+    CompanyEntry("Paperless Parts",     "greenhouse", "paperlessparts",   ["controls_engineering", "cnc", "manufacturing", "software", "small_company"]),  # 14
+    CompanyEntry("Fictiv",              "greenhouse", "fictiv",           ["controls_engineering", "cnc", "manufacturing", "small_company"]),    # 70
+    CompanyEntry("Divergent Technologies", "greenhouse", "divergent",     ["controls_engineering", "additive_manufacturing", "automation", "small_company"]),  # 56
+    CompanyEntry("Ursa Major",          "greenhouse", "ursamajor",        ["controls_engineering", "aerospace", "manufacturing", "small_company"]),  # 38
+    CompanyEntry("Stoke Space",         "greenhouse", "stokespacetechnologies", ["controls_engineering", "aerospace", "small_company"]),         # 54 (non-obvious slug)
+    CompanyEntry("Seurat Technologies", "greenhouse", "seurat",           ["controls_engineering", "additive_manufacturing", "small_company"]),  # 3
+    CompanyEntry("Outrider",            "greenhouse", "outrider",         ["controls_engineering", "robotics", "autonomy", "small_company"]),    # 6
+    CompanyEntry("Dexterity",           "lever",      "dexterity",        ["controls_engineering", "robotics", "small_company"]),                # 8
+    CompanyEntry("OSARO",               "lever",      "osaro",            ["controls_engineering", "robotics", "small_company"]),                # 10
+    CompanyEntry("Copia Automation",    "lever",      "copia",            ["controls_engineering", "plc", "software", "small_company"]),         # 9 (Git for PLC code)
+    CompanyEntry("Ambi Robotics",       "lever",      "ambirobotics",     ["controls_engineering", "robotics", "small_company"]),                # 8
+
+    # --- Confirmed Ashby (verified 2026-06-09 against api.ashbyhq.com) ---
+    CompanyEntry("Gecko Robotics",      "ashby",      "gecko-robotics",   ["controls_engineering", "robotics", "small_company"]),                # 10, Pittsburgh
+
     # --- Workday CSRF-disabled (JSON API works without a browser session) ---
     # Verified 2026-05-26: cat.wd5 returns 200 with job data, no CSRF required.
     CompanyEntry("Caterpillar",         "workday", "cat:5:CaterpillarCareers",               ["controls_engineering", "embedded", "heavy_equipment"]),
@@ -127,6 +174,45 @@ def _load_user_companies(json_path: Optional[Path] = None) -> list[CompanyEntry]
     except Exception as e:
         print(f"  [registry] Warning: could not load {path.name} — {e}")
         return []
+
+
+def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = None) -> int:
+    """Append companies to companies.json, preserving its comments/examples and
+    skipping any whose (ats_type, slug) or name already exists. Atomic write.
+    Returns the number actually added."""
+    from config import COMPANIES_JSON
+    from scrape.cache_helpers import write_cache
+    path = json_path or COMPANIES_JSON
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception as e:
+        print(f"  [registry] Could not read {path.name} — {e}; not saving.")
+        return 0
+    if not isinstance(raw, dict):
+        raw = {}
+    companies = raw.get("companies", [])
+    real = [c for c in companies if "_example" not in c]
+    seen_keys = {(c.get("ats_type"), c.get("slug")) for c in real}
+    seen_names = {(c.get("name") or "").lower() for c in real}
+
+    added = 0
+    for e in new_entries:
+        if (e.ats_type, e.slug) in seen_keys or e.name.lower() in seen_names:
+            continue
+        companies.append({
+            "name": e.name,
+            "ats_type": e.ats_type,
+            "slug": e.slug,
+            "industries": list(e.industries),
+        })
+        seen_keys.add((e.ats_type, e.slug))
+        seen_names.add(e.name.lower())
+        added += 1
+
+    if added:
+        raw["companies"] = companies
+        write_cache(path, raw)
+    return added
 
 
 def get_registry(industry: str | None = None, user_json: Optional[Path] = None) -> list[CompanyEntry]:

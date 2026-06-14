@@ -1,11 +1,10 @@
-from datetime import datetime
 from pathlib import Path
 
 import requests
 
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import read_cache, slug_safe, write_cache
+from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
 
 # Workday exposes a consistent undocumented JSON endpoint across all tenants.
@@ -40,8 +39,13 @@ def scrape_workday(
 
     tenant, n, site = parsed
     cache_file = cache_dir / f"workday_{slug_safe(company.slug)}_{slug_safe(keyword)}.json"
+    # The results cache above is per-keyword, but a dead tenant fails for every
+    # keyword — so the failure marker lives in a company-level file.
+    failed_file = cache_dir / f"workday_{slug_safe(company.slug)}_FAILED.json"
 
     if cache_enabled:
+        if is_failed(read_cache(failed_file)):
+            return []  # known-dead this TTL window
         cached = read_cache(cache_file)
         if cached is not None:
             return _map_results(cached, company, keyword, tenant, n)
@@ -63,10 +67,14 @@ def scrape_workday(
         resp.raise_for_status()
         data = resp.json()
     except requests.HTTPError as e:
-        print(f"  [workday] {company.name}: HTTP {e.response.status_code} — check tenant/site slug")
+        print(f"  [workday] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — check tenant/site slug")
+        if cache_enabled:
+            mark_failed(failed_file)
         return []
     except Exception as e:
         print(f"  [workday] {company.name}: error — {e}")
+        if cache_enabled:
+            mark_failed(failed_file)
         return []
 
     if cache_enabled:

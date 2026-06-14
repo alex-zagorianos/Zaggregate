@@ -1,9 +1,11 @@
 {
   "_comment": "Add your own companies here. They are merged with the built-in registry at runtime.",
   "_instructions": [
-    "ats_type options: 'greenhouse', 'lever', 'workday', 'direct'",
+    "ats_type options: 'greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workday', 'direct'",
     "  greenhouse: slug = the board name from boards.greenhouse.io/YOUR_SLUG",
     "  lever:      slug = the company slug from jobs.lever.co/YOUR_SLUG",
+    "  ashby:      slug = the company slug from jobs.ashbyhq.com/YOUR_SLUG",
+    "  smartrecruiters: slug = the company id from jobs.smartrecruiters.com/YOUR_SLUG (case-sensitive)",
     "  workday:    slug = 'tenant:N:site'  e.g. 'cat:5:CaterpillarCareers'",
     "  direct:     slug = full careers page URL (best-effort HTML scrape)",
     "industries: list of tags — used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",

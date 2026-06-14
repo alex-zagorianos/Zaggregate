@@ -6,8 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flask import Flask, request, render_template, send_file, jsonify
-from resume.generator import generate_resume_and_cover_letter, ResumeGenerationError
-from resume.docx_builder import build_resume_docx, build_cover_letter_docx
+from resume.generator import ResumeGenerationError
+from resume.service import build_bundle
 from config import PORT_RESUME
 
 app = Flask(__name__, template_folder="templates")
@@ -24,12 +24,9 @@ def generate():
     if not job_posting:
         return render_template("index.html", error="Please paste a job posting.")
     try:
-        data = generate_resume_and_cover_letter(job_posting)
+        _, resume_buf, cover_letter_buf = build_bundle(job_posting)
     except ResumeGenerationError as e:
         return render_template("index.html", error=str(e), job_posting=job_posting)
-
-    resume_buf = build_resume_docx(data)
-    cover_letter_buf = build_cover_letter_docx(data)
 
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:

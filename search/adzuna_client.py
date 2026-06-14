@@ -1,11 +1,5 @@
-import json
-import time
-from collections import deque
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-
-import requests
 
 from config import (
     ADZUNA_APP_ID,
@@ -13,11 +7,10 @@ from config import (
     ADZUNA_BASE_URL,
     ADZUNA_RATE_LIMIT,
     ADZUNA_RESULTS_PER_PAGE,
-    CACHE_DIR,
-    CACHE_TTL_HOURS,
 )
 from models import JobResult
 from search.base_client import JobAPIClient
+from search.http_util import FileCache, RateLimiter, cache_key, make_session, to_float
 
 
 class AdzunaClient(JobAPIClient):
@@ -34,10 +27,10 @@ class AdzunaClient(JobAPIClient):
             raise ValueError(
                 "Adzuna API credentials missing. Set ADZUNA_APP_ID and ADZUNA_APP_KEY in .env"
             )
-        self.cache_dir = (cache_dir or CACHE_DIR) / "adzuna"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache = FileCache("adzuna", cache_dir)
         self.cache_enabled = cache_enabled
-        self._call_timestamps: deque[float] = deque(maxlen=ADZUNA_RATE_LIMIT)
+        self.session = make_session()
+        self.limiter = RateLimiter(ADZUNA_RATE_LIMIT)
 
     def search(
         self,
@@ -46,13 +39,13 @@ class AdzunaClient(JobAPIClient):
         salary_min: Optional[int] = None,
         page: int = 1,
     ) -> dict:
+        key = cache_key("adzuna", keyword, location, salary_min, page)
         if self.cache_enabled:
-            cache_key = self._cache_key(keyword, location, page)
-            cached = self._read_cache(cache_key)
+            cached = self.cache.get(key)
             if cached is not None:
                 return cached
 
-        self._rate_limit()
+        self.limiter.acquire()
 
         url = f"{ADZUNA_BASE_URL}/{page}"
         params = {
@@ -66,14 +59,12 @@ class AdzunaClient(JobAPIClient):
         if salary_min is not None:
             params["salary_min"] = salary_min
 
-        response = requests.get(url, params=params, timeout=30)
+        response = self.session.get(url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
 
-        self._call_timestamps.append(time.time())
-
         if self.cache_enabled:
-            self._write_cache(cache_key, data)
+            self.cache.put(key, data)
 
         return data
 
@@ -83,10 +74,10 @@ class AdzunaClient(JobAPIClient):
             results.append(
                 JobResult(
                     title=item.get("title", "Unknown"),
-                    company=item.get("company", {}).get("display_name", "Unknown"),
-                    location=item.get("location", {}).get("display_name", "Unknown"),
-                    salary_min=item.get("salary_min"),
-                    salary_max=item.get("salary_max"),
+                    company=(item.get("company") or {}).get("display_name", "Unknown"),
+                    location=(item.get("location") or {}).get("display_name", "Unknown"),
+                    salary_min=to_float(item.get("salary_min")),
+                    salary_max=to_float(item.get("salary_max")),
                     description=item.get("description", ""),
                     url=item.get("redirect_url", ""),
                     source_keyword=source_keyword,
@@ -96,32 +87,3 @@ class AdzunaClient(JobAPIClient):
                 )
             )
         return results
-
-    def _rate_limit(self):
-        if len(self._call_timestamps) >= ADZUNA_RATE_LIMIT:
-            oldest = self._call_timestamps[0]
-            elapsed = time.time() - oldest
-            if elapsed < 60:
-                sleep_time = 60 - elapsed
-                print(f"  Rate limit: sleeping {sleep_time:.1f}s...")
-                time.sleep(sleep_time)
-
-    def _cache_key(self, keyword: str, location: str, page: int) -> str:
-        slug = keyword.lower().replace(" ", "_").replace("/", "_")
-        loc_slug = location.lower().replace(" ", "_").replace(",", "")
-        return f"{slug}_{loc_slug}_page{page}"
-
-    def _read_cache(self, cache_key: str) -> Optional[dict]:
-        cache_file = self.cache_dir / f"{cache_key}.json"
-        if not cache_file.exists():
-            return None
-        modified = datetime.fromtimestamp(cache_file.stat().st_mtime)
-        if datetime.now() - modified > timedelta(hours=CACHE_TTL_HOURS):
-            return None
-        with open(cache_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def _write_cache(self, cache_key: str, data: dict):
-        cache_file = self.cache_dir / f"{cache_key}.json"
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)

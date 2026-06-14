@@ -6,6 +6,7 @@ Open: http://localhost:5001
 import sys
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -18,6 +19,17 @@ from config import PORT_TRACKER
 
 app = Flask(__name__, template_folder="templates")
 init_db()
+
+
+def _cors(r):
+    """Reflect only the browser-extension origin on the write API, instead of a
+    wildcard that let any visited page POST into the tracker DB."""
+    origin = request.headers.get("Origin", "")
+    if urlparse(origin).scheme == "chrome-extension":
+        r.headers["Access-Control-Allow-Origin"] = origin
+        r.headers["Vary"] = "Origin"
+    r.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return r
 
 PORT = PORT_TRACKER
 
@@ -115,10 +127,7 @@ def api_jobs():
 @app.route("/api/add", methods=["POST", "OPTIONS"])
 def api_add():
     if request.method == "OPTIONS":
-        r = jsonify({})
-        r.headers["Access-Control-Allow-Origin"] = "*"
-        r.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        return r, 200
+        return _cors(jsonify({})), 200
     data = request.get_json(force=True, silent=True) or {}
     title   = (data.get("title") or "").strip()
     company = (data.get("company") or "").strip()
@@ -135,9 +144,7 @@ def api_add():
         date_applied= (data.get("date_applied") or "").strip(),
         notes       = (data.get("notes") or "").strip(),
     )
-    r = jsonify({"id": job_id, "status": "added"})
-    r.headers["Access-Control-Allow-Origin"] = "*"
-    return r, 201
+    return _cors(jsonify({"id": job_id, "status": "added"})), 201
 
 
 @app.route("/api/status")

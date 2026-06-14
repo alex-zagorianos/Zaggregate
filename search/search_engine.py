@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from typing import Optional
 
 from models import JobResult
@@ -9,6 +11,8 @@ _STATE_ABBREVS = {
     "new york": "ny", "virginia": "va", "michigan": "mi", "illinois": "il",
     "georgia": "ga", "florida": "fl", "north carolina": "nc", "tennessee": "tn",
 }
+
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _location_score(job_location: str, target: str) -> int:
@@ -28,6 +32,22 @@ def _location_score(job_location: str, target: str) -> int:
     return score
 
 
+def _parse_created(value: str) -> datetime:
+    """Parse heterogeneous source date strings (ISO with/without tz, ``Z`` suffix,
+    or date-only) into an aware datetime so sorting is chronological, not
+    lexicographic. Unparseable/empty sinks to the epoch."""
+    if not value:
+        return _EPOCH
+    s = value.strip().replace("Z", "+00:00")
+    for candidate in (s, s[:19], s[:10]):
+        try:
+            dt = datetime.fromisoformat(candidate)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return _EPOCH
+
+
 class SearchEngine:
     def __init__(self, clients: list[JobAPIClient]):
         self.clients = clients
@@ -42,35 +62,63 @@ class SearchEngine:
     ) -> list[JobResult]:
         all_results: list[JobResult] = []
 
-        for client in self.clients:
-            source = type(client).__name__
-            for keyword in keywords:
-                print(f"[{source}] Searching: {keyword!r} in {location}...")
-                for page in range(1, max_pages_per_keyword + 1):
-                    try:
-                        results = client.search_and_parse(
-                            keyword=keyword,
-                            location=location,
-                            salary_min=salary_min,
-                            page=page,
-                        )
-                    except Exception as e:
-                        print(f"  Error on page {page}: {e}")
-                        break
-
-                    if not results:
-                        break
-                    all_results.extend(results)
-                    print(f"  Page {page}: {len(results)} results")
+        # One task per client; each client walks its own keywords/pages. Clients
+        # run concurrently (the rate limiter and file cache are thread-safe), so
+        # a slow source no longer blocks the others. CareersClient is internally
+        # parallel and counts as a single task here.
+        max_workers = min(len(self.clients), 4) or 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._run_client, client, keywords, location,
+                    salary_min, max_pages_per_keyword,
+                ): client
+                for client in self.clients
+            }
+            for future in as_completed(futures):
+                source = type(futures[future]).__name__
+                try:
+                    res = future.result()
+                    print(f"[{source}] {len(res)} results")
+                    all_results.extend(res)
+                except Exception as e:
+                    print(f"[{source}] failed: {e}")
 
         deduped = self._deduplicate(all_results)
         if sort_by == "location":
             deduped.sort(key=lambda j: _location_score(j.location, location), reverse=True)
         else:
-            deduped.sort(key=lambda j: j.created or "", reverse=True)
+            deduped.sort(key=lambda j: _parse_created(j.created), reverse=True)
 
         print(f"\nTotal: {len(all_results)} raw -> {len(deduped)} after dedup")
         return deduped
+
+    def _run_client(
+        self,
+        client: JobAPIClient,
+        keywords: list[str],
+        location: str,
+        salary_min: Optional[int],
+        max_pages: int,
+    ) -> list[JobResult]:
+        source = type(client).__name__
+        out: list[JobResult] = []
+        for keyword in keywords:
+            for page in range(1, max_pages + 1):
+                try:
+                    results = client.search_and_parse(
+                        keyword=keyword, location=location,
+                        salary_min=salary_min, page=page,
+                    )
+                except Exception as e:
+                    # Transient errors are already retried in the session; a
+                    # failure here stops paging this keyword but not the run.
+                    print(f"  [{source}] {keyword!r} page {page} error: {e}")
+                    break
+                if not results:
+                    break  # genuine end-of-results for this keyword
+                out.extend(results)
+        return out
 
     def _deduplicate(self, results: list[JobResult]) -> list[JobResult]:
         seen: set[str] = set()

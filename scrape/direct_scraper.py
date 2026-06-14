@@ -1,5 +1,5 @@
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 import hashlib
 
 import requests
@@ -12,6 +12,11 @@ from scrape.company_registry import CompanyEntry
 
 _JOB_URL_PATTERNS = ("/job/", "/jobs/", "/opening/", "/openings/", "/position/", "/careers/job", "/career/")
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+# Negative-cache marker: a dead URL (404/403/timeout) was retried once per
+# keyword per run — ~150 doomed 20s requests a day across the registry's dead
+# entries. Caching the failure makes it one attempt per TTL window.
+_FAILED_SENTINEL = "<!--fetch-failed-->"
 
 
 def scrape_direct(
@@ -28,6 +33,9 @@ def scrape_direct(
     else:
         html = None
 
+    if html == _FAILED_SENTINEL:
+        return []  # known-dead this TTL window; stay quiet, don't re-fetch
+
     if html is None:
         try:
             resp = requests.get(
@@ -37,6 +45,8 @@ def scrape_direct(
             html = resp.text
         except Exception as e:
             print(f"  [direct] {company.name}: fetch error — {e}")
+            if cache_enabled:
+                write_cache(cache_file, _FAILED_SENTINEL)
             return []
         if cache_enabled:
             write_cache(cache_file, html)
@@ -85,8 +95,5 @@ def _is_job_link(href: str) -> bool:
 
 
 def _matches(keyword: str, text: str) -> bool:
-    kw = keyword.lower()
-    text_lower = text.lower()
-    if kw in text_lower:
-        return True
-    return any(part in text_lower for part in kw.split() if len(part) >= 4)
+    from scrape.text_match import keyword_matches
+    return keyword_matches(keyword, text)

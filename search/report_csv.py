@@ -6,6 +6,7 @@ from models import JobResult
 
 def generate_csv_report(results: list[JobResult], output_path: Path) -> Path:
     fieldnames = [
+        "score",
         "title",
         "company",
         "location",
@@ -24,6 +25,7 @@ def generate_csv_report(results: list[JobResult], output_path: Path) -> Path:
         for job in results:
             writer.writerow(
                 {
+                    "score": job.score if job.score >= 0 else "",
                     "title": job.title,
                     "company": job.company,
                     "location": job.location,

@@ -16,7 +16,8 @@ from search.report_csv import generate_csv_report
 from search.report_html import generate_html_report
 from search.search_engine import SearchEngine
 
-ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers"]
+ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers", "themuse", "remoteok",
+               "remotive", "jobicy", "himalayas", "hn"]
 
 
 def load_user_config(path=None) -> dict:
@@ -63,6 +64,30 @@ def build_clients(
                 clients.append(USAJobsClient(cache_enabled=cache_enabled))
             except ValueError as e:
                 print(f"  [usajobs] Skipping — {e}")
+
+        elif source == "themuse":
+            from search.themuse_client import TheMuseClient
+            clients.append(TheMuseClient(cache_enabled=cache_enabled))
+
+        elif source == "remoteok":
+            from search.remoteok_client import RemoteOKClient
+            clients.append(RemoteOKClient(cache_enabled=cache_enabled))
+
+        elif source == "remotive":
+            from search.remotive_client import RemotiveClient
+            clients.append(RemotiveClient(cache_enabled=cache_enabled))
+
+        elif source == "jobicy":
+            from search.jobicy_client import JobicyClient
+            clients.append(JobicyClient(cache_enabled=cache_enabled))
+
+        elif source == "himalayas":
+            from search.himalayas_client import HimalayasClient
+            clients.append(HimalayasClient(cache_enabled=cache_enabled))
+
+        elif source == "hn":
+            from search.hn_client import HNClient
+            clients.append(HNClient(cache_enabled=cache_enabled))
 
         elif source == "careers":
             from scrape.careers_client import CareersClient
@@ -127,7 +152,8 @@ def main():
         "--top-n",
         type=int,
         default=20,
-        help="Max companies to scrape from career pages (default: 20)",
+        help="Max auto-discovered companies to add per keyword; the curated "
+             "registry is always scraped in full (default: 20)",
     )
     parser.add_argument(
         "--industry",
@@ -138,7 +164,30 @@ def main():
     parser.add_argument(
         "--no-discover",
         action="store_true",
-        help="Skip DuckDuckGo auto-discovery; use only curated registry",
+        help="Skip Brave Search company auto-discovery; use only the curated registry",
+    )
+    parser.add_argument(
+        "--show-tracked",
+        action="store_true",
+        help="Include jobs already in the tracker or dismissed (hidden by default)",
+    )
+    parser.add_argument(
+        "--save-discovered",
+        action="store_true",
+        help="Persist auto-discovered companies that returned matching jobs to "
+             "companies.json, building a permanent watchlist across runs",
+    )
+    parser.add_argument(
+        "--prune-companies",
+        action="store_true",
+        help="Maintenance: probe companies.json and remove entries that 404 or "
+             "have an empty board for --prune-threshold consecutive runs, then exit",
+    )
+    parser.add_argument(
+        "--prune-threshold",
+        type=int,
+        default=2,
+        help="Consecutive failed probes before a company is pruned (default: 2)",
     )
     parser.add_argument(
         "--companies-file",
@@ -160,9 +209,16 @@ def main():
     )
     parser.add_argument(
         "--sort-by",
-        choices=["date", "location"],
-        default="date",
-        help="Sort results by 'date' (default) or 'location' proximity",
+        choices=["score", "date", "location"],
+        default="score",
+        help="Sort results by match 'score' (default), 'date', or 'location' proximity",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=int,
+        default=None,
+        help="Hide results scoring below this (0-100). Default: user_config "
+             "'min_score' or 0 (show all)",
     )
     parser.add_argument(
         "--edit-csv",
@@ -170,6 +226,17 @@ def main():
         help="Open output CSV in default app after search completes (Windows only)",
     )
     args = parser.parse_args()
+
+    # Maintenance mode: prune dead/empty companies and exit (no search).
+    if args.prune_companies:
+        from scrape.company_health import prune_companies
+        cf = Path(args.companies_file) if args.companies_file else None
+        removed = prune_companies(threshold=args.prune_threshold, json_path=cf)
+        if removed:
+            print(f"Pruned {len(removed)} dead/empty company(ies): {', '.join(removed)}")
+        else:
+            print("No companies pruned (all reachable with postings, or below threshold).")
+        sys.exit(0)
 
     # --- Resolve values: CLI flag > user_config.json > hardcoded defaults ---
     user_cfg = load_user_config(args.user_config)
@@ -230,12 +297,68 @@ def main():
         location=location,
         salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,
-        sort_by=args.sort_by,
+        sort_by="date" if args.sort_by == "score" else args.sort_by,
     )
+
+    # Persist discovered "winner" companies (returned >=1 matching job) so they
+    # become a permanent part of the watchlist on future runs.
+    if args.save_discovered:
+        careers = next((c for c in clients if type(c).__name__ == "CareersClient"), None)
+        if careers is not None:
+            added = careers.persist_discovered(companies_file)
+            if added:
+                print(f"Saved {added} new discovered company(ies) to companies.json.")
+            else:
+                print("No new discovered companies to save (none new, or discovery off).")
 
     if not results:
         print("No results found.")
         sys.exit(0)
+
+    # Cross-run dedup: hide jobs already tracked or explicitly dismissed so each
+    # search surfaces only genuinely new postings.
+    if not args.show_tracked:
+        from tracker.db import init_db, normalize_url, seen_urls
+        init_db()
+        seen = seen_urls()
+        before = len(results)
+        results = [r for r in results if normalize_url(r.url) not in seen]
+        hidden = before - len(results)
+        if hidden:
+            print(f"Hid {hidden} already-tracked/dismissed job(s) (use --show-tracked to include).")
+        if not results:
+            print("All matches were already tracked or dismissed. Use --show-tracked to see them.")
+            sys.exit(0)
+
+    # Match scoring: rank everything against the user's profile, then apply
+    # the floor. Scoring happens after the tracked/dismissed filter so the
+    # skill-extraction work isn't spent on jobs that will be hidden anyway.
+    from match.scorer import score_jobs
+    results = score_jobs(
+        results,
+        keywords=keywords,
+        location=location,
+        salary_floor=salary_min,
+        exclude_keywords=user_cfg.get("exclude_keywords", []),
+    )
+    min_score = args.min_score
+    if min_score is None:
+        min_score = int(user_cfg.get("min_score", 0))
+    if min_score > 0:
+        before = len(results)
+        results = [r for r in results if r.score >= min_score]
+        dropped = before - len(results)
+        if dropped:
+            print(f"Hid {dropped} job(s) scoring below {min_score} (--min-score).")
+        if not results:
+            print(f"No jobs scored >= {min_score}. Lower --min-score to see more.")
+            sys.exit(0)
+    if args.sort_by != "score":  # score_jobs sorted best-first; restore request
+        from search.search_engine import _location_score, _parse_created
+        if args.sort_by == "location":
+            results.sort(key=lambda j: _location_score(j.location, location), reverse=True)
+        else:
+            results.sort(key=lambda j: _parse_created(j.created), reverse=True)
 
     search_params = {
         "date": today,

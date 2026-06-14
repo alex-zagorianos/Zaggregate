@@ -16,6 +16,13 @@ class JobResult:
     created: str
     job_id: str = ""
     source_api: str = ""
+    # Filled in by match.scorer after dedup; -1 = not scored.
+    score: int = -1
+    score_notes: str = ""
+    # Total postings on the company's careers board (careers scrapers only);
+    # cheap company-size proxy: 12 openings = small shop, 300+ = mega board.
+    # -1 = unknown (API sources don't see the whole board).
+    board_count: int = -1
 
     @property
     def dedup_key(self) -> str:
