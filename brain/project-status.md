@@ -218,11 +218,19 @@ Caught up the repo and shipped four features + a bug fix. Spec: [[spec-2026-06-1
 - Tooling could add: company **remove/edit** UI (currently hand-edit companies.json), Projects "Manage" (rename/delete).
 - `tracker.db.bak` left in root (safety; gitignored) — delete after a release.
 
+### Session 9 cont. — browser-extension verification (2026-06-14) ✅
+
+Verified the LinkedIn/Indeed "collect while scrolling" pipeline end-to-end via Claude-in-Chrome live audit. Commits `64ff8ea`, `14bdd31` (pushed).
+
+- **Receiver** (`browser_receiver` /harvest → score → inbox): verified live (POST → scored → inbox, cleanup); **fixed** it to thread `exclude_titles`/`title_miss_penalty`/`seniority_exclude` (was missing the search-tightening; harvested AI Engineer now → 0).
+- **Indeed selectors: healthy** — 18/18 cards, title/company/location 100% (via the existing `data-jk`/`data-testid` fallbacks; primary `h2.jobTitle a` dead but chain holds). No change.
+- **LinkedIn selectors: had silently rotted** (LinkedIn moved to `artdeco-entity-lockup`). Fixed in `content.js`: promoted the working lockup selectors to primary for company/location; **salary** now reads `.artdeco-entity-lockup__content` (was uncaptured — sits in the 2nd of two metadata wrappers w/ randomized class) and server `_parse_salary` pulls the $ (verified 5/5 salaried cards); **title de-dup** (LinkedIn repeats title in a hidden span → "T\nT", now first-line only). manifest 1.1→1.2.
+- New `browser_ext/selector_check.js` = paste-in DevTools console self-audit for future rot.
+- **NOTE for next use:** Alex must **reload the unpacked extension** (chrome://extensions → reload Job Harvester) to pick up v1.2; LinkedIn collection needs him logged in; `py -m scrape.browser_receiver` must run for "Send to Tool". The Claude-in-Chrome MCP tab is NOT logged into LinkedIn — selector re-audits need either his login in the controlled window or the console snippet in his own tab.
+
 ## Git
 
-- Last commit: `5457594` on `master`; pushed through `1493571` (Projects + Add-Companies commits `54200ca`/`1375889`/`5457594` local until next push).
+- HEAD `14bdd31` on `master`, **pushed; working tree clean.** Everything through Session 9 (backlog, Caterpillar fix, Archive, Search tightening, Projects 0–3, Add-Companies, browser-ext verification) is committed + on origin.
 - Remote: `git@github.com:alex-zagorianos/Job-Program.git`
-- Uncommitted (working tree): the entire 2026-06-02 hardening pass — new `search/http_util.py`, `resume/service.py`, `tests/*`, `brain/{review,plan}-2026-06.md`; modified clients/engine/generator/gui/tracker/scrapers; plus the pre-existing `experience.md` (modified) and `gui.py` (was untracked). Nothing committed per instruction.
-- Also uncommitted: the entire 2026-06-09 throughput overhaul — new `match/`, `claude_bridge.py`, `daily_run.py`, `setup_schedule.bat`, `search/themuse_client.py`, `search/remoteok_client.py`, `handoff_20260609_session7.md`; modified `models.py`, `config.py`, `tracker/db.py`, `gui.py`, `search/cli.py`, `search/report_csv.py`, `search/templates/report.html`, `resume/service.py`, `user_config.json`.
-- Python command: `py` (not `python`)
-- Env note: only `dotenv`+`requests` were installed; `pip install -r requirements.txt` restored the rest (anthropic, flask, jinja2, python-docx, beautifulsoup4, pytest).
+- Full suite: **127 passing** (`py -m pytest -q`). Python command: `py`.
+- Active project workspace: `projects/controls-cincinnati/` (1098-row inbox). Switch via GUI header or `--project`.

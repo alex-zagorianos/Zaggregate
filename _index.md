@@ -9,32 +9,32 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — fully built; smoke-test pending.** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
+> Status: **🟢 Active — built, tested (127 pass), committed + pushed (HEAD `14bdd31`).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
 
 ---
 
 ## Core Documents
 
-| Document                       | Purpose                                                  |
-| ------------------------------ | -------------------------------------------------------- |
-| [[project-status]]             | **Canonical project brain** (`brain\project-status.md`). |
-| [[handoff_20260609_session7]]  | Latest session — throughput overhaul.                    |
-| [[experience]]                 | Career master file (resume/cover source).                |
-| [[claude_code_kickoff_prompt]] | Original CC kickoff prompt.                              |
-| `gui.py` / `daily_run.py`      | 5-tab GUI + scheduled daily-run entry points.            |
+| Document                       | Purpose                                                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| [[project-status]]             | **Canonical project brain** (`brain\project-status.md`).                                      |
+| [[handoff_20260614_session9]]  | **Latest session** — archive, search tightening, projects, add-companies, browser-ext verify. |
+| [[handoff_20260609_session7]]  | Earlier session — throughput overhaul.                                                        |
+| [[experience]]                 | Career master file (resume/cover source).                                                     |
+| [[claude_code_kickoff_prompt]] | Original CC kickoff prompt.                                                                   |
+| `gui.py` / `daily_run.py`      | 5-tab GUI + scheduled daily-run entry points.                                                 |
 
 ## Pipeline
 
 Scheduled daily search (07:30 Task Scheduler) → local 0–100 match scoring (`match/scorer.py`) → deduped **Inbox** → optional Claude fit-ranking via clipboard bridge (no API key) → **Apply Queue** GUI tab with resume prompts + "Mark Applied → Next". Free no-key sources: The Muse, RemoteOK.
 
-## Open (from session7 handoff)
+## Open (next session — see [[handoff_20260614_session9]])
 
-- [ ] **SMOKE TEST not run** (shell was down) — `py -m py_compile …`, then `py gui.py`, `py daily_run.py --max-pages 1`.
-- [ ] Run `setup_schedule.bat` once (maybe as admin) for the 07:30 task.
-- [ ] Two sessions uncommitted — git commit when ready.
-- [ ] No tests yet for scorer / bridge parsers.
-- [ ] Phase 3 LinkedIn engagement assist — to spec (human-in-the-loop only, no scraping/auto-login).
+- [ ] **Reload the browser extension** (chrome://extensions → reload "Job Harvester", now v1.2) before next harvest; needs LinkedIn login + `py -m scrape.browser_receiver` running.
+- [ ] **Projects Phase 4** (deferred) — per-project scheduler (`daily_run --project` done; wire `setup_schedule.bat` + per-project `daily` flag).
+- [ ] Run `setup_schedule.bat` once for the 07:30 task.
+- [ ] Optional: company remove/edit UI, Projects Manage (rename/delete), scorer/bridge unit tests; delete root `tracker.db.bak`.
 
 ---
 
-_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `handoff_20260609_session7.md` + `brain\project-status.md`. Last updated 2026-06-13._
+_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `handoff_20260614_session9.md` + `brain\project-status.md`. Last updated 2026-06-14._
