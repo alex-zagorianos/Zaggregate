@@ -23,18 +23,25 @@ const SITES = [
       ".job-card-list__title a",
       "h3 > a",
     ],
+    // Verified live 2026-06-14: LinkedIn migrated to the artdeco-entity-lockup
+    // card structure, so the lockup selectors lead (older ones kept as fallback).
     company: [
+      ".artdeco-entity-lockup__subtitle span",
       ".job-card-container__primary-description",
       ".job-card-container__company-name",
       "h4 a",
-      ".artdeco-entity-lockup__subtitle span",
     ],
     location: [
+      ".artdeco-entity-lockup__caption li",
       "li.job-card-container__metadata-item:first-child",
       ".job-search-card__location",
-      ".artdeco-entity-lockup__caption li",
     ],
+    // Salary sits in a metadata <li> with a randomized class, inside the SECOND
+    // of two metadata wrappers — so first() can't target it. Grab the whole
+    // entity-lockup content (verified to contain it on every salaried card) and
+    // let browser_receiver._parse_salary pull the $ amount out.
     salary: [
+      ".artdeco-entity-lockup__content",
       ".job-card-list__salary",
       "li.job-card-container__metadata-item:nth-child(2)",
     ],
@@ -189,7 +196,9 @@ function extractCard(card) {
   const titleEl = first(card, SITE.titleLink);
   if (!titleEl) return null;
 
-  const title = titleEl.innerText?.trim();
+  // LinkedIn repeats the title in a visually-hidden span, so innerText comes
+  // back as "Title\nTitle". Take the first line so it isn't captured doubled.
+  const title = titleEl.innerText?.trim().split("\n")[0].trim();
   if (!title) return null;
 
   const url = resolveUrl(titleEl.href || titleEl.getAttribute("href") || "");
