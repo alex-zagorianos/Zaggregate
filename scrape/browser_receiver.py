@@ -29,11 +29,30 @@ PORT = PORT_RECEIVER
 # origin is unguessable per-install, so we reflect exactly that scheme rather
 # than the old wildcard, which let *any* site the user visited POST job data here.
 _ALLOWED_ORIGIN_SCHEME = "chrome-extension"
+# Loopback hosts allowed for local/manual testing (e.g. curl from the same box).
+_ALLOWED_LOCALHOST_HOSTS = ("127.0.0.1", "localhost")
+# Bind to loopback only. Binding all interfaces (0.0.0.0) exposed this
+# side-effecting server to anything on the LAN.
+HOST = "127.0.0.1"
+
+
+def _origin_allowed(origin: str) -> bool:
+    """True only for the unpacked extension's chrome-extension:// origin or a
+    loopback http(s) origin. CORS reflection only governs whether the *browser*
+    surfaces the response to a page's JS; it does NOT stop the request from
+    reaching us and triggering side effects (file writes, inboxing, opening a
+    browser tab). So the handlers themselves must reject foreign origins."""
+    parsed = urlparse(origin)
+    if parsed.scheme == _ALLOWED_ORIGIN_SCHEME:
+        return True
+    if parsed.scheme in ("http", "https") and parsed.hostname in _ALLOWED_LOCALHOST_HOSTS:
+        return True
+    return False
 
 
 def _add_cors(response):
     origin = request.headers.get("Origin", "")
-    if urlparse(origin).scheme == _ALLOWED_ORIGIN_SCHEME:
+    if _origin_allowed(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Vary"] = "Origin"
     response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS"
@@ -61,6 +80,12 @@ def status():
 def harvest():
     if request.method == "OPTIONS":
         return jsonify({}), 200
+
+    # Side effects below (report files, inbox writes, opening a browser tab) must
+    # only run for our extension or a loopback caller. An origin-less or foreign
+    # POST is rejected before any of that happens.
+    if not _origin_allowed(request.headers.get("Origin", "")):
+        return jsonify({"error": "Forbidden origin"}), 403
 
     data = request.get_json(force=True, silent=True)
     if not data or "jobs" not in data:
@@ -177,7 +202,30 @@ def _to_job_result(j) -> JobResult | None:
 # stray "hr"/"hour" substrings in company/location text ("Pittsburgh", "Amherst",
 # "HR Manager") can't trigger the x2080 annualization on real salaries.
 _HOURLY_RE = re.compile(r"(?:/|\bper\s+)\s*(?:hr|hour)\b|\bhourly\b|/hr\b", re.I)
-_MONEY_RE = re.compile(r"\$\s*\d[\d,]*(?:\.\d+)?\s*[Kk]?")
+_MONEY = r"\$\s*\d[\d,]*(?:\.\d+)?\s*[Kk]?"
+_MONEY_RE = re.compile(_MONEY)
+# Prefer an explicit salary phrase over "first two $ in the blob": a ranged
+# "$X - $Y" (en/em dash or 'to'), or a single amount carrying a period unit
+# ("$X/yr", "$X a year", "$X per hour"). A promo/bonus "$" earlier in a card
+# blob no longer hijacks the numbers because we anchor on these shapes first.
+_RANGE_RE = re.compile(
+    rf"({_MONEY})\s*(?:-|–|—|\bto\b)\s*({_MONEY})", re.I
+)
+_PERIOD = r"(?:/\s*(?:yr|hr|hour|year|mo|month)\b|\bper\b|\ba\s+(?:year|month|hour)\b|\bannually\b|\bannual\b)"
+_SINGLE_PERIOD_RE = re.compile(rf"({_MONEY})\s*{_PERIOD}", re.I)
+
+
+def _money_to_float(token: str, hourly: bool):
+    n = token.replace("$", "").replace(",", "").replace(" ", "")
+    try:
+        if n[-1:].lower() == "k":
+            return float(n[:-1]) * 1000
+        val = float(n)
+        if hourly and val < 500:  # looks like an hourly rate -> annualize
+            val *= 2080
+        return val
+    except ValueError:
+        return None
 
 
 def _parse_salary(text: str):
@@ -187,19 +235,28 @@ def _parse_salary(text: str):
     if not text:
         return None, None
     hourly = bool(_HOURLY_RE.search(text))
+
+    # 1) Explicit ranged phrase wins ("$X - $Y" / "$X to $Y").
+    m = _RANGE_RE.search(text)
+    if m:
+        lo = _money_to_float(m.group(1), hourly)
+        hi = _money_to_float(m.group(2), hourly)
+        if lo is not None and hi is not None:
+            return lo, hi
+
+    # 2) Single amount with a period unit ("$X/yr", "$X a year", "$X per hour").
+    m = _SINGLE_PERIOD_RE.search(text)
+    if m:
+        val = _money_to_float(m.group(1), hourly)
+        if val is not None:
+            return val, None
+
+    # 3) Fallback: first two bare $ amounts in the blob.
     parsed = []
     for token in _MONEY_RE.findall(text):
-        n = token.replace("$", "").replace(",", "").replace(" ", "")
-        try:
-            if n[-1:].lower() == "k":
-                parsed.append(float(n[:-1]) * 1000)
-            else:
-                val = float(n)
-                if hourly and val < 500:  # looks like an hourly rate -> annualize
-                    val *= 2080
-                parsed.append(val)
-        except ValueError:
-            continue
+        val = _money_to_float(token, hourly)
+        if val is not None:
+            parsed.append(val)
     if len(parsed) >= 2:
         return parsed[0], parsed[1]
     if len(parsed) == 1:
@@ -208,6 +265,6 @@ def _parse_salary(text: str):
 
 
 if __name__ == "__main__":
-    print(f"Job Harvester receiver running on http://localhost:{PORT}")
+    print(f"Job Harvester receiver running on http://{HOST}:{PORT}")
     print("Load the browser extension, browse LinkedIn/Indeed, then click 'Send to Tool'.\n")
-    app.run(port=PORT, debug=False)
+    app.run(host=HOST, port=PORT, debug=False)

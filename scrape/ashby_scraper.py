@@ -85,7 +85,9 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
         dept = posting.get("department", "") or ""
         team = posting.get("team", "") or ""
 
-        if not _matches(keyword, title, [dept, team]):
+        # Match on the TITLE only; department/team reach the scorer via the
+        # description path below, never the keyword haystack.
+        if not _matches(keyword, title):
             continue
 
         location = posting.get("location", "") or ""
@@ -102,7 +104,8 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
             location=location,
             salary_min=salary_min,
             salary_max=salary_max,
-            description=(posting.get("descriptionPlain") or "")[:3000],
+            description=_with_categories(
+                (posting.get("descriptionPlain") or "")[:3000], [dept, team]),
             url=posting.get("jobUrl") or posting.get("applyUrl") or "",
             source_keyword=keyword,
             created=posting.get("publishedAt") or "",
@@ -113,6 +116,15 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
     return results
 
 
-def _matches(keyword: str, title: str, categories: list[str]) -> bool:
+def _with_categories(description: str, categories: list[str]) -> str:
+    """Append department/team labels to the scorer-visible description (not the
+    match haystack)."""
+    cat_text = " ".join(c for c in categories if c)
+    if not cat_text:
+        return description
+    return (description + " " + cat_text).strip() if description else cat_text
+
+
+def _matches(keyword: str, title: str) -> bool:
     from scrape.text_match import keyword_matches
-    return keyword_matches(keyword, title + " " + " ".join(c for c in categories if c))
+    return keyword_matches(keyword, title)

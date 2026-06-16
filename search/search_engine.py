@@ -6,10 +6,21 @@ from models import JobResult
 from search.base_client import JobAPIClient
 
 _STATE_ABBREVS = {
-    "ohio": "oh", "kentucky": "ky", "indiana": "in",
-    "pennsylvania": "pa", "texas": "tx", "california": "ca",
-    "new york": "ny", "virginia": "va", "michigan": "mi", "illinois": "il",
-    "georgia": "ga", "florida": "fl", "north carolina": "nc", "tennessee": "tn",
+    "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar",
+    "california": "ca", "colorado": "co", "connecticut": "ct", "delaware": "de",
+    "florida": "fl", "georgia": "ga", "hawaii": "hi", "idaho": "id",
+    "illinois": "il", "indiana": "in", "iowa": "ia", "kansas": "ks",
+    "kentucky": "ky", "louisiana": "la", "maine": "me", "maryland": "md",
+    "massachusetts": "ma", "michigan": "mi", "minnesota": "mn",
+    "mississippi": "ms", "missouri": "mo", "montana": "mt", "nebraska": "ne",
+    "nevada": "nv", "new hampshire": "nh", "new jersey": "nj",
+    "new mexico": "nm", "new york": "ny", "north carolina": "nc",
+    "north dakota": "nd", "ohio": "oh", "oklahoma": "ok", "oregon": "or",
+    "pennsylvania": "pa", "rhode island": "ri", "south carolina": "sc",
+    "south dakota": "sd", "tennessee": "tn", "texas": "tx", "utah": "ut",
+    "vermont": "vt", "virginia": "va", "washington": "wa",
+    "west virginia": "wv", "wisconsin": "wi", "wyoming": "wy",
+    "district of columbia": "dc",
 }
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
@@ -121,10 +132,13 @@ class SearchEngine:
         return out
 
     def _deduplicate(self, results: list[JobResult]) -> list[JobResult]:
+        # identity_key is URL-primary: cross-source location/tracking variants of
+        # the same posting collapse, while distinct same-title reqs at different
+        # URLs stay separate (dedup_key would have wrongly merged them).
         seen: set[str] = set()
         unique: list[JobResult] = []
         for job in results:
-            if job.dedup_key not in seen:
-                seen.add(job.dedup_key)
+            if job.identity_key not in seen:
+                seen.add(job.identity_key)
                 unique.append(job)
         return unique

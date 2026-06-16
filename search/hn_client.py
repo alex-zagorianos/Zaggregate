@@ -7,15 +7,13 @@ comments. Top-level comments follow the convention
 company/location. Postings skew heavily toward startups and small teams."""
 import html
 import re
-from pathlib import Path
 from typing import Optional
 
 from config import HN_ALGOLIA_URL, HN_RATE_LIMIT
 from models import JobResult
-from search.base_client import JobAPIClient
-from search.http_util import FileCache, RateLimiter, cache_key, make_session
+from search.http_util import cache_key
+from search.single_feed_client import SingleFeedClient
 
-_TAG_RE = re.compile(r"<[^>]+>")
 _BREAK_RE = re.compile(r"<p>|<br\s*/?>", re.IGNORECASE)
 
 
@@ -24,7 +22,7 @@ def _comment_to_text(comment_html: str) -> str:
     paragraph breaks preserved as newlines (the first line carries the
     Company | Role | Location header)."""
     text = _BREAK_RE.sub("\n", comment_html or "")
-    text = _TAG_RE.sub(" ", text)
+    text = SingleFeedClient.strip_html(text)
     return html.unescape(text).strip()
 
 
@@ -38,13 +36,9 @@ def _parse_header(first_line: str) -> tuple[str, str, str]:
     return company, role, location
 
 
-class HNClient(JobAPIClient):
-    def __init__(self, cache_dir: Optional[Path] = None, cache_enabled: bool = True):
-        self.cache = FileCache("hn", cache_dir)
-        self.cache_enabled = cache_enabled
-        self.session = make_session()
-        self.session.headers["User-Agent"] = "JobSearchTool/1.0 (personal use)"
-        self.limiter = RateLimiter(HN_RATE_LIMIT, quiet=True)
+class HNClient(SingleFeedClient):
+    cache_subdir = "hn"
+    rate_limit = HN_RATE_LIMIT
 
     def _latest_thread_id(self) -> Optional[str]:
         if self.cache_enabled:
@@ -91,24 +85,25 @@ class HNClient(JobAPIClient):
 
         thread_id = self._latest_thread_id()
         if not thread_id:
+            # No thread found -> return empty WITHOUT caching, so a later run can
+            # still find the thread once it's posted.
             return {"hits": []}
 
-        self.limiter.acquire()
-        response = self.session.get(
-            f"{HN_ALGOLIA_URL}/search",
-            params={
-                "tags": f"comment,story_{thread_id}",
-                "query": keyword,
-                "hitsPerPage": 100,
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = {"hits": response.json().get("hits", [])}
+        def fetch():
+            self.limiter.acquire()
+            response = self.session.get(
+                f"{HN_ALGOLIA_URL}/search",
+                params={
+                    "tags": f"comment,story_{thread_id}",
+                    "query": keyword,
+                    "hitsPerPage": 100,
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            return {"hits": response.json().get("hits", [])}
 
-        if self.cache_enabled:
-            self.cache.put(key, data)
-        return data
+        return self._cached(key, fetch)
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         results = []

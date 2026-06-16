@@ -180,6 +180,32 @@ function first(el, selectors) {
 
 // Salary is parsed server-side (one implementation, in browser_receiver.py).
 // We only forward the raw text so the JS and Python parsers can't diverge.
+//
+// But the LinkedIn salary selector grabs a whole entity-lockup blob (the salary
+// <li> has a randomized class, so we can't target it directly). Forwarding that
+// entire blob means a promo/bonus "$" elsewhere in the card can sit ahead of the
+// real salary. So before forwarding, shrink the blob toward the salary: find the
+// innermost descendant whose own text holds a "$", and forward just that. Falls
+// back to the full blob's text when no "$"-bearing leaf is found.
+const _MONEY_TEXT = /\$\s*\d/;
+
+function shrinkToSalary(el) {
+  if (!el) return "";
+  const full = el.innerText?.trim() || "";
+  if (!_MONEY_TEXT.test(full)) return full;
+  // Prefer the smallest descendant that still contains a $ amount.
+  let best = el;
+  for (const node of el.querySelectorAll("*")) {
+    const t = node.innerText?.trim() || "";
+    if (
+      _MONEY_TEXT.test(t) &&
+      t.length < (best.innerText?.trim().length || Infinity)
+    ) {
+      best = node;
+    }
+  }
+  return best.innerText?.trim() || full;
+}
 
 function resolveUrl(raw) {
   if (!raw) return "";
@@ -206,7 +232,7 @@ function extractCard(card) {
 
   const company = first(card, SITE.company)?.innerText?.trim() || "";
   const location = first(card, SITE.location)?.innerText?.trim() || "";
-  const salaryTxt = first(card, SITE.salary)?.innerText?.trim() || "";
+  const salaryTxt = shrinkToSalary(first(card, SITE.salary));
 
   return {
     title,

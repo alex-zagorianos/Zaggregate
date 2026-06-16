@@ -14,7 +14,8 @@ MODULES = [
     "scrape.company_health",
     "tracker.db", "tracker.app",
     "resume.experience_parser", "resume.generator", "resume.docx_builder",
-    "resume.app", "resume.service",
+    "resume.service",
+    "claude_bridge",
     "gui",
 ]
 

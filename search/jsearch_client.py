@@ -77,11 +77,18 @@ class JSearchClient(JobAPIClient):
             "num_pages": "1",
         }
 
-        response = self.session.get(
-            JSEARCH_BASE_URL, headers=headers, params=params, timeout=30
-        )
-        response.raise_for_status()
-        data = response.json()
+        # The request was reserved against the 200/month tier before we got here.
+        # If it fails (network error, or non-2xx after retries), refund the
+        # reservation so a failed call doesn't permanently burn quota.
+        try:
+            response = self.session.get(
+                JSEARCH_BASE_URL, headers=headers, params=params, timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            self.quota.decrement()
+            raise
 
         if self.cache_enabled:
             self.cache.put(key, data)

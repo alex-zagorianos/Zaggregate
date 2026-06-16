@@ -58,6 +58,10 @@ class RateLimiter:
                 if sleep_for > 0:
                     if not self.quiet:
                         print(f"  Rate limit: sleeping {sleep_for:.1f}s...")
+                    elif sleep_for >= 10:
+                        # Even a quiet feed shouldn't look hung for a long cold-cache
+                        # wait — emit one ASCII line so the user knows it's alive.
+                        print(f"  waiting {sleep_for:.0f}s for rate limit...")
                     time.sleep(sleep_for)
                 now = time.time()
                 self._evict(now)
@@ -97,6 +101,18 @@ class MonthlyQuota:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             write_cache(self.path, data)
             return True
+
+    def decrement(self, n: int = 1) -> None:
+        """Refund ``n`` previously-reserved requests (e.g. a failed call that
+        never reached the API). Only touches the counter when the stored month
+        is the current month; a stale-month file is left untouched."""
+        with self._lock:
+            data = self._load()
+            if data.get("month") != self._this_month():
+                return
+            data["count"] = max(0, int(data.get("count", 0)) - n)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            write_cache(self.path, data)
 
     def remaining(self) -> int:
         data = self._load()

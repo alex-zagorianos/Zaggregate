@@ -107,6 +107,11 @@ def _map_results(
     site: str,
 ) -> list[JobResult]:
     results = []
+    # Workday's CXS jobs response exposes the whole-board total here; feed it to
+    # the scorer's company-size proxy (was omitted -> -1 -> no size adjustment,
+    # so mega boards like Caterpillar never got the -6 nudge).
+    total = data.get("total")
+    board_count = int(total) if isinstance(total, int) else -1
     for job in data.get("jobPostings", []):
         title = job.get("title", "") or ""
         if not title:
@@ -131,5 +136,6 @@ def _map_results(
             created="",
             job_id=job_id,
             source_api="careers",
+            board_count=board_count,
         ))
     return results

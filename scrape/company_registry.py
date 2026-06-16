@@ -215,6 +215,16 @@ def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = 
     return added
 
 
+def _industry_tag_match(key: str, tag: str) -> bool:
+    """Symmetric industry/tag match. `key` is the normalized --industry value
+    (lowercased, spaces->underscores); `tag` is a company industry tag. A user
+    company tagged 'controls' must survive industry 'controls_engineering', so
+    containment is checked both directions, not just one."""
+    k = key.lower()
+    t = (tag or "").lower()
+    return bool(t) and (k == t or k in t or t in k)
+
+
 def get_registry(industry: str | None = None, user_json: Optional[Path] = None) -> list[CompanyEntry]:
     """Return companies filtered by industry key or tag, merged with user companies.json.
 
@@ -231,14 +241,18 @@ def get_registry(industry: str | None = None, user_json: Optional[Path] = None) 
         if key in REGISTRIES:
             base = list(REGISTRIES[key])
         else:
-            base = [e for e in REGISTRY if any(industry.lower() in tag.lower() for tag in e.industries)]
+            base = [e for e in REGISTRY
+                    if any(_industry_tag_match(key, tag) for tag in e.industries)]
 
-    # Filter user entries by industry too
+    # Filter user entries by industry too. The tag match must be SYMMETRIC:
+    # a user company tagged ['controls'] should survive --industry
+    # controls_engineering (and vice-versa). The old one-way containment
+    # ('controls_engineering' in 'controls') silently dropped partial tags.
     if industry is not None:
         key = industry.lower().replace(" ", "_")
         user_entries = [
             e for e in user_entries
-            if not e.industries or key in e.industries or any(industry.lower() in t.lower() for t in e.industries)
+            if not e.industries or any(_industry_tag_match(key, t) for t in e.industries)
         ]
 
     if not user_entries:

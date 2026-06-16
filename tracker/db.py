@@ -1,7 +1,7 @@
 import sqlite3
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qsl, urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import workspace
@@ -9,6 +9,11 @@ import workspace
 # None = resolve the active project's DB at call-time (root tracker.db until a
 # project workspace exists). Tests set this to a temp path to override.
 DB_PATH = None
+
+# Bump whenever the schema (tables/columns/indexes below) changes. init_db()
+# stores this in PRAGMA user_version after a successful setup; if the db already
+# matches, init_db skips the whole probe + ALTER scan (cheap, concurrency-safe).
+SCHEMA_VERSION = 1
 
 
 def current_db_path() -> Path:
@@ -62,8 +67,13 @@ def _existing_columns(conn) -> set[str]:
     return {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}
 
 
-def init_db():
+def init_db() -> bool:
+    """Create/upgrade the schema. Gated on PRAGMA user_version: if the db is
+    already at SCHEMA_VERSION, skip the probe + ALTER scan entirely. Returns
+    True when migration work ran, False when the fast path was taken."""
     with get_conn() as conn:
+        if conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION:
+            return False  # already current — no probe, no ALTER scan
         conn.execute("""
             CREATE TABLE IF NOT EXISTS applications (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,7 +128,25 @@ def init_db():
         for col, decl in {"board_count": "INTEGER DEFAULT -1"}.items():
             if col not in inbox_existing:
                 conn.execute(f"ALTER TABLE inbox ADD COLUMN {col} {decl}")
+        # Round-robin window orders by company; without this index every render
+        # does a full partition sort over the whole inbox.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_company ON inbox(company)")
+        # Health beacon: one row per daily_run so the GUI can show a last-run
+        # OK/FAILED badge and the run can be diagnosed after the fact.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                project       TEXT DEFAULT '',
+                started_at    TEXT NOT NULL,
+                finished_at   TEXT DEFAULT '',
+                status        TEXT DEFAULT 'running',
+                source_counts TEXT DEFAULT '',
+                error         TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
         conn.commit()
+        return True
 
 
 def add_job(title, company, location="", url="", salary_text="",
@@ -164,6 +192,24 @@ def get_all(status_filter=None):
                 "SELECT * FROM applications WHERE archived=0 ORDER BY date_added DESC"
             ).fetchall()
     return [dict(r) for r in rows]
+
+
+def count_followups_due(today=None):
+    """Number of active (non-archived) applications whose follow_up_date has
+    arrived — for the Tracker header nudge. A targeted COUNT so the GUI no longer
+    pulls the whole table into Python just to tally this (GUI-10)."""
+    from datetime import date
+    if today is None:
+        today = date.today().isoformat()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM applications "
+            "WHERE archived=0 AND follow_up_date IS NOT NULL AND follow_up_date != '' "
+            "AND follow_up_date <= ? "
+            "AND status IN ('applied', 'phone_screen', 'interview')",
+            (today,),
+        ).fetchone()
+    return int(row[0])
 
 
 def get_counts():
@@ -229,15 +275,31 @@ def get_job(job_id):
 
 # ── Cross-run dedup ───────────────────────────────────────────────────────────
 
+# Query params that carry no identity (tracking/analytics) -> dropped. Keeps
+# parity with models.normalize_url so the inbox dedup key matches the search-side
+# key. Everything NOT in here (gh_jid, jobId/jobid, id, lever, ...) is kept, so
+# two postings that differ only by a real job id stay distinct.
+_TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
+                    "utm_content", "gh_src", "fbclid", "gclid", "ref"}
+
+
 def normalize_url(url: str) -> str:
-    """Canonicalize a URL for dedup: drop scheme, query, fragment, trailing
-    slash, and lowercase the host so the same posting matches across runs."""
+    """Canonicalize a URL for dedup: drop scheme, fragment, trailing slash, and
+    lowercase the host. Strips tracking params (utm_*, fbclid, gclid, ref) but
+    KEEPS identity params (gh_jid, jobId, id, ...) so distinct postings that
+    differ only by their job id don't collapse into one inbox row."""
     if not url:
         return ""
     parts = urlsplit(url.strip())
     host = (parts.netloc or "").lower()
     path = (parts.path or "").rstrip("/")
-    return f"{host}{path}" if host else path
+    kept = [
+        (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+        if k.lower() not in _TRACKING_PARAMS
+    ]
+    query = urlencode(kept)
+    base = f"{host}{path}" if host else path
+    return f"{base}?{query}" if query else base
 
 
 def tracked_urls() -> set[str]:
@@ -271,18 +333,29 @@ def seen_urls() -> set[str]:
 
 # ── Inbox (daily-run results awaiting triage) ─────────────────────────────────
 
-def inbox_add_many(jobs) -> int:
+def inbox_add_many(jobs, per_company_cap: int = 0) -> int:
     """Insert JobResults into the inbox; silently skips postings already in the
-    inbox, tracker, or dismissed list. Returns how many were actually added."""
+    inbox, tracker, or dismissed list. Returns how many were actually added.
+
+    per_company_cap > 0 enforces the cap against the PERSISTED inbox: a company
+    already at N rows can only take (cap - N) more, so a board can't accrue
+    cap rows per run and pile up over many runs. jobs is assumed best-first so
+    the surviving rows are each company's top matches. 0 disables the cap."""
     from datetime import date
     seen = seen_urls()
     today = date.today().isoformat()
+    # Start the running tally from what's already persisted so the cap spans runs.
+    per_company = inbox_company_counts() if per_company_cap > 0 else {}
     added = 0
     with get_conn() as conn:
         for j in jobs:
             norm = normalize_url(j.url)
             if not norm or norm in seen:
                 continue
+            if per_company_cap > 0:
+                key = (j.company or "").lower().strip()
+                if per_company.get(key, 0) >= per_company_cap:
+                    continue
             cur = conn.execute(
                 """INSERT OR IGNORE INTO inbox
                    (norm_url, title, company, location, url, salary_text,
@@ -294,6 +367,8 @@ def inbox_add_many(jobs) -> int:
                  j.source_api, j.score, j.score_notes, j.created, today,
                  getattr(j, "board_count", -1)),
             )
+            if cur.rowcount and per_company_cap > 0:
+                per_company[key] = per_company.get(key, 0) + 1
             added += cur.rowcount
         conn.commit()
     return added
@@ -307,14 +382,18 @@ def inbox_all(order: str = "roundrobin") -> list[dict]:
     list. order="score": raw fit-else-score ranking.
     """
     rank = "CASE WHEN fit >= 0 THEN fit ELSE score END"
+    # date_added is date-only, so within a single run it's a no-op tiebreaker and
+    # intra-run order is undefined. Prefer the posting's full timestamp (created)
+    # and only fall back to date_added when created is blank.
+    recency = "COALESCE(NULLIF(created,''), date_added) DESC"
     if order == "roundrobin":
         sql = (
             f"SELECT *, ROW_NUMBER() OVER "
-            f"(PARTITION BY company ORDER BY {rank} DESC, date_added DESC) AS rk "
-            f"FROM inbox ORDER BY rk, {rank} DESC, date_added DESC"
+            f"(PARTITION BY company ORDER BY {rank} DESC, {recency}) AS rk "
+            f"FROM inbox ORDER BY rk, {rank} DESC, {recency}"
         )
     else:
-        sql = f"SELECT * FROM inbox ORDER BY {rank} DESC, date_added DESC"
+        sql = f"SELECT * FROM inbox ORDER BY {rank} DESC, {recency}"
     with get_conn() as conn:
         rows = conn.execute(sql).fetchall()
     out = [dict(r) for r in rows]
@@ -333,6 +412,19 @@ def inbox_set_fit(inbox_id: int, fit: int, why: str):
 def inbox_count() -> int:
     with get_conn() as conn:
         return conn.execute("SELECT COUNT(*) FROM inbox").fetchone()[0]
+
+
+def inbox_company_counts() -> dict[str, int]:
+    """Persisted inbox rows per company, keyed by lowercased/stripped company so
+    the per-company cap can be enforced against what's ALREADY in the inbox (not
+    just this run's batch). Empty company names are ignored."""
+    counts: dict[str, int] = {}
+    with get_conn() as conn:
+        for r in conn.execute("SELECT company FROM inbox"):
+            key = (r["company"] or "").lower().strip()
+            if key:
+                counts[key] = counts.get(key, 0) + 1
+    return counts
 
 
 def inbox_delete(inbox_id: int):
@@ -365,3 +457,50 @@ def inbox_dismiss(inbox_id: int):
     if row:
         dismiss_url(row["url"])
     inbox_delete(inbox_id)
+
+
+# ── Run health beacon ─────────────────────────────────────────────────────────
+
+def record_run_start(project: str | None = None) -> int:
+    """Open a 'running' row for a daily_run and return its id. Pair with
+    record_run_finish (success path) or the top-level except handler (failure)."""
+    from datetime import datetime, timezone
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO runs (project, started_at, status) VALUES (?,?,'running')",
+            (project or "", datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def record_run_finish(run_id: int, status: str, source_counts=None, error: str = ""):
+    """Close a run row: status in {'ok','zero','failed'}, per-source counts (any
+    JSON-able mapping) and an optional error/traceback for the failed path."""
+    import json
+    from datetime import datetime, timezone
+    counts_json = json.dumps(source_counts) if source_counts is not None else ""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE runs SET finished_at=?, status=?, source_counts=?, error=? "
+            "WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), status, counts_json,
+             error or "", run_id),
+        )
+        conn.commit()
+
+
+def get_last_run(project: str | None = None) -> dict | None:
+    """Most recent run row (overall, or for one project when given) as a dict, or
+    None if there are no runs yet. Signature is read by the GUI's last-run badge."""
+    with get_conn() as conn:
+        if project is not None:
+            row = conn.execute(
+                "SELECT * FROM runs WHERE project=? ORDER BY id DESC LIMIT 1",
+                (project,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM runs ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+    return dict(row) if row else None

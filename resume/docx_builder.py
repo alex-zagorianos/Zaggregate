@@ -1,9 +1,24 @@
+import re
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+
+
+def _split_cover_letter(text: str) -> list[str]:
+    """Split a cover-letter body into paragraphs. Prefer blank-line breaks
+    (\\n{2,}); if that yields a single block (model used single newlines), fall
+    back to splitting on single newlines so it doesn't render one run-on
+    paragraph. (RESUME-4)"""
+    body = (text or "").strip()
+    if not body:
+        return []
+    paras = [p.strip() for p in re.split(r"\n{2,}", body) if p.strip()]
+    if len(paras) <= 1:
+        paras = [p.strip() for p in body.split("\n") if p.strip()]
+    return paras
 
 
 def build_resume_docx(data: dict) -> BytesIO:
@@ -20,7 +35,9 @@ def build_resume_docx(data: dict) -> BytesIO:
         p.runs[0].font.size = Pt(10)
 
     _add_section_heading(doc, "TECHNICAL SKILLS")
-    skills_p = doc.add_paragraph(" | ".join(data.get("skills", [])))
+    # Comma-separated, not "|"-joined: ATS keyword extractors split on commas,
+    # so a pipe-joined run can read as one mega-token. (RESUME-5)
+    skills_p = doc.add_paragraph(", ".join(data.get("skills", [])))
     if skills_p.runs:
         skills_p.runs[0].font.size = Pt(10)
 
@@ -48,8 +65,8 @@ def build_cover_letter_docx(data: dict) -> BytesIO:
     doc.add_paragraph("")
 
     cover_letter = data.get("cover_letter", "")
-    for para_text in cover_letter.split("\n\n"):
-        p = doc.add_paragraph(para_text.strip())
+    for para_text in _split_cover_letter(cover_letter):
+        p = doc.add_paragraph(para_text)
         p.paragraph_format.space_after = Pt(12)
         if p.runs:
             p.runs[0].font.size = Pt(11)
@@ -109,7 +126,12 @@ def _add_job_entry(doc, job: dict):
     r = p.add_run(job.get("company", ""))
     r.bold = True
     r.font.size = Pt(11)
-    title_run = p.add_run(f"  —  {job.get('title', '')}")
+    # Title on its own line (line break inside the paragraph), not concatenated
+    # onto the company line: keeps ATS keyword extraction from gluing
+    # "Company — Title" into one token. (RESUME-5)
+    break_run = p.add_run()
+    break_run.add_break(WD_BREAK.LINE)
+    title_run = p.add_run(job.get("title", ""))
     title_run.font.size = Pt(10)
     meta = doc.add_paragraph(f"{job.get('duration', '')}  |  {job.get('location', '')}")
     if meta.runs:

@@ -4,8 +4,12 @@ Moves current root data into projects/controls-cincinnati (the existing campaign
 and creates projects/dad-health-informatics from config_dad.json (fresh, empty
 inbox). Idempotent guard: aborts if projects/projects.json already exists.
 
-Safety: backs up tracker.db -> tracker.db.bak before moving; verifies inbox +
-applications row counts survive. Run: py -m scripts.migrate_to_projects
+Safety (copy-verify-delete): we write projects.json FIRST, then COPY files into
+each project and verify (row-parity for the db, existence for the rest), and only
+AFTER verification passes do we delete the originals from the root. A crash mid-
+migration therefore leaves the root data intact (plus a partial projects/ that
+the idempotent guard + re-run will reconcile), never a vanished root DB with no
+registry. Run: py -m scripts.migrate_to_projects
 """
 import json
 import shutil
@@ -38,21 +42,30 @@ def _counts(db: Path) -> tuple[int, int]:
 
 def _seed_project(slug: str, name: str, *, config_src: Path, db_src: Path | None,
                   exp_src: Path) -> Path:
+    """Populate projects/<slug>/ by COPYING sources in (never moving). Idempotent:
+    re-running won't clobber files already present. Originals are deleted later,
+    only after the whole migration is verified (see migrate())."""
     pdir = PROJECTS / slug
     (pdir / "output").mkdir(parents=True, exist_ok=True)
     # config
-    if config_src.exists():
-        shutil.copy2(config_src, pdir / "config.json")
-    else:
-        (pdir / "config.json").write_text("{}", encoding="utf-8")
+    dest_cfg = pdir / "config.json"
+    if not dest_cfg.exists():
+        if config_src.exists():
+            shutil.copy2(config_src, dest_cfg)
+        else:
+            dest_cfg.write_text("{}", encoding="utf-8")
     # resume base
-    if exp_src.exists():
-        shutil.copy2(exp_src, pdir / "experience.md")
-    else:
-        (pdir / "experience.md").write_text("# Experience\n", encoding="utf-8")
-    # tracker.db: move the existing one for controls; dad starts empty (lazy init)
-    if db_src is not None and db_src.exists():
-        shutil.move(str(db_src), str(pdir / "tracker.db"))
+    dest_exp = pdir / "experience.md"
+    if not dest_exp.exists():
+        if exp_src.exists():
+            shutil.copy2(exp_src, dest_exp)
+        else:
+            dest_exp.write_text("# Experience\n", encoding="utf-8")
+    # tracker.db: COPY the existing one for controls (deleted post-verify); dad
+    # starts empty (lazy init creates it on first use).
+    dest_db = pdir / "tracker.db"
+    if db_src is not None and db_src.exists() and not dest_db.exists():
+        shutil.copy2(db_src, dest_db)
     return pdir
 
 
@@ -71,25 +84,9 @@ def migrate(today: str | None = None) -> bool:
     before = _counts(root_db)
     print(f"root tracker.db: inbox={before[0]} applications={before[1]}")
 
-    # Backup the DB we're about to move.
-    if root_db.exists():
-        shutil.copy2(root_db, root_db.with_name("tracker.db.bak"))
-        print("backed up -> tracker.db.bak")
-
-    # 1) controls-cincinnati ← current root (move db + output, copy config + resume)
-    cc = _seed_project("controls-cincinnati", "Controls — Cincinnati",
-                       config_src=root_cfg, db_src=root_db, exp_src=root_exp)
-    if root_out.exists():
-        for item in root_out.iterdir():
-            dest = cc / "output" / item.name
-            if not dest.exists():
-                shutil.move(str(item), str(dest))
-
-    # 2) dad-health-informatics ← config_dad.json, copy of resume, fresh empty db
-    _seed_project("dad-health-informatics", "Dad — Health Informatics",
-                  config_src=dad_cfg, db_src=None, exp_src=root_exp)
-
-    # 3) registry (controls active; dad's morning run off until he opts in)
+    # 1) registry FIRST — so a crash any time after this leaves a valid pointer to
+    #    where the data is being migrated, never a deleted root DB with no record.
+    PROJECTS.mkdir(parents=True, exist_ok=True)
     reg = {
         "active": "controls-cincinnati",
         "projects": [
@@ -101,11 +98,46 @@ def migrate(today: str | None = None) -> bool:
     }
     (PROJECTS / "projects.json").write_text(json.dumps(reg, indent=2), encoding="utf-8")
 
-    # 4) verify
+    # 2) COPY root data into controls-cincinnati (config + resume + db) + output.
+    cc = _seed_project("controls-cincinnati", "Controls — Cincinnati",
+                       config_src=root_cfg, db_src=root_db, exp_src=root_exp)
+    copied_out = []  # (src, dest) pairs to delete from root only after verify
+    if root_out.exists():
+        for item in root_out.iterdir():
+            dest = cc / "output" / item.name
+            if not dest.exists():
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
+            copied_out.append((item, dest))
+
+    # 3) dad-health-informatics ← config_dad.json, copy of resume, fresh empty db
+    _seed_project("dad-health-informatics", "Dad — Health Informatics",
+                  config_src=dad_cfg, db_src=None, exp_src=root_exp)
+
+    # 4) VERIFY the copy before touching the originals: db row-parity + existence
+    #    of every output item we copied. Any failure aborts WITHOUT deleting.
     after = _counts(cc / "tracker.db")
     print(f"controls-cincinnati tracker.db: inbox={after[0]} applications={after[1]}")
-    ok = after == before
-    print("ROW-COUNT PARITY:", "OK" if ok else f"MISMATCH before={before} after={after}")
+    db_ok = (after == before) or not root_db.exists()
+    out_ok = all(dest.exists() for _, dest in copied_out)
+    ok = db_ok and out_ok
+    print("ROW-COUNT PARITY:", "OK" if db_ok else f"MISMATCH before={before} after={after}")
+    if not ok:
+        print("VERIFY FAILED — leaving root data intact, nothing deleted.")
+        return False
+
+    # 5) Copy verified — now it's safe to delete the originals from the root.
+    if root_db.exists():
+        root_db.unlink()
+    for item, _dest in copied_out:
+        if item.exists():
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+
     print("active project:", workspace.active_slug())
     return ok
 

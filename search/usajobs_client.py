@@ -109,8 +109,7 @@ class USAJobsClient(JobAPIClient):
         return results
 
     def _normalize_location(self, location: str) -> str:
-        location = location.strip()
-        # Ensure "City, ST" format — USAJobs needs state abbreviation
-        if "," not in location:
-            return location + ", OH"
-        return location
+        # Return the caller's location verbatim (just trimmed). Previously this
+        # appended ", OH" to any comma-less value, silently rewriting "Austin"
+        # to "Austin, OH" and "Remote" to "Remote, OH".
+        return location.strip()

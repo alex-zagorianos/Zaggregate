@@ -231,8 +231,14 @@ def score_job(
     exclude_titles: Optional[Iterable[str]] = None,
     title_miss_penalty: Optional[int] = None,
     seniority_exclude: Optional[Iterable[str]] = None,
+    queries: Optional[list] = None,
 ) -> tuple[int, str]:
-    """Return (score 0-100, short breakdown string)."""
+    """Return (score 0-100, short breakdown string).
+
+    `queries` may be pre-parsed (score_jobs parses once and reuses across the
+    batch); when None they are parsed from `keywords` as before — identical
+    result, just avoids re-parsing the same keywords for every job.
+    """
     if skill_terms is None:
         skill_terms = extract_skill_terms()
     if exclude_titles is None:
@@ -243,14 +249,18 @@ def score_job(
         seniority_exclude = DEFAULT_SENIORITY_EXCLUDE
 
     # Recover pay ranges printed in the description when the API fields are
-    # empty (fills the GUI salary column too, via salary_display()).
+    # empty (fills the GUI salary column too, via salary_display()). Intentional
+    # in-place mutation: the GUI salary column reads job.salary_min/max. Guarded
+    # to only fill when BOTH are None, so it is idempotent -- re-scoring the same
+    # job never compounds or overwrites a recovered value.
     if job.salary_min is None and job.salary_max is None and job.description:
         lo, hi = salary_from_text(job.description)
         if lo or hi:
             job.salary_min, job.salary_max = lo, hi
 
     tl = (job.title or "").lower()
-    queries = [query.parse(kw) for kw in keywords if kw]
+    if queries is None:
+        queries = [query.parse(kw) for kw in keywords if kw]
     title_hit = any(q.matches(tl) for q in queries)  # full boolean (honors NOT)
     t = _title_score(queries, tl)                     # graded positive overlap
     k = _skill_score(job.description, skill_terms)
@@ -259,7 +269,28 @@ def score_job(
     l = min(loc_raw / 3.0, 1.0)  # 3+ token hits = full marks
     r = _recency_score(job.created)
 
-    score = 35 * t + 25 * k + 15 * s + 15 * l + 10 * r
+    # Weight-renormalization over data-PRESENT components. Title + location are
+    # always present; skill/salary/recency emit a neutral 0.5 when their data is
+    # missing, which used to inflate data-poor jobs. Drop the missing components'
+    # weight and spread the freed 100 total proportionally over present ones, so
+    # a job is judged only on what we actually know about it.
+    skill_present = bool(skill_terms) and bool((job.description or "").strip())
+    salary_present = bool(salary_floor) and (job.salary_max or job.salary_min) is not None
+    recency_present = _parse_created(job.created) != _EPOCH
+    present = 2 + skill_present + salary_present + recency_present  # title+loc always
+
+    base_w = {"t": 35, "k": 25, "s": 15, "l": 15, "r": 10}
+    active = {"t": True, "l": True, "k": skill_present,
+              "s": salary_present, "r": recency_present}
+    live_total = sum(base_w[c] for c, on in active.items() if on)
+    scale = 100.0 / live_total
+    score = (
+        base_w["t"] * scale * t
+        + (base_w["k"] * scale * k if skill_present else 0.0)
+        + (base_w["s"] * scale * s if salary_present else 0.0)
+        + base_w["l"] * scale * l
+        + (base_w["r"] * scale * r if recency_present else 0.0)
+    )
 
     # Company-size modifier from the careers boards' total-postings proxy.
     size_adj = 0
@@ -269,17 +300,22 @@ def score_job(
             size_adj = 8      # small shop
         elif bc <= 100:
             size_adj = 4      # mid-size
-        elif bc > 250:
+        elif bc <= 250:
+            size_adj = -2     # large board (was a silent dead zone)
+        else:
             size_adj = -6     # mega board
     score += size_adj
 
     notes_extra = []
 
     # Relevance gate: the title satisfies no search query (positive miss, or a
-    # NOT term present). Heavy penalty so off-target sinks but stays visible.
+    # NOT term present). Penalty scales with the graded overlap t -- a true zero
+    # (t=0) takes the full hit, a near-miss (high t) is penalized lightly so a
+    # "Process Controls Specialist" no longer craters like an unrelated title.
     if queries and not title_hit:
-        score -= title_miss_penalty
-        notes_extra.append(f"title-miss -{title_miss_penalty}")
+        miss_pen = round(title_miss_penalty * (1 - t))
+        score -= miss_pen
+        notes_extra.append(f"title-miss -{miss_pen}")
 
     # Always-on role blocklist (kills "AI Engineer", "Data Scientist", ...).
     n_block, block_hits = _title_blocklist_penalty(tl, exclude_titles)
@@ -303,6 +339,7 @@ def score_job(
 
     score = int(max(0, min(100, round(score))))
     notes = f"title {t:.0%} | skills {k:.0%} | salary {s:.0%} | loc {l:.0%} | new {r:.0%}"
+    notes += f" | conf {present}/5"
     if size_adj:
         notes += f" | size {size_adj:+d} ({bc} on board)"
     for ne in notes_extra:
@@ -326,12 +363,16 @@ def score_jobs(
     """Score in place and return the same list sorted best-first."""
     terms = extract_skill_terms()
     kws = list(keywords)
+    # Parse the queries once for the whole batch instead of re-parsing the same
+    # keywords inside every score_job call (SCORE-8).
+    queries = [query.parse(kw) for kw in kws if kw]
     for job in jobs:
         job.score, job.score_notes = score_job(
             job, keywords=kws, location=location,
             salary_floor=salary_floor, skill_terms=terms,
             exclude_keywords=exclude_keywords, exclude_titles=exclude_titles,
             title_miss_penalty=title_miss_penalty, seniority_exclude=seniority_exclude,
+            queries=queries,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs

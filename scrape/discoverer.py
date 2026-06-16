@@ -1,5 +1,4 @@
 from pathlib import Path
-from urllib.parse import urlparse
 
 import requests
 
@@ -7,9 +6,18 @@ from config import BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_URL, CAREERS_REQUEST_TIMEO
 from scrape.cache_helpers import read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
 
+# Public-board host for each ATS we can discover via Brave site: search. The
+# key is the brave-cache label; the value is the host passed to `site:`. Ashby,
+# SmartRecruiters and Workday were added so discovery is no longer blind to the
+# three newer scrapers (was Greenhouse/Lever only). Workday boards live on
+# per-tenant subdomains, so we target the shared apex and let detect_ats pull
+# the tenant:N:site slug out of each result URL.
 _ATS_SITES = {
-    "greenhouse": "boards.greenhouse.io",
-    "lever":      "jobs.lever.co",
+    "greenhouse":      "boards.greenhouse.io",
+    "lever":           "jobs.lever.co",
+    "ashby":           "jobs.ashbyhq.com",
+    "smartrecruiters": "jobs.smartrecruiters.com",
+    "workday":         "myworkdayjobs.com",
 }
 
 
@@ -24,9 +32,9 @@ def discover_companies(
 
     discovered: list[CompanyEntry] = []
 
-    for ats_type, site in _ATS_SITES.items():
+    for ats_label, site in _ATS_SITES.items():
         query = f'site:{site} "{keyword}"'
-        cache_file = cache_dir / f"brave_{ats_type}_{slug_safe(keyword)}.json"
+        cache_file = cache_dir / f"brave_{ats_label}_{slug_safe(keyword)}.json"
 
         if cache_enabled:
             data = read_cache(cache_file)
@@ -40,11 +48,10 @@ def discover_companies(
             if not data:
                 continue
 
-        slugs = _extract_slugs(data, site)
-        for slug in slugs:
+        for ats_type, slug, name in _extract_entries(data, site):
             if slug not in known_slugs:
                 discovered.append(CompanyEntry(
-                    name=slug.replace("-", " ").title(),
+                    name=name,
                     ats_type=ats_type,
                     slug=slug,
                     industries=[],
@@ -80,26 +87,29 @@ def _brave_fetch(query: str) -> dict | None:
         return None
 
 
-def _extract_slugs(data: dict, site: str) -> list[str]:
-    slugs: list[str] = []
+def _extract_entries(data: dict, site: str) -> list[tuple[str, str, str]]:
+    """Yield (ats_type, slug, name) for each result URL on `site`. Uses the
+    shared detect_ats parser so every ATS (incl. Workday's tenant:N:site slug
+    and Ashby subdomain boards) is recognized, not just path-first slugs."""
+    from scrape.ats_detect import detect_ats
+
+    entries: list[tuple[str, str, str]] = []
     seen: set[str] = set()
     for result in data.get("web", {}).get("results", []):
         url = result.get("url", "")
-        slug = _slug_from_url(url, site)
-        if slug and slug not in seen:
-            seen.add(slug)
-            slugs.append(slug)
-    return slugs
+        if not url or site not in url:
+            continue
+        ats_type, slug = detect_ats(url)
+        # detect_ats falls back to 'direct' for anything it can't classify; a
+        # discovered company we can't actually scrape via an API is noise here.
+        if ats_type == "direct" or not slug or slug in seen:
+            continue
+        seen.add(slug)
+        entries.append((ats_type, slug, _name_from_slug(ats_type, slug)))
+    return entries
 
 
-def _slug_from_url(url: str, site: str) -> str:
-    if site not in url:
-        return ""
-    try:
-        path = urlparse(url).path.strip("/")
-        parts = path.split("/")
-        if parts and parts[0]:
-            return parts[0]
-    except Exception:
-        pass
-    return ""
+def _name_from_slug(ats_type: str, slug: str) -> str:
+    # Workday slug is 'tenant:N:site' — derive the display name from the tenant.
+    core = slug.split(":")[0] if ats_type == "workday" else slug
+    return core.replace("-", " ").replace("_", " ").title()

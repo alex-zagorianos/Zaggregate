@@ -18,17 +18,18 @@
         "h3 > a",
       ],
       company: [
+        ".artdeco-entity-lockup__subtitle span",
         ".job-card-container__primary-description",
         ".job-card-container__company-name",
         "h4 a",
-        ".artdeco-entity-lockup__subtitle span",
       ],
       location: [
+        ".artdeco-entity-lockup__caption li",
         "li.job-card-container__metadata-item:first-child",
         ".job-search-card__location",
-        ".artdeco-entity-lockup__caption li",
       ],
       salary: [
+        ".artdeco-entity-lockup__content",
         ".job-card-list__salary",
         "li.job-card-container__metadata-item:nth-child(2)",
       ],

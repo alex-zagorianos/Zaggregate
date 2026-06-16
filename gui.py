@@ -11,6 +11,7 @@ Tabs:
 """
 import re
 import sys
+import sqlite3
 import threading
 import subprocess
 import webbrowser
@@ -22,8 +23,9 @@ from tkinter import ttk, messagebox, simpledialog
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import workspace
+from tracker import service as tracker_service
 from tracker.db import (
-    init_db, add_job, get_all, get_counts, update_job, delete_job, get_job,
+    init_db, add_job, get_all, get_counts, count_followups_due, update_job, delete_job, get_job,
     archive_job, unarchive_job,
     seen_urls, normalize_url, dismiss_url,
     inbox_all, inbox_count, inbox_track, inbox_dismiss, inbox_set_fit,
@@ -43,6 +45,23 @@ MID   = "#2d2d52"
 BG    = "#f0f0f0"
 WHITE = "#ffffff"
 ERR   = "#c62828"
+
+# Named status colors for the colored-status-label idiom that recurs ~20x with
+# inline hex. set_status(label, text, kind) maps a kind to its color.
+OK    = "#2e7d32"   # success / done (green)
+WORK  = "#e65100"   # in-progress (amber)
+INFO  = "#1565c0"   # neutral notice (blue)
+MUTED = "#757575"   # de-emphasized (grey)
+
+_STATUS_COLORS = {
+    "ok": OK, "work": WORK, "info": INFO, "muted": MUTED, "err": ERR,
+}
+
+
+def set_status(label, text, kind="muted"):
+    """Set a tk.Label's text and color by semantic kind (ok/work/info/muted/err)
+    instead of repeating inline hex at each call site."""
+    label.config(text=text, fg=_STATUS_COLORS.get(kind, MUTED))
 
 STATUS_FG = {
     "interested":   "#1565c0",
@@ -188,6 +207,21 @@ class PasteDialog(tk.Toplevel):
     def _ok(self):
         self.result = self._text.get("1.0", "end-1c").strip()
         self.destroy()
+
+
+def db_guard(parent, op, *, status_cb=None, action="operation"):
+    """Run a DB-mutating op, converting an sqlite3.Error (e.g. the daily run is
+    mid-write) into visible feedback instead of a silent crash. Returns
+    (ok, result): result is the op's return value on success, else None."""
+    try:
+        return True, op()
+    except sqlite3.Error as e:
+        msg = f"Database busy — {action} failed. Try again. ({e})"
+        if status_cb:
+            status_cb(msg)
+        else:
+            messagebox.showerror("Database error", msg, parent=parent)
+        return False, None
 
 
 def copy_or_warn(parent, text: str, status_cb=None) -> bool:
@@ -360,11 +394,9 @@ class TrackerTab(ttk.Frame):
         counts = get_counts()
         self._rebuild_filters(counts)
         # Follow-up nudge: count active applications whose follow_up_date has
-        # arrived (set automatically a week after Mark Applied).
-        today = date.today().isoformat()
-        due = sum(1 for j in get_all()
-                  if (j.get("follow_up_date") or "") and j["follow_up_date"] <= today
-                  and j.get("status") in ("applied", "phone_screen", "interview"))
+        # arrived (set automatically a week after Mark Applied). Targeted COUNT
+        # instead of a second full get_all() scan into Python (GUI-10).
+        due = count_followups_due()
         label = f"{counts['all']} total"
         if due:
             label += f"  •  {due} follow-up(s) due"
@@ -388,54 +420,64 @@ class TrackerTab(ttk.Frame):
     def _add(self):
         dlg = JobDialog(self)
         if dlg.result:
-            add_job(**dlg.result)
-            self.refresh()
+            ok, _ = db_guard(self, lambda: tracker_service.add_manual_job(**dlg.result),
+                             action="add job")
+            if ok:
+                self.refresh()
 
     def _edit(self):
         iid = self._sel_iid()
         if not iid:
             messagebox.showinfo("No selection", "Select a job row first.")
             return
-        dlg = JobDialog(self, job=get_job(int(iid)))
+        dlg = JobDialog(self, job=tracker_service.get_job(int(iid)))
         if dlg.result:
-            update_job(int(iid), **dlg.result)
-            self.refresh()
+            ok, _ = db_guard(self, lambda: tracker_service.update_job(int(iid), **dlg.result),
+                             action="update job")
+            if ok:
+                self.refresh()
 
     def _archive(self):
         iid = self._sel_iid()
         if not iid:
             return
-        job = get_job(int(iid))
+        job = tracker_service.get_job(int(iid))
         if messagebox.askyesno("Archive?",
                 f"Archive '{job['title']}' at {job['company']}?\n\n"
                 "It moves to the Archive view and stops showing in searches. "
                 "You can restore it any time."):
-            archive_job(int(iid))
-            self.refresh()
+            ok, _ = db_guard(self, lambda: tracker_service.archive_job(int(iid)),
+                             action="archive job")
+            if ok:
+                self.refresh()
 
     def _restore(self):
         iid = self._sel_iid()
         if not iid:
             return
-        unarchive_job(int(iid))
-        self.refresh()
+        ok, _ = db_guard(self, lambda: tracker_service.restore_job(int(iid)),
+                         action="restore job")
+        if ok:
+            self.refresh()
 
     def _delete(self):
         iid = self._sel_iid()
         if not iid:
             return
-        job = get_job(int(iid))
+        job = tracker_service.get_job(int(iid))
         if messagebox.askyesno("Delete permanently?",
                 f"Permanently delete '{job['title']}' at {job['company']}?\n\n"
                 "This cannot be undone.", icon="warning"):
-            delete_job(int(iid))
-            self.refresh()
+            ok, _ = db_guard(self, lambda: tracker_service.delete_job(int(iid)),
+                             action="delete job")
+            if ok:
+                self.refresh()
 
     def _open_url(self):
         iid = self._sel_iid()
         if not iid:
             return
-        url = (get_job(int(iid)) or {}).get("url", "")
+        url = (tracker_service.get_job(int(iid)) or {}).get("url", "")
         if url:
             webbrowser.open(url)
         else:
@@ -445,8 +487,10 @@ class TrackerTab(ttk.Frame):
         iid = self._sel_iid()
         if not iid:
             return
-        update_job(int(iid), status=self._qstatus.get())
-        self.refresh()
+        ok, _ = db_guard(self, lambda: tracker_service.set_status(int(iid), self._qstatus.get()),
+                         action="change status")
+        if ok:
+            self.refresh()
 
 
 # ── Resume Generator tab ──────────────────────────────────────────────────────
@@ -750,6 +794,13 @@ class InboxTab(ttk.Frame):
             tk.Button(abar, text=text, bg=DARK, fg=WHITE, font=("Segoe UI", 9),
                       relief="flat", padx=10, pady=3, command=cmd).pack(
                 side="left", padx=2)
+        # Undo: dismiss permanently deletes the inbox row, so keep the last
+        # batch and offer to re-insert it. Disabled until something's dismissed.
+        self._undo_btn = tk.Button(abar, text="Undo Dismiss", bg=WHITE, fg="#555",
+                                   font=("Segoe UI", 9), relief="flat",
+                                   padx=10, pady=3, state="disabled",
+                                   command=self._undo_dismiss)
+        self._undo_btn.pack(side="left", padx=2)
         tk.Button(abar, text="Copy Fit Prompt", bg="#2d2d52", fg=WHITE,
                   font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
                   command=self._copy_fit_prompt).pack(side="left", padx=(16, 2))
@@ -761,6 +812,8 @@ class InboxTab(ttk.Frame):
         self._status.pack(side="left", padx=10)
 
         self._fit_order: list[int] = []  # inbox ids in last fit-prompt order
+        self._fit_jobs: list = []        # JobResults for the last fit prompt
+        self._undo_rows: list[dict] = [] # last-dismissed rows, for Undo
 
     def refresh(self):
         self._all = list(inbox_all())
@@ -886,9 +939,36 @@ class InboxTab(ttk.Frame):
             messagebox.showinfo("No selection", "Select inbox row(s) first.")
             return
         idx = self._focus_index()
-        for r in sel:
-            inbox_track(r["id"])
-        self._status.config(text=f"Tracked {len(sel)} job(s).", fg="#1565c0")
+        # Dup-guard (Search already has one): skip rows whose URL is already
+        # tracked or dismissed, so a posting can't be double-added.
+        ok, seen = db_guard(self, tracker_service.seen_urls,
+                            status_cb=lambda m: set_status(self._status, m, "err"),
+                            action="track jobs")
+        if not ok:
+            return
+        skipped = 0
+
+        def do_track():
+            nonlocal skipped
+            tracked = 0
+            for r in sel:
+                if tracker_service.normalize_url(r.get("url", "")) in seen:
+                    skipped += 1
+                    continue
+                tracker_service.track_job(r["id"])
+                tracked += 1
+            return tracked
+
+        ok, tracked = db_guard(
+            self, do_track,
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="track jobs")
+        if not ok:
+            return
+        msg = f"Tracked {tracked} job(s)."
+        if skipped:
+            msg += f" Skipped {skipped} already tracked/dismissed."
+        set_status(self._status, msg, "info")
         self.refresh()
         self._restore_focus(idx)
 
@@ -897,11 +977,17 @@ class InboxTab(ttk.Frame):
         if not sel:
             return
         idx = self._focus_index()
-        for r in sel:
-            inbox_dismiss(r["id"])
-        self._status.config(
-            text=f"Dismissed {len(sel)} — hidden from future searches.",
-            fg="#757575")
+        ok, _ = db_guard(
+            self, lambda: [tracker_service.dismiss_job(r["id"]) for r in sel],
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="dismiss jobs")
+        if not ok:
+            return
+        self._remember_undo(sel)
+        set_status(
+            self._status,
+            f"Dismissed {len(sel)} — hidden from future searches. (Undo available)",
+            "muted")
         self.refresh()
         self._restore_focus(idx)
 
@@ -922,13 +1008,41 @@ class InboxTab(ttk.Frame):
                 parent=self):
             return
         idx = self._focus_index()
-        for r in targets:
-            inbox_dismiss(r["id"])
-        self._status.config(
-            text=f"Dismissed {len(targets)} row(s) from {names}.",
-            fg="#757575")
+        ok, _ = db_guard(
+            self, lambda: [tracker_service.dismiss_job(r["id"]) for r in targets],
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="dismiss company")
+        if not ok:
+            return
+        self._remember_undo(targets)
+        set_status(
+            self._status,
+            f"Dismissed {len(targets)} row(s) from {names}. (Undo available)",
+            "muted")
         self.refresh()
         self._restore_focus(idx)
+
+    def _remember_undo(self, rows):
+        """Stash the just-dismissed rows so Undo can re-insert them."""
+        self._undo_rows = list(rows)
+        if self._undo_btn.winfo_exists():
+            self._undo_btn.config(
+                state="normal" if self._undo_rows else "disabled")
+
+    def _undo_dismiss(self):
+        if not self._undo_rows:
+            return
+        ok, restored = db_guard(
+            self,
+            lambda: tracker_service.restore_dismissed_rows(self._undo_rows),
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="undo dismiss")
+        if not ok:
+            return
+        self._undo_rows = []
+        self._undo_btn.config(state="disabled")
+        set_status(self._status, f"Restored {restored} dismissed row(s).", "ok")
+        self.refresh()
 
     def _open_url(self):
         for r in self._selected()[:5]:  # cap tab-storm
@@ -943,54 +1057,41 @@ class InboxTab(ttk.Frame):
             # Unscored first, max 2 per company, so one mega-board can't burn
             # all 20 slots. _rows is already round-robin ordered (inbox_all),
             # so repeated copy/paste rounds walk down the inbox naturally.
-            from collections import defaultdict
-            per_co: dict[str, int] = defaultdict(int)
-            for r in self._rows.values():
-                if r["fit"] >= 0:
-                    continue
-                key = (r["company"] or "").lower()
-                if per_co[key] >= 2:
-                    continue
-                per_co[key] += 1
-                rows.append(r)
+            rows = tracker_service.unscored_inbox_rows(
+                list(self._rows.values()), per_company=2, limit=20)
         rows = rows[:20]  # one Claude reply handles ~20 jobs well
         if not rows:
             messagebox.showinfo("Inbox empty", "Nothing left to score.")
             return
-        from models import JobResult
-        jobs = [JobResult(
-            title=r["title"], company=r["company"], location=r["location"],
-            salary_min=None, salary_max=None,
-            # Prepend the stored salary text: salary_display() on a rebuilt
-            # JobResult would say "Not listed" even when we know it.
-            description=f"Salary: {r['salary_text']}\n{r['description']}",
-            url=r["url"], source_keyword="", created=r["created"],
-            board_count=r.get("board_count", -1),
-        ) for r in rows]
-        prompt = build_fit_prompt(jobs, profile_summary())
-        self._fit_order = [r["id"] for r in rows]
+        prompt, jobs = tracker_service.fit_prompt_for_rows(rows)
+        self._fit_jobs = jobs
+        self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         copy_or_warn(self, prompt,
-                     lambda m: self._status.config(text=m, fg="#e65100"))
+                     lambda m: set_status(self._status, m, "work"))
 
     def _paste_fit(self):
-        if not self._fit_order:
+        if not self._fit_jobs:
             messagebox.showinfo("No prompt", "Copy a fit prompt first.")
             return
         dlg = PasteDialog(self)
         if not dlg.result:
             return
+        # Token-verified mapping (SCORE-5): the service uses the bridge's
+        # match_fit_to_jobs so scores land on the right row even if the reply
+        # reordered or skipped jobs — not positional trust.
         try:
-            scores = parse_fit_response(dlg.result, len(self._fit_order))
+            ok, applied = db_guard(
+                self,
+                lambda: tracker_service.score_inbox_from_reply(
+                    self._fit_jobs, dlg.result),
+                status_cb=lambda m: set_status(self._status, m, "err"),
+                action="apply fit scores")
         except BridgeParseError as e:
             messagebox.showerror("Parse failed", str(e), parent=self)
             return
-        applied = 0
-        for n, data in scores.items():
-            if 1 <= n <= len(self._fit_order):
-                inbox_set_fit(self._fit_order[n - 1], data["fit"],
-                              f"{data['why']} {data['flags']}".strip())
-                applied += 1
-        self._status.config(text=f"Applied {applied} fit score(s).", fg="#2e7d32")
+        if not ok:
+            return
+        set_status(self._status, f"Applied {applied} fit score(s).", "ok")
         self.refresh()
 
 
@@ -1028,8 +1129,9 @@ class AddCompaniesDialog(tk.Toplevel):
         tk.Label(row, text="Industry tag:").pack(side="left")
         self._industry = tk.StringVar(value=default_industry)
         tk.Entry(row, textvariable=self._industry, width=22).pack(side="left", padx=6)
-        tk.Button(row, text="Detect", command=self._detect, bg=MID, fg=WHITE,
-                  relief="flat", padx=10).pack(side="left", padx=4)
+        self._detect_btn = tk.Button(row, text="Detect", command=self._detect,
+                                     bg=MID, fg=WHITE, relief="flat", padx=10)
+        self._detect_btn.pack(side="left", padx=4)
         self._val_btn = tk.Button(row, text="Validate", command=self._validate,
                                   bg=MID, fg=WHITE, relief="flat", padx=10)
         self._val_btn.pack(side="left", padx=4)
@@ -1071,23 +1173,39 @@ class AddCompaniesDialog(tk.Toplevel):
             self._detect()
         if not self._entries:
             return
+        # Disable both Detect and Validate while the worker runs: re-detecting
+        # mid-validate would mutate _entries under the thread (GUI-9). The worker
+        # gets its own snapshot so a later Detect can't shift indices either.
         self._val_btn.config(state="disabled")
+        self._detect_btn.config(state="disabled")
         self._status.config(text="Validating…")
-        threading.Thread(target=self._validate_worker, daemon=True).start()
+        snapshot = list(self._entries)
+        threading.Thread(target=self._validate_worker, args=(snapshot,),
+                         daemon=True).start()
 
-    def _validate_worker(self):
+    def _validate_worker(self, entries):
         from scrape.ats_detect import probe_count
-        for i, e in enumerate(self._entries):
+        for i, e in enumerate(entries):
             if e.ats_type == "direct":
                 self.after(0, self._set_status_cell, i, "direct (manual)")
                 continue
             n = probe_count(e)
             self.after(0, self._set_status_cell, i,
                        f"live ({n})" if n is not None else "unreachable")
-        self.after(0, lambda: self._val_btn.config(state="normal"))
-        self.after(0, lambda: self._status.config(text="Validation done."))
+        self.after(0, self._validate_done)
+
+    def _validate_done(self):
+        # The dialog may have been closed while the worker ran — don't touch
+        # destroyed widgets (GUI-7).
+        if not self.winfo_exists():
+            return
+        self._val_btn.config(state="normal")
+        self._detect_btn.config(state="normal")
+        self._status.config(text="Validation done.")
 
     def _set_status_cell(self, i, txt):
+        if not self.winfo_exists():
+            return  # GUI-7: dialog closed before this after() fired
         if self._tree.exists(str(i)):
             self._tree.set(str(i), "status", txt)
 
@@ -1196,13 +1314,25 @@ class SearchTab(ttk.Frame):
 
         abar = tk.Frame(self, bg=BG, pady=6)
         abar.pack(fill="x", padx=6, side="bottom")
+        # Keep references so the whole action bar can be disabled during a
+        # search worker (GUI-8: re-entrancy guard, not just the Search button).
+        self._action_btns = []
         for text, cmd in [("Track ▸ Interested", self._track),
                           ("Dismiss", self._dismiss), ("Open URL", self._open_url)]:
-            tk.Button(abar, text=text, bg=DARK, fg=WHITE, font=("Segoe UI", 9),
-                      relief="flat", padx=10, pady=3, command=cmd).pack(
-                side="left", padx=2)
+            b = tk.Button(abar, text=text, bg=DARK, fg=WHITE, font=("Segoe UI", 9),
+                          relief="flat", padx=10, pady=3, command=cmd)
+            b.pack(side="left", padx=2)
+            self._action_btns.append(b)
         tk.Label(abar, text="  Ctrl/Shift-click to select multiple",
                  bg=BG, fg="#999", font=("Segoe UI", 8)).pack(side="left")
+
+    def _set_busy(self, busy: bool):
+        """Disable/enable the search + result controls for the worker's
+        duration, so a second search can't fire mid-flight (GUI-8)."""
+        state = "disabled" if busy else "normal"
+        self._search_btn.config(state=state)
+        for b in self._action_btns:
+            b.config(state=state)
 
     def _search(self):
         keywords = [k.strip() for k in self._kw.get().split(",") if k.strip()]
@@ -1214,8 +1344,8 @@ class SearchTab(ttk.Frame):
         except ValueError:
             messagebox.showerror("Bad salary", "Min salary must be a number.")
             return
-        self._search_btn.config(state="disabled")
-        self._status.config(text="Searching…", fg="#e65100")
+        self._set_busy(True)
+        set_status(self._status, "Searching…", "work")
         threading.Thread(
             target=self._worker,
             args=(keywords, self._loc.get().strip() or DEFAULT_LOCATION,
@@ -1250,7 +1380,11 @@ class SearchTab(ttk.Frame):
             self.after(0, self._on_error, str(exc))
 
     def _on_done(self, results, had_clients):
-        self._search_btn.config(state="normal")
+        # The tab may have been destroyed (project switch) while the search ran
+        # — bail before touching widgets (GUI-7).
+        if not self.winfo_exists():
+            return
+        self._set_busy(False)
         self._results = results
         for row in self._tree.get_children():
             self._tree.delete(row)
@@ -1259,14 +1393,16 @@ class SearchTab(ttk.Frame):
                 j.score if j.score >= 0 else "",
                 j.title, j.company, j.location, j.salary_display(), j.source_api))
         if not had_clients:
-            self._status.config(
-                text="No sources configured — add API keys to .env.", fg=ERR)
+            set_status(self._status,
+                       "No sources configured — add API keys to .env.", "err")
         else:
-            self._status.config(text=f"{len(results)} result(s).", fg="#2e7d32")
+            set_status(self._status, f"{len(results)} result(s).", "ok")
 
     def _on_error(self, msg):
-        self._search_btn.config(state="normal")
-        self._status.config(text=f"Error: {msg}", fg=ERR)
+        if not self.winfo_exists():
+            return  # GUI-7
+        self._set_busy(False)
+        set_status(self._status, f"Error: {msg}", "err")
 
     def _sel_many(self):
         return [self._results[int(iid)] for iid in self._tree.selection()]
@@ -1281,32 +1417,36 @@ class SearchTab(ttk.Frame):
         if not sel:
             messagebox.showinfo("No selection", "Select result(s) first.")
             return
-        tracked = seen_urls()
-        added = skipped = 0
-        for j in sel:
-            if normalize_url(j.url) in tracked:
-                skipped += 1  # already in tracker or dismissed — no dupes
-                continue
-            add_job(title=j.title, company=j.company, location=j.location,
-                    url=j.url, salary_text=j.salary_display(),
-                    source=j.source_api, status="interested",
-                    description=(j.description or "")[:5000], score=j.score)
-            added += 1
+        # Dedup + insert moved into the service (dup-guard lives there now).
+        ok, res = db_guard(
+            self, lambda: tracker_service.track_search_results(sel),
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="track results")
+        if not ok:
+            return
+        added, skipped = res
         msg = f"Tracked {added} job(s)."
         if skipped:
             msg += f" Skipped {skipped} already tracked/dismissed."
-        self._status.config(text=msg, fg="#1565c0")
+        set_status(self._status, msg, "info")
 
     def _dismiss(self):
         sel_iids = list(self._tree.selection())
         if not sel_iids:
             return
+        ok, _ = db_guard(
+            self,
+            lambda: [tracker_service.dismiss_url(self._results[int(i)].url)
+                     for i in sel_iids],
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="dismiss results")
+        if not ok:
+            return
         for iid in sel_iids:
-            dismiss_url(self._results[int(iid)].url)
             self._tree.delete(iid)
-        self._status.config(
-            text=f"Dismissed {len(sel_iids)} — hidden from future searches.",
-            fg="#757575")
+        set_status(
+            self._status,
+            f"Dismissed {len(sel_iids)} — hidden from future searches.", "muted")
 
     def _open_url(self):
         for j in self._sel_many()[:5]:
@@ -1338,6 +1478,7 @@ class ApplyQueueTab(ttk.Frame):
         self._prompt_job_id: int | None = None  # job the copied prompt is for
         self._batch_order: list[int] = []  # job ids in last batch-prompt order
         self._fit_order: list[int] = []
+        self._fit_jobs: list = []  # JobResults for the last fit prompt
         self._build()
         self.refresh()
 
@@ -1364,6 +1505,11 @@ class ApplyQueueTab(ttk.Frame):
         vsb.pack(side="right", fill="y")
         self._tree.bind("<Double-1>", lambda _e: self._open_url())
         self._tree.bind("<<TreeviewSelect>>", self._show_detail)
+        # Keyboard triage with auto-advance, matching the Inbox tab (UX gap a):
+        # t = mark applied & advance, d = dismiss/archive & advance, o = open.
+        self._tree.bind("t", lambda _e: self._mark_applied())
+        self._tree.bind("d", lambda _e: self._dismiss_queue())
+        self._tree.bind("o", lambda _e: self._open_url())
 
         self._detail = tk.Label(self, text="", anchor="w", justify="left",
                                 bg=BG, fg="#555", font=("Segoe UI", 9),
@@ -1372,6 +1518,7 @@ class ApplyQueueTab(ttk.Frame):
 
         abar = tk.Frame(self, bg=BG, pady=6)
         abar.pack(fill="x", padx=6, side="bottom")
+        self._abar = abar  # disabled wholesale during the API worker (GUI-8)
         tk.Button(abar, text="Open Posting", bg=DARK, fg=WHITE,
                   font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
                   command=self._open_url).pack(side="left", padx=2)
@@ -1454,6 +1601,14 @@ class ApplyQueueTab(ttk.Frame):
         elif j:
             messagebox.showinfo("No URL", "This job has no URL saved.")
 
+    def _set_busy(self, busy: bool):
+        """Disable/enable every action-bar button for the API worker's duration
+        so a second generate can't fire mid-flight (GUI-8)."""
+        state = "disabled" if busy else "normal"
+        for w in self._abar.winfo_children():
+            if isinstance(w, tk.Button):
+                w.config(state=state)
+
     # ── Resume docs (bridge) ──────────────────────────────────────────────────
 
     def _posting_text(self, j: dict) -> str | None:
@@ -1464,7 +1619,10 @@ class ApplyQueueTab(ttk.Frame):
                           hint="No saved description for this job — paste the "
                                "posting text from the job page:")
         if dlg.result:
-            update_job(j["id"], description=dlg.result[:5000])
+            db_guard(self, lambda: tracker_service.update_job(
+                j["id"], description=dlg.result[:5000]),
+                status_cb=lambda m: set_status(self._status, m, "err"),
+                action="save description")
             return dlg.result
         return None
 
@@ -1492,7 +1650,7 @@ class ApplyQueueTab(ttk.Frame):
         if self._prompt_job_id is None:
             messagebox.showinfo("No prompt", "Copy a resume prompt first.")
             return
-        j = get_job(self._prompt_job_id)
+        j = tracker_service.get_job(self._prompt_job_id)
         if not j:
             return
         dlg = PasteDialog(self)
@@ -1510,9 +1668,14 @@ class ApplyQueueTab(ttk.Frame):
         except Exception as e:
             messagebox.showerror("DOCX failed", str(e), parent=self)
             return
-        update_job(j["id"], resume_path=str(resume_path),
-                   cover_path=str(cover_path) if cover_path else "")
-        self._status.config(text=f"Docs saved: {resume_path.name}", fg="#2e7d32")
+        ok, _ = db_guard(self, lambda: tracker_service.update_job(
+            j["id"], resume_path=str(resume_path),
+            cover_path=str(cover_path) if cover_path else ""),
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="save docs")
+        if not ok:
+            return
+        set_status(self._status, f"Docs saved: {resume_path.name}", "ok")
         self.refresh(keep_selection=True)
 
     # ── Batch resume docs (bridge) ────────────────────────────────────────────
@@ -1569,7 +1732,7 @@ class ApplyQueueTab(ttk.Frame):
         for n, data in parsed.items():
             if not (1 <= n <= len(self._batch_order)):
                 continue
-            j = get_job(self._batch_order[n - 1])
+            j = tracker_service.get_job(self._batch_order[n - 1])
             if not j:
                 continue
             try:
@@ -1578,8 +1741,14 @@ class ApplyQueueTab(ttk.Frame):
             except Exception as e:
                 failed.append(f"{j['company']}: {e}")
                 continue
-            update_job(j["id"], resume_path=str(resume_path),
-                       cover_path=str(cover_path) if cover_path else "")
+            ok, _ = db_guard(self, lambda jid=j["id"], rp=resume_path, cp=cover_path:
+                             tracker_service.update_job(
+                                 jid, resume_path=str(rp),
+                                 cover_path=str(cp) if cp else ""),
+                             action="save batch docs")
+            if not ok:
+                failed.append(f"{j['company']}: database busy")
+                continue
             saved += 1
         if failed:
             messagebox.showerror(
@@ -1601,7 +1770,8 @@ class ApplyQueueTab(ttk.Frame):
         posting = self._posting_text(j)
         if not posting:
             return
-        self._status.config(text="Generating with Claude API…", fg="#e65100")
+        self._set_busy(True)
+        set_status(self._status, "Generating with Claude API…", "work")
 
         def worker():
             try:
@@ -1610,14 +1780,27 @@ class ApplyQueueTab(ttk.Frame):
                                                       company=j["company"])
                 self.after(0, lambda: self._api_done(j["id"], resume_path, cover_path))
             except Exception as e:
-                self.after(0, lambda: self._status.config(
-                    text=f"Error: {e}", fg=ERR))
+                self.after(0, lambda: self._api_error(str(e)))
         threading.Thread(target=worker, daemon=True).start()
 
+    def _api_error(self, msg):
+        if not self.winfo_exists():
+            return  # GUI-7: tab gone (project switch) before the worker returned
+        self._set_busy(False)
+        set_status(self._status, f"Error: {msg}", "err")
+
     def _api_done(self, job_id, resume_path, cover_path=None):
-        update_job(job_id, resume_path=str(resume_path),
-                   cover_path=str(cover_path) if cover_path else "")
-        self._status.config(text=f"Docs saved: {resume_path.name}", fg="#2e7d32")
+        if not self.winfo_exists():
+            return  # GUI-7
+        self._set_busy(False)
+        ok, _ = db_guard(self, lambda: tracker_service.update_job(
+            job_id, resume_path=str(resume_path),
+            cover_path=str(cover_path) if cover_path else ""),
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="save docs")
+        if not ok:
+            return
+        set_status(self._status, f"Docs saved: {resume_path.name}", "ok")
         self.refresh(keep_selection=True)
 
     # ── Applied ▸ next ────────────────────────────────────────────────────────
@@ -1634,14 +1817,42 @@ class ApplyQueueTab(ttk.Frame):
         kwargs = {}
         if not (j.get("follow_up_date") or "").strip():
             kwargs["follow_up_date"] = (date.today() + timedelta(days=7)).isoformat()
-        update_job(j["id"], status="applied",
-                   date_applied=date.today().isoformat(), **kwargs)
-        self._status.config(
-            text=f"Applied: {j['title']} @ {j['company']}", fg="#2e7d32")
+        ok, _ = db_guard(self, lambda: tracker_service.update_job(
+            j["id"], status="applied",
+            date_applied=date.today().isoformat(), **kwargs),
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="mark applied")
+        if not ok:
+            return
+        set_status(self._status, f"Applied: {j['title']} @ {j['company']}", "ok")
         self.refresh()
         if nxt and nxt in self._rows:
             self._tree.selection_set(nxt)
             self._tree.see(nxt)
+            self._tree.focus(nxt)
+            self._tree.focus_set()  # keep t/d/o live for the next row
+
+    def _dismiss_queue(self):
+        """Keyboard 'd' triage: archive the selected interested job (removes it
+        from the queue, restorable from the Tracker archive) and advance."""
+        sel = self._tree.selection()
+        j = self._sel()
+        if not j:
+            return
+        nxt = self._tree.next(sel[0])
+        ok, _ = db_guard(self, lambda: tracker_service.archive_job(j["id"]),
+                         status_cb=lambda m: set_status(self._status, m, "err"),
+                         action="dismiss job")
+        if not ok:
+            return
+        set_status(self._status,
+                   f"Dismissed: {j['title']} @ {j['company']} (archived)", "muted")
+        self.refresh()
+        if nxt and nxt in self._rows:
+            self._tree.selection_set(nxt)
+            self._tree.see(nxt)
+            self._tree.focus(nxt)
+            self._tree.focus_set()
 
     # ── Claude fit scoring (bridge) ───────────────────────────────────────────
 
@@ -1690,6 +1901,11 @@ class App(tk.Tk):
         super().__init__()
         self.geometry("1280x780")
         self.minsize(980, 620)
+
+        # Global Tk callback exception handler: in a windowed .exe an unguarded
+        # error inside a button/after callback otherwise vanishes silently (dead
+        # button, no feedback). Log the traceback and show the user something.
+        self.report_callback_exception = self._on_tk_exception
 
         self._proj_var = None
         self._build_projectbar()       # shown only when projects exist
@@ -1803,6 +2019,31 @@ class App(tk.Tk):
         elif current is self._inbox:
             self._inbox.refresh()
         self._update_badges()
+
+    def _on_tk_exception(self, exc_type, exc_value, exc_tb):
+        """Tk callback-exception hook: append the traceback to a log file under
+        the output dir and show a short error dialog, so a callback failure is
+        visible instead of silently dead in a windowed build."""
+        import traceback
+        from datetime import datetime
+        tb = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        log_path = None
+        try:
+            from config import OUTPUT_DIR
+            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            log_path = OUTPUT_DIR / "gui_error.log"
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(f"\n[{datetime.now().isoformat()}]\n{tb}\n")
+        except Exception:
+            pass  # never let the error handler itself crash the app
+        detail = f"{exc_type.__name__}: {exc_value}"
+        where = f"\n\nLogged to {log_path}" if log_path else ""
+        try:
+            messagebox.showerror(
+                "Something went wrong",
+                f"An unexpected error occurred:\n\n{detail}{where}")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
