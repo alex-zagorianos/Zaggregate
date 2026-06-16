@@ -111,7 +111,9 @@ def _tokenize(q: str):
         elif raw == ")":
             out.append(("RP", raw))
         elif raw.startswith('"'):
-            out.append(("PHRASE", raw.strip('"')))
+            phrase = raw.strip('"')
+            if phrase:                          # drop empty "" (would match every job)
+                out.append(("PHRASE", phrase))
         elif raw.upper() in _OPS:
             out.append((raw.upper(), raw))
         elif raw.startswith("-") and len(raw) > 1:
@@ -160,12 +162,20 @@ def _parse_not(toks, i):
 
 
 def _parse_atom(toks, i):
+    if i >= len(toks):
+        raise ValueError("unexpected end of query")
     kind, val = toks[i]
     if kind == "LP":
+        # Empty group "()" -> inert (matches-all) so it neither crashes nor
+        # leaks a ')' literal into positive_terms.
+        if i + 1 < len(toks) and toks[i + 1][0] == "RP":
+            return _Always(), i + 2
         node, i = _parse_or(toks, i + 1)
         if i < len(toks) and toks[i][0] == "RP":
             i += 1
         return node, i
+    if kind == "RP":
+        raise ValueError("unexpected ')'")
     if kind == "PHRASE":
         return _Leaf(val, phrase=True), i + 1
     return _Leaf(val), i + 1  # WORD
@@ -177,10 +187,13 @@ def parse(query: str) -> Query:
     if not toks:
         return Query(_Always(), query or "")
     try:
-        root, _ = _parse_or(toks, 0)
+        root, idx = _parse_or(toks, 0)
+        if idx < len(toks):
+            raise ValueError("unconsumed tokens")
     except (IndexError, ValueError):
-        # Malformed query: fall back to implicit-AND of the bare words so a
-        # scrape/score never crashes on a user typo.
+        # Malformed query (bad operators / stray parens): fall back to an
+        # implicit-AND of the bare words so a scrape/score never crashes on a
+        # user typo AND no tokens are silently dropped.
         words = [_Leaf(v) for k, v in toks if k == "WORD"]
         root = words[0] if len(words) == 1 else _And(words) if words else _Always()
     return Query(root, query or "")

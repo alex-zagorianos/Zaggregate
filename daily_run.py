@@ -104,5 +104,20 @@ def main():
         f"{added} new -> inbox (inbox now {inbox_count()})")
 
 
+def run_main() -> int:
+    """Run main() with a top-level guard so a scheduled run never dies silently:
+    any exception is logged (with traceback) to the project log and returns 1."""
+    import traceback
+    try:
+        main()
+        return 0
+    except SystemExit as e:
+        return int(e.code or 0)
+    except Exception as e:
+        log(f"FATAL: daily_run crashed: {type(e).__name__}: {e}")
+        log(traceback.format_exc())
+        return 1
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(run_main())

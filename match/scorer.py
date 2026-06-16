@@ -165,6 +165,15 @@ def _parse_money(tok: Optional[str]) -> Optional[float]:
     return val if 30_000 <= val <= 500_000 else None
 
 
+# Fallback for pay ranges printed WITHOUT a leading '$' (CA/CO/NY disclosure
+# text: "Pay range: 120,000 - 150,000"). Both endpoints must be comma-grouped
+# 5-6 digit numbers so a lone figure or a "401(k)" can't trigger it; the
+# 30k-500k bound in _parse_money is the final guard.
+_SALARY_RE_BARE = re.compile(
+    r"(\d{2,3},\d{3})\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})"
+)
+
+
 def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
     """Best-effort (min, max) annual salary parsed from free text."""
     for m in _SALARY_RE.finditer(text or ""):
@@ -174,6 +183,12 @@ def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
             return (min(lo, hi), max(lo, hi))
         if lo:
             return (lo, None)
+    # No '$'-anchored hit -> try a bare comma-grouped range (both ends required).
+    for m in _SALARY_RE_BARE.finditer(text or ""):
+        lo = _parse_money(m.group(1))
+        hi = _parse_money(m.group(2))
+        if lo and hi:
+            return (min(lo, hi), max(lo, hi))
     return (None, None)
 
 

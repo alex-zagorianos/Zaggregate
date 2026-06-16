@@ -228,6 +228,25 @@ Verified the LinkedIn/Indeed "collect while scrolling" pipeline end-to-end via C
 - New `browser_ext/selector_check.js` = paste-in DevTools console self-audit for future rot.
 - **NOTE for next use:** Alex must **reload the unpacked extension** (chrome://extensions → reload Job Harvester) to pick up v1.2; LinkedIn collection needs him logged in; `py -m scrape.browser_receiver` must run for "Send to Tool". The Claude-in-Chrome MCP tab is NOT logged into LinkedIn — selector re-audits need either his login in the controlled window or the console snippet in his own tab.
 
+## Session 10 — 2026-06-15 (Opus 4.8) — Full review + first Hermes test slice
+
+Full multi-agent code+product review of the whole app. **Complete findings → [[review-2026-06-15]]** (50 subsystem findings + 26 feature ideas + GUI audit + product roadmap + architecture recs + adversarial verdicts). **No code changed this session** — review + planning only.
+
+**Headlines:**
+
+- 🔴 **C1 (LIVE data bug):** `projects/dad-health-informatics/experience.md` is Alex's master file byte-for-byte (the migration copied it) → Dad's resumes/scoring use the wrong person's career.
+- 🔴 C2 `daily_run` has no top-level error trap (silent dead 07:30 runs); 🔴 C3 `.exe` would crash on first use (no `.spec`, templates/quota under `_MEIPASS`); 🔴 C4 no global Tk exception handler (windowed `.exe` swallows errors); 🔴 C5 no WAL/`busy_timeout` on the shared `tracker.db`.
+- Prior [[review-2026-06]] items are **mostly fixed**; the scorer is genuinely strong. The GUI is a **god-FILE not a god-object** — the fix is splitting `gui.py` into a package in Python, not a rewrite.
+- Adversarial pass: score-compression (SCORE-1) and `norm_url` query-strip (TRACK-4) were **overstated** — real but smaller than first claimed; everything else confirmed; 6 cross-cutting items the readers **missed** (incl. C1 and inbox-score-staleness MISSED-3).
+
+**Hermes test harness built** — `E:\ClaudeWork\hermes-test-01-jobapp\`: the first "Claude plans → Hermes executes" E2E test (the canonical job-search test from `MASTER-local-ai-stack` §P6). A high-value, unit-testable **8-fix slice** (query parser ×3, HN cache, salary parse, `_extract_json`, CSV injection, DB WAL, `daily_run` guard, dad-data + new-project seed) is written two ways: `plan.md` (Nemotron — **Windows-native**: one self-verifying `py` script per task in `staging\`, validated end-to-end → suite 140) and `claude-fallback-plan.md` (Claude). **Not yet run by Hermes.** 13 new tests; commits at end (no push); dad file backed up to `.bak`.
+
+**Open / next (full list in [[review-2026-06-15]] §Recommended sequencing):**
+
+- [ ] Run the Hermes test (or the Claude fallback) to apply the 8-fix slice → see `hermes-test-01-jobapp\START-HERE.md`.
+- [ ] Then: C3 (`.exe`) + C4 (Tk handler) → Wave 2 `.exe` readiness → Wave 3 status-history analytics spine → Wave 4 `gui/` decomposition + service layer → Wave 5 ranking/apply polish.
+- Output mode this session: **TERSE**.
+
 ## Git
 
 - HEAD `14bdd31` on `master`, **pushed; working tree clean.** Everything through Session 9 (backlog, Caterpillar fix, Archive, Search tightening, Projects 0–3, Add-Companies, browser-ext verification) is committed + on origin.

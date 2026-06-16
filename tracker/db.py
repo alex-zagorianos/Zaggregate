@@ -48,8 +48,13 @@ _EDITABLE = {
 
 
 def get_conn():
-    conn = sqlite3.connect(str(current_db_path()))
+    # The headless daily_run and the GUI write the same project DB. WAL lets
+    # reads proceed during a write, and busy_timeout waits out brief lock
+    # contention instead of raising 'database is locked'.
+    conn = sqlite3.connect(str(current_db_path()), timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 

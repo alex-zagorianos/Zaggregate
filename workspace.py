@@ -16,6 +16,27 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
+_EXPERIENCE_STUB = """# Experience
+
+> Fill this in for THIS project's candidate. Used for resume/cover generation
+> and skill-based job scoring. Keep the five `## ` headings below.
+
+## CONTACT
+
+- Name:
+- Email:
+- Phone:
+- Location:
+
+## EDUCATION
+
+## TECHNICAL SKILLS
+
+## WORK EXPERIENCE
+
+## NOTES FOR RESUME GENERATION
+"""
+
 
 # ── path helpers (read BASE_DIR at call-time so tests can monkeypatch it) ──────
 def _projects_dir() -> Path:
@@ -133,7 +154,7 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
             if not src.exists():            # treat as a project slug
                 src = _projects_dir() / str(copy_resume_from) / "experience.md"
         exp.write_text(src.read_text(encoding="utf-8") if src and src.exists()
-                       else "# Experience\n", encoding="utf-8")
+                       else _EXPERIENCE_STUB, encoding="utf-8")
 
     if slug not in existing:
         reg.setdefault("projects", []).append({

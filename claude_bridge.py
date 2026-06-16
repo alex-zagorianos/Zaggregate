@@ -36,15 +36,17 @@ def to_clipboard(text: str) -> bool:
         return False
 
 
-def _extract_json(text: str) -> str:
+def _extract_json(text: str, prefer: str = "object") -> str:
     """Pull the JSON payload out of a pasted reply: strips ```json fences and
-    any prose before/after the outermost JSON value."""
+    any prose before/after the outermost JSON value. ``prefer`` ('object' or
+    'array') chooses which container to try first, so a resume object that
+    contains an array field isn't mistaken for the whole payload."""
     t = (text or "").strip()
     fence = re.search(r"```(?:json)?\s*(.*?)```", t, re.DOTALL)
     if fence:
         t = fence.group(1).strip()
-    # Fall back to the outermost {...} or [...] span.
-    for opener, closer in (("[", "]"), ("{", "}")):
+    spans = (("[", "]"), ("{", "}")) if prefer == "array" else (("{", "}"), ("[", "]"))
+    for opener, closer in spans:
         start, end = t.find(opener), t.rfind(closer)
         if start != -1 and end > start:
             candidate = t[start:end + 1]
@@ -98,7 +100,7 @@ def build_fit_prompt(jobs: list[JobResult], profile_md: str) -> str:
 def parse_fit_response(text: str, expected_count: int | None = None) -> dict[int, dict]:
     """Parse the pasted reply into {job_number: {fit, why, flags}}."""
     try:
-        data = json.loads(_extract_json(text))
+        data = json.loads(_extract_json(text, prefer="array"))
     except json.JSONDecodeError as e:
         raise BridgeParseError(f"Could not parse JSON from the pasted text: {e}")
     if isinstance(data, dict):  # tolerate a single-object reply
@@ -173,7 +175,7 @@ def build_resume_prompt(job_posting: str, experience: dict) -> str:
 def parse_resume_response(text: str) -> dict:
     """Parse and validate a pasted resume JSON reply."""
     try:
-        data = json.loads(_extract_json(text))
+        data = json.loads(_extract_json(text, prefer="object"))
     except json.JSONDecodeError as e:
         raise BridgeParseError(f"Could not parse JSON from the pasted text: {e}")
     if not isinstance(data, dict):
@@ -235,7 +237,7 @@ def parse_batch_resume_response(text: str) -> dict[int, dict]:
     or incomplete entries are skipped so one bad object doesn't sink the
     rest; raises BridgeParseError only when nothing usable was found."""
     try:
-        data = json.loads(_extract_json(text))
+        data = json.loads(_extract_json(text, prefer="array"))
     except json.JSONDecodeError as e:
         raise BridgeParseError(f"Could not parse JSON from the pasted text: {e}")
     if isinstance(data, dict):  # tolerate a single-object reply

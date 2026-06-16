@@ -28,7 +28,10 @@ status: active
 
 Scheduled daily search (07:30 Task Scheduler) → local 0–100 match scoring (`match/scorer.py`) → deduped **Inbox** → optional Claude fit-ranking via clipboard bridge (no API key) → **Apply Queue** GUI tab with resume prompts + "Mark Applied → Next". Free no-key sources: The Muse, RemoteOK.
 
-## Open (next session — see [[handoff_20260614_session9]])
+## Open (next session — see [[handoff_20260615_session10]] · full review [[review-2026-06-15]])
+
+- [ ] **Run the Hermes test** to apply the 8-fix slice — `E:\ClaudeWork\hermes-test-01-jobapp\START-HERE.md` (`plan.md` for Nemotron, `claude-fallback-plan.md` to fall back to Claude). First E2E test of the local AI stack.
+- [ ] **C1 LIVE data bug:** `projects/dad-health-informatics/experience.md` is Alex's file (fixed by the slice, Tasks 8–9).
 
 - [ ] **Reload the browser extension** (chrome://extensions → reload "Job Harvester", now v1.2) before next harvest; needs LinkedIn login + `py -m scrape.browser_receiver` running.
 - [ ] **Projects Phase 4** (deferred) — per-project scheduler (`daily_run --project` done; wire `setup_schedule.bat` + per-project `daily` flag).

@@ -13,7 +13,7 @@ from typing import Optional
 from config import HN_ALGOLIA_URL, HN_RATE_LIMIT
 from models import JobResult
 from search.base_client import JobAPIClient
-from search.http_util import FileCache, RateLimiter, make_session
+from search.http_util import FileCache, RateLimiter, cache_key, make_session
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _BREAK_RE = re.compile(r"<p>|<br\s*/?>", re.IGNORECASE)
@@ -83,9 +83,9 @@ class HNClient(JobAPIClient):
         if page > 1:
             return {"hits": []}
 
-        cache_key = f"q_{keyword.lower().replace(' ', '_')}"
+        key = cache_key("hn", keyword)
         if self.cache_enabled:
-            cached = self.cache.get(cache_key)
+            cached = self.cache.get(key)
             if cached is not None:
                 return cached
 
@@ -107,7 +107,7 @@ class HNClient(JobAPIClient):
         data = {"hits": response.json().get("hits", [])}
 
         if self.cache_enabled:
-            self.cache.put(cache_key, data)
+            self.cache.put(key, data)
         return data
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
