@@ -13,7 +13,7 @@ DB_PATH = None
 # Bump whenever the schema (tables/columns/indexes below) changes. init_db()
 # stores this in PRAGMA user_version after a successful setup; if the db already
 # matches, init_db skips the whole probe + ALTER scan (cheap, concurrency-safe).
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def current_db_path() -> Path:
@@ -144,6 +144,17 @@ def init_db() -> bool:
                 error         TEXT DEFAULT ''
             )
         """)
+        # Status transition log for funnel analytics (response rate,
+        # time-to-response). One row per real status change. (delegate T4)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS status_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id      INTEGER NOT NULL,
+                old_status  TEXT,
+                new_status  TEXT NOT NULL,
+                changed_at  TEXT NOT NULL
+            )
+        """)
         conn.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
         conn.commit()
         return True
@@ -232,11 +243,25 @@ def get_counts():
 
 
 def update_job(job_id, **fields):
+    from datetime import datetime, timezone
     updates = {k: v for k, v in fields.items() if k in _EDITABLE}
     if not updates:
         return
     set_clause = ", ".join(f"{k}=?" for k in updates)
     with get_conn() as conn:
+        # Record a status transition (old->new) before applying it, so the
+        # status_history funnel reflects every real change. (delegate T4)
+        if "status" in updates:
+            row = conn.execute(
+                "SELECT status FROM applications WHERE id=?", (job_id,)
+            ).fetchone()
+            if row and row["status"] != updates["status"]:
+                conn.execute(
+                    "INSERT INTO status_history "
+                    "(job_id, old_status, new_status, changed_at) VALUES (?,?,?,?)",
+                    (job_id, row["status"], updates["status"],
+                     datetime.now(timezone.utc).isoformat()),
+                )
         conn.execute(
             f"UPDATE applications SET {set_clause} WHERE id=?",
             (*updates.values(), job_id),
