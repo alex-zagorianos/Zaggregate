@@ -52,3 +52,9 @@ projects/
 # === LOGS ===
 *.log
 logs/
+
+# === LOCAL SCAFFOLDING & PERSONAL STRATEGY (kept local; not part of the distributable) ===
+candidates.json
+flatten_candidates.py
+verify_and_add.py
+/job search/
