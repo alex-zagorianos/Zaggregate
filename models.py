@@ -1,3 +1,4 @@
+import functools
 import hashlib
 from dataclasses import dataclass
 from typing import Optional
@@ -70,6 +71,19 @@ class JobResult:
         else:
             raw = f"{(self.title or '').lower().strip()}|{(self.company or '').lower().strip()}"
         return hashlib.md5(raw.encode()).hexdigest()
+
+    @functools.cached_property
+    def job_key(self) -> str:
+        """Stable cross-source identity (SHA1 of company_canon|soc|loc|title_core).
+
+        Delegates to coverage.entity.job_key_for with a local import so models.py
+        stays import-light; falls back to the MD5 identity_key if coverage is
+        unavailable (e.g. a stripped frozen build without the data bundle)."""
+        try:
+            from coverage import entity
+            return entity.job_key_for(self)
+        except ImportError:
+            return self.identity_key
 
     def salary_display(self) -> str:
         if self.salary_min and self.salary_max:
