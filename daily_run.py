@@ -88,6 +88,14 @@ def main():
         keywords=keywords, location=location, salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,
     )
+    # Preference hard-gate: drop jobs violating the user's hard constraints
+    # (salary floor / location / dealbreakers) before scoring + inbox. No-op when
+    # preferences.json is absent or permissive (a fresh data folder).
+    import ranker
+    _pre_gate = len(results)
+    results = ranker.gate(results)
+    if len(results) != _pre_gate:
+        log(f"preferences hard-gate | {_pre_gate} -> {len(results)}")
     score_jobs(results, keywords=keywords, location=location,
                salary_floor=salary_min,
                exclude_keywords=cfg.get("exclude_keywords", []),

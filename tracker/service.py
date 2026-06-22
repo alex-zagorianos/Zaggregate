@@ -187,9 +187,12 @@ def fit_prompt_for_rows(rows: list[dict]) -> tuple[str, list]:
     (prompt, jobs) where jobs is the JobResult list (each carrying its row id in
     .job_id). Pass the same jobs list to score_*_from_reply so scores map back
     by the prompt's echoed token, not by reply position."""
-    from claude_bridge import build_fit_prompt, profile_summary
+    import ranker
     jobs = jobs_from_rows(rows)
-    prompt = build_fit_prompt(jobs, profile_summary())
+    # Rank against the user's preferences.md profile (what they want) plus their
+    # experience summary (what they can do) — the shared ranker request, so the
+    # bridge, API, and MCP routes all score identically.
+    prompt = ranker.build_request(jobs)
     return prompt, jobs
 
 

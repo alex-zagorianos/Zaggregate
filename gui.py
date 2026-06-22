@@ -1861,36 +1861,27 @@ class ApplyQueueTab(ttk.Frame):
         if not rows:
             messagebox.showinfo("Queue empty", "Nothing to score.")
             return
-        from models import JobResult
-        jobs = [JobResult(
-            title=r["title"], company=r["company"],
-            location=r.get("location", ""), salary_min=None, salary_max=None,
-            description=r.get("description", ""), url=r.get("url", ""),
-            source_keyword="", created="",
-        ) for r in rows]
-        prompt = build_fit_prompt(jobs, profile_summary())
-        self._fit_order = [r["id"] for r in rows]
+        # Route through the service: preference-anchored prompt + token-verified
+        # scoring (so a reordered/skipped reply lands on the right application).
+        prompt, jobs = tracker_service.fit_prompt_for_rows(rows)
+        self._fit_jobs = jobs
+        self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         copy_or_warn(self, prompt,
                      lambda m: self._status.config(text=m, fg="#e65100"))
 
     def _paste_fit(self):
-        if not self._fit_order:
+        if not getattr(self, "_fit_jobs", None):
             messagebox.showinfo("No prompt", "Copy a fit prompt first.")
             return
         dlg = PasteDialog(self)
         if not dlg.result:
             return
         try:
-            scores = parse_fit_response(dlg.result, len(self._fit_order))
+            applied = tracker_service.score_applications_from_reply(
+                self._fit_jobs, dlg.result)
         except BridgeParseError as e:
             messagebox.showerror("Parse failed", str(e), parent=self)
             return
-        applied = 0
-        for n, data in scores.items():
-            if 1 <= n <= len(self._fit_order):
-                update_job(self._fit_order[n - 1], fit_score=data["fit"],
-                           fit_rationale=f"{data['why']} {data['flags']}".strip())
-                applied += 1
         self._status.config(text=f"Applied {applied} fit score(s).", fg="#2e7d32")
         self.refresh(keep_selection=True)
 
