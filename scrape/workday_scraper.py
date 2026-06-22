@@ -45,26 +45,25 @@ def _parse_slug(slug: str) -> tuple[str, str, str] | None:
     return tenant, n, site
 
 
-def _prime_session(tenant: str, n: str, site: str):
-    """GET the public careers page so Workday sets its CSRF cookie/token on the
-    session; mirror the token into a header. Returns a primed session, or a
-    fresh un-primed one if the GET fails (caller falls back to a bare POST)."""
-    session = _make_session()
-    session.headers.update({"Content-Type": "application/json", "Accept": "application/json"})
+def _prime_csrf(tenant: str, n: str, site: str) -> dict:
+    """GET the public careers page to harvest the Workday CSRF cookie.
+    Returns a dict of extra headers to include on subsequent POSTs.
+    Fails silently (returns {}) — CSRF priming is best-effort."""
     careers_url = f"https://{tenant}.wd{n}.myworkdayjobs.com/{site}"
     try:
-        resp = session.get(careers_url, timeout=CAREERS_REQUEST_TIMEOUT)
+        resp = requests.get(careers_url, timeout=CAREERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         token = None
         for name in ("CALYPSO_CSRF_TOKEN", "wd-browser-id", "PLAY_SESSION"):
-            token = (getattr(resp, "cookies", {}) or {}).get(name) or session.cookies.get(name)
+            cookie_jar = getattr(resp, "cookies", {}) or {}
+            token = cookie_jar.get(name)
             if token:
                 break
         if token:
-            session.headers["X-CALYPSO-CSRF-TOKEN"] = token
+            return {"X-CALYPSO-CSRF-TOKEN": token}
     except Exception:
         pass
-    return session
+    return {}
 
 
 def scrape_workday(
@@ -92,12 +91,15 @@ def scrape_workday(
             return _map_results(cached, company, keyword, tenant, n, site)
 
     url = _WD_BASE.format(tenant=tenant, n=n, site=site)
-    session = _prime_session(tenant, n, site)
+    # Best-effort CSRF priming (uses requests.get; silently skipped on failure).
+    csrf_headers = _prime_csrf(tenant, n, site)
 
     def _post(offset: int) -> dict | None:
         payload = {"appliedFacets": {}, "limit": _PAGE_LIMIT, "offset": offset, "searchText": keyword}
+        headers = {"Content-Type": "application/json", "Accept": "application/json", **csrf_headers}
         try:
-            resp = session.post(url, json=payload, timeout=CAREERS_REQUEST_TIMEOUT)
+            resp = requests.post(url, json=payload, headers=headers,
+                                 timeout=CAREERS_REQUEST_TIMEOUT)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -112,7 +114,8 @@ def scrape_workday(
 
     postings = list(first.get("jobPostings", []) or [])
     total = first.get("total")
-    if isinstance(total, int) and total > len(postings):
+    if isinstance(total, int) and total > len(postings) and len(postings) >= _PAGE_LIMIT:
+        # Only page when the first response filled the limit (indicates more pages).
         offset = len(postings)
         pages = 1
         while offset < total and pages < _MAX_PAGES:
@@ -120,8 +123,9 @@ def scrape_workday(
             if not page:
                 break
             chunk = page.get("jobPostings", []) or []
-            if not chunk:
-                break
+            if not chunk or len(chunk) < _PAGE_LIMIT:
+                postings.extend(chunk or [])
+                break  # short page = last page; stop paging
             postings.extend(chunk)
             offset += _PAGE_LIMIT
             pages += 1
