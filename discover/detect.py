@@ -43,6 +43,19 @@ def _detect_new_ats(host: str, segs: list) -> tuple[str, str] | None:
     return None
 
 
+def _slug_valid(slug: str) -> bool:
+    """Reject slugs that are clearly not ATS board identifiers (file names, deep paths)."""
+    if not slug:
+        return False
+    # Reject slugs containing a dot (e.g. "robots.txt", "sitemap.xml") or slashes
+    if "." in slug or "/" in slug:
+        return False
+    # Reject numeric-only slugs that look like job IDs, not board slugs
+    if slug.isdigit():
+        return False
+    return True
+
+
 def detect_ats(url_or_domain: str) -> tuple[str, str] | None:
     """Return (ats_type, slug) or None if undetectable."""
     host, segs = _split(url_or_domain)
@@ -50,8 +63,12 @@ def detect_ats(url_or_domain: str) -> tuple[str, str] | None:
         return None
     new = _detect_new_ats(host, segs)
     if new is not None:
-        return new
+        if _slug_valid(new[1]):
+            return new
+        return None
     ats, slug = _legacy_detect(url_or_domain)
     if ats == "direct" or not slug:
+        return None
+    if not _slug_valid(slug):
         return None
     return (ats, slug)
