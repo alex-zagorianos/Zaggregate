@@ -174,3 +174,29 @@ BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 # Careers scraper
 CAREERS_MAX_WORKERS = 8
 CAREERS_REQUEST_TIMEOUT = 20
+
+# Arbeitnow — free public job-board API, no key. Remote + EU/US listings.
+ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
+ARBEITNOW_RATE_LIMIT = 5
+
+# Jooble — aggregator; free API key (env JOOBLE_API_KEY) unlocks POST search.
+JOOBLE_URL = "https://jooble.org/api/"
+JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
+JOOBLE_RATE_LIMIT = 10
+
+# Careerjet — aggregator; free affiliate key (env CAREERJET_AFFID) for the public search API.
+CAREERJET_URL = "https://public.api.careerjet.net/search"
+CAREERJET_AFFID = os.getenv("CAREERJET_AFFID")
+CAREERJET_RATE_LIMIT = 10
+
+# LinkedIn — logged-out GUEST endpoint only (public; no auth/cookies/accounts).
+# Off by default; the user opts in by adding 'linkedin_guest' to --sources.
+LINKEDIN_GUEST_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+LINKEDIN_GUEST_RATE_LIMIT = 3      # conservative; public guest surface
+LINKEDIN_GUEST_PAGE_SIZE = 25      # guest endpoint pages by 25
+
+# SerpApi — BYO-paid Google-Jobs backend (env SERPAPI_KEY or secrets/serpapi_key).
+SERPAPI_URL = "https://serpapi.com/search"
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+SERPAPI_RATE_LIMIT = 5
+SERPAPI_MONTHLY_LIMIT = 100        # free tier; tracked in cache/serpapi_usage.json
