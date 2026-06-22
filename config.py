@@ -29,34 +29,40 @@ def _get_data_dir() -> Path:
     return Path(__file__).parent
 
 
-def _get_writable_dir() -> Path:
-    """Writable root for cache/output/user config.
-
-    Frozen: next to the .exe (<exe>/JobProgram); if that parent is not
-    writable (e.g. Program Files), fall back to %LOCALAPPDATA%/JobProgram.
-    Not frozen: the repo root, so paths resolve exactly as before.
-    """
-    if not _is_frozen():
-        return Path(__file__).parent
-    exe_parent = Path(sys.executable).parent / "JobProgram"
-    if _dir_writable(exe_parent):
-        return exe_parent
-    return Path(os.getenv("LOCALAPPDATA", ".")) / "JobProgram"
+def _get_user_data_dir() -> Path:
+    """External, user-editable data root: experience/preferences/companies/db/
+    cache/output/secrets live here. JOBPROGRAM_DATA overrides anywhere. Frozen
+    default: <exe>/data if writable, else %LOCALAPPDATA%/JobProgram. Dev (not
+    frozen): the repo root, so the current files-at-root layout is unchanged."""
+    override = os.getenv("JOBPROGRAM_DATA")
+    if override:
+        return Path(override)
+    if _is_frozen():
+        exe_data = Path(sys.executable).parent / "data"
+        if _dir_writable(exe_data):
+            return exe_data
+        return Path(os.getenv("LOCALAPPDATA", ".")) / "JobProgram"
+    return Path(__file__).parent
 
 
 DATA_DIR = _get_data_dir()
-WRITABLE_DIR = _get_writable_dir()
-# Back-compat alias: other modules import BASE_DIR for read-only assets.
+USER_DATA_DIR = _get_user_data_dir()
+# Back-compat aliases: BASE_DIR = read-only bundle (code/templates in the .exe);
+# WRITABLE_DIR is now the user data folder (alias of USER_DATA_DIR).
 BASE_DIR = DATA_DIR
+WRITABLE_DIR = USER_DATA_DIR
 
-# Read-only assets (bundled into the .exe).
-EXPERIENCE_FILE = DATA_DIR / "experience.md"
-COMPANIES_JSON = DATA_DIR / "companies.json"
+# User-editable data (lives in the data folder; bundle templates scaffold these).
+EXPERIENCE_FILE  = USER_DATA_DIR / "experience.md"
+COMPANIES_JSON   = USER_DATA_DIR / "companies.json"
+PREFERENCES_MD   = USER_DATA_DIR / "preferences.md"
+PREFERENCES_JSON = USER_DATA_DIR / "preferences.json"
+USER_CONFIG_JSON = USER_DATA_DIR / "user_config.json"
+SECRETS_DIR      = USER_DATA_DIR / "secrets"
 
-# Writable runtime state.
-CACHE_DIR = WRITABLE_DIR / "cache"
-OUTPUT_DIR = WRITABLE_DIR / "output"
-USER_CONFIG_JSON = WRITABLE_DIR / "user_config.json"
+# Writable runtime state (under the data folder).
+CACHE_DIR = USER_DATA_DIR / "cache"
+OUTPUT_DIR = USER_DATA_DIR / "output"
 
 
 def ensure_writable_dirs() -> None:
