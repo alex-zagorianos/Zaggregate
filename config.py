@@ -6,21 +6,70 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def _get_base_dir() -> Path:
-    if getattr(sys, "frozen", False):
+def _is_frozen() -> bool:
+    return getattr(sys, "frozen", False)
+
+
+def _dir_writable(path: Path) -> bool:
+    """True if we can create + write files under `path` (creating it if needed)."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write_test"
+        probe.write_text("", encoding="ascii")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _get_data_dir() -> Path:
+    """Read-only bundle root: _MEIPASS when frozen, else the repo root."""
+    if _is_frozen():
         return Path(sys._MEIPASS)
     return Path(__file__).parent
 
 
-BASE_DIR = _get_base_dir()
-EXPERIENCE_FILE = BASE_DIR / "experience.md"
-CACHE_DIR = BASE_DIR / "cache"
-OUTPUT_DIR = BASE_DIR / "output"
-COMPANIES_JSON = BASE_DIR / "companies.json"
-USER_CONFIG_JSON = BASE_DIR / "user_config.json"
+def _get_writable_dir() -> Path:
+    """Writable root for cache/output/user config.
 
-CACHE_DIR.mkdir(exist_ok=True)
-OUTPUT_DIR.mkdir(exist_ok=True)
+    Frozen: next to the .exe (<exe>/JobProgram); if that parent is not
+    writable (e.g. Program Files), fall back to %LOCALAPPDATA%/JobProgram.
+    Not frozen: the repo root, so paths resolve exactly as before.
+    """
+    if not _is_frozen():
+        return Path(__file__).parent
+    exe_parent = Path(sys.executable).parent / "JobProgram"
+    if _dir_writable(exe_parent):
+        return exe_parent
+    return Path(os.getenv("LOCALAPPDATA", ".")) / "JobProgram"
+
+
+DATA_DIR = _get_data_dir()
+WRITABLE_DIR = _get_writable_dir()
+# Back-compat alias: other modules import BASE_DIR for read-only assets.
+BASE_DIR = DATA_DIR
+
+# Read-only assets (bundled into the .exe).
+EXPERIENCE_FILE = DATA_DIR / "experience.md"
+COMPANIES_JSON = DATA_DIR / "companies.json"
+
+# Writable runtime state.
+CACHE_DIR = WRITABLE_DIR / "cache"
+OUTPUT_DIR = WRITABLE_DIR / "output"
+USER_CONFIG_JSON = WRITABLE_DIR / "user_config.json"
+
+
+def ensure_writable_dirs() -> None:
+    """Create cache/ and output/ under WRITABLE_DIR. Safe to call repeatedly."""
+    for d in (CACHE_DIR, OUTPUT_DIR):
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+
+
+# Best-effort at import (don't crash on a read-only bundle dir).
+ensure_writable_dirs()
 
 # Adzuna
 ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")

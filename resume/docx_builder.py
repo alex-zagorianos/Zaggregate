@@ -1,7 +1,8 @@
+import re
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
@@ -12,6 +13,20 @@ from docx.oxml import OxmlElement
 _ACCENT = RGBColor(0x1A, 0x1A, 0x2E)  # dark navy — high contrast, parser-neutral
 _BASE_FONT = "Calibri"                # ~99% parse-completeness across major ATS
 _BODY_PT = 10.5
+
+
+def _split_cover_letter(text: str) -> list[str]:
+    """Split a cover-letter body into paragraphs. Prefer blank-line breaks
+    (\\n{2,}); if that yields a single block (model used single newlines), fall
+    back to splitting on single newlines so it doesn't render one run-on
+    paragraph. (RESUME-4)"""
+    body = (text or "").strip()
+    if not body:
+        return []
+    paras = [p.strip() for p in re.split(r"\n{2,}", body) if p.strip()]
+    if len(paras) <= 1:
+        paras = [p.strip() for p in body.split("\n") if p.strip()]
+    return paras
 
 
 def build_resume_docx(data: dict) -> BytesIO:
@@ -64,8 +79,8 @@ def build_cover_letter_docx(data: dict) -> BytesIO:
     doc.add_paragraph("")
 
     cover_letter = data.get("cover_letter", "")
-    for para_text in cover_letter.split("\n\n"):
-        p = doc.add_paragraph(para_text.strip())
+    for para_text in _split_cover_letter(cover_letter):
+        p = doc.add_paragraph(para_text)
         p.paragraph_format.space_after = Pt(12)
         if p.runs:
             p.runs[0].font.size = Pt(11)

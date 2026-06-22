@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import anthropic
 from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL
-from resume.experience_parser import load_experience
+from resume.experience_parser import experience_corpus, load_experience
 
 
 class ResumeGenerationError(Exception):
@@ -115,15 +115,7 @@ def _build_system(experience: dict) -> list[dict]:
     """System prompt as cacheable blocks. The candidate corpus is static across
     generations, so we mark the prefix with cache_control — repeat runs read it
     from cache instead of re-billing the full experience each time."""
-    corpus = (
-        "## CANDIDATE EXPERIENCE\n\n"
-        f"### Contact\n{experience['contact']}\n\n"
-        f"### Education\n{experience['education']}\n\n"
-        f"### Technical Skills\n{experience['skills']}\n\n"
-        f"### Work Experience\n{experience['work_experience']}\n\n"
-        f"### Projects\n{experience.get('projects', '')}\n\n"
-        f"### Guidance Notes\n{experience['notes']}"
-    )
+    corpus = experience_corpus(experience)  # RESUME-6: shared corpus contract
     return [
         {"type": "text", "text": _INSTRUCTIONS},
         {"type": "text", "text": corpus, "cache_control": {"type": "ephemeral"}},

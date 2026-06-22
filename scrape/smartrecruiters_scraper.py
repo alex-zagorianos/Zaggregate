@@ -99,7 +99,9 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str,
         function = ((posting.get("function") or {}).get("label")) or ""
         department = ((posting.get("department") or {}).get("label")) or ""
 
-        if not _matches(keyword, title, [function, department]):
+        # Match on the TITLE only; function/department reach the scorer via the
+        # description path below, never the keyword haystack.
+        if not _matches(keyword, title):
             continue
 
         posting_id = posting.get("id", "")
@@ -107,6 +109,9 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str,
         if posting_id and detail_fetches < _MAX_DETAIL_FETCHES:
             description = _fetch_description(company, posting_id, cache_dir, cache_enabled)
             detail_fetches += 1
+        # Slice the ad text first, then append category labels so they survive
+        # the 3000-char cap and stay visible to the scorer.
+        description = _with_categories(description[:3000], [function, department])
 
         loc = posting.get("location") or {}
         location = ", ".join(p for p in (loc.get("city"), loc.get("region"),
@@ -121,7 +126,7 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str,
             location=location,
             salary_min=None,  # not exposed by the public API; scorer recovers
             salary_max=None,  # ranges from the description text
-            description=description[:3000],
+            description=description,
             url=f"https://jobs.smartrecruiters.com/{company.slug}/{posting_id}" if posting_id else ref,
             source_keyword=keyword,
             created=posting.get("releasedDate") or "",
@@ -132,6 +137,15 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str,
     return results
 
 
-def _matches(keyword: str, title: str, categories: list[str]) -> bool:
+def _with_categories(description: str, categories: list[str]) -> str:
+    """Append function/department labels to the scorer-visible description (not
+    the match haystack)."""
+    cat_text = " ".join(c for c in categories if c)
+    if not cat_text:
+        return description
+    return (description + " " + cat_text).strip() if description else cat_text
+
+
+def _matches(keyword: str, title: str) -> bool:
     from scrape.text_match import keyword_matches
-    return keyword_matches(keyword, title + " " + " ".join(c for c in categories if c))
+    return keyword_matches(keyword, title)

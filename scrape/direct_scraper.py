@@ -7,16 +7,11 @@ from bs4 import BeautifulSoup
 
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import read_cache, write_cache
+from scrape.cache_helpers import is_failed, mark_failed, read_cache, write_cache
 from scrape.company_registry import CompanyEntry
 
 _JOB_URL_PATTERNS = ("/job/", "/jobs/", "/opening/", "/openings/", "/position/", "/careers/job", "/career/")
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-# Negative-cache marker: a dead URL (404/403/timeout) was retried once per
-# keyword per run — ~150 doomed 20s requests a day across the registry's dead
-# entries. Caching the failure makes it one attempt per TTL window.
-_FAILED_SENTINEL = "<!--fetch-failed-->"
 
 
 def scrape_direct(
@@ -27,14 +22,18 @@ def scrape_direct(
 ) -> list[JobResult]:
     url_hash = hashlib.md5(company.slug.encode()).hexdigest()[:12]
     cache_file = cache_dir / f"direct_{url_hash}.html"
+    # Negative-cache marker: a dead URL (404/403/timeout) was retried once per
+    # keyword per run — ~150 doomed 20s requests a day across the registry's
+    # dead entries. The shared is_failed/mark_failed JSON marker (used by
+    # gh/lever/ashby/smartrecruiters) makes it one attempt per TTL window.
+    failed_file = cache_dir / f"direct_{url_hash}_FAILED.json"
 
     if cache_enabled:
+        if is_failed(read_cache(failed_file)):
+            return []  # known-dead this TTL window; stay quiet, don't re-fetch
         html = read_cache(cache_file)
     else:
         html = None
-
-    if html == _FAILED_SENTINEL:
-        return []  # known-dead this TTL window; stay quiet, don't re-fetch
 
     if html is None:
         try:
@@ -46,7 +45,7 @@ def scrape_direct(
         except Exception as e:
             print(f"  [direct] {company.name}: fetch error — {e}")
             if cache_enabled:
-                write_cache(cache_file, _FAILED_SENTINEL)
+                mark_failed(failed_file)
             return []
         if cache_enabled:
             write_cache(cache_file, html)

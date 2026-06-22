@@ -23,6 +23,7 @@ __pycache__/
 dist/
 build/
 *.spec
+!app.spec
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -44,6 +45,10 @@ desktop.ini
 
 # === TRACKER ===
 tracker.db
+
+# === PERSONAL CONFIG (sanitized template lives in config.example.json) ===
+config_dad.json
+/user_config.json
 
 # === PROJECT WORKSPACES (local: per-project config/resume/tracker.db/output) ===
 projects/

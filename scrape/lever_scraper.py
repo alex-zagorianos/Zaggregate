@@ -57,7 +57,9 @@ def _filter_and_map(postings: list, company: CompanyEntry, keyword: str) -> list
         team = cats.get("team", "") or ""
         dept = cats.get("department", "") or ""
 
-        if not _matches(keyword, title, [team, dept]):
+        # Match on the TITLE only; team/department reach the scorer via the
+        # description path below, never the keyword haystack.
+        if not _matches(keyword, title):
             continue
 
         created_ms = posting.get("createdAt")
@@ -68,6 +70,7 @@ def _filter_and_map(postings: list, company: CompanyEntry, keyword: str) -> list
 
         description = (posting.get("descriptionPlain")
                       or posting.get("description") or "")[:3000]
+        description = _with_categories(description, [team, dept])
         results.append(JobResult(
             title=title,
             company=company.name,
@@ -85,6 +88,15 @@ def _filter_and_map(postings: list, company: CompanyEntry, keyword: str) -> list
     return results
 
 
-def _matches(keyword: str, title: str, categories: list[str]) -> bool:
+def _with_categories(description: str, categories: list[str]) -> str:
+    """Append team/department labels to the scorer-visible description (not the
+    match haystack)."""
+    cat_text = " ".join(c for c in categories if c)
+    if not cat_text:
+        return description
+    return (description + " " + cat_text).strip() if description else cat_text
+
+
+def _matches(keyword: str, title: str) -> bool:
     from scrape.text_match import keyword_matches
-    return keyword_matches(keyword, title + " " + " ".join(c for c in categories if c))
+    return keyword_matches(keyword, title)

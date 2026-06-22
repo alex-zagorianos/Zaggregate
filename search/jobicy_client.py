@@ -1,25 +1,16 @@
 """Jobicy public API — free, no key, remote-only postings. Single feed
 (max 50 jobs, engineering category) fetched once per cache cycle and
 filtered client-side per keyword. No salary fields in the API."""
-import re
-from pathlib import Path
 from typing import Optional
 
 from config import JOBICY_COUNT, JOBICY_INDUSTRY, JOBICY_RATE_LIMIT, JOBICY_URL
 from models import JobResult
-from search.base_client import JobAPIClient
-from search.http_util import FileCache, RateLimiter, make_session
-
-_TAG_RE = re.compile(r"<[^>]+>")
+from search.single_feed_client import SingleFeedClient
 
 
-class JobicyClient(JobAPIClient):
-    def __init__(self, cache_dir: Optional[Path] = None, cache_enabled: bool = True):
-        self.cache = FileCache("jobicy", cache_dir)
-        self.cache_enabled = cache_enabled
-        self.session = make_session()
-        self.session.headers["User-Agent"] = "JobSearchTool/1.0 (personal use)"
-        self.limiter = RateLimiter(JOBICY_RATE_LIMIT, quiet=True)
+class JobicyClient(SingleFeedClient):
+    cache_subdir = "jobicy"
+    rate_limit = JOBICY_RATE_LIMIT
 
     def search(
         self,
@@ -31,23 +22,17 @@ class JobicyClient(JobAPIClient):
         if page > 1:
             return {"jobs": []}  # single-document feed; no further pages
 
-        if self.cache_enabled:
-            cached = self.cache.get("feed")
-            if cached is not None:
-                return cached
+        def fetch():
+            self.limiter.acquire()
+            response = self.session.get(
+                JOBICY_URL,
+                params={"count": JOBICY_COUNT, "industry": JOBICY_INDUSTRY},
+                timeout=30,
+            )
+            response.raise_for_status()
+            return {"jobs": response.json().get("jobs", [])}
 
-        self.limiter.acquire()
-        response = self.session.get(
-            JOBICY_URL,
-            params={"count": JOBICY_COUNT, "industry": JOBICY_INDUSTRY},
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = {"jobs": response.json().get("jobs", [])}
-
-        if self.cache_enabled:
-            self.cache.put("feed", data)
-        return data
+        return self._cached("feed", fetch)
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches
@@ -57,7 +42,7 @@ class JobicyClient(JobAPIClient):
             blob = f"{title} {' '.join(item.get('jobIndustry') or [])}"
             if not keyword_matches(source_keyword, blob):
                 continue
-            desc = _TAG_RE.sub(" ", item.get("jobDescription", "") or "")
+            desc = self.strip_html(item.get("jobDescription", "") or "")
             results.append(JobResult(
                 title=title,
                 company=item.get("companyName", "Unknown"),

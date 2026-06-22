@@ -303,6 +303,20 @@ def main():
     today = date.today().isoformat()
 
     print(f"Sources requested: {sources}")
+
+    # Warn before a manual run spends the JSearch 200/month free tier. A bare
+    # run can use up to (keywords x max_pages) requests, so surface the balance.
+    if "jsearch" in sources:
+        from config import CACHE_DIR, JSEARCH_MONTHLY_LIMIT
+        from search.http_util import MonthlyQuota
+        _q = MonthlyQuota(CACHE_DIR / "jsearch_usage.json", JSEARCH_MONTHLY_LIMIT)
+        _left = _q.remaining()
+        _est = len(keywords) * max(1, args.max_pages)
+        print(
+            f"  [jsearch] {_left} of {JSEARCH_MONTHLY_LIMIT} requests left this "
+            f"month (this run may use up to ~{_est})"
+        )
+
     clients = build_clients(
         sources,
         cache_enabled=not args.no_cache,

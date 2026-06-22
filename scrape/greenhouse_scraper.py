@@ -67,7 +67,10 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
     for job in data.get("jobs", []):
         title = job.get("title", "") or ""
         depts = [d.get("name", "") for d in job.get("departments", [])]
-        if not _matches(keyword, title, depts):
+        # Match on the TITLE only — a "controls engineer" query must not be
+        # satisfied by an "Engineering" department label on an off-target role.
+        # Department text still reaches the scorer via the description path below.
+        if not _matches(keyword, title):
             continue
 
         location = (job.get("location") or {}).get("name") or ""
@@ -77,7 +80,7 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
             location=location,
             salary_min=None,
             salary_max=None,
-            description=_clean_content(job.get("content", "")),
+            description=_with_departments(_clean_content(job.get("content", "")), depts),
             url=job.get("absolute_url") or "",
             source_keyword=keyword,
             # first_published is the real posting date; updated_at makes big
@@ -90,6 +93,16 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
     return results
 
 
-def _matches(keyword: str, title: str, departments: list[str]) -> bool:
+def _with_departments(description: str, departments: list[str]) -> str:
+    """Fold department/team labels into the scorer-visible description (not the
+    match haystack) so they contribute to skill overlap without letting a dept
+    label alone satisfy a title keyword query."""
+    dept_text = " ".join(d for d in departments if d)
+    if not dept_text:
+        return description
+    return (description + " " + dept_text).strip() if description else dept_text
+
+
+def _matches(keyword: str, title: str) -> bool:
     from scrape.text_match import keyword_matches
-    return keyword_matches(keyword, title + " " + " ".join(departments))
+    return keyword_matches(keyword, title)

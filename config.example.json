@@ -1,0 +1,26 @@
+{
+  "_comment": "Copy to user_config.json and edit. Personal defaults; CLI flags always override these.",
+  "keywords": ["your role keyword", "another role keyword"],
+  "location": "Your City",
+  "salary_min": 0,
+  "industry": "your_industry",
+  "max_per_company": 15,
+  "min_score": 0,
+  "exclude_keywords": ["keyword to exclude"],
+  "_comment_search": "Keywords accept boolean syntax — \"exact phrase\", OR, NOT/-, ( ). exclude_titles heavily downranks a role when the word is in the TITLE (word-boundary). seniority_exclude does the same for seniority words (opt-in). title_miss_penalty is subtracted when a title matches NONE of your keyword queries. All downrank only — nothing is hidden.",
+  "exclude_titles": ["title word to downrank"],
+  "seniority_exclude": [],
+  "title_miss_penalty": 35,
+  "sources": {
+    "adzuna": true,
+    "jsearch": true,
+    "usajobs": true,
+    "careers": true,
+    "themuse": true,
+    "remoteok": true,
+    "remotive": true,
+    "jobicy": true,
+    "himalayas": true,
+    "hn": true
+  }
+}
