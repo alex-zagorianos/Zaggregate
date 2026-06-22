@@ -9,35 +9,35 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — built, tested (127 pass), committed + pushed (HEAD `14bdd31`).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
+> Status: **🟢 Active — hardened + rebuilt as a distributable AI-native product. 322 tests pass; HEAD `6e1ac37`, 19 commits ahead — 🟡 PUSH HELD (confirm repo private first).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
 
 ---
 
 ## Core Documents
 
-| Document                       | Purpose                                                                                       |
-| ------------------------------ | --------------------------------------------------------------------------------------------- |
-| [[project-status]]             | **Canonical project brain** (`brain\project-status.md`).                                      |
-| [[handoff_20260614_session9]]  | **Latest session** — archive, search tightening, projects, add-companies, browser-ext verify. |
-| [[handoff_20260609_session7]]  | Earlier session — throughput overhaul.                                                        |
-| [[experience]]                 | Career master file (resume/cover source).                                                     |
-| [[claude_code_kickoff_prompt]] | Original CC kickoff prompt.                                                                   |
-| `gui.py` / `daily_run.py`      | 5-tab GUI + scheduled daily-run entry points.                                                 |
+| Document                                                | Purpose                                                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                   |
+| [[handoff_20260622_session12]]                          | **Latest session** — hardened + rebuilt as a distributable AI-native product (exe + MCP).  |
+| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                  |
+| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify. |
+| [[experience]]                                          | Career master file (resume/cover source).                                                  |
+| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                |
+| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                              |
 
 ## Pipeline
 
-Scheduled daily search (07:30 Task Scheduler) → local 0–100 match scoring (`match/scorer.py`) → deduped **Inbox** → optional Claude fit-ranking via clipboard bridge (no API key) → **Apply Queue** GUI tab with resume prompts + "Mark Applied → Next". Free no-key sources: The Muse, RemoteOK.
+Wide-net search → preferences JSON hard-gate → local 0–100 match scoring (`match/scorer.py`) → deduped **Inbox** → AI fine-rank to `preferences.md` (clipboard bridge default, optional API auto) → **Apply Queue** GUI tab with resume prompts + "Mark Applied → Next". Free no-key sources: The Muse, RemoteOK.
 
-## Open (next session — see [[handoff_20260615_session10]] · full review [[review-2026-06-15]])
+**Two distribution channels on one engine + data folder** (2026-06-22): (1) the **EXE** with hybrid AI for non-technical friends — `py build_package.py` → `dist/JobScout.zip`; (2) the **MCP server + `find-jobs` Claude Code skill** (`mcp_server.py` + `claude-code/`) where Claude Code itself is the ranker. Friends edit `data/preferences.md` (NL profile) + `data/preferences.json` (hard filters); their own data never ships.
 
-- [ ] **Run the Hermes test** to apply the 8-fix slice — `E:\ClaudeWork\hermes-test-01-jobapp\START-HERE.md` (`plan.md` for Nemotron, `claude-fallback-plan.md` to fall back to Claude). First E2E test of the local AI stack.
-- [ ] **C1 LIVE data bug:** `projects/dad-health-informatics/experience.md` is Alex's file (fixed by the slice, Tasks 8–9).
+## Open (next — Alex's machine/decision only; see [[handoff_20260622_session12]])
 
-- [ ] **Reload the browser extension** (chrome://extensions → reload "Job Harvester", now v1.2) before next harvest; needs LinkedIn login + `py -m scrape.browser_receiver` running.
-- [ ] **Projects Phase 4** (deferred) — per-project scheduler (`daily_run --project` done; wire `setup_schedule.bat` + per-project `daily` flag).
-- [ ] Run `setup_schedule.bat` once for the 07:30 task.
-- [ ] Optional: company remove/edit UI, Projects Manage (rename/delete), scorer/bridge unit tests; delete root `tracker.db.bak`.
+- [ ] **Confirm GitHub `alex-zagorianos/Job-Program` is PRIVATE → then push the 19 commits.** Push is HELD because `experience.md` PII is already on origin.
+- [ ] **Build + test the exe:** `py build_package.py` → `dist/JobScout.zip`. GUI is windowed → needs a live launch (`py gui.py` also sanity-checks the merge). If the frozen exe hits an `ImportError`, add the module to `app.spec` `hiddenimports`.
+- [ ] **docx title-line decision** — kept relaunch bold-concat `Company — Title`; flip to allfixes ATS-split on request.
+- [ ] Optional: first-run setup wizard; per-project scheduler (Projects Phase 4); company remove/edit UI; delete root `tracker.db.bak`.
 
 ---
 
-_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `handoff_20260614_session9.md` + `brain\project-status.md`. Last updated 2026-06-14._
+_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `handoff_20260622_session12.md` + `brain\project-status.md`. Last updated 2026-06-22._

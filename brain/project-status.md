@@ -255,9 +255,23 @@ Full multi-agent code+product review of the whole app. **Complete findings → [
 
 > **HEAD is now `e0ec05e`, clean, 140 passing** (supersedes the stale `## Git` block below).
 
+## Session 12 — 2026-06-22 (Opus 4.8, ultracode) — hardened + rebuilt as a distributable AI-native product
+
+Largest build session to date. Brainstormed → spec → **5 phases**, all landed. **ALL LOCAL — push HELD** (Alex chose "keep local" pending confirming GitHub `alex-zagorianos/Job-Program` is PRIVATE; `experience.md` PII already on origin). master `e0ec05e` → **`6e1ac37`, 19 commits ahead of origin, 140 → 322 tests**, tree clean, only `master` remains (all delegate/allfixes feature branches + worktrees pruned).
+
+**Approved design (the product):** two channels on ONE engine + data folder — (1) **EXE** with hybrid AI (clipboard bridge default + optional API auto), (2) **MCP server + Claude Code skill** where Claude Code itself is the ranker. Wide-net fetch → JSON hard-gate → cheap local scorer → AI fine-rank to `preferences.md`. Spec `brain/spec-2026-06-22-distributable-product-design.md`; plans `brain/plan-2026-06-22-phase{0,1,2}-*.md` (P3/P4 inline).
+
+- **P0 Harden:** committed the 2026-06-19 relaunch work; **merged `claude-allfixes`** (290-test backlog; resolved 3 resume conflicts — kept relaunch ATS docx base + allfixes SSOT parser/generator + re-added Projects section); folded delegate **T4 `status_history`** (SCHEMA_VERSION 1→2); **C1 recurrence guard** (new-project resume copy now opt-in, default NO); untracked personal config (`config_dad.json`/`user_config.json`); deleted dead `resume/app.py`; pruned 8 worktrees.
+- **P1 Data folder + prefs contract:** `config.USER_DATA_DIR` (external editable folder: `JOBPROGRAM_DATA` env › `./data` when frozen › repo-root in dev = unchanged); `workspace.BASE_DIR` roots there (fixes frozen `_MEIPASS` write); new **`preferences.py`** (`preferences.md` NL profile + `preferences.json` hard-gate {salary_min/locations/remote_ok/work_auth/dealbreakers/seniority_exclude} + legacy migration); **`userdata.scaffold()`/`bootstrap()`** + `data_templates/` neutral seeds.
+- **P2 AI ranking:** new **`ranker.py`** anchors the existing fit prompt to `preferences.md` + experience summary; `rank_via_api` runs the same prompt+parser via API (key from env or `secrets/anthropic_key`); `gate` = hard-filter. Wired into the service so InboxTab + ApplyQueueTab both rank to preferences and `daily_run` hard-gates. **Fixed a LATENT post-merge bug:** ApplyQueueTab called the new list-returning `parse_fit_response` with the old `.items()` dict API (would crash) — rerouted through `tracker_service`.
+- **P3 Packaging (buildable):** `userdata.bootstrap()` self-seed wired into gui + daily_run startup; `app.spec` PII-clean (drops `experience.md`/`user_config.json`; bundles `data_templates/` + `companies.json`); **`build_package.py`** → `dist/JobScout.zip` (app + seeded `data/` next to exe + README); `preferences.{md,json}` gitignored at root.
+- **P4 Claude Code channel:** **`mcp_server.py`** — 6 stdio tools via the official `mcp` SDK's `FastMCP` (`get_preferences`/`search_jobs`/`list_inbox`/`set_fit_scores`/`track_job`/`dismiss_job`; CC is the ranker, no AI in the server) + `claude-code/` (`.mcp.json` + `find-jobs` skill + README) + `requirements-mcp.txt` (kept out of the exe build).
+
+**🟡 REMAINING — Alex's machine/decision only:** (1) confirm repo PRIVATE → **push the 19 commits**; (2) `py build_package.py` → exe build + manual GUI test (the pyinstaller run was NOT executed here; GUI is windowed → needs a live launch; watch for an `ImportError` on a lazily-imported scraper/feed client → add it to `app.spec` `hiddenimports`, currently `anthropic, docx, bs4`); (3) docx title-line decision (kept relaunch bold-concat `Company — Title`; flip to allfixes ATS-split on request); (4) optional first-run setup wizard. Full record: HANDOFF `E:\ClaudeWork\HANDOFF.md` (2026-06-22) + memory `project-job-search`.
+
 ## Git
 
-- HEAD `14bdd31` on `master`, **pushed; working tree clean.** Everything through Session 9 (backlog, Caterpillar fix, Archive, Search tightening, Projects 0–3, Add-Companies, browser-ext verification) is committed + on origin.
+- HEAD **`6e1ac37`** on `master`, **19 commits ahead of `origin/master` — PUSH HELD** (Alex confirms repo private first). Working tree clean; only `master` branch remains.
 - Remote: `git@github.com:alex-zagorianos/Job-Program.git`
-- Full suite: **127 passing** (`py -m pytest -q`). Python command: `py`.
-- Active project workspace: `projects/controls-cincinnati/` (1098-row inbox). Switch via GUI header or `--project`.
+- Full suite: **322 passing** (`py -m pytest -q`, ~3s). Python command: `py`.
+- Active project workspace: `projects/controls-cincinnati/` (1098-row inbox). Switch via GUI header or `--project`. In dev, the data folder = repo root (unchanged); frozen exe uses external `./data`.
