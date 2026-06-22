@@ -27,10 +27,13 @@ def _block_key(job) -> tuple:
 
 def _pair_matches(a, b) -> bool:
     ta, tb = (getattr(a, "title", "") or ""), (getattr(b, "title", "") or "")
-    ca, cb = (getattr(a, "company", "") or ""), (getattr(b, "company", "") or "")
+    # Score the CANONICAL company (same as the no-rapidfuzz branch): _block_key
+    # already groups on canonical company, so comparing raw strings here would
+    # reject alias/suffix variants ("Optum" vs "UnitedHealth") that blocked together.
+    ca = entity.canonicalize_company(getattr(a, "company", "") or "")
+    cb = entity.canonicalize_company(getattr(b, "company", "") or "")
     if not _HAVE_RF:
-        return entity.title_core(ta) == entity.title_core(tb) and \
-            entity.canonicalize_company(ca) == entity.canonicalize_company(cb)
+        return entity.title_core(ta) == entity.title_core(tb) and ca == cb
     combined = 0.6 * _rf_fuzz.token_set_ratio(ta, tb) + 0.4 * _rf_fuzz.WRatio(ca, cb)
     return combined >= _MATCH_THRESHOLD
 
