@@ -247,6 +247,14 @@ Full multi-agent code+product review of the whole app. **Complete findings → [
 - [ ] Then: C3 (`.exe`) + C4 (Tk handler) → Wave 2 `.exe` readiness → Wave 3 status-history analytics spine → Wave 4 `gui/` decomposition + service layer → Wave 5 ranking/apply polish.
 - Output mode this session: **TERSE**.
 
+## Session 11 — 2026-06-15 (Opus 4.8) — Hermes RAN the test + editing experiment staged
+
+- **Test #01 EXECUTED by Hermes (Nemotron 30B) and PASSED.** It applied all 9 review-slice fixes via the Windows-native plan and **committed** them: **`e0ec05e`**, tree clean, **140 passing**. The "doom loop" Alex saw was only the `progress.md` free-form append (botched newline → retry loop) — the real work was done + committed. **Fixed:** staging scripts now self-log; `plan.md`/`START-HERE`/`SKILL` updated so the model never touches `progress.md`, + an anti-loop rule. Harness: `E:\ClaudeWork\hermes-test-01-jobapp\` (Windows-native, 11 `py` commands).
+- **Test #02 BUILT (not yet run)** — `E:\ClaudeWork\hermes-test-02-edit\`: the real cost/capability experiment where **Claude writes only test + spec and Hermes writes the code.** 3 open fixes (SEARCH-5, SCORE-7, SEARCH-6), gradient edit→add→write-method. Validated achievable (Claude impl → 147 passing; reverted to clean 140). Run via its `START-HERE.md`; measure **how** Nemotron edits.
+- **Learning:** the script approach saved ~no Claude tokens (Claude did the engineering); real savings = the test-02 division of labor. File-editing is the goal; the discipline is _verified_ editing (a test gate), not avoiding edits. Full detail: [[handoff_20260615_session11]].
+
+> **HEAD is now `e0ec05e`, clean, 140 passing** (supersedes the stale `## Git` block below).
+
 ## Git
 
 - HEAD `14bdd31` on `master`, **pushed; working tree clean.** Everything through Session 9 (backlog, Caterpillar fix, Archive, Search tightening, Projects 0–3, Add-Companies, browser-ext verification) is committed + on origin.
