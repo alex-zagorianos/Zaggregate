@@ -28,11 +28,13 @@ RESUME_TOOL = {
                     "email": {"type": "string"},
                     "phone": {"type": "string"},
                     "location": {"type": "string"},
+                    "links": {"type": "string", "description": "Optional: visible LinkedIn/GitHub/portfolio URLs, ' | '-separated (shown verbatim, not hidden behind link text)."},
                 },
                 "required": ["name", "email", "phone", "location"],
             },
-            "summary": {"type": "string", "description": "2-3 sentence summary tailored to the role"},
-            "skills": {"type": "array", "items": {"type": "string"}},
+            "headline": {"type": "string", "description": "Short target-track line under the name: role family + 3-4 core specialties, e.g. 'Software / Controls Engineer — Embedded · Real-Time Control · Applied AI'."},
+            "summary": {"type": "string", "description": "2-3 line summary: level, core stack, and 1-2 quantified wins, tailored to the role"},
+            "skills": {"type": "array", "items": {"type": "string"}, "description": "Grouped strings 'Category: item, item, item' (e.g. 'Languages: Python, C++17, C#, TypeScript')."},
             "experience": {
                 "type": "array",
                 "items": {
@@ -60,6 +62,19 @@ RESUME_TOOL = {
                     "required": ["institution", "degree"],
                 },
             },
+            "projects": {
+                "type": "array",
+                "description": "Optional. Personal/independent projects that strengthen fit (treat like experience with XYZ bullets). Omit if none are relevant.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string", "description": "Optional one-line descriptor."},
+                        "bullets": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["name", "bullets"],
+                },
+            },
             "cover_letter": {"type": "string", "description": "Use \\n\\n between paragraphs."},
         },
         "required": ["contact", "summary", "skills", "experience", "education", "cover_letter"],
@@ -67,14 +82,31 @@ RESUME_TOOL = {
 }
 
 _INSTRUCTIONS = """You are a professional resume writer. Using the candidate's \
-full experience (provided below), produce a resume and cover letter tailored to \
-the job posting in the user's message, by calling the emit_resume tool.
+full experience (provided below), produce a ONE-PAGE resume and cover letter \
+tailored to the job posting in the user's message, by calling the emit_resume tool.
 
-Guidelines:
-1. Select the most relevant experience, skills, and achievements for the role.
-2. Mirror the posting's language and priorities in the bullet points.
-3. One-page resume: max 6 bullets per role, max 3-4 roles.
-4. Cover letter: 3 paragraphs — opening (role + why), middle (2-3 quantified \
+Optimize for AI/ATS screening AND a human 6-second skim:
+1. Relevance first: select the most relevant experience, skills, projects, and \
+achievements for THIS role; mirror the posting's language as natural prose — never \
+keyword-stuff or repeat terms unnaturally (modern semantic screeners penalize it).
+2. headline: a short target-track line — role family + 3-4 core specialties \
+(e.g. "Software / Controls Engineer — Embedded · Real-Time Control · Applied AI").
+3. summary: 2-3 lines — level, core stack, and 1-2 quantified wins.
+4. skills: return GROUPED strings "Category: a, b, c" (e.g. "Languages: Python, \
+C++17, C#, TypeScript"). Spell out a domain acronym once with its short form, \
+e.g. "Geometric Dimensioning & Tolerancing (GD&T)".
+5. Bullets (experience + projects): result-first XYZ form — "Accomplished [X] as \
+measured by [Y] by doing [Z]". Start each with a strong past-tense verb (Built, \
+Designed, Automated, Reduced, Shipped, Led); never "Responsible for". Put the \
+strongest, most-quantified bullet FIRST in each role. Aim for >=70% of bullets to \
+carry a hard number. 3-5 bullets for recent/relevant roles, 2-3 for older.
+6. projects: include when the candidate's projects strengthen fit for the role; \
+omit otherwise.
+7. One page: at most ~4 roles; trim the weakest bullets to fit. Use one consistent \
+date format ("Month YYYY").
+8. Reorder which experience/skills lead to match the role's track (software / \
+controls / data / mechanical) — lead with what the posting most values.
+9. Cover letter: 3 paragraphs — opening (role + why), middle (2-3 quantified \
 achievements), closing (call to action).
 Draw contact/education facts only from the candidate experience; do not invent."""
 
@@ -89,6 +121,7 @@ def _build_system(experience: dict) -> list[dict]:
         f"### Education\n{experience['education']}\n\n"
         f"### Technical Skills\n{experience['skills']}\n\n"
         f"### Work Experience\n{experience['work_experience']}\n\n"
+        f"### Projects\n{experience.get('projects', '')}\n\n"
         f"### Guidance Notes\n{experience['notes']}"
     )
     return [

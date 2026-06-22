@@ -21,6 +21,7 @@ def load_experience(path=None) -> dict:
             "education":       sections.get("EDUCATION", ""),
             "skills":          sections.get("TECHNICAL SKILLS", ""),
             "work_experience": sections.get("WORK EXPERIENCE", ""),
+            "projects":        sections.get("PROJECTS", ""),
             "notes":           sections.get("NOTES FOR RESUME GENERATION", ""),
         }
     return _cache[key]
