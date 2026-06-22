@@ -481,7 +481,7 @@ def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual"):
                 "(inbox_id, job_key, old_fit, new_fit, old_score, source, ts) "
                 "VALUES (?,?,?,?,?,?,?)",
                 (inbox_id, _job_key_of(row), row["fit"], fit, row["score"],
-                 source, datetime.now(timezone.utc).isoformat()))
+                 source, datetime.now(timezone.utc).replace(microsecond=0).isoformat()))
         conn.execute("UPDATE inbox SET fit=?, fit_why=? WHERE id=?",
                      (fit, why, inbox_id))
         conn.commit()
