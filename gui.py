@@ -1964,10 +1964,20 @@ class App(tk.Tk):
             "New Project", "Name for the new campaign:", parent=self)
         if not name or not name.strip():
             return
+        # C1 guard: resume copy is OPT-IN. Auto-copying the active project's
+        # experience.md silently shipped the wrong person's resume into a new
+        # campaign (the dad-data bug). Config (keywords/salary) still seeds for a
+        # working start; the resume (identity/PII) only copies if asked. Default No.
+        active = workspace.active_slug()
+        copy_resume = bool(active) and messagebox.askyesno(
+            "New Project",
+            f"Copy your resume (experience.md) from '{active}' into the new "
+            "campaign?\n\nChoose No to start from a blank template — pick No if "
+            "this campaign is for someone else.",
+            default=messagebox.NO, parent=self)
         try:
-            # Seed from the current project so it opens with working keywords/resume.
             workspace.create_project(name.strip(), config=workspace.load_config(),
-                                     copy_resume_from=workspace.active_slug(),
+                                     copy_resume_from=(active if copy_resume else None),
                                      make_active=True)
         except Exception as exc:
             messagebox.showerror("New Project", str(exc))
