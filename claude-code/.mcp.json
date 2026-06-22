@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "jobscout": {
+      "command": "py",
+      "args": ["mcp_server.py"]
+    }
+  }
+}
