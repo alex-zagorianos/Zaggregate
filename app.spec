@@ -10,9 +10,13 @@
 block_cipher = None
 
 datas = [
+    # NOTE (Phase 3 packaging): swap the live experience.md / user_config.json
+    # below for neutral templates so no personal data ships. data_templates/ is
+    # the read-only seed that scaffolds the user's data folder on first run.
     ('experience.md', '.'),
     ('companies.json', '.'),
     ('user_config.json', '.'),
+    ('data_templates', 'data_templates'),
     ('search/templates', 'search/templates'),
     ('resume/templates', 'resume/templates'),
 ]

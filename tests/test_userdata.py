@@ -31,3 +31,36 @@ def test_workspace_roots_under_user_data_dir():
     tracker.db never land in the read-only _MEIPASS bundle when frozen."""
     import workspace
     assert workspace.BASE_DIR == config.USER_DATA_DIR
+
+
+def test_scaffold_creates_then_idempotent(tmp_path, monkeypatch):
+    import userdata
+    tdir = tmp_path / "bundle" / "data_templates"
+    tdir.mkdir(parents=True)
+    (tdir / "experience.template.md").write_text("# Experience\n## CONTACT\n", encoding="utf-8")
+    (tdir / "preferences.template.md").write_text("# My Job Preferences\n", encoding="utf-8")
+    (tdir / "preferences.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(userdata, "templates_dir", lambda: tdir)
+
+    data = tmp_path / "data"
+    created = userdata.scaffold(data)
+    assert set(created) == {"experience.md", "preferences.md", "preferences.json"}
+    assert (data / "experience.md").exists()
+    assert (data / "preferences.md").exists()
+    assert (data / "preferences.json").exists()
+    # Idempotent: a second call creates nothing.
+    assert userdata.scaffold(data) == []
+
+
+def test_scaffold_does_not_overwrite_existing(tmp_path, monkeypatch):
+    import userdata
+    tdir = tmp_path / "bundle" / "data_templates"
+    tdir.mkdir(parents=True)
+    (tdir / "preferences.template.md").write_text("TEMPLATE", encoding="utf-8")
+    monkeypatch.setattr(userdata, "templates_dir", lambda: tdir)
+
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "preferences.md").write_text("MY EDITS", encoding="utf-8")
+    userdata.scaffold(data)
+    assert (data / "preferences.md").read_text(encoding="utf-8") == "MY EDITS"
