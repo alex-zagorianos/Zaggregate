@@ -22,6 +22,7 @@ import userdata
 import preferences as prefs_mod
 import ranker
 from tracker import db
+from tracker import service
 
 mcp = FastMCP("jobscout")
 
@@ -125,6 +126,32 @@ def dismiss_job(inbox_id: int) -> dict:
     """Dismiss an inbox posting so it won't resurface in future searches."""
     db.inbox_dismiss(int(inbox_id))
     return {"dismissed": int(inbox_id)}
+
+
+@mcp.tool()
+def export_inbox(out_dir: str, fmt: str = "both") -> dict:
+    """Export the current inbox as the round-trip trio (ranking_export.csv +
+    ranking_export.md + a versioned prompt.md) under out_dir, each row keyed by
+    the stable job_key. Hand the CSV + prompt to any AI; it fills new_fit/
+    new_rank/fit_rationale and you call import_scores with the returned file.
+    fmt in {"both","csv","md"}. Returns the written paths as strings."""
+    from rerank.export import export_inbox as _export
+    paths = _export(db.inbox_all(), out_dir, fmt=fmt)
+    return {k: str(v) for k, v in paths.items()}
+
+
+@mcp.tool()
+def import_scores(path: str, policy: str = "overwrite") -> dict:
+    """Import an AI-returned re-rank file (CSV or JSON) and re-rank the inbox.
+    Validates the job_key join (unmatched rows are reported, never dropped),
+    clamps new_fit to 0-100, snapshots prior scores to score_history (undoable),
+    and applies the merge policy. policy in {"overwrite","keep_existing",
+    "add_only"}. Returns {matched, updated, skipped, unmatched, errors}."""
+    from rerank.import_ import import_scores as _import
+    res = _import(path, service.inbox_rows_by_key(), policy=policy)
+    return {"matched": res.matched, "updated": res.updated,
+            "skipped": res.skipped, "unmatched": res.unmatched,
+            "errors": res.errors}
 
 
 def main() -> None:

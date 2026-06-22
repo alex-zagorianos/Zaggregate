@@ -18,7 +18,7 @@ import webbrowser
 from datetime import date
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -31,7 +31,7 @@ from tracker.db import (
     inbox_all, inbox_count, inbox_track, inbox_dismiss, inbox_set_fit,
     STATUSES, STATUS_LABELS,
 )
-from config import DEFAULT_LOCATION
+from config import DEFAULT_LOCATION, OUTPUT_DIR
 from claude_bridge import (
     BridgeParseError, to_clipboard,
     build_fit_prompt, parse_fit_response, profile_summary,
@@ -807,6 +807,19 @@ class InboxTab(ttk.Frame):
         tk.Button(abar, text="Paste Fit Results", bg="#2d2d52", fg=WHITE,
                   font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
                   command=self._paste_fit).pack(side="left", padx=2)
+        tk.Button(abar, text="Export for AI", bg="#2d4a2d", fg=WHITE,
+                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
+                  command=self._export_for_ai).pack(side="left", padx=(16, 2))
+        tk.Button(abar, text="Import scores", bg="#2d4a2d", fg=WHITE,
+                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
+                  command=self._import_scores).pack(side="left", padx=2)
+        self._merge_policy = tk.StringVar(value="overwrite")
+        ttk.Combobox(abar, textvariable=self._merge_policy, state="readonly",
+                     width=13, values=["overwrite", "keep_existing", "add_only"]
+                     ).pack(side="left", padx=2)
+        tk.Button(abar, text="Undo last re-rank", bg=WHITE, fg="#555",
+                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
+                  command=self._undo_rerank).pack(side="left", padx=2)
         self._status = tk.Label(abar, text="", bg=BG, fg="#666",
                                 font=("Segoe UI", 9))
         self._status.pack(side="left", padx=10)
@@ -1092,6 +1105,64 @@ class InboxTab(ttk.Frame):
         if not ok:
             return
         set_status(self._status, f"Applied {applied} fit score(s).", "ok")
+        self.refresh()
+
+    def _export_for_ai(self):
+        """Write the round-trip trio (csv+md+prompt) for the current inbox to a
+        timestamped folder under OUTPUT_DIR/rerank, then open the folder."""
+        from datetime import datetime
+        from rerank.export import export_inbox
+        rows = list(self._all)
+        if not rows:
+            messagebox.showinfo("Nothing to export", "The inbox is empty.")
+            return
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        out_dir = Path(OUTPUT_DIR) / "rerank" / stamp
+        try:
+            paths = export_inbox(rows, out_dir, fmt="both")
+        except Exception as e:
+            messagebox.showerror("Export failed", str(e))
+            return
+        set_status(self._status,
+                   f"Exported {len(rows)} rows -> {out_dir}", "info")
+        try:
+            subprocess.Popen(["explorer", str(out_dir)])
+        except Exception:
+            pass
+
+    def _import_scores(self):
+        """Pick an AI-returned CSV/JSON, show a dry-run preview of matched/
+        unmatched, and on confirm apply with the selected merge policy."""
+        from rerank.import_ import import_scores
+        path = filedialog.askopenfilename(
+            title="Import AI scores",
+            filetypes=[("CSV or JSON", "*.csv *.json"), ("All files", "*.*")])
+        if not path:
+            return
+        policy = self._merge_policy.get()
+        rows_by_key = tracker_service.inbox_rows_by_key()
+        # Dry-run preview: a no-op apply so nothing is written yet.
+        preview = import_scores(path, rows_by_key, policy=policy,
+                                _apply=lambda u, *, source="file_import": len(u))
+        msg = (f"Matched {preview.matched}, would update {preview.updated}, "
+               f"skip {preview.skipped}, unmatched {len(preview.unmatched)}.\n"
+               f"Policy: {policy}. Apply now?")
+        if preview.errors:
+            msg += f"\n{len(preview.errors)} row error(s) will be skipped."
+        if not messagebox.askyesno("Import preview", msg, parent=self):
+            return
+        res = import_scores(path, rows_by_key, policy=policy)  # real apply
+        set_status(self._status,
+                   f"Re-ranked {res.updated} (skipped {res.skipped}, "
+                   f"unmatched {len(res.unmatched)}).", "info")
+        self.refresh()
+
+    def _undo_rerank(self):
+        """Revert the most recent file-import re-rank batch via score_history."""
+        n = tracker_service.undo_last_rerank("file_import")
+        set_status(self._status,
+                   f"Undid last re-rank: restored {n} row(s)." if n else
+                   "No re-rank to undo.", "muted" if n else "info")
         self.refresh()
 
 
