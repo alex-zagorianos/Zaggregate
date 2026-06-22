@@ -265,3 +265,45 @@ def score_applications_from_reply(jobs, reply: str) -> int:
                       fit_rationale=rationale)
         applied += 1
     return applied
+
+
+# ── Re-rank round-trip (WS-3) ─────────────────────────────────────────────────
+
+def inbox_rows_by_key() -> dict:
+    """{job_key -> inbox-row dict} for the file round-trip join. The key is the
+    WS-1 cross-source identity when present, else JobResult.identity_key (the
+    _job_key_for_row helper does `getattr(j, "job_key", None) or j.identity_key`,
+    so this works before OR after WS-1 lands). On a key collision the first row
+    wins (round-robin order is stable)."""
+    from rerank.schema import _job_key_for_row
+    out: dict = {}
+    for r in db.inbox_all():
+        key = _job_key_for_row(r)
+        out.setdefault(key, r)
+    return out
+
+
+def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> int:
+    """Write imported re-rank scores back to the inbox: new_fit -> fit,
+    fit_rationale -> fit_why (via inbox_set_fit, which snapshots score_history),
+    and the optional extras JSON blob -> inbox.extras. Returns rows updated."""
+    applied = 0
+    for u in updates:
+        try:
+            inbox_id = int(u["id"])
+            fit = max(0, min(100, int(u["new_fit"])))
+        except (KeyError, TypeError, ValueError):
+            continue
+        db.inbox_set_fit(inbox_id, fit, str(u.get("fit_rationale", "") or ""),
+                         source=source)
+        extras = u.get("extras")
+        if extras:
+            db.inbox_set_extras(inbox_id, str(extras))
+        applied += 1
+    return applied
+
+
+def undo_last_rerank(scope: str = "file_import") -> int:
+    """Revert the most recent re-rank batch (by source scope). Returns rows
+    restored. scope='any' ignores the source tag."""
+    return db.inbox_undo_last_rerank(scope)
