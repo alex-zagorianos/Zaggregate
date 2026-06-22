@@ -13,6 +13,10 @@ from scrape.smartrecruiters_scraper import scrape_smartrecruiters
 from scrape.lever_scraper import scrape_lever
 from scrape.direct_scraper import scrape_direct
 from scrape.workday_scraper import scrape_workday
+from scrape.workable_scraper import fetch as scrape_workable
+from scrape.recruitee_scraper import fetch as scrape_recruitee
+from scrape.rippling_scraper import fetch as scrape_rippling
+from scrape.personio_scraper import fetch as scrape_personio
 
 
 class CareersClient(JobAPIClient):
@@ -114,6 +118,14 @@ class CareersClient(JobAPIClient):
             return scrape_smartrecruiters(company, keyword, self.cache_dir, self.cache_enabled)
         elif company.ats_type == "workday":
             return scrape_workday(company, keyword, self.cache_dir, self.cache_enabled)
+        elif company.ats_type == "workable":
+            return scrape_workable(company.slug)
+        elif company.ats_type == "recruitee":
+            return scrape_recruitee(company.slug)
+        elif company.ats_type == "rippling":
+            return scrape_rippling(company.slug)
+        elif company.ats_type == "personio":
+            return scrape_personio(company.slug)
         else:
             return scrape_direct(company, keyword, self.cache_dir, self.cache_enabled)
 

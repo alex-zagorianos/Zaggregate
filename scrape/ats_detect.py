@@ -73,6 +73,20 @@ def detect_ats(url: str) -> tuple[str, str]:
         if site:
             return ("workday", f"{m.group(1)}:{m.group(2)}:{site}")
 
+    if host == "apply.workable.com" and segs:
+        return ("workable", segs[0])
+
+    if host.endswith(".recruitee.com"):
+        sub = host[: -len(".recruitee.com")]
+        if sub and sub not in ("www", "api"):
+            return ("recruitee", sub)
+
+    for _suffix in (".jobs.personio.de", ".jobs.personio.com"):
+        if host.endswith(_suffix):
+            sub = host[: -len(_suffix)]
+            if sub and sub not in ("www", "api"):
+                return ("personio", sub)
+
     return ("direct", u)
 
 
