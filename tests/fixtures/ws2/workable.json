@@ -1,0 +1,31 @@
+{
+  "name": "Acme",
+  "jobs": [
+    {
+      "title": "Controls Engineer",
+      "shortcode": "ABC123",
+      "location": {
+        "city": "Cincinnati",
+        "region": "Ohio",
+        "country": "United States"
+      },
+      "department": "Engineering",
+      "description": "<p>Build PLC systems.</p>",
+      "url": "https://apply.workable.com/acme/j/ABC123/",
+      "published_on": "2026-06-01"
+    },
+    {
+      "title": "Recruiter",
+      "shortcode": "DEF456",
+      "location": {
+        "city": "Remote",
+        "region": "",
+        "country": "United States"
+      },
+      "department": "People",
+      "description": "Hire people.",
+      "url": "https://apply.workable.com/acme/j/DEF456/",
+      "published_on": "2026-06-02"
+    }
+  ]
+}
