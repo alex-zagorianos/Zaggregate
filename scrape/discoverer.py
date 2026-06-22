@@ -28,6 +28,8 @@ def discover_companies(
     known_slugs: set[str],
 ) -> list[CompanyEntry]:
     if not BRAVE_SEARCH_API_KEY:
+        print("  [discover] WARNING: BRAVE_SEARCH_API_KEY unset — Brave company "
+              "discovery skipped; relying on the existing registry only (spec §7).")
         return []
 
     discovered: list[CompanyEntry] = []

@@ -18,7 +18,8 @@ from search.report_html import generate_html_report
 from search.search_engine import SearchEngine
 
 ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers", "themuse", "remoteok",
-               "remotive", "jobicy", "himalayas", "hn"]
+               "remotive", "jobicy", "himalayas", "hn",
+               "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi"]
 
 
 def load_user_config(path=None) -> dict:
@@ -100,6 +101,33 @@ def build_clients(
                 discovery_enabled=discovery_enabled,
                 companies_file=companies_file,
             ))
+
+        elif source == "arbeitnow":
+            from search.arbeitnow_client import ArbeitnowClient
+            clients.append(ArbeitnowClient(cache_enabled=cache_enabled))
+
+        elif source == "jooble":
+            from search.jooble_client import JoobleClient
+            clients.append(JoobleClient(cache_enabled=cache_enabled))
+
+        elif source == "careerjet":
+            from search.careerjet_client import CareerjetClient
+            clients.append(CareerjetClient(cache_enabled=cache_enabled))
+
+        elif source == "linkedin_guest":
+            from search.linkedin_guest_client import LinkedInGuestClient
+            print("  [linkedin_guest] NOTE: logged-out PUBLIC guest endpoint only — "
+                  "no login/cookies. Review LinkedIn ToS before enabling.")
+            clients.append(LinkedInGuestClient(cache_enabled=cache_enabled))
+
+        elif source == "serpapi":
+            from search.serpapi_client import SerpApiClient
+            try:
+                clients.append(SerpApiClient(cache_enabled=cache_enabled))
+                print(f"  [serpapi] BYO Google-Jobs backend active "
+                      f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
+            except ValueError as e:
+                print(f"  [serpapi] Skipping — {e}")
 
         else:
             print(f"  Unknown source {source!r} — ignoring.")

@@ -1,0 +1,13 @@
+{
+  "jobs_results": [
+    {
+      "title": "Mechatronics Engineer",
+      "company_name": "Delta",
+      "location": "Cincinnati, OH",
+      "description": "Design systems.",
+      "job_id": "xyz",
+      "detected_extensions": { "posted_at": "2 days ago" },
+      "apply_options": [{ "link": "https://jobs.example/delta/mechatronics" }]
+    }
+  ]
+}
