@@ -6,12 +6,16 @@ from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
+from search.http_util import make_session as _make_session
 
 # Workday exposes a consistent undocumented JSON endpoint across all tenants.
 # Slug format stored in CompanyEntry.slug: "tenant:N:site"
 #   e.g. "cat:5:CaterpillarCareers"
 #   → POST https://cat.wd5.myworkdayjobs.com/wday/cxs/cat/CaterpillarCareers/jobs
 _WD_BASE = "https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+
+_PAGE_LIMIT = 20          # Workday CXS hard per-response cap
+_MAX_PAGES = 50           # offset paging ceiling (1000 postings) to bound a run
 
 
 def _job_url(tenant: str, n: str, site: str, external_path: str) -> str:
@@ -41,6 +45,28 @@ def _parse_slug(slug: str) -> tuple[str, str, str] | None:
     return tenant, n, site
 
 
+def _prime_session(tenant: str, n: str, site: str):
+    """GET the public careers page so Workday sets its CSRF cookie/token on the
+    session; mirror the token into a header. Returns a primed session, or a
+    fresh un-primed one if the GET fails (caller falls back to a bare POST)."""
+    session = _make_session()
+    session.headers.update({"Content-Type": "application/json", "Accept": "application/json"})
+    careers_url = f"https://{tenant}.wd{n}.myworkdayjobs.com/{site}"
+    try:
+        resp = session.get(careers_url, timeout=CAREERS_REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        token = None
+        for name in ("CALYPSO_CSRF_TOKEN", "wd-browser-id", "PLAY_SESSION"):
+            token = (getattr(resp, "cookies", {}) or {}).get(name) or session.cookies.get(name)
+            if token:
+                break
+        if token:
+            session.headers["X-CALYPSO-CSRF-TOKEN"] = token
+    except Exception:
+        pass
+    return session
+
+
 def scrape_workday(
     company: CompanyEntry,
     keyword: str,
@@ -66,31 +92,40 @@ def scrape_workday(
             return _map_results(cached, company, keyword, tenant, n, site)
 
     url = _WD_BASE.format(tenant=tenant, n=n, site=site)
-    payload = {
-        "appliedFacets": {},
-        "limit": 20,
-        "offset": 0,
-        "searchText": keyword,
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
+    session = _prime_session(tenant, n, site)
 
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=CAREERS_REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        data = resp.json()
-    except requests.HTTPError as e:
-        print(f"  [workday] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — check tenant/site slug")
+    def _post(offset: int) -> dict | None:
+        payload = {"appliedFacets": {}, "limit": _PAGE_LIMIT, "offset": offset, "searchText": keyword}
+        try:
+            resp = session.post(url, json=payload, timeout=CAREERS_REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            print(f"  [workday] {company.name}: HTTP error at offset {offset} — {e}")
+            return None
+
+    first = _post(0)
+    if first is None:
         if cache_enabled:
             mark_failed(failed_file)
         return []
-    except Exception as e:
-        print(f"  [workday] {company.name}: error — {e}")
-        if cache_enabled:
-            mark_failed(failed_file)
-        return []
+
+    postings = list(first.get("jobPostings", []) or [])
+    total = first.get("total")
+    if isinstance(total, int) and total > len(postings):
+        offset = len(postings)
+        pages = 1
+        while offset < total and pages < _MAX_PAGES:
+            page = _post(offset)
+            if not page:
+                break
+            chunk = page.get("jobPostings", []) or []
+            if not chunk:
+                break
+            postings.extend(chunk)
+            offset += _PAGE_LIMIT
+            pages += 1
+    data = {"total": total, "jobPostings": postings}
 
     if cache_enabled:
         write_cache(cache_file, data)
