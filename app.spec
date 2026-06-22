@@ -26,6 +26,9 @@ hiddenimports = [
     'anthropic',
     'docx',
     'bs4',
+    # coverage/ deps with C-extensions that PyInstaller's static analysis misses.
+    'rapidfuzz',
+    'datasketch',
 ]
 
 a = Analysis(
