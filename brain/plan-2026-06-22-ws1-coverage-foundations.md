@@ -20,6 +20,25 @@
 - **Don't delete `normalize_url`:** URL stays the dedup fast path; `job_key` only _adds_ cross-source collapsing.
 - **TDD + frequent commits:** each task = failing test → run-to-fail → minimal impl → run-to-pass → conventional-commit.
 
+## Setup (run ONCE before Task 2)
+
+The new deps must be importable before any `coverage/` code runs. From the repo root:
+
+```bash
+py -m pip install cleanco rapidfuzz datasketch
+```
+
+(`statsmodels`/`splink` are NOT installed — they are optional and capability-probed.) Do this before Task 2; Task 14 only records them in `requirements.txt`.
+
+## Out of scope for the executor (do NOT touch)
+
+- Any file outside `coverage/`, `data_static/`, `tests/coverage/`, `tests/fixtures/coverage/`, and the four explicitly-modified files (`models.py`, `search/search_engine.py`, `search/cli.py`, `requirements.txt`, `app.spec`).
+- Do NOT edit other source modules, the GUI, the tracker DB, the resume generator, or any `brain/` doc.
+- Do NOT delete `normalize_url`, `identity_key`, or `dedup_key`.
+- Do NOT `git push`, change git config, or merge branches.
+- Do NOT download external data over the network for Task 1 — hand-author the curated CI subsets inline (the plan specifies the minimal rows required).
+- Stay strictly within the 14 tasks, in order. Commit after each task.
+
 ## Frozen Shared Interfaces
 
 Every task uses these EXACT names/signatures. Internal helpers/tests are task-local.
