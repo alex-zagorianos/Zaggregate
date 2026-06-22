@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workzag-jobs>
+  <position>
+    <id>9001</id>
+    <name>Embedded Engineer</name>
+    <office>Cincinnati</office>
+    <department>R&amp;D</department>
+    <jobDescriptions>
+      <jobDescription><name>Role</name><value>&lt;p&gt;Write firmware.&lt;/p&gt;</value></jobDescription>
+    </jobDescriptions>
+    <createdAt>2026-06-05</createdAt>
+  </position>
+  <position>
+    <id>9002</id>
+    <name>HR Generalist</name>
+    <office>Remote</office>
+    <department>People</department>
+    <jobDescriptions>
+      <jobDescription><name>Role</name><value>Manage HR.</value></jobDescription>
+    </jobDescriptions>
+    <createdAt>2026-06-06</createdAt>
+  </position>
+</workzag-jobs>
