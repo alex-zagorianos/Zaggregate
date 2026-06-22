@@ -365,6 +365,26 @@ def main():
         seen = seen_urls()
         before = len(results)
         results = [r for r in results if normalize_url(r.url) not in seen]
+        # Also hide URL-less postings that match an already-tracked posting by
+        # their canonical company+title (the location-free job_key component), so
+        # a cross-source re-harvest of the same role is treated as seen. Mirrors
+        # the URL check above. Best-effort: any failure falls back to URL-only.
+        try:
+            from coverage import entity
+            from tracker.db import get_all
+            tracked = {
+                (entity.canonicalize_company(a.get("company") or ""),
+                 entity.title_core(a.get("title") or ""))
+                for a in get_all()
+            }
+            if tracked:
+                results = [
+                    r for r in results
+                    if r.url or (entity.canonicalize_company(r.company or ""),
+                                 entity.title_core(r.title or "")) not in tracked
+                ]
+        except Exception:
+            pass
         hidden = before - len(results)
         if hidden:
             print(f"Hid {hidden} already-tracked/dismissed job(s) (use --show-tracked to include).")

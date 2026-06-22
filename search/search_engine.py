@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
 
-from models import JobResult
+from models import JobResult, normalize_url
 from search.base_client import JobAPIClient
 
 _STATE_ABBREVS = {
@@ -132,13 +132,37 @@ class SearchEngine:
         return out
 
     def _deduplicate(self, results: list[JobResult]) -> list[JobResult]:
-        # identity_key is URL-primary: cross-source location/tracking variants of
-        # the same posting collapse, while distinct same-title reqs at different
-        # URLs stay separate (dedup_key would have wrongly merged them).
-        seen: set[str] = set()
+        # URL is the fast path: normalized-url variants of the same posting
+        # collapse, and distinct reqs at distinct URLs stay separate. job_key adds
+        # cross-source collapsing for postings with NO usable URL: we key those on
+        # the canonicalized company + title_core (the location-free part of job_key)
+        # so formatting variants ("Acme, Inc." vs "Acme Inc"; "Cincinnati, OH" vs
+        # "Cincinnati"/"Remote") merge while distinct roles/companies stay apart.
+        seen_urls: set[str] = set()
+        seen_keyless: set = set()
         unique: list[JobResult] = []
         for job in results:
-            if job.identity_key not in seen:
-                seen.add(job.identity_key)
-                unique.append(job)
+            u = normalize_url(job.url)
+            if u:
+                if u in seen_urls:
+                    continue
+                seen_urls.add(u)
+            else:
+                key = _keyless_key(job)
+                if key in seen_keyless:
+                    continue
+                seen_keyless.add(key)
+            unique.append(job)
         return unique
+
+
+def _keyless_key(job: JobResult):
+    """Location-free canonical identity for a URL-less posting (company + title).
+    Falls back to the raw title-company string if the coverage entity module
+    isn't importable (e.g. a stripped frozen build)."""
+    try:
+        from coverage import entity
+        return (entity.canonicalize_company(job.company or ""),
+                entity.title_core(job.title or ""))
+    except ImportError:
+        return f"{(job.title or '').lower().strip()}|{(job.company or '').lower().strip()}"
