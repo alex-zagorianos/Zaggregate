@@ -15,6 +15,7 @@ from preferences.md) plus a condensed background summary (what they CAN do, from
 experience.md) — so ranking weighs desire and fit together. The cheap
 preferences hard-gate (gate) runs first, before any AI call is spent.
 """
+import typing
 import config
 import preferences
 import claude_bridge as bridge
@@ -105,3 +106,73 @@ def rank_via_api(jobs, prefs: dict | None = None,
     text = "".join(getattr(b, "text", "") for b in msg.content
                    if getattr(b, "type", None) == "text")
     return parse_response(text, jobs)
+
+
+# ── Ranker protocol (WS-3) ────────────────────────────────────────────────────
+# The three routes (bridge / API / file) share one shape so callers can pick a
+# route without forking logic. The classes are thin wrappers over the module
+# functions above — no behavior change (characterization-tested first).
+
+
+@typing.runtime_checkable
+class Ranker(typing.Protocol):
+    """A ranking route: build one prompt, parse one reply into
+    [(job, fit_score, rationale)]."""
+
+    def build_request(self, jobs, prefs=None, experience_summary=None) -> str: ...
+
+    def parse_response(self, text: str, jobs) -> list: ...
+
+
+class BridgeRanker:
+    """Clipboard bridge route: build_request -> user pastes into claude.ai ->
+    pastes the reply back -> parse_response. Delegates to the module functions."""
+
+    def build_request(self, jobs, prefs=None, experience_summary=None) -> str:
+        return build_request(jobs, prefs, experience_summary)
+
+    def parse_response(self, text: str, jobs) -> list:
+        return parse_response(text, jobs)
+
+
+class ApiRanker:
+    """Auto API route: same prompt + parser as the bridge, executed via the
+    Anthropic API (when a key is configured)."""
+
+    def build_request(self, jobs, prefs=None, experience_summary=None) -> str:
+        return build_request(jobs, prefs, experience_summary)
+
+    def parse_response(self, text: str, jobs) -> list:
+        return parse_response(text, jobs)
+
+    def rank(self, jobs, prefs=None, experience_summary=None, model=None) -> list:
+        return rank_via_api(jobs, prefs, experience_summary, model)
+
+
+class FileRanker:
+    """File round-trip route: export the inbox to a CSV/MD/prompt trio, the user
+    hands it to any AI, then import the returned CSV/JSON. build_request renders
+    the versioned export prompt so this route gives identical guidance."""
+
+    def build_request(self, jobs, prefs=None, experience_summary=None) -> str:
+        from rerank import schema
+        if prefs is not None and prefs.get("profile_md") is not None:
+            profile = prefs.get("profile_md") or ""
+        else:
+            import preferences as _prefs_mod
+            profile = (_prefs_mod.load() or {}).get("profile_md", "") or ""
+        return schema.build_prompt(profile)
+
+    def parse_response(self, text: str, jobs) -> list:
+        # The file route resolves scores by job_key via import_scores, not by the
+        # bridge token; parse_response is unused for files. Kept for the Protocol.
+        raise NotImplementedError(
+            "FileRanker scores are applied by import_(); use export()/import_().")
+
+    def export(self, rows, out_dir, *, fmt: str = "both") -> dict:
+        from rerank.export import export_inbox
+        return export_inbox(rows, out_dir, fmt=fmt)
+
+    def import_(self, path, rows_by_key, *, policy: str = "overwrite", _apply=None):
+        from rerank.import_ import import_scores
+        return import_scores(path, rows_by_key, policy=policy, _apply=_apply)
