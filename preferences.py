@@ -20,6 +20,7 @@ _DEFAULT_HARD = {
     "work_auth": "",           # informational (surfaced to the AI), not gated here
     "dealbreakers": [],        # title substrings that disqualify (e.g. "clearance")
     "seniority_exclude": [],   # title substrings to exclude (e.g. "principal")
+    "target_roles": [],        # keyword/role strings seeded from user_config.keywords
 }
 
 
@@ -95,6 +96,8 @@ def migrate_from_user_config(cfg: dict) -> dict:
         hard["seniority_exclude"] = list(cfg["seniority_exclude"])
 
     keywords = cfg.get("keywords") or []
+    if keywords:
+        hard["target_roles"] = list(keywords)
     lines = [
         "# My Job Preferences",
         "",
