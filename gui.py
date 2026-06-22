@@ -36,22 +36,25 @@ from claude_bridge import (
     BridgeParseError, to_clipboard,
     build_fit_prompt, parse_fit_response, profile_summary,
 )
+from ui import theme
+from ui import help as uihelp
+from ui import setup_wizard
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
-# ── Palette ───────────────────────────────────────────────────────────────────
-DARK  = "#1a1a2e"
-MID   = "#2d2d52"
-BG    = "#f0f0f0"
-WHITE = "#ffffff"
-ERR   = "#c62828"
+# ── Palette ── all sourced from ui.theme (clean light/modern) so the whole app
+# shares one set of colors. Legacy names kept so existing call sites still read.
+DARK  = theme.INK       # dark ink (was the dark header navy)
+MID   = theme.MUTED
+BG    = theme.WINDOW    # app/background fills
+WHITE = theme.SURFACE   # cards / white surfaces
+ERR   = theme.DANGER
 
-# Named status colors for the colored-status-label idiom that recurs ~20x with
-# inline hex. set_status(label, text, kind) maps a kind to its color.
-OK    = "#2e7d32"   # success / done (green)
-WORK  = "#e65100"   # in-progress (amber)
-INFO  = "#1565c0"   # neutral notice (blue)
-MUTED = "#757575"   # de-emphasized (grey)
+# Named status colors for set_status(label, text, kind).
+OK    = theme.SUCCESS   # success / done (green)
+WORK  = theme.WARN      # in-progress (amber)
+INFO  = theme.ACCENT    # neutral notice (accent)
+MUTED = theme.MUTED     # de-emphasized (grey)
 
 _STATUS_COLORS = {
     "ok": OK, "work": WORK, "info": INFO, "muted": MUTED, "err": ERR,
@@ -134,10 +137,8 @@ class JobDialog(tk.Toplevel):
         # Buttons
         btns = ttk.Frame(self, padding=(16, 0, 16, 16))
         btns.pack(fill="x")
-        tk.Button(btns, text="Save", bg=DARK, fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=14, pady=5,
-                  command=self._save).pack(side="right", padx=4)
-        ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="right")
+        theme.btn(btns, "Save", self._save, "accent").pack(side="right", padx=4)
+        theme.btn(btns, "Cancel", self.destroy, "ghost").pack(side="right")
 
         self.transient(parent)
         self.wait_window()
@@ -197,9 +198,8 @@ class PasteDialog(tk.Toplevel):
 
         btns = ttk.Frame(self, padding=10)
         btns.pack(fill="x")
-        tk.Button(btns, text="OK", bg=DARK, fg=WHITE, relief="flat",
-                  padx=16, pady=4, command=self._ok).pack(side="right", padx=4)
-        ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="right")
+        theme.btn(btns, "OK", self._ok, "accent").pack(side="right", padx=4)
+        theme.btn(btns, "Cancel", self.destroy, "ghost").pack(side="right")
         self._text.focus_set()
         self.transient(parent)
         self.wait_window()
@@ -265,21 +265,18 @@ class TrackerTab(ttk.Frame):
 
     def _build(self):
         # Header
-        hdr = tk.Frame(self, bg=DARK)
-        hdr.pack(fill="x")
-        tk.Label(hdr, text="Job Application Tracker",
-                 bg=DARK, fg=WHITE, font=("Segoe UI", 13, "bold"),
-                 padx=14, pady=10).pack(side="left")
-        self._count_lbl = tk.Label(hdr, text="", bg=DARK, fg="#9999bb",
-                                    font=("Segoe UI", 9), padx=6)
-        self._count_lbl.pack(side="left")
-        tk.Button(hdr, text="+ Add Job", bg=WHITE, fg=DARK,
-                  font=("Segoe UI", 9, "bold"), relief="flat",
-                  padx=10, pady=3, command=self._add).pack(
+        hdr = theme.header_bar(self, "Job Application Tracker")
+        theme.btn(hdr, "+ Add Job", self._add, "accent").pack(
             side="right", padx=10, pady=8)
+        self._count_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                    fg=theme.MUTED, font=theme.FONT_SM)
+        self._count_lbl.pack(side="right", padx=8)
+        theme.tip_strip(
+            self, "Every job you're tracking and its status. Double-click to "
+                  "edit; use Quick status to update as you hear back.")
 
         # Status filter bar
-        self._fbar = tk.Frame(self, bg=BG, pady=5)
+        self._fbar = tk.Frame(self, bg=theme.WINDOW, pady=6)
         self._fbar.pack(fill="x", padx=6)
 
         # Tree
@@ -294,6 +291,7 @@ class TrackerTab(ttk.Frame):
             self._tree.column(col, width=width, anchor=anchor, minwidth=60)
         for status, fg in STATUS_FG.items():
             self._tree.tag_configure(status, foreground=fg)
+        theme.zebra(self._tree)
 
         vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
@@ -315,22 +313,20 @@ class TrackerTab(ttk.Frame):
         for w in self._abar.winfo_children():
             w.destroy()
 
-        def btn(text, cmd, bg=DARK):
-            tk.Button(self._abar, text=text, bg=bg, fg=WHITE,
-                      font=("Segoe UI", 9), relief="flat",
-                      padx=10, pady=3, command=cmd).pack(side="left", padx=2)
+        def btn(text, cmd, kind="ghost"):
+            theme.btn(self._abar, text, cmd, kind).pack(side="left", padx=2)
 
         if self._active == "archived":
             btn("Restore", self._restore)
-            btn("Delete permanently", self._delete, bg=ERR)
+            btn("Delete permanently", self._delete, "danger")
             btn("Open URL", self._open_url)
             return
 
         btn("Edit", self._edit)
         btn("Archive", self._archive)
         btn("Open URL", self._open_url)
-        tk.Label(self._abar, text="   Quick status:", bg=BG,
-                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(self._abar, text="   Quick status:", bg=theme.WINDOW,
+                 fg=theme.INK, font=theme.FONT_SM).pack(side="left")
         qcb = ttk.Combobox(self._abar, textvariable=self._qstatus,
                            values=STATUSES, state="readonly", width=14)
         qcb.pack(side="left", padx=4)
@@ -344,13 +340,8 @@ class TrackerTab(ttk.Frame):
         tabs.append(("archived", f"Archive ({counts.get('archived', 0)})"))
         for key, label in tabs:
             active = key == self._active
-            tk.Button(self._fbar, text=label,
-                      bg=DARK if active else WHITE,
-                      fg=WHITE if active else "#555",
-                      font=("Segoe UI", 8, "bold" if active else "normal"),
-                      relief="flat", padx=9, pady=2,
-                      command=lambda k=key: self._filter(k)).pack(
-                side="left", padx=1)
+            theme.btn(self._fbar, label, lambda k=key: self._filter(k),
+                      "accent" if active else "ghost").pack(side="left", padx=1)
 
     # ── Selection ─────────────────────────────────────────────────────────────
 
@@ -400,14 +391,14 @@ class TrackerTab(ttk.Frame):
         label = f"{counts['all']} total"
         if due:
             label += f"  •  {due} follow-up(s) due"
-        # Amber stands out on the dark header; #9999bb is the label's default.
-        self._count_lbl.config(text=label, fg=("#ffb74d" if due else "#9999bb"))
+        self._count_lbl.config(text=label,
+                               fg=(theme.WARN if due else theme.MUTED))
 
         for row in self._tree.get_children():
             self._tree.delete(row)
-        for j in jobs:
+        for i, j in enumerate(jobs):
             self._tree.insert("", "end", iid=str(j["id"]),
-                              tags=(j["status"],),
+                              tags=(j["status"], theme.row_tag(i)),
                               values=(
                                   j["title"], j["company"],
                                   j.get("location", ""),
@@ -503,15 +494,12 @@ class ResumeTab(ttk.Frame):
 
     def _build(self):
         # Header
-        hdr = tk.Frame(self, bg=DARK)
-        hdr.pack(fill="x")
-        tk.Label(hdr, text="Resume & Cover Letter Generator",
-                 bg=DARK, fg=WHITE, font=("Segoe UI", 13, "bold"),
-                 padx=14, pady=10).pack(side="left")
-        tk.Label(hdr,
-                 text="Paste a job posting — Claude generates a tailored resume + cover letter",
-                 bg=DARK, fg="#9999bb", font=("Segoe UI", 9)).pack(
-            side="left", padx=6)
+        theme.header_bar(
+            self, "Resume & Cover Letter Generator",
+            "Paste a job posting — Claude generates a tailored resume + cover letter.")
+        theme.tip_strip(
+            self, "Paste any job posting below, then click 1. Copy Prompt → paste "
+                  "it into claude.ai → 2. Paste the reply to get Word documents.")
 
         # Text input area
         body = ttk.Frame(self, padding=12)
@@ -530,37 +518,30 @@ class ResumeTab(ttk.Frame):
 
         # Control bar — copy-paste bridge is the default path; the API button
         # appears only when ANTHROPIC_API_KEY is configured.
-        bar = tk.Frame(self, bg=BG, pady=8)
+        bar = tk.Frame(self, bg=theme.WINDOW, pady=8)
         bar.pack(fill="x", padx=12, side="bottom")
 
-        tk.Button(bar, text="1. Copy Prompt",
-                  bg=DARK, fg=WHITE, font=("Segoe UI", 10, "bold"),
-                  relief="flat", padx=14, pady=7,
-                  command=self._copy_prompt).pack(side="left")
-        tk.Button(bar, text="2. Paste Reply ▸ DOCX",
-                  bg=DARK, fg=WHITE, font=("Segoe UI", 10, "bold"),
-                  relief="flat", padx=14, pady=7,
-                  command=self._paste_reply).pack(side="left", padx=8)
+        theme.tip(theme.btn(bar, "1. Copy Prompt", self._copy_prompt, "accent"),
+                  "Copies a tailoring prompt for the pasted job. Paste it into "
+                  "claude.ai.").pack(side="left")
+        theme.tip(theme.btn(bar, "2. Paste Reply \N{BLACK RIGHT-POINTING SMALL TRIANGLE} DOCX",
+                            self._paste_reply, "ghost"),
+                  "Paste Claude's reply here to build the resume + cover-letter "
+                  "Word files.").pack(side="left", padx=8)
 
         from resume.service import api_available
         self._gen_btn = None
         if api_available():
-            self._gen_btn = tk.Button(
-                bar, text="Generate via API",
-                bg="#2d2d52", fg=WHITE, font=("Segoe UI", 10),
-                relief="flat", padx=16, pady=7, command=self._generate)
+            self._gen_btn = theme.btn(bar, "Generate via API", self._generate, "ghost")
             self._gen_btn.pack(side="left")
 
-        tk.Button(bar, text="Clear", bg="#dddddd", fg="#333",
-                  font=("Segoe UI", 9), relief="flat",
-                  padx=10, pady=7, command=self._clear).pack(
-            side="left", padx=8)
+        theme.btn(bar, "Clear", self._clear, "ghost").pack(side="left", padx=8)
 
-        self._status_lbl = tk.Label(bar, text="", bg=BG,
-                                     fg="#666", font=("Segoe UI", 9))
+        self._status_lbl = tk.Label(bar, text="", bg=theme.WINDOW,
+                                     fg=theme.MUTED, font=theme.FONT_SM)
         self._status_lbl.pack(side="left", padx=6)
 
-        self._out_lbl = tk.Label(bar, text="", bg=BG, fg="#1565c0",
+        self._out_lbl = tk.Label(bar, text="", bg=theme.WINDOW, fg=theme.ACCENT,
                                   font=("Segoe UI", 9, "underline"),
                                   cursor="hand2")
         self._out_lbl.pack(side="left")
@@ -710,21 +691,21 @@ class InboxTab(ttk.Frame):
         self.refresh()
 
     def _build(self):
-        hdr = tk.Frame(self, bg=DARK)
-        hdr.pack(fill="x")
-        tk.Label(hdr, text="Inbox — fresh matches from the daily search",
-                 bg=DARK, fg=WHITE, font=("Segoe UI", 13, "bold"),
-                 padx=14, pady=10).pack(side="left")
-        self._count_lbl = tk.Label(hdr, text="", bg=DARK, fg="#9999bb",
-                                   font=("Segoe UI", 9))
-        self._count_lbl.pack(side="left")
+        hdr = theme.header_bar(self, "Inbox", "Fresh matches from the daily search.")
+        self._count_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                    fg=theme.MUTED, font=theme.FONT_SM)
+        self._count_lbl.pack(side="right", padx=14)
+        theme.tip_strip(
+            self, "Your shortlist. Pick jobs you like and click "
+                  "“Track ▸ Interested” — they move to Apply Queue. "
+                  "Tip: click a row and press T (track), D (dismiss), O (open).")
 
         # Filter bar — applied client-side over the cached snapshot, so
         # typing in a filter never hits the database.
-        fbar = tk.Frame(self, bg=BG)
-        fbar.pack(fill="x", padx=6, pady=(4, 0))
-        tk.Label(fbar, text="Min score:", bg=BG,
-                 font=("Segoe UI", 9)).pack(side="left")
+        fbar = tk.Frame(self, bg=theme.WINDOW)
+        fbar.pack(fill="x", padx=6, pady=(6, 0))
+        tk.Label(fbar, text="Min score:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM).pack(side="left")
         self._f_minscore = tk.StringVar()
         ms = ttk.Entry(fbar, textvariable=self._f_minscore, width=4)
         ms.pack(side="left", padx=(2, 10))
@@ -754,9 +735,7 @@ class InboxTab(ttk.Frame):
         ft = ttk.Entry(fbar, textvariable=self._f_text, width=18)
         ft.pack(side="left", padx=(2, 6))
         ft.bind("<KeyRelease>", lambda _e: self._render())
-        tk.Button(fbar, text="Clear", bg=WHITE, fg="#555",
-                  font=("Segoe UI", 8), relief="flat", padx=8,
-                  command=self._clear_filters).pack(side="left")
+        theme.btn(fbar, "Clear", self._clear_filters, "ghost").pack(side="left")
 
         tf = ttk.Frame(self)
         tf.pack(fill="both", expand=True, padx=6, pady=2)
@@ -766,6 +745,7 @@ class InboxTab(ttk.Frame):
             self._tree.heading(col, text=label,
                                command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, anchor=anchor, minwidth=40)
+        theme.zebra(self._tree)
         vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
         self._tree.pack(side="left", fill="both", expand=True)
@@ -778,50 +758,62 @@ class InboxTab(ttk.Frame):
         self._tree.bind("o", lambda _e: self._open_url())
 
         # Detail pane: why this job scored what it did + description preview
-        self._detail = tk.Text(self, height=4, wrap="word", bg=BG, fg="#555",
-                               font=("Segoe UI", 9), relief="flat",
+        self._detail = tk.Text(self, height=4, wrap="word", bg=theme.SURFACE,
+                               fg=theme.MUTED, font=theme.FONT_SM, relief="flat",
                                padx=8, state="disabled")
         self._detail.pack(fill="x", padx=6)
         self._tree.bind("<<TreeviewSelect>>", self._show_detail)
 
-        abar = tk.Frame(self, bg=BG, pady=6)
+        abar = tk.Frame(self, bg=theme.WINDOW, pady=6)
         abar.pack(fill="x", padx=6, side="bottom")
-        for text, cmd in [("Track ▸ Interested", self._track),
-                          ("Dismiss", self._dismiss),
-                          ("Dismiss Company", self._dismiss_company),
-                          ("Open URL", self._open_url),
-                          ("Refresh", self.refresh)]:
-            tk.Button(abar, text=text, bg=DARK, fg=WHITE, font=("Segoe UI", 9),
-                      relief="flat", padx=10, pady=3, command=cmd).pack(
-                side="left", padx=2)
+        theme.tip(theme.btn(abar, "Track \N{BLACK RIGHT-POINTING SMALL TRIANGLE} Interested",
+                            self._track, "accent"),
+                  "Move the selected job(s) to your Apply Queue.").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Dismiss", self._dismiss, "ghost"),
+                  "Hide the selected job(s) from all future searches.").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Dismiss Company", self._dismiss_company, "ghost"),
+                  "Hide every visible job from the selected company.").pack(side="left", padx=2)
+        theme.btn(abar, "Open", self._open_url, "ghost").pack(side="left", padx=2)
+        theme.btn(abar, "Refresh", self.refresh, "ghost").pack(side="left", padx=2)
         # Undo: dismiss permanently deletes the inbox row, so keep the last
         # batch and offer to re-insert it. Disabled until something's dismissed.
-        self._undo_btn = tk.Button(abar, text="Undo Dismiss", bg=WHITE, fg="#555",
-                                   font=("Segoe UI", 9), relief="flat",
-                                   padx=10, pady=3, state="disabled",
-                                   command=self._undo_dismiss)
+        self._undo_btn = theme.btn(abar, "Undo Dismiss", self._undo_dismiss, "ghost")
+        self._undo_btn.config(state="disabled")
         self._undo_btn.pack(side="left", padx=2)
-        tk.Button(abar, text="Copy Fit Prompt", bg="#2d2d52", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._copy_fit_prompt).pack(side="left", padx=(16, 2))
-        tk.Button(abar, text="Paste Fit Results", bg="#2d2d52", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._paste_fit).pack(side="left", padx=2)
-        tk.Button(abar, text="Export for AI", bg="#2d4a2d", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._export_for_ai).pack(side="left", padx=(16, 2))
-        tk.Button(abar, text="Import scores", bg="#2d4a2d", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._import_scores).pack(side="left", padx=2)
-        self._merge_policy = tk.StringVar(value="overwrite")
-        ttk.Combobox(abar, textvariable=self._merge_policy, state="readonly",
-                     width=13, values=["overwrite", "keep_existing", "add_only"]
-                     ).pack(side="left", padx=2)
-        tk.Button(abar, text="Undo last re-rank", bg=WHITE, fg="#555",
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._undo_rerank).pack(side="left", padx=2)
-        self._status = tk.Label(abar, text="", bg=BG, fg="#666",
-                                font=("Segoe UI", 9))
+
+        # AI ranking group (relabeled in plain English; tooltips explain each).
+        tk.Label(abar, text="   AI ranking:", bg=theme.WINDOW, fg=theme.MUTED,
+                 font=theme.FONT_SM).pack(side="left", padx=(8, 2))
+        theme.tip(theme.btn(abar, "Ask AI to rank these", self._copy_fit_prompt, "ghost"),
+                  "Copies a ready-made prompt to your clipboard. Paste it into "
+                  "any AI chat (Claude, ChatGPT…).").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Paste AI ranking", self._paste_fit, "ghost"),
+                  "Paste the AI's reply here; its Fit grades land back on the "
+                  "right jobs.").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Export for AI", self._export_for_ai, "ghost"),
+                  "Save the inbox as a spreadsheet you can hand to any AI tool.").pack(side="left", padx=(8, 2))
+        theme.tip(theme.btn(abar, "Load AI results", self._import_scores, "ghost"),
+                  "Read AI scores back from a returned CSV/JSON file.").pack(side="left", padx=2)
+        # Friendly merge choices map to the import policy values.
+        merge_choices = [("Replace it", "overwrite"),
+                         ("Keep the old one", "keep_existing"),
+                         ("Only fill blanks", "add_only")]
+        disp_to_val = {d: v for d, v in merge_choices}
+        self._merge_policy = tk.StringVar(value="overwrite")   # value read by _import_scores
+        self._merge_display = tk.StringVar(value=merge_choices[0][0])
+        tk.Label(abar, text="if a job already has a Fit grade:", bg=theme.WINDOW,
+                 fg=theme.MUTED, font=theme.FONT_SM).pack(side="left", padx=(6, 2))
+        mcb = ttk.Combobox(abar, textvariable=self._merge_display, state="readonly",
+                           width=15, values=[d for d, _ in merge_choices])
+        mcb.bind("<<ComboboxSelected>>",
+                 lambda _e: self._merge_policy.set(disp_to_val[self._merge_display.get()]))
+        theme.tip(mcb, "When importing AI scores, what to do with jobs that "
+                       "already have a Fit grade.")
+        mcb.pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Undo AI ranking", self._undo_rerank, "ghost"),
+                  "Revert the last imported AI ranking.").pack(side="left", padx=2)
+        self._status = tk.Label(abar, text="", bg=theme.WINDOW, fg=theme.MUTED,
+                                font=theme.FONT_SM)
         self._status.pack(side="left", padx=10)
 
         self._fit_order: list[int] = []  # inbox ids in last fit-prompt order
@@ -876,10 +868,10 @@ class InboxTab(ttk.Frame):
         self._rows = {}
         for iid in self._tree.get_children():
             self._tree.delete(iid)
-        for r in rows:
+        for i, r in enumerate(rows):
             iid = str(r["id"])
             self._rows[iid] = r
-            self._tree.insert("", "end", iid=iid, values=(
+            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),), values=(
                 r["score"] if r["score"] >= 0 else "",
                 r["fit"] if r["fit"] >= 0 else "",
                 r["title"], r["company"],
@@ -1179,13 +1171,15 @@ class AddCompaniesDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("Add Companies")
         self.geometry("780x540")
+        self.configure(bg=theme.WINDOW)
         self.transient(parent)
         self.grab_set()
         self._entries = []
         self._build(default_industry)
 
     def _build(self, default_industry):
-        tk.Label(self, justify="left", wraplength=740, fg="#444",
+        tk.Label(self, justify="left", wraplength=740, fg=theme.INK,
+                 bg=theme.WINDOW,
                  text="Paste one career-page URL per line (or 'Name | URL'). "
                       "Greenhouse / Lever / Ashby / SmartRecruiters / Workday are "
                       "auto-detected; anything else is saved as a direct page.\n"
@@ -1195,21 +1189,19 @@ class AddCompaniesDialog(tk.Toplevel):
         self._box = tk.Text(self, height=7, wrap="none")
         self._box.pack(fill="x", padx=10)
 
-        row = tk.Frame(self)
+        row = tk.Frame(self, bg=theme.WINDOW)
         row.pack(fill="x", padx=10, pady=6)
-        tk.Label(row, text="Industry tag:").pack(side="left")
+        tk.Label(row, text="Industry tag:", bg=theme.WINDOW,
+                 fg=theme.INK).pack(side="left")
         self._industry = tk.StringVar(value=default_industry)
-        tk.Entry(row, textvariable=self._industry, width=22).pack(side="left", padx=6)
-        self._detect_btn = tk.Button(row, text="Detect", command=self._detect,
-                                     bg=MID, fg=WHITE, relief="flat", padx=10)
+        ttk.Entry(row, textvariable=self._industry, width=22).pack(side="left", padx=6)
+        self._detect_btn = theme.btn(row, "Detect", self._detect, "ghost")
         self._detect_btn.pack(side="left", padx=4)
-        self._val_btn = tk.Button(row, text="Validate", command=self._validate,
-                                  bg=MID, fg=WHITE, relief="flat", padx=10)
+        self._val_btn = theme.btn(row, "Validate", self._validate, "ghost")
         self._val_btn.pack(side="left", padx=4)
-        tk.Button(row, text="Add ▸ companies.json", command=self._add, bg=DARK,
-                  fg=WHITE, font=("Segoe UI", 9, "bold"), relief="flat",
-                  padx=10).pack(side="left", padx=4)
-        tk.Button(row, text="Close", command=self.destroy).pack(side="right")
+        theme.btn(row, "Add \N{BLACK RIGHT-POINTING SMALL TRIANGLE} companies.json",
+                  self._add, "accent").pack(side="left", padx=4)
+        theme.btn(row, "Close", self.destroy, "ghost").pack(side="right")
 
         tf = ttk.Frame(self)
         tf.pack(fill="both", expand=True, padx=10, pady=(2, 4))
@@ -1223,7 +1215,8 @@ class AddCompaniesDialog(tk.Toplevel):
         self._tree.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
 
-        self._status = tk.Label(self, text="", fg="#666", anchor="w")
+        self._status = tk.Label(self, text="", fg=theme.MUTED, bg=theme.WINDOW,
+                                anchor="w")
         self._status.pack(fill="x", padx=10, pady=(0, 8))
 
     def _detect(self):
@@ -1329,13 +1322,14 @@ class SearchTab(ttk.Frame):
         AddCompaniesDialog(self, default_industry=self._user_cfg.get("industry", ""))
 
     def _build(self):
-        hdr = tk.Frame(self, bg=DARK)
-        hdr.pack(fill="x")
-        tk.Label(hdr, text="Job Search", bg=DARK, fg=WHITE,
-                 font=("Segoe UI", 13, "bold"), padx=14, pady=10).pack(side="left")
-        tk.Button(hdr, text="+ Add Companies", bg=WHITE, fg=DARK,
-                  font=("Segoe UI", 9, "bold"), relief="flat", padx=10, pady=3,
-                  command=self._add_companies).pack(side="right", padx=10, pady=8)
+        hdr = theme.header_bar(self, "Job Search",
+                               "Search many job boards at once.")
+        theme.tip(theme.btn(hdr, "+ Add Companies", self._add_companies, "ghost"),
+                  "Paste a company's careers-page link so its jobs appear in "
+                  "future searches.").pack(side="right", padx=10, pady=8)
+        theme.tip_strip(
+            self, "Enter keywords and a location, then click Search. Every result "
+                  "is scored 0–100 for fit — Track the good ones, Dismiss the rest.")
 
         cfg = self._user_cfg
         ctrl = ttk.Frame(self, padding=8)
@@ -1347,9 +1341,7 @@ class SearchTab(ttk.Frame):
         ttk.Label(ctrl, text="Location").grid(row=0, column=2, sticky="w")
         self._loc = tk.StringVar(value=cfg.get("location") or DEFAULT_LOCATION)
         ttk.Entry(ctrl, textvariable=self._loc, width=18).grid(row=0, column=3, padx=6)
-        self._search_btn = tk.Button(ctrl, text="Search", bg=DARK, fg=WHITE,
-                                     font=("Segoe UI", 9, "bold"), relief="flat",
-                                     padx=14, pady=4, command=self._search)
+        self._search_btn = theme.btn(ctrl, "Search", self._search, "accent")
         self._search_btn.grid(row=0, column=4, padx=8)
         self._hide_tracked = tk.BooleanVar(value=True)
         ttk.Checkbutton(ctrl, text="Hide tracked / dismissed",
@@ -1360,7 +1352,8 @@ class SearchTab(ttk.Frame):
             value=str(cfg.get("salary_min") or ""))
         ttk.Entry(ctrl, textvariable=self._salary, width=10).grid(
             row=1, column=3, sticky="w", padx=6)
-        self._status = tk.Label(ctrl, text="", font=("Segoe UI", 9), fg="#666")
+        self._status = tk.Label(ctrl, text="", font=theme.FONT_SM,
+                                bg=theme.WINDOW, fg=theme.MUTED)
         self._status.grid(row=2, column=1, columnspan=4, sticky="w")
         ctrl.columnconfigure(1, weight=1)
 
@@ -1371,6 +1364,7 @@ class SearchTab(ttk.Frame):
         for col, label, width, anchor in self._COLS:
             self._tree.heading(col, text=label)
             self._tree.column(col, width=width, anchor=anchor, minwidth=45)
+        theme.zebra(self._tree)
         vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
         self._tree.pack(side="left", fill="both", expand=True)
@@ -1378,24 +1372,26 @@ class SearchTab(ttk.Frame):
         self._tree.bind("<Double-1>", lambda _e: self._open_url())
 
         # Why-this-score detail line
-        self._detail = tk.Label(self, text="", anchor="w", bg=BG, fg="#555",
-                                font=("Segoe UI", 9), padx=8)
+        self._detail = tk.Label(self, text="", anchor="w", bg=theme.SURFACE,
+                                fg=theme.MUTED, font=theme.FONT_SM, padx=8)
         self._detail.pack(fill="x", padx=6)
         self._tree.bind("<<TreeviewSelect>>", self._show_detail)
 
-        abar = tk.Frame(self, bg=BG, pady=6)
+        abar = tk.Frame(self, bg=theme.WINDOW, pady=6)
         abar.pack(fill="x", padx=6, side="bottom")
         # Keep references so the whole action bar can be disabled during a
         # search worker (GUI-8: re-entrancy guard, not just the Search button).
         self._action_btns = []
-        for text, cmd in [("Track ▸ Interested", self._track),
-                          ("Dismiss", self._dismiss), ("Open URL", self._open_url)]:
-            b = tk.Button(abar, text=text, bg=DARK, fg=WHITE, font=("Segoe UI", 9),
-                          relief="flat", padx=10, pady=3, command=cmd)
+        specs = [("Track \N{BLACK RIGHT-POINTING SMALL TRIANGLE} Interested",
+                  self._track, "accent"),
+                 ("Dismiss", self._dismiss, "ghost"),
+                 ("Open", self._open_url, "ghost")]
+        for text, cmd, kind in specs:
+            b = theme.btn(abar, text, cmd, kind)
             b.pack(side="left", padx=2)
             self._action_btns.append(b)
         tk.Label(abar, text="  Ctrl/Shift-click to select multiple",
-                 bg=BG, fg="#999", font=("Segoe UI", 8)).pack(side="left")
+                 bg=theme.WINDOW, fg=theme.FAINT, font=theme.FONT_SM).pack(side="left")
 
     def _set_busy(self, busy: bool):
         """Disable/enable the search + result controls for the worker's
@@ -1460,7 +1456,7 @@ class SearchTab(ttk.Frame):
         for row in self._tree.get_children():
             self._tree.delete(row)
         for i, j in enumerate(results):
-            self._tree.insert("", "end", iid=str(i), values=(
+            self._tree.insert("", "end", iid=str(i), tags=(theme.row_tag(i),), values=(
                 j.score if j.score >= 0 else "",
                 j.title, j.company, j.location, j.salary_display(), j.source_api))
         if not had_clients:
@@ -1554,14 +1550,15 @@ class ApplyQueueTab(ttk.Frame):
         self.refresh()
 
     def _build(self):
-        hdr = tk.Frame(self, bg=DARK)
-        hdr.pack(fill="x")
-        tk.Label(hdr, text="Apply Queue — interested jobs, best match first",
-                 bg=DARK, fg=WHITE, font=("Segoe UI", 13, "bold"),
-                 padx=14, pady=10).pack(side="left")
-        self._count_lbl = tk.Label(hdr, text="", bg=DARK, fg="#9999bb",
-                                   font=("Segoe UI", 9))
-        self._count_lbl.pack(side="left")
+        hdr = theme.header_bar(self, "Apply Queue",
+                               "Interested jobs, best match first.")
+        self._count_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                    fg=theme.MUTED, font=theme.FONT_SM)
+        self._count_lbl.pack(side="right", padx=14)
+        theme.tip_strip(
+            self, "Jobs you're interested in. Make a tailored resume, open the "
+                  "posting and submit, then “Mark Applied ▸ Next”. "
+                  "Keys: T applied · D dismiss · O open.")
 
         tf = ttk.Frame(self)
         tf.pack(fill="both", expand=True, padx=6, pady=2)
@@ -1570,6 +1567,7 @@ class ApplyQueueTab(ttk.Frame):
         for col, label, width, anchor in self._COLS:
             self._tree.heading(col, text=label)
             self._tree.column(col, width=width, anchor=anchor, minwidth=40)
+        theme.zebra(self._tree)
         vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
         self._tree.pack(side="left", fill="both", expand=True)
@@ -1583,45 +1581,34 @@ class ApplyQueueTab(ttk.Frame):
         self._tree.bind("o", lambda _e: self._open_url())
 
         self._detail = tk.Label(self, text="", anchor="w", justify="left",
-                                bg=BG, fg="#555", font=("Segoe UI", 9),
+                                bg=theme.SURFACE, fg=theme.MUTED, font=theme.FONT_SM,
                                 padx=8, wraplength=1100)
         self._detail.pack(fill="x", padx=6)
 
-        abar = tk.Frame(self, bg=BG, pady=6)
+        abar = tk.Frame(self, bg=theme.WINDOW, pady=6)
         abar.pack(fill="x", padx=6, side="bottom")
         self._abar = abar  # disabled wholesale during the API worker (GUI-8)
-        tk.Button(abar, text="Open Posting", bg=DARK, fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._open_url).pack(side="left", padx=2)
-        tk.Button(abar, text="Copy Resume Prompt", bg="#2d2d52", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._copy_resume_prompt).pack(side="left", padx=2)
-        tk.Button(abar, text="Paste Reply ▸ DOCX", bg="#2d2d52", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._paste_resume).pack(side="left", padx=2)
-        tk.Button(abar, text=f"Batch Prompt ({self._BATCH_LIMIT})",
-                  bg="#2d2d52", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._copy_batch_prompt).pack(side="left", padx=(10, 2))
-        tk.Button(abar, text="Paste Batch ▸ DOCX", bg="#2d2d52", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._paste_batch).pack(side="left", padx=2)
+        TRI = "\N{BLACK RIGHT-POINTING SMALL TRIANGLE}"
+        theme.btn(abar, "Open", self._open_url, "ghost").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Copy Resume Prompt", self._copy_resume_prompt, "ghost"),
+                  "Copy a tailoring prompt for the selected job; paste it into "
+                  "claude.ai.").pack(side="left", padx=2)
+        theme.btn(abar, f"Paste Reply {TRI} DOCX", self._paste_resume, "ghost").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, f"Batch Prompt ({self._BATCH_LIMIT})",
+                            self._copy_batch_prompt, "ghost"),
+                  f"Make one prompt for the next {self._BATCH_LIMIT} jobs at once.").pack(side="left", padx=(10, 2))
+        theme.btn(abar, f"Paste Batch {TRI} DOCX", self._paste_batch, "ghost").pack(side="left", padx=2)
         from resume.service import api_available
         if api_available():
-            tk.Button(abar, text="Generate via API", bg="#2d2d52", fg=WHITE,
-                      font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                      command=self._generate_api).pack(side="left", padx=2)
-        tk.Button(abar, text="Mark Applied ▸ Next", bg="#2e7d32", fg=WHITE,
-                  font=("Segoe UI", 9, "bold"), relief="flat", padx=12, pady=3,
-                  command=self._mark_applied).pack(side="left", padx=(16, 2))
-        tk.Button(abar, text="Copy Fit Prompt", bg="#555577", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._copy_fit_prompt).pack(side="left", padx=(16, 2))
-        tk.Button(abar, text="Paste Fit Results", bg="#555577", fg=WHITE,
-                  font=("Segoe UI", 9), relief="flat", padx=10, pady=3,
-                  command=self._paste_fit).pack(side="left", padx=2)
-        self._status = tk.Label(abar, text="", bg=BG, fg="#666",
-                                font=("Segoe UI", 9))
+            theme.btn(abar, "Generate via API", self._generate_api, "ghost").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, f"Mark Applied {TRI} Next", self._mark_applied, "success"),
+                  "Mark the selected job applied and jump to the next one.").pack(side="left", padx=(16, 2))
+        theme.tip(theme.btn(abar, "Ask AI to rank", self._copy_fit_prompt, "ghost"),
+                  "Copy a prompt asking an AI to grade these jobs' fit.").pack(side="left", padx=(16, 2))
+        theme.tip(theme.btn(abar, "Paste AI ranking", self._paste_fit, "ghost"),
+                  "Paste the AI's reply to apply its Fit grades.").pack(side="left", padx=2)
+        self._status = tk.Label(abar, text="", bg=theme.WINDOW, fg=theme.MUTED,
+                                font=theme.FONT_SM)
         self._status.pack(side="left", padx=10)
 
     def refresh(self, keep_selection=False):
@@ -1632,10 +1619,10 @@ class ApplyQueueTab(ttk.Frame):
         jobs = get_all("interested")
         jobs.sort(key=lambda j: (j.get("fit_score") or -1,
                                  j.get("score") or -1), reverse=True)
-        for j in jobs:
+        for i, j in enumerate(jobs):
             iid = str(j["id"])
             self._rows[iid] = j
-            self._tree.insert("", "end", iid=iid, values=(
+            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),), values=(
                 j["fit_score"] if (j.get("fit_score") or -1) >= 0 else "",
                 j["score"] if (j.get("score") or -1) >= 0 else "",
                 j["title"], j["company"], j.get("location", ""),
@@ -1677,7 +1664,7 @@ class ApplyQueueTab(ttk.Frame):
         so a second generate can't fire mid-flight (GUI-8)."""
         state = "disabled" if busy else "normal"
         for w in self._abar.winfo_children():
-            if isinstance(w, tk.Button):
+            if isinstance(w, (ttk.Button, tk.Button)):
                 w.config(state=state)
 
     # ── Resume docs (bridge) ──────────────────────────────────────────────────
@@ -1963,6 +1950,7 @@ class App(tk.Tk):
         super().__init__()
         import userdata
         userdata.bootstrap()  # first-run: seed the data folder + runtime dirs
+        theme.apply_theme(self)         # clean light/modern look, before any widgets
         self.geometry("1280x780")
         self.minsize(980, 620)
 
@@ -1970,6 +1958,8 @@ class App(tk.Tk):
         # error inside a button/after callback otherwise vanishes silently (dead
         # button, no feedback). Log the traceback and show the user something.
         self.report_callback_exception = self._on_tk_exception
+
+        self._build_menu()
 
         self._proj_var = None
         self._build_projectbar()       # shown only when projects exist
@@ -1986,22 +1976,66 @@ class App(tk.Tk):
         if inbox_count() == 0:
             self._nb.select(self._search)
 
+        # First launch (no .onboarded marker): walk the user through Setup.
+        self.after(120, lambda: setup_wizard.maybe_run(self, on_finish=self._after_setup))
+
+    # ── menu bar ────────────────────────────────────────────────────────────────
+    def _build_menu(self):
+        menubar = tk.Menu(self)
+
+        filem = tk.Menu(menubar, tearoff=0)
+        filem.add_command(label="New Project…", command=self._new_project)
+        filem.add_command(label="Open my data folder",
+                          command=uihelp.open_data_folder)
+        filem.add_separator()
+        filem.add_command(label="Exit", command=self.destroy)
+        menubar.add_cascade(label="File", menu=filem)
+
+        helpm = tk.Menu(menubar, tearoff=0)
+        helpm.add_command(label="Quick Start",
+                          command=lambda: uihelp.show_quick_start(self))
+        helpm.add_command(label="Open the Guide", command=self._open_guide)
+        helpm.add_command(label="What do the tabs do?",
+                          command=lambda: uihelp.show_tabs_help(self))
+        helpm.add_separator()
+        helpm.add_command(label="Run Setup Wizard…",
+                          command=lambda: setup_wizard.run(self, on_finish=self._after_setup))
+        helpm.add_command(label="Open my data folder",
+                          command=uihelp.open_data_folder)
+        helpm.add_separator()
+        helpm.add_command(label="About", command=lambda: uihelp.show_about(self))
+        menubar.add_cascade(label="Help", menu=helpm)
+
+        self.config(menu=menubar)
+
+    def _open_guide(self):
+        if getattr(self, "_guide", None) is not None:
+            self._nb.select(self._guide)
+
+    def _after_setup(self, applied: bool):
+        """Called when the Setup wizard closes. On apply, refresh tabs so the
+        seeded preferences/config show up. Either way land on the Guide so a
+        brand-new user (including one who skipped) has an obvious next step
+        instead of an empty Search tab."""
+        if applied:
+            self._rebuild_tabs()
+        self._open_guide()
+
     # ── project bar (switch campaigns without restarting) ──────────────────────
     def _build_projectbar(self):
         if not workspace.has_projects():
             return  # pre-migration: single root workspace, no switcher
-        bar = tk.Frame(self, bg=DARK)
+        bar = tk.Frame(self, bg=theme.SURFACE)
         bar.pack(fill="x", side="top")
-        tk.Label(bar, text="Project:", bg=DARK, fg=WHITE,
-                 font=("Segoe UI", 9, "bold"), padx=12, pady=6).pack(side="left")
+        tk.Label(bar, text="Project:", bg=theme.SURFACE, fg=theme.INK,
+                 font=theme.FONT_BOLD, padx=12, pady=7).pack(side="left")
         self._proj_var = tk.StringVar()
         self._proj_cb = ttk.Combobox(bar, textvariable=self._proj_var,
                                      state="readonly", width=34)
-        self._proj_cb.pack(side="left", padx=4, pady=6)
+        self._proj_cb.pack(side="left", padx=4, pady=7)
         self._proj_cb.bind("<<ComboboxSelected>>", self._on_project_change)
-        tk.Button(bar, text="+ New", bg=WHITE, fg=DARK, relief="flat",
-                  font=("Segoe UI", 9, "bold"), padx=10, pady=2,
-                  command=self._new_project).pack(side="left", padx=6)
+        theme.btn(bar, "+ New", self._new_project, "ghost").pack(side="left", padx=6)
+        tk.Frame(self, bg=theme.BORDER, height=1).pack(fill="x", side="top")
         self._refresh_projectbar()
 
     def _refresh_projectbar(self):
@@ -2058,15 +2092,18 @@ class App(tk.Tk):
         self._queue   = ApplyQueueTab(self._nb)
         self._tracker = TrackerTab(self._nb)
         self._resume  = ResumeTab(self._nb)
-        self._nb.add(self._inbox,   text="  Inbox  ")
-        self._nb.add(self._search,  text="  Search  ")
-        self._nb.add(self._queue,   text="  Apply Queue  ")
-        self._nb.add(self._tracker, text="  Job Tracker  ")
-        self._nb.add(self._resume,  text="  Resume Generator  ")
+        self._guide   = uihelp.GuideTab(self._nb, app=self)
+        self._nb.add(self._inbox,   text="Inbox")
+        self._nb.add(self._search,  text="Search")
+        self._nb.add(self._queue,   text="Apply Queue")
+        self._nb.add(self._tracker, text="Job Tracker")
+        self._nb.add(self._resume,  text="Resume Generator")
+        self._nb.add(self._guide,   text="\N{BLACK QUESTION MARK ORNAMENT} Guide")
         self._update_badges()
 
     def _rebuild_tabs(self):
-        for tab in (self._inbox, self._search, self._queue, self._tracker, self._resume):
+        for tab in (self._inbox, self._search, self._queue, self._tracker,
+                    self._resume, self._guide):
             tab.destroy()
         self._build_tabs()
         if inbox_count() == 0:
@@ -2082,7 +2119,7 @@ class App(tk.Tk):
         if not self._nb.tabs():
             return  # InboxTab refreshes during __init__, before tabs exist
         n = inbox_count()
-        self._nb.tab(0, text=f"  Inbox ({n})  " if n else "  Inbox  ")
+        self._nb.tab(0, text=f"Inbox ({n})" if n else "Inbox")
 
     def _on_tab_changed(self, _event=None):
         current = self._nb.nametowidget(self._nb.select())

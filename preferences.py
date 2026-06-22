@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import config
+import workspace
 
 # Permissive defaults: an empty/absent preferences.json must not silently hide
 # jobs. The wide net only narrows on constraints the user actually set.
@@ -25,11 +26,13 @@ _DEFAULT_HARD = {
 
 
 def load(prefs_md=None, prefs_json=None) -> dict:
-    """Load the preferences contract. prefs_md/prefs_json override the config
+    """Load the preferences contract. prefs_md/prefs_json override the resolved
     paths (for tests). Returns {"profile_md": str, "hard": dict}; absent or
-    malformed files fall back to defaults."""
-    md_path = Path(prefs_md or config.PREFERENCES_MD)
-    json_path = Path(prefs_json or config.PREFERENCES_JSON)
+    malformed files fall back to defaults. Paths are resolved per active project
+    (root pre-migration) so preferences live beside that project's config/resume."""
+    json_default, md_default = workspace.preferences_paths()
+    md_path = Path(prefs_md or md_default)
+    json_path = Path(prefs_json or json_default)
 
     try:
         profile_md = md_path.read_text(encoding="utf-8")

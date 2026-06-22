@@ -38,18 +38,19 @@ JobScout - a personal job search that ranks roles to YOUR preferences using your
 own Claude.
 
 QUICK START
-  1. Open  JobProgram\\data\\preferences.md  and describe the jobs you want, in
-     plain English. Edit  preferences.json  for hard filters (salary, location,
-     deal-breakers).
-  2. Open  JobProgram\\data\\experience.md  and paste your resume / experience.
-  3. Run   JobProgram\\JobProgram.exe.
-  4. Search, then click "Copy fit prompt", paste it into your own Claude
-     (claude.ai - any plan), and paste the reply back. The app ranks your inbox
-     to your preferences. (Optional: put an Anthropic API key in
-     JobProgram\\data\\secrets\\anthropic_key to rank automatically, no pasting.)
+  1. Run  JobProgram\\JobProgram.exe.
+  2. The first time, a short Setup wizard asks what jobs you want, where, your
+     salary, and your resume - no files to edit. (Changed your mind later? Run it
+     again from  Help -> Run Setup Wizard.)
+  3. Search, then click "Ask AI to rank these", paste the prompt into your own
+     Claude (claude.ai - any plan), and paste the reply back with "Paste AI
+     ranking". The app ranks your inbox to your preferences. (Optional: drop an
+     Anthropic API key in the secrets folder to rank automatically, no pasting.)
 
-Everything you edit lives in  JobProgram\\data\\  - that folder is yours. Nothing
-is sent anywhere except the prompts you choose to paste into your own Claude.
+Everything you enter stays on this computer. To find or back up your files, use
+Help -> Open my data folder (the app picks the right location automatically; on a
+protected install it lives under %LOCALAPPDATA%\\JobProgram). Nothing is sent
+anywhere except the prompts you choose to paste into your own Claude.
 """
 
 

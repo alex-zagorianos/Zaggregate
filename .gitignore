@@ -52,6 +52,8 @@ config_dad.json
 # User data scaffolded from data_templates/ (root only; keep the templates tracked)
 /preferences.md
 /preferences.json
+# First-run Setup wizard marker (per-user state, like tracker.db)
+/.onboarded
 
 # === PROJECT WORKSPACES (local: per-project config/resume/tracker.db/output) ===
 projects/

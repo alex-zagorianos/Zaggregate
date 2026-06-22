@@ -9,7 +9,7 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — distributable AI-native product + a measured, lift-gated coverage engine + AI re-rank round-trip. 490 tests pass; HEAD `228b013` — ✅ PUSHED to origin/master (repo confirmed private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
+> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + a crisp UI/UX & non-technical onboarding pass (Session 14). 510 tests pass. Last pushed HEAD `228b013`; the UI/UX commit is LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
 
 ---
 
@@ -18,7 +18,8 @@ status: active
 | Document                                                | Purpose                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                   |
-| [[handoff_20260622_session12]]                          | **Latest session** — hardened + rebuilt as a distributable AI-native product (exe + MCP).  |
+| [[handoff_20260622_session14]]                          | **Latest session** — UI/UX pass: clean light theme, Guide/Help, first-run Setup wizard.    |
+| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                       |
 | `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                  |
 | [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify. |
 | [[experience]]                                          | Career master file (resume/cover source).                                                  |
@@ -36,10 +37,11 @@ Wide-net search → preferences JSON hard-gate → local 0–100 match scoring (
 ## Open (next — Alex's machine/decision only)
 
 - [ ] **Live coverage baseline number** — the lift-gates prove improvement on fixtures; a real area measurement needs a live network run (free sources need no keys), best done interactively.
+- [ ] **Push Session 14** (UI/UX) to `origin/master` once Alex eyeballs the look — currently committed locally only.
 - [ ] **Build + test the exe:** `py build_package.py` → `dist/JobScout.zip`. GUI is windowed → needs a live launch (`py gui.py` also sanity-checks the merge). If the frozen exe hits an `ImportError`, add the module to `app.spec` `hiddenimports`.
 - [ ] **docx title-line decision** — kept relaunch bold-concat `Company — Title`; flip to allfixes ATS-split on request.
-- [ ] Optional: first-run setup wizard; WS-3 undo `batch_id` (vs second-precision ts grouping); per-project scheduler (Projects Phase 4); company remove/edit UI; delete root `tracker.db.bak`.
+- [ ] Optional: WS-3 undo `batch_id` (vs second-precision ts grouping); per-project scheduler (Projects Phase 4); company remove/edit UI; delete root `tracker.db.bak`.
 
 ---
 
-_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 13" + `HANDOFF.md`. Last updated 2026-06-22._
+_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 14" + latest handoff. Last updated 2026-06-22._

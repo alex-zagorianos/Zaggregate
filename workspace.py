@@ -111,6 +111,15 @@ def config_path(slug=None) -> Path:
     return (BASE_DIR / "user_config.json") if not has_projects() else project_dir(slug) / "config.json"
 
 
+def preferences_paths(slug=None) -> tuple[Path, Path]:
+    """The active (or named) project's preferences files as (json, md). Falls back
+    to the root pre-migration, so it coincides with config.PREFERENCES_* for the
+    common single-workspace case; once projects exist, each project gets its own
+    preferences so they never desync from its config.json/experience.md."""
+    base = project_dir(slug)
+    return base / "preferences.json", base / "preferences.md"
+
+
 def load_config(slug=None) -> dict:
     p = config_path(slug)
     if p.exists():
@@ -119,6 +128,15 @@ def load_config(slug=None) -> dict:
         except json.JSONDecodeError:
             pass
     return {}
+
+
+def save_config(cfg: dict, slug=None) -> Path:
+    """Write the active (or named) project's config.json (root user_config.json
+    pre-migration). Returns the path written."""
+    p = config_path(slug)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return p
 
 
 # ── mutations ─────────────────────────────────────────────────────────────────

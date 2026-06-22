@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 import preferences
+import workspace
 
 
 def _job(title="Engineer", location="", salary_min=None):
@@ -34,6 +35,20 @@ def test_load_tolerates_malformed_json(tmp_path):
     (tmp_path / "p.json").write_text("{ not valid json", encoding="utf-8")
     p = preferences.load(prefs_md=tmp_path / "none.md", prefs_json=tmp_path / "p.json")
     assert p["hard"] == preferences._DEFAULT_HARD
+
+
+def test_load_default_paths_follow_active_project(tmp_path, monkeypatch):
+    """With no override args, load() resolves preferences for the ACTIVE project,
+    so prefs live beside that project's config/resume (no cross-project bleed)."""
+    monkeypatch.setattr(workspace, "BASE_DIR", tmp_path)
+    slug = workspace.create_project("Controls", make_active=True)
+    pj, pm = workspace.preferences_paths()
+    pm.write_text("I want controls roles.", encoding="utf-8")
+    pj.write_text(json.dumps({"salary_min": 123000}), encoding="utf-8")
+    loaded = preferences.load()                      # no explicit paths
+    assert loaded["profile_md"] == "I want controls roles."
+    assert loaded["hard"]["salary_min"] == 123000
+    assert slug in str(pj)
 
 
 # ── hard_gate ─────────────────────────────────────────────────────────────────
