@@ -24,3 +24,10 @@ def test_user_data_dir_frozen_prefers_exe_data(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "_is_frozen", lambda: True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "JobProgram.exe"))
     assert config._get_user_data_dir() == tmp_path / "data"
+
+
+def test_workspace_roots_under_user_data_dir():
+    """workspace.BASE_DIR is the resolved user data folder, so projects/ and the
+    tracker.db never land in the read-only _MEIPASS bundle when frozen."""
+    import workspace
+    assert workspace.BASE_DIR == config.USER_DATA_DIR

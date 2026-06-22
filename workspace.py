@@ -14,7 +14,12 @@ import re
 from datetime import date
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+import config
+
+# The user data folder (external + writable) is the project root. config resolves
+# it: the repo root in dev, <exe>/data when frozen — so projects/ and tracker.db
+# never land in the read-only _MEIPASS bundle. Tests monkeypatch BASE_DIR.
+BASE_DIR = config.USER_DATA_DIR
 
 _EXPERIENCE_STUB = """# Experience
 
