@@ -49,6 +49,9 @@ tracker.db
 # === PERSONAL CONFIG (sanitized template lives in config.example.json) ===
 config_dad.json
 /user_config.json
+# User data scaffolded from data_templates/ (root only; keep the templates tracked)
+/preferences.md
+/preferences.json
 
 # === PROJECT WORKSPACES (local: per-project config/resume/tracker.db/output) ===
 projects/

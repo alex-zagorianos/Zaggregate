@@ -64,3 +64,24 @@ def test_scaffold_does_not_overwrite_existing(tmp_path, monkeypatch):
     (data / "preferences.md").write_text("MY EDITS", encoding="utf-8")
     userdata.scaffold(data)
     assert (data / "preferences.md").read_text(encoding="utf-8") == "MY EDITS"
+
+
+def test_bootstrap_seeds_and_makes_runtime_dirs(tmp_path, monkeypatch):
+    import userdata
+    tdir = tmp_path / "bundle" / "data_templates"
+    tdir.mkdir(parents=True)
+    (tdir / "experience.template.md").write_text("# Experience\n", encoding="utf-8")
+    (tdir / "preferences.template.md").write_text("# Prefs\n", encoding="utf-8")
+    (tdir / "preferences.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(userdata, "templates_dir", lambda: tdir)
+
+    data = tmp_path / "data"
+    monkeypatch.setattr(config, "USER_DATA_DIR", data)
+    monkeypatch.setattr(config, "CACHE_DIR", data / "cache")
+    monkeypatch.setattr(config, "OUTPUT_DIR", data / "output")
+
+    created = userdata.bootstrap()
+    assert "preferences.md" in created
+    assert (data / "preferences.md").exists()
+    assert (data / "cache").is_dir()
+    assert (data / "output").is_dir()

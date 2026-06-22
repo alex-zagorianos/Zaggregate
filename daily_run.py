@@ -53,6 +53,9 @@ def main():
     from tracker.db import (init_db, inbox_add_many, inbox_count,
                             record_run_start, record_run_finish)
 
+    import userdata
+    userdata.bootstrap()  # first-run: seed the data folder + runtime dirs
+
     # Open the health-beacon row before any work so a crash anywhere below is
     # attributable. init_db first so the runs table exists. run_main()'s
     # top-level except closes it 'failed'; the success path closes it 'ok'/'zero'.

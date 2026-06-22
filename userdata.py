@@ -38,3 +38,13 @@ def scaffold(data_dir) -> list[str]:
             shutil.copyfile(src, dst)
             created.append(target_name)
     return created
+
+
+def bootstrap() -> list[str]:
+    """First-run setup, safe to call on every launch: ensure the data folder
+    exists, is seeded from templates, and has its cache/output dirs. Returns the
+    names of any files created (empty after the first run). Wire this into each
+    entry point (GUI, daily_run, CLI) so a fresh/unzipped copy just works."""
+    created = scaffold(config.USER_DATA_DIR)
+    config.ensure_writable_dirs()
+    return created

@@ -1890,6 +1890,8 @@ class ApplyQueueTab(ttk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        import userdata
+        userdata.bootstrap()  # first-run: seed the data folder + runtime dirs
         self.geometry("1280x780")
         self.minsize(980, 620)
 
