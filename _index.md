@@ -9,7 +9,7 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + a crisp UI/UX pass with onboarding wizard, light/dark mode, and an in-depth "use it with AI" guide (Session 14). 522 tests pass. Last pushed HEAD `228b013`; two UI commits are LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
+> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + UI/UX pass (wizard, light/dark, AI guide) + a new **Top Picks** feature: full-inbox AI snapshot → ranked top-X shortlist in its own GUI tab, no DB migration (Session 15). 553 tests (552 pass, 1 display-skip). Last pushed HEAD `228b013`; 5 commits are LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
 
 ---
 
@@ -18,7 +18,8 @@ status: active
 | Document                                                | Purpose                                                                                    |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                   |
-| [[handoff_20260622_session14]]                          | **Latest session** — UI/UX pass: clean light theme, Guide/Help, first-run Setup wizard.    |
+| [[handoff_20260622_session15]]                          | **Latest session** — Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab. |
+| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.              |
 | [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                       |
 | `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                  |
 | [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify. |
@@ -37,11 +38,11 @@ Wide-net search → preferences JSON hard-gate → local 0–100 match scoring (
 ## Open (next — Alex's machine/decision only)
 
 - [ ] **Live coverage baseline number** — the lift-gates prove improvement on fixtures; a real area measurement needs a live network run (free sources need no keys), best done interactively.
-- [ ] **Push Session 14** (UI/UX + dark mode + AI guide, two local commits) to `origin/master` once Alex eyeballs the look — committed locally only. Check both light & dark.
+- [ ] **Push the 5 local commits** (Session 14 UI/UX + dark mode + AI guide; Session 15 location filter + Top Picks) to `origin/master` once Alex eyeballs `py gui.py` — committed locally only. Check both light & dark, and the new **Top Picks** tab.
 - [ ] **Build + test the exe:** `py build_package.py` → `dist/JobScout.zip`. GUI is windowed → needs a live launch (`py gui.py` also sanity-checks the merge). If the frozen exe hits an `ImportError`, add the module to `app.spec` `hiddenimports`.
 - [ ] **docx title-line decision** — kept relaunch bold-concat `Company — Title`; flip to allfixes ATS-split on request.
 - [ ] Optional: WS-3 undo `batch_id` (vs second-precision ts grouping); per-project scheduler (Projects Phase 4); company remove/edit UI; delete root `tracker.db.bak`.
 
 ---
 
-_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 14" + latest handoff. Last updated 2026-06-22._
+_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 15" + latest handoff. Last updated 2026-06-22._

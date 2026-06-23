@@ -302,9 +302,22 @@ Two follow-on asks, same inline approach + an adversarial review pass. **Local c
 - **Adversarial review (Workflow) — partial (hit the z.ai/Anthropic session cap mid-run) but returned 4 verified findings, all fixed**, then I finished the sweep by hand: themed every un-themed `tk.Text` (PasteDialog/ResumeTab/JobDialog-notes/AddCompanies) with `bg=SURFACE/fg=INK/insertbackground=INK`; added `fg`+`selectcolor`/active colors to the InboxTab filter Source/Size/Find labels + "Unscored only" checkbutton (were black-on-dark); repointed transient status-label hex (`#e65100`/`#2e7d32`/`#666`/`#888`) to `theme.WARN/SUCCESS/MUTED`. **Accuracy fix:** the AI help had claimed an API key "ranks the inbox automatically, including the daily update" — but `rank_via_api` is only reached via `ranker.rank()`, which neither the GUI nor `daily_run` calls (daily_run only `ranker.gate`s; the GUI uses the clipboard/file bridge). Reworded so the key is correctly tied to AI **resume/cover generation**, and ranking is described as free/no-key.
 - **Tests:** +13 (`test_settings.py` ×5, theme modes/badges ×6, help AI-content/accuracy ×2) → **522** (`py -m pytest -q`; 1 display-skip headless). Live dark-switch smoke: root + rebuilt tk widgets recolor, aliases re-sync, selected tab preserved, choice persists; resume/paste boxes go dark, filter labels readable, badges brightened.
 
+## Session 15 — 2026-06-22 (Opus 4.8) — Top Picks: full-inbox AI snapshot → ranked top-X
+
+Make the **whole relevant set trivially consumable by an AI**, let the AI judge relevance itself, and write back a **ranked top-X shortlist** that surfaces in a new GUI **Top Picks** tab. Built **inline**, TDD (brainstorm→spec→plan→approve). **Committed local, push HELD.** Handoff [[handoff_20260622_session15]]; spec `brain/spec-2026-06-22-top-picks-recommendation-design.md`; plan `brain/plan-2026-06-22-top-picks-recommendation.md`.
+
+**Locked decisions (AskUserQuestion):** both channels (AI-consumable set **and** GUI Top Picks view) · relevant set = the **full inbox, AI judges relevance itself** · one full snapshot then rank. **Approach A** (reuse `extras` JSON + the rerank `new_rank` column) over B — top-X with **zero new DB surface**.
+
+- **No DB migration.** Rank rides in each inbox row's existing **`extras` JSON** (`rank` + `rec_batch`); `SCHEMA_VERSION` unchanged. **Latest `rec_batch` wins** so a fresh AI run supersedes the prior shortlist. One place owns the shape: `service.rank_patch(rank, batch, tags=None)`.
+- **`tracker/db.py`** `inbox_merge_extras` (key-preserving merge, tolerant of missing/non-dict blob). **`tracker/service.py`** `new_rec_batch`/`rank_patch`/`read_rank`/`top_picks(limit=10)` (latest-batch, `rank>=1`, best-first, cap). `apply_rerank_scores` untouched.
+- **`rerank/`** import maps CSV `new_rank`→`extras` rank + a per-call `rec_batch`; `build_prompt` explains `new_rank` as the Top Picks signal (`RERANK_CSV_COLUMNS` frozen).
+- **`mcp_server.py`** `list_inbox(limit=0)` returns the WHOLE inbox + `rank` + `job_key`; `set_fit_scores` accepts an optional `rank` (→ `inbox_merge_extras`). **`find-jobs` skill** rewritten to one-snapshot→rank.
+- **`gui.py`** new **`TopPicksTab`** (rank/fit/title/company/location/why/score/source; Show-top-N 10..50/All; empty-state; Track/Dismiss/Open; themed) wired between Inbox and Search across `_build_tabs`/`_rebuild_tabs`/`_on_tab_changed`. InboxTab Export-for-AI scope toggle (default **Entire inbox**).
+- **Tests:** +16 (`tests/test_top_picks.py`, `tests/ui/test_export_scope.py`, `tests/ui/test_top_picks_tab.py`, + rerank/mcp/schema extensions). Back-compat (list_inbox defaults, apply_rerank, export, existing mcp/schema) all green.
+
 ## Git
 
-- Session 14 (UI/UX + dark mode + AI guide) = **two local commits on `master`, NOT pushed** — awaiting Alex's go. Last pushed HEAD = **`228b013`**; the UI/UX commit (`a716f3f`) + the dark-mode/AI-help commit sit on top. Repo confirmed private.
+- Session 15 (Top Picks) + Session 14 (UI/UX + dark mode + AI guide) = **5 local commits on `master`, NOT pushed** — awaiting Alex's `py gui.py` eyeball (light + dark + the Top Picks tab). Last pushed HEAD = **`228b013`**; on top sit `a716f3f` → `532811a` → `36b223e` → `806bda3` → `afa088f`. Repo confirmed private.
 - Remote: `git@github.com:alex-zagorianos/Job-Program.git`
-- Full suite: **522 passing** (`py -m pytest -q`, ~13s; 1 display-guarded skip when headless). Python command: `py`.
-- Active project workspace: `projects/controls-cincinnati/` (1098-row inbox). Switch via GUI header or `--project`. In dev, the data folder = repo root (unchanged); frozen exe uses external `./data`.
+- Full suite: **553 total — 552 passed, 1 display-guarded skip** (`py -m pytest -q`, ~8s; the skip is the transient multi-Tk one when headless). Python command: `py`.
+- Active project workspace: `projects/controls-cincinnati/` (1098-row inbox). Switch via GUI header or `--project`. In dev, the data folder = repo root (unchanged); frozen exe uses external `./data`. DB schema untouched by S15 — Top Picks is additive over `extras`.
