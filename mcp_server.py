@@ -77,10 +77,14 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
 
 @mcp.tool()
 def list_inbox(limit: int = 20, unscored_only: bool = True) -> list[dict]:
-    """List inbox postings for YOU to rank against the preferences. Each row has
-    id, title, company, location, salary, local `score`, current `fit` (-1 =
-    not yet ranked by you), url, and a description snippet. Rank the unscored ones
-    by how well they fit the user's preferences, then call set_fit_scores."""
+    """List inbox postings for YOU to rank. limit=0 returns the ENTIRE inbox in
+    one snapshot — use it to see ALL relevant jobs before picking a top-X. Each
+    row has id, title, company, location, salary, local `score`, current `fit`
+    (-1 = unranked by you), your shortlist `rank` (-1 if not on it), the stable
+    `job_key`, url, and a description snippet. Rank against preferences, then
+    call set_fit_scores."""
+    from tracker import service
+    from rerank.schema import _job_key_for_row
     rows = db.inbox_all()
     out = []
     for r in rows:
@@ -90,10 +94,11 @@ def list_inbox(limit: int = 20, unscored_only: bool = True) -> list[dict]:
             "id": r["id"], "title": r["title"], "company": r["company"],
             "location": r.get("location", ""), "salary": r.get("salary_text", ""),
             "score": r.get("score", -1), "fit": r.get("fit", -1),
+            "rank": service.read_rank(r), "job_key": _job_key_for_row(r),
             "url": r.get("url", ""),
             "description": (r.get("description", "") or "")[:800],
         })
-        if len(out) >= limit:
+        if limit and len(out) >= limit:   # limit=0 -> no cap (full snapshot)
             break
     return out
 
@@ -101,16 +106,26 @@ def list_inbox(limit: int = 20, unscored_only: bool = True) -> list[dict]:
 @mcp.tool()
 def set_fit_scores(scores: list[dict]) -> dict:
     """Persist YOUR preference-ranking back to the inbox. `scores` is a list of
-    {"id": <inbox id>, "fit": <0-100>, "rationale": "<2-line why / red flags>"}.
-    Returns how many were applied (malformed entries are skipped)."""
+    {"id", "fit": 0-100, "rationale": "<2-line why>", "rank"?: 1=best}. An
+    optional `rank` marks the row as part of your recommended shortlist; ranked
+    rows surface in the app's Top Picks tab. Returns how many were applied."""
+    from tracker import service
+    batch = service.new_rec_batch()
     applied = 0
     for s in scores:
         try:
-            db.inbox_set_fit(int(s["id"]), max(0, min(100, int(s["fit"]))),
+            iid = int(s["id"])
+            db.inbox_set_fit(iid, max(0, min(100, int(s["fit"]))),
                              str(s.get("rationale", "")))
-            applied += 1
         except (KeyError, TypeError, ValueError):
             continue
+        applied += 1
+        rank = s.get("rank")
+        if rank is not None and str(rank).strip() != "":
+            try:
+                db.inbox_merge_extras(iid, service.rank_patch(int(rank), batch))
+            except (TypeError, ValueError):
+                pass
     return {"applied": applied}
 
 

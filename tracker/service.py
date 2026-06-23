@@ -8,6 +8,7 @@ db calls; read/transform helpers (dedup_new_jobs, fit_prompt_for_rows,
 apply_fit_scores) keep the dedup and Claude-bridge plumbing out of gui.py.
 """
 import sys
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -307,3 +308,60 @@ def undo_last_rerank(scope: str = "file_import") -> int:
     """Revert the most recent re-rank batch (by source scope). Returns rows
     restored. scope='any' ignores the source tag."""
     return db.inbox_undo_last_rerank(scope)
+
+
+# ── Top Picks (AI shortlist over the whole inbox) ─────────────────────────────
+
+def new_rec_batch() -> str:
+    """A fresh recommendation-batch stamp (UTC ISO, second precision). One per
+    set_fit_scores / import call, so a newer AI run's picks supersede the old."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def rank_patch(rank: int, batch: str, tags: str | None = None) -> dict:
+    """The extras keys a shortlist write stamps onto an inbox row. ONE place
+    defines the shape so the MCP and file-import paths agree."""
+    patch = {"rank": int(rank), "rec_batch": batch}
+    if tags is not None and str(tags).strip():
+        patch["tags"] = str(tags)
+    return patch
+
+
+def _parse_extras(raw) -> dict:
+    if not raw:
+        return {}
+    try:
+        d = json.loads(raw)
+        return d if isinstance(d, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def read_rank(row: dict) -> int:
+    """The AI shortlist rank on an inbox row (1=best), or -1 if unranked/bad."""
+    try:
+        return int(_parse_extras(row.get("extras")).get("rank"))
+    except (TypeError, ValueError):
+        return -1
+
+
+def _rec_batch_of(row: dict) -> str:
+    return str(_parse_extras(row.get("extras")).get("rec_batch", "") or "")
+
+
+def top_picks(limit: int = 10) -> list[dict]:
+    """The current AI recommendation: inbox rows in the latest rec_batch,
+    ordered by rank ascending, capped at `limit` (0 = every ranked row). Each
+    returned dict is an inbox row augmented with an int 'rank' key for display.
+    Returns [] when nothing has been ranked yet."""
+    ranked = [(read_rank(r), r) for r in db.inbox_all()]
+    ranked = [(rk, r) for rk, r in ranked if rk >= 1]
+    if not ranked:
+        return []
+    latest = max(_rec_batch_of(r) for _, r in ranked)
+    picks = [dict(r, rank=rk) for rk, r in ranked if _rec_batch_of(r) == latest]
+    picks.sort(key=lambda r: r["rank"])
+    if limit and limit > 0:
+        picks = picks[:limit]
+    return picks

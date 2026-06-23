@@ -55,3 +55,19 @@ def test_undo_last_rerank_reverts(tmp_db):
     service.apply_rerank_scores([{"id": iid, "new_fit": 91, "fit_rationale": "x"}])
     assert service.undo_last_rerank("file_import") == 1
     assert db.inbox_all()[0]["fit"] == -1
+
+
+def test_import_to_top_picks_end_to_end(tmp_db, tmp_path):
+    from rerank.import_ import import_scores
+    db.inbox_add_many([_job("https://x.co/1", title="A"),
+                       _job("https://x.co/2", title="B")])
+    m = service.inbox_rows_by_key()
+    keys = list(m.keys())
+    p = tmp_path / "ret.csv"
+    p.write_text("job_key,new_fit,new_rank\n"
+                 f"{keys[0]},90,2\n{keys[1]},95,1\n", encoding="utf-8")
+    res = import_scores(p, m)
+    assert res.updated == 2
+    picks = service.top_picks(0)
+    assert [pp["rank"] for pp in picks] == [1, 2]
+    assert picks[0]["fit"] == 95

@@ -495,6 +495,28 @@ def inbox_set_extras(inbox_id: int, extras: str):
         conn.commit()
 
 
+def inbox_merge_extras(inbox_id: int, patch: dict):
+    """Merge keys into an inbox row's extras JSON, preserving keys not in
+    `patch` (so a rank-only write keeps an existing `tags`). Tolerant of a
+    missing or non-dict current blob (treated as {})."""
+    import json
+    with get_conn() as conn:
+        row = conn.execute("SELECT extras FROM inbox WHERE id=?",
+                           (inbox_id,)).fetchone()
+        current = {}
+        if row and row["extras"]:
+            try:
+                loaded = json.loads(row["extras"])
+                if isinstance(loaded, dict):
+                    current = loaded
+            except (ValueError, TypeError):
+                current = {}
+        current.update(patch)
+        conn.execute("UPDATE inbox SET extras=? WHERE id=?",
+                     (json.dumps(current), inbox_id))
+        conn.commit()
+
+
 def inbox_undo_last_rerank(scope: str) -> int:
     """Revert the most recent re-rank batch: restore each inbox row's fit to the
     old_fit recorded in the newest score_history timestamp group for `scope`

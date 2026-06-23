@@ -50,3 +50,8 @@ def test_build_prompt_anchors_to_preferences_and_fit_instructions(monkeypatch):
     assert "Scoring guide" in p          # reused from claude_bridge._FIT_INSTRUCTIONS
     assert "new_fit" in p and "job_key" in p
     assert "version 1" in p.lower()
+
+
+def test_prompt_explains_shortlist_rank():
+    p = schema.build_prompt("x")
+    assert "Top Picks" in p and "shortlist" in p.lower()

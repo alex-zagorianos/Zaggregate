@@ -76,11 +76,31 @@ def _parse_records(text: str) -> tuple[list[dict], list[str]]:
     return records, errors
 
 
+def _extras_for(rec, batch, service) -> str | None:
+    """The extras JSON for one imported row: rank (mapped from new_rank) +
+    rec_batch via service.rank_patch, plus tags. Tolerant of a bad rank cell —
+    falls back to tags-only, then None."""
+    rank_raw = rec.get("new_rank")
+    tags = rec.get("tags")
+    has_tags = bool(str(tags or "").strip())
+    if str(rank_raw or "").strip():
+        try:
+            return json.dumps(service.rank_patch(
+                _coerce_int(rank_raw), batch, tags if has_tags else None))
+        except (ValueError, TypeError):
+            pass
+    if has_tags:
+        return json.dumps({"tags": str(tags)})
+    return None
+
+
 def import_scores(path, rows_by_key: dict, *, policy: str = "overwrite",
                   _apply=None) -> ImportResult:
     if policy not in _POLICIES:
         raise ValueError(f"policy must be one of {_POLICIES}, got {policy!r}")
+    from tracker import service
     apply = _apply or _default_apply
+    batch = service.new_rec_batch()
     res = ImportResult()
     records, parse_errors = _parse_records(_read_text(path))
     res.errors.extend(parse_errors)
@@ -109,10 +129,9 @@ def import_scores(path, rows_by_key: dict, *, policy: str = "overwrite",
             continue
         update = {"id": row["id"], "new_fit": new_fit,
                   "fit_rationale": str(rec.get("fit_rationale", "") or "").strip()}
-        extras = {k: rec.get(k) for k in ("new_rank", "tags")
-                  if str(rec.get(k, "") or "").strip()}
+        extras = _extras_for(rec, batch, service)
         if extras:
-            update["extras"] = json.dumps(extras)
+            update["extras"] = extras
         updates.append(update)
 
     res.updated = apply(updates, source="file_import") if updates else 0

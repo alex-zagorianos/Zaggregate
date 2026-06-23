@@ -819,6 +819,13 @@ class InboxTab(ttk.Frame):
         theme.tip(theme.btn(abar, "Paste AI ranking", self._paste_fit, "ghost"),
                   "Paste the AI's reply here; its Fit grades land back on the "
                   "right jobs.").pack(side="left", padx=2)
+        self._export_scope = tk.StringVar(value="Entire inbox")
+        esc = ttk.Combobox(abar, textvariable=self._export_scope, state="readonly",
+                           width=13, values=["Entire inbox", "Current view"])
+        theme.tip(esc, "What to hand the AI: the whole inbox (so it can judge "
+                       "relevance and pick your top matches), or just the rows "
+                       "currently shown by your filters.")
+        esc.pack(side="left", padx=(8, 0))
         theme.tip(theme.btn(abar, "Export for AI", self._export_for_ai, "ghost"),
                   "Save the inbox as a spreadsheet you can hand to any AI tool.").pack(side="left", padx=(8, 2))
         theme.tip(theme.btn(abar, "Load AI results", self._import_scores, "ghost"),
@@ -1160,15 +1167,26 @@ class InboxTab(ttk.Frame):
         set_status(self._status, f"Applied {applied} fit score(s).", "ok")
         self.refresh()
 
+    def _export_rows(self) -> list[dict]:
+        """Rows to hand the AI: the entire inbox by default (so it can judge
+        relevance over everything and pick a top-X), or just the current
+        filtered view when chosen."""
+        if self._export_scope.get() == "Current view":
+            return self._filtered()
+        return list(self._all)
+
     def _export_for_ai(self):
-        """Write the round-trip trio (csv+md+prompt) for the current inbox to a
-        timestamped folder under OUTPUT_DIR/rerank, then open the folder."""
+        """Write the round-trip trio (csv+md+prompt) for the chosen inbox scope
+        to a timestamped folder under OUTPUT_DIR/rerank, then open the folder."""
         from datetime import datetime
         from rerank.export import export_inbox
-        rows = self._filtered()   # export what's shown (honors Location + filters)
+        rows = self._export_rows()
         if not rows:
-            messagebox.showinfo("Nothing to export",
-                                "No jobs match the current filters.")
+            messagebox.showinfo(
+                "Nothing to export",
+                "The inbox is empty — run a search first."
+                if self._export_scope.get() == "Entire inbox"
+                else "No jobs match the current filters.")
             return
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         out_dir = Path(OUTPUT_DIR) / "rerank" / stamp
@@ -1218,6 +1236,141 @@ class InboxTab(ttk.Frame):
                    f"Undid last re-rank: restored {n} row(s)." if n else
                    "No re-rank to undo.", "muted" if n else "info")
         self.refresh()
+
+
+# ── Top Picks tab ─────────────────────────────────────────────────────────────
+class TopPicksTab(ttk.Frame):
+    """The AI's current shortlist over the whole inbox, best-first. Reads
+    tracker_service.top_picks (rows carrying an int `rank`); this tab never runs
+    AI itself — it shows whatever the round-trip / API / MCP path ranked."""
+
+    _COLS = [
+        ("rank",     "#",         40, "center"),
+        ("fit",      "Fit",       45, "center"),
+        ("title",    "Title",    300, "w"),
+        ("company",  "Company",  150, "w"),
+        ("location", "Location", 140, "w"),
+        ("why",      "Why",      340, "w"),
+        ("score",    "Score",     55, "center"),
+        ("source",   "Source",    80, "w"),
+    ]
+
+    def __init__(self, parent, on_change=None):
+        super().__init__(parent)
+        self._rows: dict[str, dict] = {}
+        self._on_change = on_change
+        self._showing_empty = False
+        self._build()
+        self.refresh()
+
+    def _n(self) -> int:
+        v = self._topn.get()
+        return 0 if v == "All" else int(v)
+
+    def _build(self):
+        theme.header_bar(self, "Top Picks",
+                         "The AI's shortlist over your whole inbox, best-first.")
+        theme.tip_strip(
+            self, "Ask an AI to rank your inbox (Inbox ▸ Export for AI, or the "
+                  "find-jobs skill). The ones it recommends land here, ordered "
+                  "best-first. Track the ones you like.")
+
+        bar = tk.Frame(self, bg=theme.WINDOW)
+        bar.pack(fill="x", padx=6, pady=(6, 0))
+        tk.Label(bar, text="Show top:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM).pack(side="left")
+        self._topn = tk.StringVar(value="10")
+        ncb = ttk.Combobox(bar, textvariable=self._topn, state="readonly",
+                           width=5, values=["10", "15", "20", "25", "50", "All"])
+        ncb.pack(side="left", padx=(2, 10))
+        ncb.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+        theme.btn(bar, "Refresh", self.refresh, "ghost").pack(side="left")
+
+        tf = ttk.Frame(self)
+        tf.pack(fill="both", expand=True, padx=6, pady=2)
+        self._tree = ttk.Treeview(tf, columns=[c[0] for c in self._COLS],
+                                  show="headings", selectmode="extended")
+        for col, label, width, anchor in self._COLS:
+            self._tree.heading(col, text=label)
+            self._tree.column(col, width=width, anchor=anchor, minwidth=40)
+        theme.zebra(self._tree)
+        vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=vsb.set)
+        self._tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+        self._tree.bind("<Double-1>", lambda _e: self._open_url())
+        self._tree.bind("t", lambda _e: self._track())
+        self._tree.bind("d", lambda _e: self._dismiss())
+        self._tree.bind("o", lambda _e: self._open_url())
+
+        # Empty-state hint, packed only when there are no picks.
+        self._empty = tk.Label(
+            self, bg=theme.WINDOW, fg=theme.MUTED, font=theme.FONT_SM, justify="left",
+            text="No AI picks yet — go to Inbox ▸ Export for AI (or run a "
+                 "re-rank), then come back.")
+
+        abar = tk.Frame(self, bg=theme.WINDOW, pady=6)
+        abar.pack(fill="x", padx=6, side="bottom")
+        theme.tip(theme.btn(abar, "Track \N{BLACK RIGHT-POINTING SMALL TRIANGLE} Interested",
+                            self._track, "accent"),
+                  "Move the selected job(s) to your Apply Queue.").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Dismiss", self._dismiss, "ghost"),
+                  "Hide the selected job(s) from all future searches.").pack(side="left", padx=2)
+        theme.btn(abar, "Open", self._open_url, "ghost").pack(side="left", padx=2)
+        self._status = tk.Label(abar, text="", bg=theme.WINDOW, fg=theme.MUTED,
+                                font=theme.FONT_SM)
+        self._status.pack(side="left", padx=10)
+
+    def refresh(self):
+        picks = tracker_service.top_picks(self._n())
+        self._rows = {}
+        for iid in self._tree.get_children():
+            self._tree.delete(iid)
+        for i, r in enumerate(picks):
+            iid = str(r["id"])
+            self._rows[iid] = r
+            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),), values=(
+                r["rank"],
+                r["fit"] if r.get("fit", -1) >= 0 else "",
+                r["title"], r["company"], r.get("location", ""),
+                (r.get("fit_why") or "")[:200],
+                r["score"] if r.get("score", -1) >= 0 else "",
+                r.get("source", "")))
+        self._showing_empty = not picks
+        if self._showing_empty:
+            self._empty.pack(fill="x", padx=14, pady=8)
+        else:
+            self._empty.pack_forget()
+        if self._on_change:
+            self._on_change()
+
+    def _selected(self) -> list[dict]:
+        return [self._rows[iid] for iid in self._tree.selection()
+                if iid in self._rows]
+
+    def _track(self):
+        sel = self._selected()
+        if not sel:
+            messagebox.showinfo("No selection", "Select a row first.")
+            return
+        n = sum(1 for r in sel if tracker_service.track_job(r["id"]) is not None)
+        set_status(self._status, f"Tracked {n} job(s).", "ok")
+        self.refresh()
+
+    def _dismiss(self):
+        sel = self._selected()
+        if not sel:
+            messagebox.showinfo("No selection", "Select a row first.")
+            return
+        for r in sel:
+            tracker_service.dismiss_job(r["id"])
+        set_status(self._status, f"Dismissed {len(sel)} job(s).", "muted")
+        self.refresh()
+
+    def _open_url(self):
+        for r in self._selected()[:5]:
+            if r.get("url"):
+                webbrowser.open(r["url"])
 
 
 # ── Search tab ────────────────────────────────────────────────────────────────
@@ -2194,14 +2347,16 @@ class App(tk.Tk):
     # ── tabs ───────────────────────────────────────────────────────────────────
     def _build_tabs(self):
         init_db()  # ensure the active project's tracker.db exists/upgraded
-        self._inbox   = InboxTab(self._nb, on_change=self._update_badges)
-        self._search  = SearchTab(self._nb)
-        self._queue   = ApplyQueueTab(self._nb)
-        self._tracker = TrackerTab(self._nb)
-        self._resume  = ResumeTab(self._nb)
-        self._guide   = uihelp.GuideTab(self._nb, app=self)
-        self._nb.add(self._inbox,   text="Inbox")
-        self._nb.add(self._search,  text="Search")
+        self._inbox    = InboxTab(self._nb, on_change=self._update_badges)
+        self._toppicks = TopPicksTab(self._nb, on_change=self._update_badges)
+        self._search   = SearchTab(self._nb)
+        self._queue    = ApplyQueueTab(self._nb)
+        self._tracker  = TrackerTab(self._nb)
+        self._resume   = ResumeTab(self._nb)
+        self._guide    = uihelp.GuideTab(self._nb, app=self)
+        self._nb.add(self._inbox,    text="Inbox")
+        self._nb.add(self._toppicks, text="Top Picks")
+        self._nb.add(self._search,   text="Search")
         self._nb.add(self._queue,   text="Apply Queue")
         self._nb.add(self._tracker, text="Job Tracker")
         self._nb.add(self._resume,  text="Resume Generator")
@@ -2209,8 +2364,8 @@ class App(tk.Tk):
         self._update_badges()
 
     def _rebuild_tabs(self, select_index=None):
-        for tab in (self._inbox, self._search, self._queue, self._tracker,
-                    self._resume, self._guide):
+        for tab in (self._inbox, self._toppicks, self._search, self._queue,
+                    self._tracker, self._resume, self._guide):
             tab.destroy()
         self._build_tabs()
         if select_index is not None:
@@ -2238,6 +2393,8 @@ class App(tk.Tk):
             self._queue.refresh(keep_selection=True)
         elif current is self._tracker:
             self._tracker.refresh()
+        elif current is self._toppicks:
+            self._toppicks.refresh()
         elif current is self._inbox:
             self._inbox.refresh()
         self._update_badges()

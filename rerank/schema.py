@@ -94,7 +94,9 @@ def build_prompt(profile_md: str) -> str:
         "## How to return your answer",
         f"Return the SAME CSV with these columns filled in: {', '.join(IN_COLUMNS)}.",
         "- `new_fit`: integer 0-100 (the scoring guide below).",
-        "- `new_rank`: optional integer ordering within the batch (1 = best).",
+        "- `new_rank`: rank your recommended shortlist 1..X (1 = best); leave it "
+        "BLANK for jobs not on the shortlist. Only ranked rows appear in the "
+        "app's Top Picks view, so rank as many as you'd recommend.",
         "- `fit_rationale`: one short line (why / red flags).",
         "- `tags`: optional free dimensions, comma-separated.",
         "**Leave `job_key` EXACTLY as given** — it is how scores are matched "

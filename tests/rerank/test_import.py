@@ -96,3 +96,21 @@ def test_import_bad_fit_recorded_as_error(tmp_path):
     body = "job_key,new_fit\nk1,notanumber\n"
     res = import_scores(_write_csv(tmp_path, body), _rows_by_key(), _apply=writer)
     assert res.updated == 0 and res.errors
+
+
+def test_import_writes_rank_and_rec_batch_extras(tmp_path):
+    import json
+    seen, writer = _capture()
+    body = "job_key,new_fit,new_rank,tags\nk1,88,1,plc\n"
+    import_scores(_write_csv(tmp_path, body), _rows_by_key(), _apply=writer)
+    extras = json.loads(seen["updates"][0]["extras"])
+    assert extras["rank"] == 1 and extras["tags"] == "plc" and extras["rec_batch"]
+
+
+def test_import_blank_rank_no_rank_key(tmp_path):
+    import json
+    seen, writer = _capture()
+    body = "job_key,new_fit,new_rank,tags\nk1,88,,plc\n"
+    import_scores(_write_csv(tmp_path, body), _rows_by_key(), _apply=writer)
+    extras = json.loads(seen["updates"][0]["extras"])
+    assert extras == {"tags": "plc"}      # tags-only, no rank/rec_batch
