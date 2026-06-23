@@ -114,3 +114,30 @@ def test_header_tip_zebra_build(root):
     tree.insert("", "end", values=("x",), tags=(theme.row_tag(0),))
     theme.tip(theme.btn(root, "x", lambda: None), "tooltip text")
     root.update_idletasks()  # forces widget realization; raises on bad options
+
+
+def test_style_menu_takes_active_palette(root):
+    # tk menus ignore ttk styling, so style_menu must paint them per mode.
+    theme.apply_theme(root, mode="dark")
+    m = theme.style_menu(tk.Menu(root))
+    assert str(m.cget("background")) == theme.SURFACE
+    assert str(m.cget("foreground")) == theme.INK
+    assert str(m.cget("activebackground")) == theme.ACCENT
+    theme.apply_theme(root, mode="light")
+    m2 = theme.style_menu(tk.Menu(root))
+    assert str(m2.cget("background")) == theme.SURFACE   # follows the light palette
+
+
+def test_combobox_popdown_is_darkened(root):
+    # The popdown Listbox isn't a ttk widget; apply_theme must set its colors via
+    # the option DB so the dropdown isn't OS-default white in dark mode.
+    theme.apply_theme(root, mode="dark")
+    cb = ttk.Combobox(root, values=["a", "b"])
+    cb.pack()
+    root.update_idletasks()
+    try:
+        popdown = cb.tk.call("ttk::combobox::PopdownWindow", cb)
+        bg = cb.tk.call(f"{popdown}.f.l", "cget", "-background")
+    except tk.TclError:
+        pytest.skip("combobox popdown internals unavailable on this Tk build")
+    assert str(bg) == theme.SURFACE

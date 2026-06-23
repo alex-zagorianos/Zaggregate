@@ -32,6 +32,7 @@ from tracker.db import (
     STATUSES, STATUS_LABELS,
 )
 from config import DEFAULT_LOCATION, OUTPUT_DIR
+from geo.filter import location_visible, LOCATION_MODES, DEFAULT_LOCATION_MODE
 from claude_bridge import (
     BridgeParseError, to_clipboard,
     build_fit_prompt, parse_fit_response, profile_summary,
@@ -697,6 +698,10 @@ class InboxTab(ttk.Frame):
         self._sort_col: str | None = None  # None = round-robin default
         self._sort_asc = True
         self._on_change = on_change  # notify App to refresh the tab badge
+        # Home metro for the Location view-filter; resolved per active project in
+        # refresh(). Agnostic defaults until then.
+        self._home_area = DEFAULT_LOCATION
+        self._home_remote_ok = True
         self._build()
         self.refresh()
 
@@ -735,6 +740,18 @@ class InboxTab(ttk.Frame):
                           width=4, values=["All", "S", "M", "L", "XL", "?"])
         sz.pack(side="left", padx=(2, 10))
         sz.bind("<<ComboboxSelected>>", lambda _e: self._render())
+        tk.Label(fbar, text="Location:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM).pack(side="left")
+        self._f_location = tk.StringVar(value=uisettings.get_location_mode())
+        loc_cb = ttk.Combobox(fbar, textvariable=self._f_location, state="readonly",
+                              width=13, values=list(LOCATION_MODES))
+        loc_cb.pack(side="left", padx=(2, 10))
+        theme.tip(loc_cb, "Focus the inbox on your area. “Local + remote” (the "
+                          "default) shows jobs in your metro plus remote roles; "
+                          "“Local only” hides remote; “All locations” shows "
+                          "everything. Your home metro comes from this project’s "
+                          "configured location.")
+        loc_cb.bind("<<ComboboxSelected>>", lambda _e: self._on_location_change())
         self._f_unscored = tk.BooleanVar(value=False)
         tk.Checkbutton(fbar, text="Unscored only", variable=self._f_unscored,
                        bg=theme.WINDOW, fg=theme.INK, selectcolor=theme.SURFACE,
@@ -832,7 +849,29 @@ class InboxTab(ttk.Frame):
         self._fit_jobs: list = []        # JobResults for the last fit prompt
         self._undo_rows: list[dict] = [] # last-dismissed rows, for Undo
 
+    def _resolve_home(self):
+        """Agnostic home metro + remote policy for the Location view-filter:
+        the active project's configured location, else the first preferences
+        location, else the global default. Never hardcoded to one city."""
+        area = (workspace.load_config().get("location") or "").strip()
+        remote_ok = True
+        try:
+            import preferences
+            hard = preferences.load().get("hard", {})
+            if not area and hard.get("locations"):
+                area = str(hard["locations"][0]).strip()
+            remote_ok = bool(hard.get("remote_ok", True))
+        except Exception:
+            pass
+        self._home_area = area or DEFAULT_LOCATION
+        self._home_remote_ok = remote_ok
+
+    def _on_location_change(self):
+        uisettings.set_location_mode(self._f_location.get())
+        self._render()
+
     def refresh(self):
+        self._resolve_home()
         self._all = list(inbox_all())
         sources = sorted({r["source"] for r in self._all if r["source"]})
         self._source_cb["values"] = ["All", *sources]
@@ -859,6 +898,12 @@ class InboxTab(ttk.Frame):
                     if self._size_letter(r.get("board_count", -1)) == size]
         if self._f_unscored.get():
             rows = [r for r in rows if r["fit"] < 0]
+        mode = self._f_location.get()
+        if mode and mode != "All locations":
+            rows = [r for r in rows
+                    if location_visible(r["location"] or "", r["title"] or "",
+                                        self._home_area, mode,
+                                        remote_ok=self._home_remote_ok)]
         q = self._f_text.get().strip().lower()
         if q:
             rows = [r for r in rows
@@ -911,6 +956,10 @@ class InboxTab(ttk.Frame):
         self._f_size.set("All")
         self._f_unscored.set(False)
         self._f_text.set("")
+        # Clear returns the view to the local-focused default (and persists it),
+        # not to "All" — local focus is the intended out-of-box behavior.
+        self._f_location.set(DEFAULT_LOCATION_MODE)
+        uisettings.set_location_mode(DEFAULT_LOCATION_MODE)
         self._render()
 
     def _selected(self) -> list[dict]:
@@ -1116,9 +1165,10 @@ class InboxTab(ttk.Frame):
         timestamped folder under OUTPUT_DIR/rerank, then open the folder."""
         from datetime import datetime
         from rerank.export import export_inbox
-        rows = list(self._all)
+        rows = self._filtered()   # export what's shown (honors Location + filters)
         if not rows:
-            messagebox.showinfo("Nothing to export", "The inbox is empty.")
+            messagebox.showinfo("Nothing to export",
+                                "No jobs match the current filters.")
             return
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         out_dir = Path(OUTPUT_DIR) / "rerank" / stamp
@@ -1995,9 +2045,9 @@ class App(tk.Tk):
 
     # ── menu bar ────────────────────────────────────────────────────────────────
     def _build_menu(self):
-        menubar = tk.Menu(self)
+        menubar = theme.style_menu(tk.Menu(self))
 
-        filem = tk.Menu(menubar, tearoff=0)
+        filem = theme.style_menu(tk.Menu(menubar, tearoff=0))
         filem.add_command(label="New Project…", command=self._new_project)
         filem.add_command(label="Open my data folder",
                           command=uihelp.open_data_folder)
@@ -2005,13 +2055,13 @@ class App(tk.Tk):
         filem.add_command(label="Exit", command=self.destroy)
         menubar.add_cascade(label="File", menu=filem)
 
-        viewm = tk.Menu(menubar, tearoff=0)
+        viewm = theme.style_menu(tk.Menu(menubar, tearoff=0))
         self._dark_var = tk.BooleanVar(value=(theme.current_mode() == "dark"))
         viewm.add_checkbutton(label="Dark mode", variable=self._dark_var,
                               command=self._toggle_dark)
         menubar.add_cascade(label="View", menu=viewm)
 
-        helpm = tk.Menu(menubar, tearoff=0)
+        helpm = theme.style_menu(tk.Menu(menubar, tearoff=0))
         helpm.add_command(label="Quick Start",
                           command=lambda: uihelp.show_quick_start(self))
         helpm.add_command(label="Open the Guide", command=self._open_guide)
@@ -2055,11 +2105,11 @@ class App(tk.Tk):
         theme.apply_theme(self, mode=mode)     # restyle ttk + set active palette
         _sync_palette_aliases()
         self.configure(bg=theme.WINDOW)
-        self._dark_var.set(mode == "dark")
         try:
             sel = self._nb.index(self._nb.select())
         except (tk.TclError, AttributeError):
             sel = None
+        self._build_menu()                     # tk menus ignore ttk; re-color them
         self._rebuild_projectbar()
         self._rebuild_tabs(select_index=sel)
 

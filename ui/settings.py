@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import config
+from geo.filter import LOCATION_MODES, DEFAULT_LOCATION_MODE
 
 _FILENAME = "ui_settings.json"
 _VALID_THEMES = ("light", "dark")
@@ -45,4 +46,19 @@ def set_theme(mode: str) -> None:
         return
     data = load()
     data["theme"] = mode
+    save(data)
+
+
+def get_location_mode() -> str:
+    """The saved Inbox Location view-filter mode, or the local-focused default."""
+    mode = load().get("location_mode")
+    return mode if mode in LOCATION_MODES else DEFAULT_LOCATION_MODE
+
+
+def set_location_mode(mode: str) -> None:
+    """Persist the Inbox Location view-filter mode (ignored if not a known mode)."""
+    if mode not in LOCATION_MODES:
+        return
+    data = load()
+    data["location_mode"] = mode
     save(data)

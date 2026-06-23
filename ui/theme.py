@@ -201,12 +201,33 @@ def apply_theme(root, mode=None) -> ttk.Style:
                         borderwidth=0)
         style.map(orient, background=[("active", BORDER)])
 
+    # Combobox dropdown list (the popdown) is a plain Tk Listbox that clam never
+    # reaches, so without this it stays OS-default white — a glaring white panel
+    # in dark mode. The option DB is read when each popdown is realized, so set
+    # it here (re-applied on every mode switch; comboboxes rebuild with the tabs).
+    root.option_add("*TCombobox*Listbox.background", SURFACE)
+    root.option_add("*TCombobox*Listbox.foreground", INK)
+    root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
+    root.option_add("*TCombobox*Listbox.selectForeground", ACCENT_FG)
+    root.option_add("*TCombobox*Listbox.font", FONT_SM)
+
     return style
 
 
 # ── Reusable widget helpers ─────────────────────────────────────────────────────
 _BTN_STYLE = {"accent": "Accent.TButton", "ghost": "Ghost.TButton",
               "success": "Success.TButton", "danger": "Danger.TButton"}
+
+
+def style_menu(menu):
+    """Apply the active palette to a tk.Menu (menubar or cascade). Tk menus
+    ignore ttk styling, so without this every menu dropdown renders OS-default
+    white — jarring in dark mode. Call on each menu, and re-style on mode switch.
+    Returns the menu so it chains."""
+    menu.configure(bg=SURFACE, fg=INK, activebackground=ACCENT,
+                   activeforeground=ACCENT_FG, disabledforeground=FAINT,
+                   selectcolor=INK, relief="flat", borderwidth=0)
+    return menu
 
 
 def btn(parent, text, command, kind="ghost"):
