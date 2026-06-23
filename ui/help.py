@@ -61,22 +61,75 @@ GUIDE = [
     ("body", "Paste any job posting and generate a resume + cover letter tailored "
              "to it, even for a job that didn't come from this app."),
 
-    ("h1", "How the AI ranking works"),
-    ("body", "Two numbers, two purposes. The Score (0–100) is the app's own "
-             "instant match, shown for every job. The Fit grade is a separate, "
-             "smarter opinion from an AI — its column stays blank until you ask "
-             "for it. Here's how to fill it in:"),
-    ("body", "The Score is calculated instantly on your computer. For that "
-             "second opinion you can ask an AI (like Claude or ChatGPT) to rank "
-             "your jobs:"),
-    ("bullet", "•  Click “Ask AI to rank these” — it copies a "
-               "ready-made prompt to your clipboard."),
-    ("bullet", "•  Paste it into the AI chat, then copy the AI's reply."),
-    ("bullet", "•  Click “Paste AI ranking” and the Fit grades land "
-               "back on the right jobs."),
-    ("body", "Prefer files? “Export for AI” writes a spreadsheet you can "
-             "hand to any tool, and “Load AI results” reads the scores "
-             "back. “Undo AI ranking” reverses the last import."),
+    ("h1", "Working with AI — the heart of this app"),
+    ("body", "This app is built to be used *with* an AI assistant, and it pays "
+             "off most when you lean on one. The instant Score is a fast "
+             "keyword-and-skills match. An AI goes further: it reads your goals "
+             "in plain English and the full job posting, and judges fit the way "
+             "a sharp friend in your field would — weighing seniority, domain, "
+             "must-haves and deal-breakers a keyword score can't see. Used well, "
+             "the AI is what turns a long list into a short, ranked list of jobs "
+             "actually worth your time."),
+
+    ("h2", "Score vs. Fit — what the AI adds"),
+    ("body", "Score (0–100) is computed instantly on your computer for every "
+             "job. Fit is the AI's grade, and its column stays blank until you "
+             "ask for it. When the two disagree, trust Fit for nuance and Score "
+             "for raw skills overlap — a high Score next to a low Fit usually "
+             "means “matches on paper, wrong role for you.”"),
+
+    ("h2", "The ranking round-trip (free — no account or key needed)"),
+    ("bullet", "1.  Click “Ask AI to rank these”. It copies a ready-made "
+               "prompt — your preferences plus the jobs — to your clipboard."),
+    ("bullet", "2.  Open any AI chat (Claude, ChatGPT, Gemini, Copilot — a "
+               "free tier is fine) and paste it in."),
+    ("bullet", "3.  Copy the AI's whole reply."),
+    ("bullet", "4.  Click “Paste AI ranking”. Each job's Fit grade lands "
+               "back on the right row automatically."),
+    ("bullet", "5.  Sort by Fit and work down from the top."),
+    ("body", "Prefer files to the clipboard? “Export for AI” writes a "
+             "spreadsheet you can hand to any tool, and “Load AI results” reads "
+             "the grades back. Changed your mind? “Undo AI ranking” reverses the "
+             "last import."),
+
+    ("h2", "Let the AI write your application"),
+    ("body", "In the Apply Queue and the Resume Generator, the AI drafts a "
+             "resume and cover letter tailored to the exact posting, using your "
+             "experience. Always read and edit what it produces before sending: "
+             "the AI gets you about 90% of the way; the last 10% — truth, your "
+             "voice, the specifics — is yours. You always click submit."),
+    ("body", "This step talks to an AI directly, so it needs an AI API key set "
+             "up (see the README for where to put it). Ranking your jobs with the "
+             "round-trip above is separate and needs no key at all."),
+
+    ("h1", "Getting the most out of AI"),
+    ("body", "The AI is only as good as what you tell it about yourself. A few "
+             "minutes here changes every ranking and every tailored resume from "
+             "then on — it's the highest-leverage thing you can do in this app."),
+    ("h2", "Feed it a rich profile"),
+    ("bullet", "•  In Setup (Help → “Run Setup Wizard”) fill in the "
+               "“Anything else?” box in plain English: what you love, what to "
+               "avoid, your must-haves and your deal-breakers."),
+    ("bullet", "•  Be specific. “Hands-on controls work, PLC + robotics, no "
+               "pure-IT or helpdesk, will relocate for the right team” ranks far "
+               "better than “engineer”."),
+    ("bullet", "•  Keep your resume current — the AI leans on it for both "
+               "ranking and tailoring."),
+    ("h2", "Pick a capable model, and iterate"),
+    ("bullet", "•  Any chat AI works, but a stronger model gives sharper "
+               "judgment. Free tiers are plenty to start."),
+    ("bullet", "•  If a ranking feels off, refine your “Anything else?” text "
+               "and run “Ask AI to rank these” again. The AI mirrors what you "
+               "tell it — treat it as a conversation, not a one-shot."),
+    ("h2", "Trust, but verify"),
+    ("bullet", "•  The AI is an assistant, not the decision-maker. Skim its "
+               "reasoning and overrule it whenever you know better."),
+    ("bullet", "•  Privacy: nothing leaves your computer except the prompt you "
+               "choose to paste into your own AI (or, in hands-off mode, the job "
+               "text and your profile sent to your own API key). The app never "
+               "uploads anything on its own."),
+    ("muted", "Power users: Claude Code can rank jobs directly through the "
+              "included MCP server — see the claude-code folder in your install."),
 
     ("h1", "Tips & FAQ"),
     ("h2", "Where is my information stored?"),
@@ -142,6 +195,31 @@ def show_tabs_help(parent=None) -> None:
         "Job Tracker — every tracked job and its status, with follow-ups.\n\n"
         "Resume Generator — paste any posting to tailor a resume + cover letter.\n\n"
         "Guide — the full, plain-English walkthrough.",
+        parent=parent)
+
+
+def show_ai_help(parent=None) -> None:
+    """A focused popup on using AI well — the app's core workflow."""
+    messagebox.showinfo(
+        "Getting the most from AI",
+        "This app works best WITH an AI assistant.\n\n"
+        "RANK YOUR JOBS  (free — no key needed)\n"
+        "   1. Click “Ask AI to rank these” — copies a prompt.\n"
+        "   2. Paste it into any AI chat (Claude, ChatGPT, …).\n"
+        "   3. Copy the reply, then click “Paste AI ranking”.\n"
+        "   4. Sort by Fit and work down from the top.\n\n"
+        "GET BETTER RANKINGS\n"
+        "   • In Setup, fill the “Anything else?” box with what you\n"
+        "     love, what to avoid, and your deal-breakers.\n"
+        "   • Be specific, keep your resume current, and re-rank if\n"
+        "     a result feels off — the AI mirrors what you tell it.\n\n"
+        "WRITE APPLICATIONS\n"
+        "   • The Apply Queue & Resume Generator use AI to tailor a\n"
+        "     resume + cover letter to each posting (this needs an\n"
+        "     API key — see the README). Always review before you\n"
+        "     send — you stay in control.\n\n"
+        "Ranking your jobs is free and needs no key.\n\n"
+        "Open the Guide tab for the full walkthrough.",
         parent=parent)
 
 

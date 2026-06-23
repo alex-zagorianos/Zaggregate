@@ -11,29 +11,97 @@ import tkinter as tk
 from tkinter import ttk
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-WINDOW  = "#eef1f5"   # app background behind the tabs
-SURFACE = "#ffffff"   # cards, headers, tables
-ALT     = "#f5f7fa"   # zebra rows / subtle fills / table headings
-INK     = "#1f2937"   # primary text
-MUTED   = "#6b7280"   # secondary text
-FAINT   = "#9aa3af"   # hints / disabled text
-BORDER  = "#e3e7ec"   # separators, input borders, hairlines
+# Two modes share one set of color *names*; `set_mode()` swaps which values those
+# module-level names hold, so every `theme.X` reference (and every helper below)
+# picks up the active mode the next time a widget is built. Light is the default.
+_LIGHT = {
+    "WINDOW":  "#eef1f5",  # app background behind the tabs
+    "SURFACE": "#ffffff",  # cards, headers, tables
+    "ALT":     "#f5f7fa",  # zebra rows / subtle fills / table headings
+    "INK":     "#1f2937",  # primary text
+    "MUTED":   "#6b7280",  # secondary text
+    "FAINT":   "#9aa3af",  # hints / disabled text
+    "BORDER":  "#e3e7ec",  # separators, input borders, hairlines
+    "ACCENT":      "#3b5bdb",  # the single brand accent
+    "ACCENT_DK":   "#2f49b0",  # hover / pressed
+    "ACCENT_FG":   "#ffffff",  # text on an accent button
+    "ACCENT_TINT": "#e7ecff",  # selected table row / soft accent fill
+    "ACCENT_DIM":  "#b9c2ea",  # disabled accent
+    "ACCENT_FG_DIM": "#eef1ff",  # text on a disabled accent button
+    "SUCCESS":     "#2e7d32",
+    "SUCCESS_DK":  "#1b5e20",
+    "SUCCESS_DIM": "#a9c8aa",   # disabled success button
+    "DANGER":      "#c62828",
+    "DANGER_DK":   "#a01b1b",
+    "WARN":        "#e65100",
+    "TOOLTIP_BG":  "#1f2937",   # dark chip on a light app
+    "TOOLTIP_FG":  "#ffffff",
+}
+_DARK = {
+    "WINDOW":  "#1a1d23",  # near-black, not pure black (less eye strain)
+    "SURFACE": "#242830",  # raised cards / tables / headers
+    "ALT":     "#2c313b",  # zebra rows / subtle fills / table headings
+    "INK":     "#e7eaf0",  # primary text
+    "MUTED":   "#9aa3b2",  # secondary text
+    "FAINT":   "#6b7484",  # hints / disabled text
+    "BORDER":  "#3a414d",  # separators, input borders, hairlines
+    "ACCENT":      "#5c7cfa",  # brighter blue reads better on dark
+    "ACCENT_DK":   "#4c6ef5",
+    "ACCENT_FG":   "#ffffff",
+    "ACCENT_TINT": "#2b3553",  # selected table row (muted blue, dark)
+    "ACCENT_DIM":  "#3a4566",
+    "ACCENT_FG_DIM": "#c8d0e8",
+    "SUCCESS":     "#4caf50",
+    "SUCCESS_DK":  "#3d8b40",
+    "SUCCESS_DIM": "#3a5a3b",
+    "DANGER":      "#ef5350",
+    "DANGER_DK":   "#c62828",
+    "WARN":        "#ffa726",
+    "TOOLTIP_BG":  "#3a414d",  # light chip on a dark app
+    "TOOLTIP_FG":  "#e7eaf0",
+}
+_PALETTES = {"light": _LIGHT, "dark": _DARK}
 
-ACCENT      = "#3b5bdb"   # the single brand accent
-ACCENT_DK   = "#2f49b0"   # hover / pressed
-ACCENT_FG   = "#ffffff"
-ACCENT_TINT = "#e7ecff"   # selected table row / soft accent fill
-ACCENT_DIM  = "#b9c2ea"   # disabled accent
+# Per-mode foreground colors for the Job-Tracker status badges. The light set is
+# the original saturated palette; the dark set is brightened so each status stays
+# legible on the dark rows (the saturated darks would otherwise go muddy).
+_STATUS_BADGE = {
+    "light": {"interested": "#1565c0", "applied": "#2e7d32",
+              "phone_screen": "#e65100", "interview": "#bf360c",
+              "offer": "#1b5e20", "rejected": "#c62828", "withdrawn": "#757575"},
+    "dark":  {"interested": "#5b9bf0", "applied": "#66bb6a",
+              "phone_screen": "#ffa726", "interview": "#ff8a65",
+              "offer": "#81c784", "rejected": "#ef5350", "withdrawn": "#9aa3b2"},
+}
+_mode = "light"
 
-SUCCESS     = "#2e7d32"
-SUCCESS_DK  = "#1b5e20"
-DANGER      = "#c62828"
-DANGER_DK   = "#a01b1b"
-WARN        = "#e65100"
 
-# Status-line semantic colors (mirrors gui.set_status kinds).
-STATUS_COLORS = {"ok": SUCCESS, "work": WARN, "info": ACCENT,
-                 "muted": MUTED, "err": DANGER}
+def set_mode(mode: str) -> str:
+    """Point the module-level color names at the given mode's palette ('light' or
+    'dark'; unknown falls back to light). Affects widgets built *after* this call;
+    pair with apply_theme() (restyles ttk live) + a UI rebuild for tk widgets.
+    Returns the resolved mode."""
+    global _mode, STATUS_COLORS, STATUS_BADGE
+    pal = _PALETTES.get(mode, _LIGHT)
+    _mode = "dark" if pal is _DARK else "light"
+    globals().update(pal)
+    STATUS_COLORS = {"ok": SUCCESS, "work": WARN, "info": ACCENT,
+                     "muted": MUTED, "err": DANGER}
+    STATUS_BADGE = _STATUS_BADGE[_mode]
+    return _mode
+
+
+def current_mode() -> str:
+    return _mode
+
+
+def toggle_mode() -> str:
+    """Flip light<->dark and return the new mode (does not restyle; caller does)."""
+    return set_mode("dark" if _mode == "light" else "light")
+
+
+# Install the default palette so `theme.WINDOW` etc. exist at import time.
+set_mode("light")
 
 # ── Fonts (plain tuples; valid before a root exists) ────────────────────────────
 FONT      = ("Segoe UI", 10)
@@ -44,9 +112,12 @@ FONT_H2   = ("Segoe UI", 11, "bold")
 FONT_MONO = ("Consolas", 10)
 
 
-def apply_theme(root) -> ttk.Style:
-    """Install the light/modern ttk styling on `root`. Safe to call once per
-    window. Returns the configured ttk.Style."""
+def apply_theme(root, mode=None) -> ttk.Style:
+    """Install the modern ttk styling on `root` for the given mode ('light' or
+    'dark'; None keeps the current mode). Safe to call repeatedly — re-calling
+    with a new mode restyles every ttk widget live. Returns the ttk.Style."""
+    if mode is not None:
+        set_mode(mode)
     style = ttk.Style(root)
     try:
         style.theme_use("clam")   # the most style-able built-in base theme
@@ -78,12 +149,12 @@ def apply_theme(root) -> ttk.Style:
     style.map("Accent.TButton",
               background=[("active", ACCENT_DK), ("pressed", ACCENT_DK),
                           ("disabled", ACCENT_DIM)],
-              foreground=[("disabled", "#eef1ff")])
+              foreground=[("disabled", ACCENT_FG_DIM)])
     style.configure("Success.TButton", background=SUCCESS, foreground="#ffffff",
                     borderwidth=0)
     style.map("Success.TButton",
               background=[("active", SUCCESS_DK), ("pressed", SUCCESS_DK),
-                          ("disabled", "#a9c8aa")])
+                          ("disabled", SUCCESS_DIM)])
     style.configure("Danger.TButton", background=DANGER, foreground="#ffffff",
                     borderwidth=0)
     style.map("Danger.TButton",
@@ -216,7 +287,7 @@ class Tooltip:
         self._tip = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
         tw.wm_geometry(f"+{x}+{y}")
-        tk.Label(tw, text=self.text, bg=INK, fg="#ffffff", font=FONT_SM,
+        tk.Label(tw, text=self.text, bg=TOOLTIP_BG, fg=TOOLTIP_FG, font=FONT_SM,
                  padx=8, pady=5, justify="left", wraplength=320).pack()
 
     def _hide(self, _e=None):

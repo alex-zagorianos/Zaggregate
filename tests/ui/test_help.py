@@ -23,6 +23,30 @@ def test_guide_explains_fit_vs_score_and_day_one():
     assert "starts empty" in blob
 
 
+def test_guide_goes_deep_on_using_ai():
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    headings = [text for tag, text in uihelp.GUIDE if tag in ("h1", "h2")]
+    # The Guide now teaches the app is best used WITH AI, in depth.
+    assert any("Working with AI" in h for h in headings)
+    assert any("Getting the most out of AI" in h for h in headings)
+    for phrase in ["Ask AI to rank these", "Paste AI ranking", "round-trip",
+                   "API key", "Anything else", "tailored", "mirrors what you tell"]:
+        assert phrase in blob, phrase
+
+
+def test_ai_help_dialog_callable():
+    assert callable(uihelp.show_ai_help)
+
+
+def test_ai_help_does_not_overpromise_auto_ranking():
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    # The GUI / daily run never auto-AI-rank; the in-app way is the free bridge.
+    assert "ranks the inbox automatically" not in blob
+    assert "needs no key" in blob                  # ranking is free
+    # The API key is correctly tied to writing applications, not ranking.
+    assert "needs an AI API key" in blob
+
+
 def test_open_data_folder_targets_user_data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "USER_DATA_DIR", tmp_path)
     opened = {}

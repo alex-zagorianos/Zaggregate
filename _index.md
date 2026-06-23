@@ -9,7 +9,7 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + a crisp UI/UX & non-technical onboarding pass (Session 14). 510 tests pass. Last pushed HEAD `228b013`; the UI/UX commit is LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
+> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + a crisp UI/UX pass with onboarding wizard, light/dark mode, and an in-depth "use it with AI" guide (Session 14). 522 tests pass. Last pushed HEAD `228b013`; two UI commits are LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
 
 ---
 
@@ -37,7 +37,7 @@ Wide-net search → preferences JSON hard-gate → local 0–100 match scoring (
 ## Open (next — Alex's machine/decision only)
 
 - [ ] **Live coverage baseline number** — the lift-gates prove improvement on fixtures; a real area measurement needs a live network run (free sources need no keys), best done interactively.
-- [ ] **Push Session 14** (UI/UX) to `origin/master` once Alex eyeballs the look — currently committed locally only.
+- [ ] **Push Session 14** (UI/UX + dark mode + AI guide, two local commits) to `origin/master` once Alex eyeballs the look — committed locally only. Check both light & dark.
 - [ ] **Build + test the exe:** `py build_package.py` → `dist/JobScout.zip`. GUI is windowed → needs a live launch (`py gui.py` also sanity-checks the merge). If the frozen exe hits an `ImportError`, add the module to `app.spec` `hiddenimports`.
 - [ ] **docx title-line decision** — kept relaunch bold-concat `Company — Title`; flip to allfixes ATS-split on request.
 - [ ] Optional: WS-3 undo `batch_id` (vs second-precision ts grouping); per-project scheduler (Projects Phase 4); company remove/edit UI; delete root `tracker.db.bak`.

@@ -229,7 +229,8 @@ class SetupWizard(tk.Toplevel):
                               font=theme.FONT, bg=theme.SURFACE, fg=theme.INK,
                               padx=8, pady=6, highlightthickness=1,
                               highlightcolor=theme.ACCENT,
-                              highlightbackground=theme.BORDER)
+                              highlightbackground=theme.BORDER,
+                              insertbackground=theme.INK)
         vsb = ttk.Scrollbar(box, orient="vertical", command=self._about.yview)
         self._about.configure(yscrollcommand=vsb.set)
         self._about.pack(side="left", fill="both", expand=True)
@@ -275,7 +276,8 @@ class SetupWizard(tk.Toplevel):
                                bd=1, font=theme.FONT, bg=theme.SURFACE,
                                fg=theme.INK, padx=8, pady=6,
                                highlightthickness=1, highlightcolor=theme.ACCENT,
-                               highlightbackground=theme.BORDER)
+                               highlightbackground=theme.BORDER,
+                               insertbackground=theme.INK)
         vsb = ttk.Scrollbar(box, orient="vertical", command=self._resume.yview)
         self._resume.configure(yscrollcommand=vsb.set)
         self._resume.pack(side="left", fill="both", expand=True)

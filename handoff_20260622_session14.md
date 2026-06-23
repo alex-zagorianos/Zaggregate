@@ -45,9 +45,19 @@
 1. **Eyeball the look, then push.** The S14 commit is local; `_after_setup`/theme/wizard are visual — a live `py gui.py` is the real check. To see the first-run wizard on a throwaway dir without touching real prefs: `JOBPROGRAM_DATA=<temp> py gui.py`.
 2. Carry-over: build the exe (`py build_package.py`); docx title-line decision; WS-3 `batch_id`; per-project scheduler; company remove/edit UI; delete `tracker.db.bak`.
 
+## Follow-up (same session) — dark mode + deepened AI guide
+
+Two more asks, same inline build + adversarial review. **Second local commit on top of `a716f3f`; still unpushed.**
+
+- **Light/Dark switch.** `theme.py`: `_LIGHT`/`_DARK` palettes + `set_mode`/`current_mode`/`toggle_mode` rewrite the module color names; `apply_theme(root, mode=None)` restyles ttk live. New `ui/settings.py` persists the choice (`USER_DATA_DIR/ui_settings.json`, gitignored). gui.py: **View → Dark mode** → `_set_theme()` persists + restyles ttk + `_sync_palette_aliases()` (re-points the legacy `BG/WHITE/INK…` aliases captured at import) + reconfigures root + rebuilds project bar (grouped `self._projbar`, `before=self._nb`) + tabs (`_rebuild_tabs(select_index=…)` keeps the tab). Tracker badges theme-aware (`theme.STATUS_BADGE`); tooltips use `TOOLTIP_BG/FG`. Saved mode applied at startup.
+- **Deepened "use it with AI" guide.** help.py GUIDE: "Working with AI — the heart of this app" + "Getting the most out of AI" (Score-vs-Fit, the free clipboard round-trip step-by-step, Export/Load files, rich-profile tips, model/iterate, trust-but-verify/privacy) + new Help → "Getting the most from AI" dialog (`show_ai_help`).
+- **Review found + I fixed:** every un-themed `tk.Text` (PasteDialog/ResumeTab/JobDialog notes/AddCompanies) → `bg=SURFACE/fg=INK/insertbackground=INK`; InboxTab filter Source/Size/Find labels + "Unscored only" checkbutton were missing `fg` (black-on-dark) → themed; transient status hex (`#e65100/#2e7d32/#666/#888`) → `theme.WARN/SUCCESS/MUTED`. **Accuracy fix:** AI help wrongly claimed an API key auto-ranks the inbox/daily run — but `rank_via_api` is only reached via `ranker.rank()`, which neither the GUI nor `daily_run` calls. Reworded: the key powers AI **resume/cover generation**; ranking is the free clipboard/file bridge.
+- Review note: the Workflow hit the shared z.ai/Anthropic **session cap** mid-run (synthesis + some verifiers cut off) — it still returned 4 verified findings; I completed the color sweep + accuracy check by hand.
+- **Tests:** +13 → **522** (`py -m pytest -q`). Live dark-switch smoke green.
+
 ## Pointers
 
-- Canonical brain: `brain/project-status.md` (Session 14 + `## Git` updated).
+- Canonical brain: `brain/project-status.md` (Session 14 + "Session 14 cont." + `## Git` updated).
 - `_index.md` status line + Core Documents + Open list updated.
 - Memory: `project-job-search`.
 - `app.spec` unchanged — the `ui` package is imported at `gui.py` top level, so PyInstaller bundles it automatically.

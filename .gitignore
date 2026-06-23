@@ -54,6 +54,8 @@ config_dad.json
 /preferences.json
 # First-run Setup wizard marker (per-user state, like tracker.db)
 /.onboarded
+# Per-user UI preferences (light/dark theme choice)
+/ui_settings.json
 
 # === PROJECT WORKSPACES (local: per-project config/resume/tracker.db/output) ===
 projects/

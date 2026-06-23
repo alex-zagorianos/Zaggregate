@@ -39,6 +39,7 @@ from claude_bridge import (
 from ui import theme
 from ui import help as uihelp
 from ui import setup_wizard
+from ui import settings as uisettings
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -61,20 +62,25 @@ _STATUS_COLORS = {
 }
 
 
+def _sync_palette_aliases():
+    """Re-point the legacy module-level color aliases at the *active* theme
+    palette. The aliases above are captured at import; after a light/dark switch
+    (theme.set_mode) this refreshes them so widgets rebuilt next use new colors."""
+    global DARK, MID, BG, WHITE, ERR, OK, WORK, INFO, MUTED, _STATUS_COLORS
+    DARK, MID, BG = theme.INK, theme.MUTED, theme.WINDOW
+    WHITE, ERR = theme.SURFACE, theme.DANGER
+    OK, WORK, INFO, MUTED = theme.SUCCESS, theme.WARN, theme.ACCENT, theme.MUTED
+    _STATUS_COLORS = {"ok": OK, "work": WORK, "info": INFO, "muted": MUTED,
+                      "err": ERR}
+
+
 def set_status(label, text, kind="muted"):
     """Set a tk.Label's text and color by semantic kind (ok/work/info/muted/err)
     instead of repeating inline hex at each call site."""
     label.config(text=text, fg=_STATUS_COLORS.get(kind, MUTED))
 
-STATUS_FG = {
-    "interested":   "#1565c0",
-    "applied":      "#2e7d32",
-    "phone_screen": "#e65100",
-    "interview":    "#bf360c",
-    "offer":        "#1b5e20",
-    "rejected":     "#c62828",
-    "withdrawn":    "#757575",
-}
+# Job-Tracker status badge colors are theme-aware (light/dark) via theme.STATUS_BADGE;
+# tabs are rebuilt on a theme switch so the tree re-reads the active set.
 
 
 # ── Add / Edit dialog ─────────────────────────────────────────────────────────
@@ -111,7 +117,7 @@ class JobDialog(tk.Toplevel):
         # Right column
         entry("Job URL",      "url",          0, 1, width=42, span=3)
         entry("Date Applied", "date_applied", 1, 1, width=14)
-        ttk.Label(form, text="YYYY-MM-DD", foreground="#888").grid(
+        ttk.Label(form, text="YYYY-MM-DD", foreground=theme.MUTED).grid(
             row=1, column=4, sticky="w")
 
         ttk.Label(form, text="Status").grid(row=2, column=2, sticky="w", **p)
@@ -129,7 +135,9 @@ class JobDialog(tk.Toplevel):
         # Notes — full width
         ttk.Label(form, text="Notes").grid(row=4, column=0, sticky="nw", **p)
         self._notes = tk.Text(form, width=70, height=5, wrap="word",
-                              font=("Segoe UI", 9), relief="solid", bd=1)
+                              font=("Segoe UI", 9), relief="solid", bd=1,
+                              bg=theme.SURFACE, fg=theme.INK,
+                              insertbackground=theme.INK)
         self._notes.grid(row=4, column=1, columnspan=4, sticky="ew", **p)
         if job and job.get("notes"):
             self._notes.insert("1.0", job["notes"])
@@ -190,7 +198,8 @@ class PasteDialog(tk.Toplevel):
         body = ttk.Frame(self, padding=(10, 0, 10, 0))
         body.pack(fill="both", expand=True)
         self._text = tk.Text(body, wrap="word", font=("Consolas", 9),
-                             relief="solid", bd=1)
+                             relief="solid", bd=1, bg=theme.SURFACE,
+                             fg=theme.INK, insertbackground=theme.INK)
         vsb = ttk.Scrollbar(body, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=vsb.set)
         self._text.pack(side="left", fill="both", expand=True)
@@ -289,7 +298,7 @@ class TrackerTab(ttk.Frame):
             self._tree.heading(col, text=label,
                                command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, anchor=anchor, minwidth=60)
-        for status, fg in STATUS_FG.items():
+        for status, fg in theme.STATUS_BADGE.items():
             self._tree.tag_configure(status, foreground=fg)
         theme.zebra(self._tree)
 
@@ -510,7 +519,8 @@ class ResumeTab(ttk.Frame):
         txt_f = ttk.Frame(body)
         txt_f.pack(fill="both", expand=True, pady=4)
         self._text = tk.Text(txt_f, wrap="word", font=("Segoe UI", 10),
-                             relief="solid", bd=1)
+                             relief="solid", bd=1, bg=theme.SURFACE,
+                             fg=theme.INK, insertbackground=theme.INK)
         vsb = ttk.Scrollbar(txt_f, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=vsb.set)
         self._text.pack(side="left", fill="both", expand=True)
@@ -549,7 +559,7 @@ class ResumeTab(ttk.Frame):
 
     def _clear(self):
         self._text.delete("1.0", "end")
-        self._status_lbl.config(text="", fg="#666")
+        self._status_lbl.config(text="", fg=theme.MUTED)
         self._out_lbl.config(text="")
         self._output_dir = None
 
@@ -573,7 +583,7 @@ class ResumeTab(ttk.Frame):
             self._status_lbl.config(text=f"Error: {e}", fg=ERR)
             return
         copy_or_warn(self, prompt,
-                     lambda m: self._status_lbl.config(text=m, fg="#e65100"))
+                     lambda m: self._status_lbl.config(text=m, fg=theme.WARN))
 
     def _paste_reply(self):
         dlg = PasteDialog(self)
@@ -598,7 +608,7 @@ class ResumeTab(ttk.Frame):
             return
         self._gen_btn.config(state="disabled")
         self._status_lbl.config(
-            text="Generating with Claude...  (15–30 sec)", fg="#e65100")
+            text="Generating with Claude...  (15–30 sec)", fg=theme.WARN)
         self._out_lbl.config(text="")
         threading.Thread(target=self._worker, args=(posting,),
                          daemon=True).start()
@@ -615,7 +625,7 @@ class ResumeTab(ttk.Frame):
         if self._gen_btn:
             self._gen_btn.config(state="normal")
         self._output_dir = out_dir
-        self._status_lbl.config(text="Done — saved to:", fg="#2e7d32")
+        self._status_lbl.config(text="Done — saved to:", fg=theme.SUCCESS)
         self._out_lbl.config(text=str(out_dir))
 
     def _on_error(self, msg):
@@ -710,16 +720,16 @@ class InboxTab(ttk.Frame):
         ms = ttk.Entry(fbar, textvariable=self._f_minscore, width=4)
         ms.pack(side="left", padx=(2, 10))
         ms.bind("<KeyRelease>", lambda _e: self._render())
-        tk.Label(fbar, text="Source:", bg=BG,
-                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(fbar, text="Source:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM).pack(side="left")
         self._f_source = tk.StringVar(value="All")
         self._source_cb = ttk.Combobox(fbar, textvariable=self._f_source,
                                        state="readonly", width=12,
                                        values=["All"])
         self._source_cb.pack(side="left", padx=(2, 10))
         self._source_cb.bind("<<ComboboxSelected>>", lambda _e: self._render())
-        tk.Label(fbar, text="Size:", bg=BG,
-                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(fbar, text="Size:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM).pack(side="left")
         self._f_size = tk.StringVar(value="All")
         sz = ttk.Combobox(fbar, textvariable=self._f_size, state="readonly",
                           width=4, values=["All", "S", "M", "L", "XL", "?"])
@@ -727,10 +737,12 @@ class InboxTab(ttk.Frame):
         sz.bind("<<ComboboxSelected>>", lambda _e: self._render())
         self._f_unscored = tk.BooleanVar(value=False)
         tk.Checkbutton(fbar, text="Unscored only", variable=self._f_unscored,
-                       bg=BG, font=("Segoe UI", 9),
+                       bg=theme.WINDOW, fg=theme.INK, selectcolor=theme.SURFACE,
+                       activebackground=theme.WINDOW, activeforeground=theme.INK,
+                       font=theme.FONT_SM,
                        command=self._render).pack(side="left", padx=(0, 10))
-        tk.Label(fbar, text="Find:", bg=BG,
-                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(fbar, text="Find:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM).pack(side="left")
         self._f_text = tk.StringVar()
         ft = ttk.Entry(fbar, textvariable=self._f_text, width=18)
         ft.pack(side="left", padx=(2, 6))
@@ -1186,7 +1198,8 @@ class AddCompaniesDialog(tk.Toplevel):
                       "Examples:  boards.greenhouse.io/acme   jobs.lever.co/acme   "
                       "Acme | acme.wd5.myworkdayjobs.com/Careers"
                  ).pack(fill="x", padx=10, pady=(10, 4))
-        self._box = tk.Text(self, height=7, wrap="none")
+        self._box = tk.Text(self, height=7, wrap="none", bg=theme.SURFACE,
+                            fg=theme.INK, insertbackground=theme.INK)
         self._box.pack(fill="x", padx=10)
 
         row = tk.Frame(self, bg=theme.WINDOW)
@@ -1702,7 +1715,7 @@ class ApplyQueueTab(ttk.Frame):
             return
         self._prompt_job_id = j["id"]
         copy_or_warn(self, prompt,
-                     lambda m: self._status.config(text=m, fg="#e65100"))
+                     lambda m: self._status.config(text=m, fg=theme.WARN))
 
     def _paste_resume(self):
         if self._prompt_job_id is None:
@@ -1768,9 +1781,9 @@ class ApplyQueueTab(ttk.Frame):
             return
         self._batch_order = [j["id"] for j in batch]
         names = ", ".join(j["company"] for j in batch)
-        self._status.config(text=f"Batch of {len(batch)}: {names}", fg="#e65100")
+        self._status.config(text=f"Batch of {len(batch)}: {names}", fg=theme.WARN)
         copy_or_warn(self, prompt,
-                     lambda m: self._status.config(text=m, fg="#e65100"))
+                     lambda m: self._status.config(text=m, fg=theme.WARN))
 
     def _paste_batch(self):
         if not self._batch_order:
@@ -1817,7 +1830,7 @@ class ApplyQueueTab(ttk.Frame):
         text = f"Batch: saved docs for {saved}/{len(self._batch_order)} job(s)."
         if missing > 0:
             text += f" {missing} missing from the reply — re-paste or run singly."
-        self._status.config(text=text, fg="#2e7d32" if saved else ERR)
+        self._status.config(text=text, fg=theme.SUCCESS if saved else ERR)
         self.refresh(keep_selection=True)
 
     def _generate_api(self):
@@ -1925,7 +1938,7 @@ class ApplyQueueTab(ttk.Frame):
         self._fit_jobs = jobs
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         copy_or_warn(self, prompt,
-                     lambda m: self._status.config(text=m, fg="#e65100"))
+                     lambda m: self._status.config(text=m, fg=theme.WARN))
 
     def _paste_fit(self):
         if not getattr(self, "_fit_jobs", None):
@@ -1940,7 +1953,7 @@ class ApplyQueueTab(ttk.Frame):
         except BridgeParseError as e:
             messagebox.showerror("Parse failed", str(e), parent=self)
             return
-        self._status.config(text=f"Applied {applied} fit score(s).", fg="#2e7d32")
+        self._status.config(text=f"Applied {applied} fit score(s).", fg=theme.SUCCESS)
         self.refresh(keep_selection=True)
 
 
@@ -1950,7 +1963,8 @@ class App(tk.Tk):
         super().__init__()
         import userdata
         userdata.bootstrap()  # first-run: seed the data folder + runtime dirs
-        theme.apply_theme(self)         # clean light/modern look, before any widgets
+        theme.apply_theme(self, mode=uisettings.get_theme())   # light/dark, before any widgets
+        _sync_palette_aliases()
         self.geometry("1280x780")
         self.minsize(980, 620)
 
@@ -1991,12 +2005,20 @@ class App(tk.Tk):
         filem.add_command(label="Exit", command=self.destroy)
         menubar.add_cascade(label="File", menu=filem)
 
+        viewm = tk.Menu(menubar, tearoff=0)
+        self._dark_var = tk.BooleanVar(value=(theme.current_mode() == "dark"))
+        viewm.add_checkbutton(label="Dark mode", variable=self._dark_var,
+                              command=self._toggle_dark)
+        menubar.add_cascade(label="View", menu=viewm)
+
         helpm = tk.Menu(menubar, tearoff=0)
         helpm.add_command(label="Quick Start",
                           command=lambda: uihelp.show_quick_start(self))
         helpm.add_command(label="Open the Guide", command=self._open_guide)
         helpm.add_command(label="What do the tabs do?",
                           command=lambda: uihelp.show_tabs_help(self))
+        helpm.add_command(label="Getting the most from AI",
+                          command=lambda: uihelp.show_ai_help(self))
         helpm.add_separator()
         helpm.add_command(label="Run Setup Wizard…",
                           command=lambda: setup_wizard.run(self, on_finish=self._after_setup))
@@ -2021,11 +2043,40 @@ class App(tk.Tk):
             self._rebuild_tabs()
         self._open_guide()
 
+    # ── theme (light / dark) ────────────────────────────────────────────────────
+    def _toggle_dark(self):
+        self._set_theme("dark" if self._dark_var.get() else "light")
+
+    def _set_theme(self, mode: str):
+        """Switch light/dark live and remember the choice. ttk widgets restyle
+        instantly; tk-colored chrome (project bar) + tab contents are rebuilt so
+        they pick up the new palette, keeping the user on their current tab."""
+        uisettings.set_theme(mode)
+        theme.apply_theme(self, mode=mode)     # restyle ttk + set active palette
+        _sync_palette_aliases()
+        self.configure(bg=theme.WINDOW)
+        self._dark_var.set(mode == "dark")
+        try:
+            sel = self._nb.index(self._nb.select())
+        except (tk.TclError, AttributeError):
+            sel = None
+        self._rebuild_projectbar()
+        self._rebuild_tabs(select_index=sel)
+
     # ── project bar (switch campaigns without restarting) ──────────────────────
     def _build_projectbar(self):
+        self._projbar = None
         if not workspace.has_projects():
             return  # pre-migration: single root workspace, no switcher
-        bar = tk.Frame(self, bg=theme.SURFACE)
+        # Group the bar + its hairline under one frame so a theme rebuild can
+        # destroy them together; pack it above the notebook when one exists.
+        wrap = tk.Frame(self, bg=theme.SURFACE)
+        if getattr(self, "_nb", None) is not None:
+            wrap.pack(fill="x", side="top", before=self._nb)
+        else:
+            wrap.pack(fill="x", side="top")
+        self._projbar = wrap
+        bar = tk.Frame(wrap, bg=theme.SURFACE)
         bar.pack(fill="x", side="top")
         tk.Label(bar, text="Project:", bg=theme.SURFACE, fg=theme.INK,
                  font=theme.FONT_BOLD, padx=12, pady=7).pack(side="left")
@@ -2035,8 +2086,14 @@ class App(tk.Tk):
         self._proj_cb.pack(side="left", padx=4, pady=7)
         self._proj_cb.bind("<<ComboboxSelected>>", self._on_project_change)
         theme.btn(bar, "+ New", self._new_project, "ghost").pack(side="left", padx=6)
-        tk.Frame(self, bg=theme.BORDER, height=1).pack(fill="x", side="top")
+        tk.Frame(wrap, bg=theme.BORDER, height=1).pack(fill="x", side="top")
         self._refresh_projectbar()
+
+    def _rebuild_projectbar(self):
+        if getattr(self, "_projbar", None) is not None:
+            self._projbar.destroy()
+            self._projbar = None
+        self._build_projectbar()
 
     def _refresh_projectbar(self):
         if not self._proj_var:
@@ -2101,12 +2158,16 @@ class App(tk.Tk):
         self._nb.add(self._guide,   text="\N{BLACK QUESTION MARK ORNAMENT} Guide")
         self._update_badges()
 
-    def _rebuild_tabs(self):
+    def _rebuild_tabs(self, select_index=None):
         for tab in (self._inbox, self._search, self._queue, self._tracker,
                     self._resume, self._guide):
             tab.destroy()
         self._build_tabs()
-        if inbox_count() == 0:
+        if select_index is not None:
+            tabs = self._nb.tabs()
+            if tabs:
+                self._nb.select(tabs[min(select_index, len(tabs) - 1)])
+        elif inbox_count() == 0:
             self._nb.select(self._search)
 
     def _update_title(self):
