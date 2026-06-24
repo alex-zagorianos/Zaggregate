@@ -86,7 +86,7 @@ ADZUNA_RESULTS_PER_PAGE = 50
 
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = "claude-sonnet-4-6"
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
 # JSearch (RapidAPI) — aggregates Indeed, LinkedIn, Glassdoor
 JSEARCH_RAPIDAPI_KEY = os.getenv("JSEARCH_RAPIDAPI_KEY")

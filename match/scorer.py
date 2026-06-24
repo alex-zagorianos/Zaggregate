@@ -11,7 +11,7 @@ Composite 0-100:
     recency          10  — posting age, exponential decay (10-day half-life);
                            unknown dates are neutral, not penalized
 Company-size modifier: careers-scraper jobs carry the total postings on the
-company's board (board_count) — small boards get +8/+4, mega boards −6.
+company's board (board_count) — <=30 +8, <=100 +4, <=250 -2, >250 -6.
 Exclude-keywords (user_config "exclude_keywords") subtract 30 each, floor 0.
 
 Claude-assisted "fit" scoring (claude_bridge) is a separate, optional second
@@ -333,7 +333,7 @@ def score_job(
     blob = f"{tl} {(job.description or '').lower()}"
     for bad in exclude_keywords:
         b = (bad or "").lower().strip()
-        if b and b in blob:
+        if b and _term_pattern(b).search(blob):
             score -= 30
             penalties.append(b)
 

@@ -22,14 +22,22 @@ datas = [
 
 # Lazy-imported optional clients; PyInstaller's static analysis misses them
 # because they're imported inside functions. Best-effort list.
+from PyInstaller.utils.hooks import collect_submodules
+
 hiddenimports = [
     'anthropic',
     'docx',
     'bs4',
     # coverage/ deps with C-extensions that PyInstaller's static analysis misses.
     'rapidfuzz',
-    'datasketch',
 ]
+# The GUI lazily imports first-party app modules (scrapers, feed clients,
+# coverage, rerank, etc.) inside functions, so PyInstaller's static pass can
+# miss them. Pull in every submodule so the frozen exe never hits an
+# ImportError on first use.
+for _pkg in ('search', 'scrape', 'coverage', 'discover', 'rerank',
+             'resume', 'tracker', 'match', 'geo', 'ui'):
+    hiddenimports += collect_submodules(_pkg)
 
 a = Analysis(
     ['gui.py'],

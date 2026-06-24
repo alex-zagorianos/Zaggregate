@@ -28,14 +28,27 @@ class BridgeParseError(Exception):
 
 
 def to_clipboard(text: str) -> bool:
-    """Copy text to the Windows clipboard via clip.exe (UTF-16 handles any
-    Unicode in postings). Returns False if the copy failed."""
-    try:
-        subprocess.run("clip", input=text.encode("utf-16"), check=True,
-                       creationflags=subprocess.CREATE_NO_WINDOW)
-        return True
-    except Exception:
-        return False
+    """Copy text to the OS clipboard. Windows: clip.exe (UTF-16). macOS: pbcopy.
+    Linux: xclip then xsel. Returns False if no backend succeeded."""
+    if sys.platform.startswith("win"):
+        try:
+            subprocess.run("clip", input=text.encode("utf-16"), check=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+            return True
+        except Exception:
+            return False
+    data = text.encode("utf-8")
+    if sys.platform == "darwin":
+        cmds = [["pbcopy"]]
+    else:
+        cmds = [["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]
+    for cmd in cmds:
+        try:
+            subprocess.run(cmd, input=data, check=True)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def _strip_trailing_commas(text: str) -> str:

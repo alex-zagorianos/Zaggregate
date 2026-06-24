@@ -10,5 +10,4 @@ pyinstaller==6.11.1
 # coverage/ entity-resolution + clustering (light, required; C-extensions -> app.spec hiddenimports)
 cleanco==2.3
 rapidfuzz==3.14.5
-datasketch==1.10.0
 defusedxml==0.7.1
