@@ -9,6 +9,7 @@ Tabs:
   Job Tracker      — replaces tracker/app.py  (http://localhost:5001)
   Resume Generator — replaces resume/app.py   (http://localhost:5000)
 """
+import json
 import re
 import sys
 import sqlite3
@@ -640,6 +641,29 @@ class ResumeTab(ttk.Frame):
 
 
 # ── Inbox tab (daily-run results) ─────────────────────────────────────────────
+def _row_new_batch(row) -> str:
+    """The freshness batch stamped on an inbox row's extras ('' if none)."""
+    raw = row.get("extras")
+    if not raw:
+        return ""
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return ""
+    return data.get("new_batch", "") if isinstance(data, dict) else ""
+
+
+def _latest_new_batch(rows) -> "str | None":
+    """Most recent freshness batch across rows (None if none stamped). Latest
+    batch wins, mirroring Top Picks' rec_batch convention."""
+    batches = [b for b in (_row_new_batch(r) for r in rows) if b]
+    return max(batches) if batches else None
+
+
+def _is_new_row(row, latest) -> bool:
+    return bool(latest) and _row_new_batch(row) == latest
+
+
 class InboxTab(ttk.Frame):
     """Triage queue fed by daily_run.py: ranked fresh matches. Track moves a
     row to the tracker; Dismiss hides the posting from all future searches."""
@@ -758,6 +782,12 @@ class InboxTab(ttk.Frame):
                        activebackground=theme.WINDOW, activeforeground=theme.INK,
                        font=theme.FONT_SM,
                        command=self._render).pack(side="left", padx=(0, 10))
+        self._f_new = tk.BooleanVar(value=False)
+        theme.tip(tk.Checkbutton(fbar, text="New only", variable=self._f_new,
+                                 bg=theme.WINDOW, fg=theme.INK, selectcolor=theme.SURFACE,
+                                 activebackground=theme.WINDOW, activeforeground=theme.INK,
+                                 font=theme.FONT_SM, command=self._render),
+                  "Show only jobs new since the last daily update.").pack(side="left", padx=(0, 10))
         tk.Label(fbar, text="Find:", bg=theme.WINDOW, fg=theme.INK,
                  font=theme.FONT_SM).pack(side="left")
         self._f_text = tk.StringVar()
@@ -905,6 +935,9 @@ class InboxTab(ttk.Frame):
                     if self._size_letter(r.get("board_count", -1)) == size]
         if self._f_unscored.get():
             rows = [r for r in rows if r["fit"] < 0]
+        if self._f_new.get():
+            latest = _latest_new_batch(self._all)
+            rows = [r for r in rows if _is_new_row(r, latest)]
         mode = self._f_location.get()
         if mode and mode != "All locations":
             rows = [r for r in rows
@@ -962,6 +995,7 @@ class InboxTab(ttk.Frame):
         self._f_source.set("All")
         self._f_size.set("All")
         self._f_unscored.set(False)
+        self._f_new.set(False)
         self._f_text.set("")
         # Clear returns the view to the local-focused default (and persists it),
         # not to "All" — local focus is the intended out-of-box behavior.

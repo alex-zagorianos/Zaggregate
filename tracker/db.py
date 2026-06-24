@@ -1,10 +1,10 @@
 import sqlite3
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit, parse_qsl, urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import workspace
+from models import normalize_url  # single source of truth for URL canonicalization
 
 # None = resolve the active project's DB at call-time (root tracker.db until a
 # project workspace exists). Tests set this to a temp path to override.
@@ -326,31 +326,9 @@ def get_job(job_id):
 
 # ── Cross-run dedup ───────────────────────────────────────────────────────────
 
-# Query params that carry no identity (tracking/analytics) -> dropped. Keeps
-# parity with models.normalize_url so the inbox dedup key matches the search-side
-# key. Everything NOT in here (gh_jid, jobId/jobid, id, lever, ...) is kept, so
-# two postings that differ only by a real job id stay distinct.
-_TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
-                    "utm_content", "gh_src", "fbclid", "gclid", "ref"}
-
-
-def normalize_url(url: str) -> str:
-    """Canonicalize a URL for dedup: drop scheme, fragment, trailing slash, and
-    lowercase the host. Strips tracking params (utm_*, fbclid, gclid, ref) but
-    KEEPS identity params (gh_jid, jobId, id, ...) so distinct postings that
-    differ only by their job id don't collapse into one inbox row."""
-    if not url:
-        return ""
-    parts = urlsplit(url.strip())
-    host = (parts.netloc or "").lower()
-    path = (parts.path or "").rstrip("/")
-    kept = [
-        (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
-        if k.lower() not in _TRACKING_PARAMS
-    ]
-    query = urlencode(kept)
-    base = f"{host}{path}" if host else path
-    return f"{base}?{query}" if query else base
+# normalize_url is imported from models (single source of truth) so the inbox
+# dedup key always matches the search-side identity key. This was a parity copy;
+# deduped 2026-06-24 after verifying byte-identical output for all inputs.
 
 
 def tracked_urls() -> set[str]:
@@ -384,15 +362,21 @@ def seen_urls() -> set[str]:
 
 # ── Inbox (daily-run results awaiting triage) ─────────────────────────────────
 
-def inbox_add_many(jobs, per_company_cap: int = 0) -> int:
+def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
     """Insert JobResults into the inbox; silently skips postings already in the
     inbox, tracker, or dismissed list. Returns how many were actually added.
 
     per_company_cap > 0 enforces the cap against the PERSISTED inbox: a company
     already at N rows can only take (cap - N) more, so a board can't accrue
     cap rows per run and pile up over many runs. jobs is assumed best-first so
-    the surviving rows are each company's top matches. 0 disables the cap."""
+    the surviving rows are each company's top matches. 0 disables the cap.
+
+    new_batch (set by daily_run): when truthy, a freshly-inserted job carrying
+    is_new=True gets its extras stamped with {"new_batch": new_batch}, so the
+    GUI "New only" filter can surface jobs new since the last run. Schema-free
+    (rides the existing extras JSON, like Top Picks' rank)."""
     from datetime import date
+    import json
     seen = seen_urls()
     today = date.today().isoformat()
     # Start the running tally from what's already persisted so the cap spans runs.
@@ -418,8 +402,12 @@ def inbox_add_many(jobs, per_company_cap: int = 0) -> int:
                  j.source_api, j.score, j.score_notes, j.created, today,
                  getattr(j, "board_count", -1)),
             )
-            if cur.rowcount and per_company_cap > 0:
-                per_company[key] = per_company.get(key, 0) + 1
+            if cur.rowcount:
+                if new_batch and getattr(j, "is_new", False):
+                    conn.execute("UPDATE inbox SET extras=? WHERE id=?",
+                                 (json.dumps({"new_batch": new_batch}), cur.lastrowid))
+                if per_company_cap > 0:
+                    per_company[key] = per_company.get(key, 0) + 1
             added += cur.rowcount
         conn.commit()
     return added

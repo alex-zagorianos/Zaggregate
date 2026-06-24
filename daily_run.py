@@ -10,7 +10,7 @@ jsearch is deliberately excluded (see DAILY_SOURCES in config.py) so the
 """
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -106,6 +106,15 @@ def main():
                title_miss_penalty=cfg.get("title_miss_penalty"),
                seniority_exclude=cfg.get("seniority_exclude"))
 
+    # Freshness deltas: mark jobs new since the last daily run for THIS project
+    # (manual GUI/CLI searches don't move this baseline). Non-destructive — just
+    # an annotation surfaced by the GUI "New only" filter and the log below.
+    import search.freshness as freshness
+    fresh_id = f"daily:{run_project or 'root'}"
+    _prev_fresh = freshness.load_prev_keys(fresh_id)
+    for r in results:
+        r.is_new = r.job_key not in _prev_fresh
+
     qualified = [r for r in results if r.score >= min_score]
 
     # Per-company cap: mega boards (Anduril, SpaceX) can match 300+ postings a
@@ -118,9 +127,17 @@ def main():
     # init_db already ran at the top (for the runs table); this is idempotent.
     init_db()
     before = inbox_count()
-    added = inbox_add_many(qualified, per_company_cap=cap)  # skips seen + over-cap
+    new_batch = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    added = inbox_add_many(qualified, per_company_cap=cap, new_batch=new_batch)
     log(f"daily_run done | {len(results)} found | {len(qualified)} >= {min_score} | "
         f"{added} new -> inbox (inbox now {inbox_count()})")
+
+    # Advance the freshness baseline to this run's found set, and report how many
+    # of the inboxed jobs are new since the last run.
+    freshness.save_keys(fresh_id, {r.job_key for r in results})
+    n_new = sum(1 for r in qualified if r.is_new)
+    log(f"freshness | {n_new} of {added} newly-inboxed are new since last run "
+        f"(baseline '{fresh_id}' now {len(results)} keys)")
 
     # Re-score the whole inbox for this project with the current config so edited
     # keywords/salary don't leave stale, incomparable scores on older rows.

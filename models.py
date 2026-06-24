@@ -52,6 +52,10 @@ class JobResult:
     # cheap company-size proxy: 12 openings = small shop, 300+ = mega board.
     # -1 = unknown (API sources don't see the whole board).
     board_count: int = -1
+    # Transient (set by daily_run's freshness pass): True when this job_key was
+    # not in the previous run's baseline for its source. Carried into the inbox
+    # row's extras (new_batch) at insert; surfaced by the GUI "New only" filter.
+    is_new: bool = False
 
     @property
     def dedup_key(self) -> str:
