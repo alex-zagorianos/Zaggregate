@@ -15,17 +15,18 @@ status: active
 
 ## Core Documents
 
-| Document                                                | Purpose                                                                                    |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                   |
-| [[handoff_20260622_session15]]                          | **Latest session** — Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab. |
-| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.              |
-| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                       |
-| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                  |
-| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify. |
-| [[experience]]                                          | Career master file (resume/cover source).                                                  |
-| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                |
-| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                              |
+| Document                                                | Purpose                                                                                          |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                         |
+| [[handoff_20260624_session16]]                          | **Latest session** — wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep. |
+| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                            |
+| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                    |
+| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                             |
+| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                        |
+| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.       |
+| [[experience]]                                          | Career master file (resume/cover source).                                                        |
+| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                      |
+| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                    |
 
 ## Pipeline
 
