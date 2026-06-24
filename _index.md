@@ -9,7 +9,7 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + UI/UX pass (wizard, light/dark, AI guide) + a new **Top Picks** feature: full-inbox AI snapshot → ranked top-X shortlist in its own GUI tab, no DB migration (Session 15). 553 tests (552 pass, 1 display-skip). Last pushed HEAD `228b013`; 5 commits are LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
+> Status: **🟢 Active — distributable AI-native product + coverage engine + AI re-rank + UI/UX pass (wizard, light/dark, AI guide) + a new **Top Picks** feature: full-inbox AI snapshot → ranked top-X shortlist in its own GUI tab, no DB migration (Session 15). **Session 16** wired the 3 latent gaps — JSON-LD additive scrape, unified discovery funnel (`--discover`), freshness "New only" filter — plus a mechanical sweep (word-boundary excludes, cross-platform clipboard, env-overridable model, `datasketch` drop, `collect_submodules` hardening). 572 tests. 10 commits are LOCAL, not yet pushed (repo private).** (This `_index` is an orientation stub; the canonical brain is [[project-status]].)
 
 ---
 
