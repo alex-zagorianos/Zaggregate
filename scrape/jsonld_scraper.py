@@ -129,3 +129,18 @@ def extract_jobs(html: str, base_url: str, *, keyword: str = "") -> list[JobResu
                             continue
                     out.append(jr)
     return out
+
+
+def scrape_jsonld(company, keyword: str, cache_dir, cache_enabled: bool) -> list[JobResult]:
+    """Explicit JSON-LD board (ats_type='jsonld'): fetch the company's page and
+    extract schema.org/JobPosting structured data. Reuses the direct scraper's
+    fetch + negative-failure cache so a dead URL isn't re-hit every keyword."""
+    from scrape.direct_scraper import _fetch_html
+    html = _fetch_html(company, cache_dir, cache_enabled)
+    if not html:
+        return []
+    jobs = extract_jobs(html, company.slug, keyword=keyword)
+    for j in jobs:
+        if not j.company:
+            j.company = company.name
+    return jobs

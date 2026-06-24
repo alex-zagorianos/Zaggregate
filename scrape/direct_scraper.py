@@ -9,17 +9,16 @@ from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import is_failed, mark_failed, read_cache, write_cache
 from scrape.company_registry import CompanyEntry
+from scrape.jsonld_scraper import extract_jobs as _jsonld_extract
 
 _JOB_URL_PATTERNS = ("/job/", "/jobs/", "/opening/", "/openings/", "/position/", "/careers/job", "/career/")
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
-def scrape_direct(
-    company: CompanyEntry,
-    keyword: str,
-    cache_dir: Path,
-    cache_enabled: bool,
-) -> list[JobResult]:
+def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> str | None:
+    """Fetch (or read cached) HTML for a company's page, with the shared
+    negative-failure cache. Returns None on a known-dead or failed fetch.
+    Factored out so the JSON-LD scraper can reuse the same fetch + cache path."""
     url_hash = hashlib.md5(company.slug.encode()).hexdigest()[:12]
     cache_file = cache_dir / f"direct_{url_hash}.html"
     # Negative-cache marker: a dead URL (404/403/timeout) was retried once per
@@ -30,7 +29,7 @@ def scrape_direct(
 
     if cache_enabled:
         if is_failed(read_cache(failed_file)):
-            return []  # known-dead this TTL window; stay quiet, don't re-fetch
+            return None  # known-dead this TTL window; stay quiet, don't re-fetch
         html = read_cache(cache_file)
     else:
         html = None
@@ -46,12 +45,41 @@ def scrape_direct(
             print(f"  [direct] {company.name}: fetch error — {e}")
             if cache_enabled:
                 mark_failed(failed_file)
-            return []
+            return None
         if cache_enabled:
             write_cache(cache_file, html)
+    return html
 
-    print(f"  [direct] {company.name}: basic link extraction only — verify results manually")
-    return _extract_jobs(html, company, keyword)
+
+def scrape_direct(
+    company: CompanyEntry,
+    keyword: str,
+    cache_dir: Path,
+    cache_enabled: bool,
+) -> list[JobResult]:
+    html = _fetch_html(company, cache_dir, cache_enabled)
+    if html is None:
+        return []
+
+    print(f"  [direct] {company.name}: link extraction + JSON-LD — verify results manually")
+    jobs = _extract_jobs(html, company, keyword)
+    return _merge_jsonld(jobs, html, company, keyword)
+
+
+def _merge_jsonld(jobs: list[JobResult], html: str, company: CompanyEntry,
+                  keyword: str) -> list[JobResult]:
+    """Additively fold any schema.org/JobPosting JSON-LD on the SAME page into the
+    link-extracted results — strictly more, never fewer (deduped by identity_key).
+    A direct page that embeds structured JobPosting data (common on modern career
+    sites) now yields those richer postings too, instead of link text only."""
+    existing = {j.identity_key for j in jobs}
+    for j in _jsonld_extract(html, company.slug, keyword=keyword):
+        if not j.company:
+            j.company = company.name
+        if j.identity_key not in existing:
+            existing.add(j.identity_key)
+            jobs.append(j)
+    return jobs
 
 
 def _extract_jobs(html: str, company: CompanyEntry, keyword: str) -> list[JobResult]:

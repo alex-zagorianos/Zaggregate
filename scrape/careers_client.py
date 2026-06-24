@@ -17,6 +17,7 @@ from scrape.workable_scraper import fetch as scrape_workable
 from scrape.recruitee_scraper import fetch as scrape_recruitee
 from scrape.rippling_scraper import fetch as scrape_rippling
 from scrape.personio_scraper import fetch as scrape_personio
+from scrape.jsonld_scraper import scrape_jsonld
 
 
 class CareersClient(JobAPIClient):
@@ -126,6 +127,8 @@ class CareersClient(JobAPIClient):
             return scrape_rippling(company.slug)
         elif company.ats_type == "personio":
             return scrape_personio(company.slug)
+        elif company.ats_type == "jsonld":
+            return scrape_jsonld(company, keyword, self.cache_dir, self.cache_enabled)
         else:
             return scrape_direct(company, keyword, self.cache_dir, self.cache_enabled)
 
