@@ -220,6 +220,26 @@ def main():
         help="Consecutive failed probes before a company is pruned (default: 2)",
     )
     parser.add_argument(
+        "--discover",
+        action="store_true",
+        help="Maintenance: run the discovery funnel (Common Crawl CDX slug "
+             "harvest + careers-link finding) to find new ATS boards and merge "
+             "them into companies.json, then exit. Additive only.",
+    )
+    parser.add_argument(
+        "--discover-domains",
+        type=str,
+        default=None,
+        help="Comma-separated company domains for the funnel to resolve to "
+             "careers URLs and detect ATS boards (e.g. acme.com,globex.io)",
+    )
+    parser.add_argument(
+        "--discover-limit",
+        type=int,
+        default=200,
+        help="Max CDX records per ATS host in the discovery funnel (default: 200)",
+    )
+    parser.add_argument(
         "--companies-file",
         type=str,
         default=None,
@@ -292,6 +312,18 @@ def main():
             print(f"Pruned {len(removed)} dead/empty company(ies): {', '.join(removed)}")
         else:
             print("No companies pruned (all reachable with postings, or below threshold).")
+        sys.exit(0)
+
+    # Maintenance mode: run the discovery funnel and exit (no search). Additive —
+    # only adds newly found ATS boards to companies.json (user-wins, dedup).
+    if args.discover:
+        from discover.funnel import run_funnel
+        cf = Path(args.companies_file) if args.companies_file else None
+        domains = [d.strip() for d in (args.discover_domains or "").split(",") if d.strip()]
+        summary = run_funnel(domains=domains or None, companies_json_path=cf,
+                             limit=args.discover_limit)
+        print(f"Discovery funnel: harvested {summary['harvested']} -> "
+              f"added {summary['added']} new board(s) to companies.json.")
         sys.exit(0)
 
     # --- Resolve values: CLI flag > user_config.json > hardcoded defaults ---
