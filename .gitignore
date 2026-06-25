@@ -12,6 +12,10 @@ credentials/
 # === CACHE & GENERATED OUTPUT ===
 cache/
 output/
+# per-run job_key baselines (search/freshness.py) + tiered-scrape state
+# (scrape/tiering.py) — runtime state like cache/, not source.
+freshness/
+registry_state.json
 
 # === PYTHON ===
 __pycache__/
