@@ -9,26 +9,27 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — **Session 17** fixed the AI-lane "dead links" (server-rendered Greenhouse URLs + inbox liveness prune) and built out the competitive Tier 1–3 roadmap from a 12-agent market-research workflow: structured scorecard + colored cells + ghost/skill-gap/comp signals in the Inbox, a Tools menu (Due / Funnel / Contacts / Connect-AI), Help▸Privacy, File▸Backup-Restore, SmartScreen kit, contacts CRM (schema v4). New signals are all view-level — the 0-100 score is unchanged. **682 tests; 25 commits LOCAL, not pushed (repo private)** — pending Alex's `py gui.py` eyeball. Remaining roadmap (browser-ext capture, dedup, presets, review-mode, tunable weights, auto-update) specced in `brain\plan-2026-06-24-all-tiers-buildout.md`.** (Orientation stub; canonical brain is [[project-status]].)
+> Status: **🟢 Active — **Session 18** modernized the GUI on **ttkbootstrap** (flat, indigo, real dark-mode elevation) and **fixed the jarring dark-mode white outlines**, then built the **browser extension** out to pull full job data: open a job and it captures the whole description + work-mode/type/seniority/applicants/easy-apply, scores it honestly, and surfaces it in the Inbox. A pre-push adversarial review (Workflow, 5 dims) caught + fixed one duplicate-record bug. **696 tests; 31 commits LOCAL, not pushed (repo private)** — pending Alex's `py gui.py` eyeball (light & dark) + extension reload + live selector_check. New dep: `ttkbootstrap`. (Prior: S17 dead-link fix + competitive Tier 1–3 buildout — scorecard, colored cells, ghost/skill-gap/comp, Tools menu, Backup/Restore, contacts CRM, all view-level.)** (Orientation stub; canonical brain is [[project-status]].)
 
 ---
 
 ## Core Documents
 
-| Document                                                | Purpose                                                                                      |
-| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                     |
-| [[handoff_20260624_session17]]                          | **Latest session** — dead-link fix + competitive Tier 1–3 buildout (25 commits, 682 tests).  |
-| `brain\plan-2026-06-24-all-tiers-buildout.md`           | The all-tiers roadmap (with per-item status) + `brain\buildout-log-2026-06-24.md` decisions. |
-| [[handoff_20260624_session16]]                          | Wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep.                  |
-| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                        |
-| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                |
-| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                         |
-| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                    |
-| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.   |
-| [[experience]]                                          | Career master file (resume/cover source).                                                    |
-| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                  |
-| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                |
+| Document                                                | Purpose                                                                                                                 |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                                                |
+| [[handoff_20260625_session18]]                          | **Latest session** — modern ttkbootstrap UI + dark-outline fix + extension full-detail capture (31 commits, 696 tests). |
+| [[handoff_20260624_session17]]                          | Dead-link fix + competitive Tier 1–3 buildout (25 commits, 682 tests).                                                  |
+| `brain\plan-2026-06-24-all-tiers-buildout.md`           | The all-tiers roadmap (with per-item status) + `brain\buildout-log-2026-06-24.md` decisions.                            |
+| [[handoff_20260624_session16]]                          | Wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep.                                             |
+| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                                                   |
+| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                                           |
+| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                                                    |
+| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                                               |
+| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.                              |
+| [[experience]]                                          | Career master file (resume/cover source).                                                                               |
+| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                                             |
+| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                                           |
 
 ## Pipeline
 

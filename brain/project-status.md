@@ -360,14 +360,70 @@ T3.28 auto-update. **Deferred (D2):** web/Tauri reskin, Gmail-OAuth email status
 **Open questions:** Q1 docx title-line; Q2 expose tunable weights?; Q3 daily auto-prune on by
 default? (all default-handled, logged in the buildout log).
 
+## Session 18 — 2026-06-25 (cheap-backend, ultracode) — modern UI (ttkbootstrap) + extension data buildout
+
+Two requests: make the GUI modern + fix the jarring dark-mode white outlines, and build the
+browser extension out to pull in as much job data as possible. Full record:
+`handoff_20260625_session18`. master `1c80295`… → **+5 commits**, **683 → 696 tests**, push HELD.
+
+**Task 1 — modern UI on ttkbootstrap.** Adopted **ttkbootstrap** as the ttk Style engine (Alex
+picked "evaluate ttkbootstrap"; it passed eval — runs on 3.13, Pillow already present, no gui.py
+rewrite). `ui/theme.py` stays the facade — every color name / helper / style name preserved. The
+**white outlines are gone at both sources**: ttkbootstrap's element layouts are flat (the old
+`clam` lightcolor/darkcolor bevel is what drew the light edge on every input), and the 5 `tk.Text`
+panes now route through a new `theme.text_widget()` (themed 1px border, not the default ~white
+focus ring). Modernized both palettes (indigo accent, real dark-mode surface elevation), bigger
+rowheight/padding, accent-underline tabs. **Two non-obvious integration hacks** (documented in
+theme.py): (a) **restore the vanilla classic-tk constructors right after importing ttkbootstrap** —
+ttkbootstrap monkeypatches `tk.Frame/Label/Text` to force-recolor every classic widget to its own
+palette, which would obliterate the app's hand-painted chrome (accent rules, colored status badges,
+surface elevation); we want only its _ttk_ theming. (b) **build the Style singleton once and
+_rebind_ it (master/tk) per root** rather than rebuilding — re-running `Style.__init__` re-triggers
+a localization/msgcat init that races with pytest's many short-lived Tk roots and flakes. EXE:
+`ttkbootstrap` (+submodules +localization data) + `PIL` added to `requirements.txt` + `app.spec`.
+
+**Task 2 — extension pulls full job data.** Was card-only (title/company/location/salary), so
+harvested jobs had **no description → the scorer's 25-pt skill component was always 0**. content.js
+now has a **passive detail layer**: when you OPEN a job (LinkedIn/Indeed right pane or `/jobs/view`)
+it reads the full **description** + a raw details blob and **upgrades that job's stored card in
+place**, matched by a stable external id (LinkedIn job id / Indeed `jk`). No auto-clicking — only
+jobs you open get the full record (stays "assisted, never automate"); LinkedIn + Indeed only. One
+**server-side parser** owns field extraction (same DRY trick as salary, so the JS can't diverge):
+`parse_details()` pulls **work mode / employment type / seniority / applicants / posted age /
+easy-apply**. `_to_job_result` now threads the real **description** (honest scoring + skill-gap /
+comp / ghost finally work for browsed jobs), derives `created` from the **posting age** (accurate
+recency/staleness), and attaches rich metadata to the inbox row's **`extras["browse"]`** —
+schema-free, **view-level, never folded into the 0-100 score**. The Inbox detail pane surfaces
+"Captured while browsing: Remote · Full-time · Mid-Senior level · 47 applicants · Easy Apply"; the
+popup shows "Y of N with full details" (silent detail-rot visible); `selector_check.js` now audits
+the detail-pane selectors; manifest → **1.3**.
+
+**Pre-push adversarial review** (Workflow `jobscout-session-review`, 7 agents over 5 dimensions —
+theme integration, receiver parsing, extension JS, privacy/security, GUI+tests — each finding
+independently verified). 2 raw findings → **1 confirmed, fixed**: an id-less detail pane (Indeed's
+bare search auto-opens the first result before `vjk` is in the URL) hit the standalone-record push
+with no dedup → a fresh duplicate every ~600ms observer tick (client-side only — `inbox_add_many`
+dedups by `norm_url`, so the inbox never saw them). Fix: `extractDetail` now requires a
+URL-identified job + the standalone push is idempotent; verified by node simulation. No
+privacy/security/packaging regressions found.
+
+**Live-verify owed (Alex, can't be done headless):** the LinkedIn/Indeed detail selectors are
+best-known + generously-fallback'd but unverified against the live DOM — paste `selector_check.js`
+with a job open and send the output to patch any rot.
+
 ## Git
 
-- Sessions 14–17 = **25 local commits on `master`, NOT pushed** — awaiting Alex's `py gui.py`
-  eyeball (now includes: colored score cells, the scorecard detail pane, Hide-stale / Meets-pay-floor
-  / New filters, Clean-dead-links, empty states, the **Tools** menu [Due/Funnel/Contacts/Connect-AI],
-  **Help▸Privacy**, **File▸Backup/Restore**) then `git push`. master at `fe96b71` + 25.
+- Sessions 14–18 = **31 local commits on `master`, NOT pushed** — awaiting Alex's `py gui.py`
+  eyeball then `git push`. Now includes, on top of the S14–17 surface (colored score cells, scorecard
+  detail pane, Hide-stale / Meets-pay-floor / New filters, Clean-dead-links, empty states, **Tools**
+  menu [Due/Funnel/Contacts/Connect-AI], **Help▸Privacy**, **File▸Backup/Restore**): the **S18 modern
+  ttkbootstrap theme + dark-mode white-outline fix** (eyeball in both light & dark) and the **browser
+  extension's full-detail capture**. master `fe96b71` + 31.
+- **New dependency (S18):** `ttkbootstrap==1.20.4` (+ Pillow, already present) — in `requirements.txt`
+  and `app.spec`. First `py build_package.py` after this needs the EXE re-tested (ttkbootstrap data +
+  PIL now bundled).
 - Remote: `git@github.com:alex-zagorianos/Job-Program.git` (private).
-- Full suite: **682 passed** (`py -m pytest -q`, ~8–17s; display-guarded Tk tests skip headless).
-  Python command: `py`. GUI launches clean.
-- Active project: `applied-ai` (672-row inbox after the S17 dead-link prune). DB schema now v4
-  (contacts table added; everything else additive over `extras`).
+- Full suite: **696 passed** (`py -m pytest -q`, ~15–24s; display-guarded Tk tests skip headless,
+  shows as 695 + 1 skip). Python command: `py`. GUI constructs + live light↔dark toggle verified.
+- Active project: `applied-ai` (672-row inbox after the S17 dead-link prune). DB schema **unchanged
+  at v4** — the S18 browser-harvest metadata rides the existing `extras` JSON (no migration).
