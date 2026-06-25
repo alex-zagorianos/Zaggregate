@@ -2428,6 +2428,19 @@ class App(tk.Tk):
         instead of an empty Search tab."""
         if applied:
             self._rebuild_tabs()
+            # Close the loop: don't strand a fresh user on an empty app — offer to
+            # run their first search right now so they SEE scored results.
+            if messagebox.askyesno(
+                    "You're all set",
+                    "Your preferences are saved.\n\nFind your first jobs now?",
+                    parent=self):
+                self._nb.select(self._search)
+                self.update_idletasks()
+                try:
+                    self._search._search()   # threaded; no-op if keywords are blank
+                except Exception:
+                    pass
+                return
         self._open_guide()
 
     # ── Tools dialogs ───────────────────────────────────────────────────────────
