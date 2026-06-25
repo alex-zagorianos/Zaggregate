@@ -66,6 +66,33 @@ def test_detail_text_has_scorecard_and_skill_gap(inbox_tab):
     assert "Job also wants" in text
 
 
+def test_empty_inbox_shows_empty_state(tmp_path, monkeypatch):
+    import tkinter as tk
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+    db.init_db()                     # no rows
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    import gui
+    gui.theme.apply_theme(root)
+    tab = gui.InboxTab(root)
+    try:
+        assert tab._empty_widget is not None      # empty-inbox overlay shown
+    finally:
+        root.destroy()
+
+
+def test_filtered_to_zero_then_cleared(inbox_tab):
+    tab, _ = inbox_tab
+    tab._f_minscore.set("999")       # nothing scores this high
+    tab._render()
+    assert tab._empty_widget is not None
+    tab._f_minscore.set("")
+    tab._render()
+    assert tab._empty_widget is None  # rows visible again -> overlay removed
+
+
 def test_hide_stale_filter_drops_evergreen(inbox_tab):
     tab, _ = inbox_tab
     tab._f_location.set("All locations")   # isolate from the location view-filter

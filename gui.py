@@ -743,6 +743,7 @@ class InboxTab(ttk.Frame):
         self._sort_col: str | None = None  # None = round-robin default
         self._sort_asc = True
         self._skill_terms = None     # cached per project for the skill-gap readout
+        self._empty_widget = None    # overlay shown when the table is empty
         self._on_change = on_change  # notify App to refresh the tab badge
         # Home metro for the Location view-filter; resolved per active project in
         # refresh(). Agnostic defaults until then.
@@ -825,7 +826,7 @@ class InboxTab(ttk.Frame):
         ft.bind("<KeyRelease>", lambda _e: self._render())
         theme.btn(fbar, "Clear", self._clear_filters, "ghost").pack(side="left")
 
-        tf = ttk.Frame(self)
+        self._tf = tf = ttk.Frame(self)
         tf.pack(fill="both", expand=True, padx=6, pady=2)
         self._tree = ttk.Treeview(tf, columns=[c[0] for c in self._COLS],
                                   show="headings", selectmode="extended")
@@ -1016,6 +1017,26 @@ class InboxTab(ttk.Frame):
         label = (f"{len(rows)} of {total} awaiting triage"
                  if len(rows) != total else f"{total} awaiting triage")
         self._count_lbl.config(text=label)
+        self._update_empty(rows)
+
+    def _update_empty(self, rows):
+        """Overlay a friendly empty state on the table: distinguish a genuinely
+        empty inbox (run a search) from one filtered down to nothing (clear)."""
+        if self._empty_widget is not None:
+            self._empty_widget.destroy()
+            self._empty_widget = None
+        if rows:
+            return
+        if not self._all:
+            self._empty_widget = theme.empty_state(
+                self._tf,
+                "Your inbox is empty.\nOpen the Search tab and click Search — "
+                "matches land here for you to triage.")
+        else:
+            self._empty_widget = theme.empty_state(
+                self._tf, "No jobs match your current filters.",
+                "Clear filters", self._clear_filters)
+        self._empty_widget.place(relx=0, rely=0, relwidth=1, relheight=1)
 
     def _sort_by(self, col):
         default_asc = col not in self._NUMERIC_COLS
