@@ -65,4 +65,45 @@ with a logged default and he answers on return). Companion to
 
 ## Progress (newest first)
 
-- 2026-06-24 — Kickoff. Wrote plan + this log. Beginning Batch 0 (new backend modules).
+- 2026-06-24 — Kickoff. Wrote plan + this log.
+- 2026-06-24 — **Dead-link fixes committed** (`586ac45`): server-rendered Greenhouse URLs +
+  inbox liveness prune + repair script. Suite 586.
+- 2026-06-24 — **Batch 0 (engine layer) DONE + committed** (`6b56ed1`). 3 new modules built in
+  PARALLEL via delegated worktree agents (TDD, reviewed): `match/ghost.py`, `match/skillgap.py`,
+  `tracker/analytics.py`. Plus inline helpers: `scorer.score_breakdown`, `theme.score_band`/
+  `score_glyph`/`band_color`/`empty_state`, `tracker.followups_due`, `config.read_secret`/
+  `write_secret`, `ui.settings` api-key API, `resume.api_available` honors pasted key. **+53 tests,
+  suite 639 green.** Worktrees cleaned. master 15 ahead.
+  - **Decision D8 refinement:** GUI wiring (gui.py, 2,463 lines) done **inline**, not delegated —
+    a single delicate file offers no parallelism and high merge risk; the parallelizable engine
+    modules were the real delegation win (done). Reverting to delegation for any _new_ disjoint
+    file batches (comp, SmartScreen kit, etc.).
+- 2026-06-24 — Beginning Tier-1 GUI wiring inline.
+- 2026-06-24 — **Tier 1 COMPLETE + key Tier 2 surfacing.** Commits on master (push HELD):
+  - `feat(inbox)` surfacing: **T1.2** score-breakdown + **T1.3** color bands +
+    **T2.9** ghost/Hide-stale + **T2.10** skill-gap in the detail pane; **T1.1** Clean-dead-links
+    button (threaded) + opt-in daily prune.
+  - `feat(gui)` Tools menu: **T1.5** Due queue, **T2.8** funnel analytics, **T1.6** API-key
+    Settings; **T1.7** privacy panel (Help).
+  - `feat(inbox)` **T1.4** empty states (empty vs filtered-to-zero).
+  - `feat(onboarding)` **T2.12** first-search offer on Setup finish.
+  - Suite **586 → 648**. master now **19 ahead** of origin.
+- 2026-06-24 — **Batch 2 delegated** (parallel worktrees): **T2.11** SmartScreen kit,
+  **T3.14** comp module, **T3.18** contacts CRM. (Awaiting completion → review + merge.)
+
+### Status by item
+
+- **DONE:** T1.1 T1.2 T1.3 T1.4 T1.5 T1.6 T1.7 · T2.8 T2.9 T2.10 T2.12 · (engine: ghost,
+  skillgap, analytics, score_breakdown, followups_due, secrets/api-key).
+- **IN FLIGHT (Batch 2):** T2.11 (SmartScreen), T3.14 (comp), T3.18 (contacts).
+- **PENDING (specced in plan):** T2.13 browser-ext capture (hard, partial-only), T3.15 age/repost
+  display, T3.16 size/funding facets, T3.17 job_key dedup (held back from delegation — subtle;
+  do inline/careful), T3.19 filter presets, T3.20 review-mode card, T3.21 onboarding checklist,
+  T3.22 CDX refresh, T3.23 shortcut hints, T3.24 backup/restore, T3.25 confidence badge (folded
+  into T1.2), T3.27 tunable weights (see Q2), T3.28 auto-update. Deferred per D2: web reskin,
+  email-OAuth.
+
+### New questions for Alex
+
+- **Q3:** daily auto-prune (`prune_inbox_daily`) defaults **off** (re-probes every link each run,
+  ~minutes). The GUI "Clean dead links" button + `--prune-inbox` cover it. Want it on by default?
