@@ -510,9 +510,15 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
                  getattr(j, "board_count", -1)),
             )
             if cur.rowcount:
+                # Per-job extras: a transient `_extras` dict on the JobResult
+                # (e.g. browser-harvest "browse" metadata) plus the freshness
+                # stamp share the row's extras JSON. Both schema-free.
+                extra = dict(getattr(j, "_extras", None) or {})
                 if new_batch and getattr(j, "is_new", False):
+                    extra["new_batch"] = new_batch
+                if extra:
                     conn.execute("UPDATE inbox SET extras=? WHERE id=?",
-                                 (json.dumps({"new_batch": new_batch}), cur.lastrowid))
+                                 (json.dumps(extra), cur.lastrowid))
                 if per_company_cap > 0:
                     per_company[key] = per_company.get(key, 0) + 1
             added += cur.rowcount

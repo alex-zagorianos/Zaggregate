@@ -1,8 +1,10 @@
 // Job Harvester — selector rot self-check.
-// Open a LinkedIn or Indeed JOBS SEARCH results page (the list view), open
-// DevTools (F12) -> Console, paste this whole file, press Enter. It runs the
-// extension's real content.js selectors against the live DOM and reports what
-// still matches. Paste the output back to Claude to patch any rotted selectors.
+// Open a LinkedIn or Indeed JOBS SEARCH results page (the list view), THEN
+// click a job so its detail pane is showing. Open DevTools (F12) -> Console,
+// paste this whole file, press Enter. It runs the extension's real content.js
+// selectors (both the CARD list layer and the DETAIL pane layer) against the
+// live DOM and reports what still matches. Paste the output back to Claude to
+// patch any rotted selectors.
 (() => {
   const SITES = {
     linkedin: {
@@ -10,6 +12,7 @@
       cards: [
         "li.jobs-search-results__list-item",
         "li.scaffold-layout__list-item",
+        "div.job-card-container",
       ],
       titleLink: [
         "a.job-card-list__title--link",
@@ -51,6 +54,60 @@
       salary: [
         ".salary-snippet-container span",
         "[data-testid='attribute_snippet_testid']",
+        ".metadataContainer",
+      ],
+    },
+  };
+
+  // Mirror of content.js DETAIL — keep these two in sync when patching.
+  const DETAIL = {
+    linkedin: {
+      pane: [
+        ".jobs-search__job-details",
+        ".job-view-layout",
+        ".jobs-details",
+        "#job-details",
+      ],
+      description: [
+        "#job-details",
+        ".jobs-description__content .jobs-box__html-content",
+        ".jobs-description-content__text",
+        ".jobs-description__content",
+        "article.jobs-description__container",
+      ],
+      details: [
+        ".job-details-jobs-unified-top-card__primary-description-container",
+        ".job-details-jobs-unified-top-card__job-insight",
+        ".jobs-unified-top-card__primary-description",
+        ".jobs-unified-top-card__job-insight",
+        ".job-details-jobs-unified-top-card__tertiary-description-container",
+      ],
+      apply: [".jobs-apply-button", "button[class*='jobs-apply-button']"],
+    },
+    indeed: {
+      pane: [
+        ".jobsearch-RightPane",
+        "#jobsearch-ViewjobPaneWrapper",
+        ".fastviewjob",
+        ".jobsearch-BodyContainer",
+      ],
+      description: [
+        "#jobDescriptionText",
+        ".jobsearch-JobComponent-description",
+        "[id='jobDescriptionText']",
+      ],
+      details: [
+        ".jobsearch-JobInfoHeader-subtitle",
+        "#salaryInfoAndJobType",
+        ".jobsearch-JobMetadataHeader-item",
+        "[data-testid='jobsearch-JobInfoHeader-companyLocation']",
+        "[class*='js-match-insights-provider']",
+      ],
+      apply: [
+        "#indeedApplyButton",
+        ".jobsearch-IndeedApplyButton-newDesign",
+        "[data-testid='indeedApplyButton']",
+        "button[id*='ApplyButton']",
       ],
     },
   };
@@ -79,6 +136,7 @@
     return null;
   };
 
+  // ── CARD layer ──────────────────────────────────────────────────────────
   let cardSel = null,
     cards = [];
   for (const s of S.cards) {
@@ -92,40 +150,92 @@
     } catch (_) {}
   }
   console.log(
-    `cards: ${cards.length} matched via  ${cardSel || "NONE  <-- all card selectors rotted"}`,
+    `%cCARDS: ${cards.length} matched via  ${cardSel || "NONE  <-- all card selectors rotted"}`,
+    "font-weight:bold",
   );
-  if (!cards.length) {
-    console.log(
-      "STOP: no cards. Either not a results list, or card selectors need updating.",
-    );
-    return;
-  }
-
-  const fields = ["titleLink", "company", "location", "salary"];
-  const hits = Object.fromEntries(fields.map((f) => [f, 0]));
-  const used = {};
-  const sample = cards.slice(0, Math.min(cards.length, 25));
-  for (const c of sample) {
-    for (const f of fields) {
-      const sel = firstSel(S[f], c);
-      if (sel) {
-        hits[f]++;
-        used[f] = used[f] || sel;
+  if (cards.length) {
+    const fields = ["titleLink", "company", "location", "salary"];
+    const hits = Object.fromEntries(fields.map((f) => [f, 0]));
+    const used = {};
+    const sample = cards.slice(0, Math.min(cards.length, 25));
+    for (const c of sample) {
+      for (const f of fields) {
+        const sel = firstSel(S[f], c);
+        if (sel) {
+          hits[f]++;
+          used[f] = used[f] || sel;
+        }
       }
     }
+    const n = sample.length;
+    console.table(
+      fields.map((f) => ({
+        field: f,
+        "hit %": Math.round((100 * hits[f]) / n) + "%",
+        "working selector": used[f] || "NONE  <-- rotted",
+      })),
+    );
+    console.log(
+      `title (required to capture a card): ${used.titleLink ? "OK" : "MISSING -- nothing will be collected"}`,
+    );
+    console.log(`Checked ${n} of ${cards.length} cards.`);
+  } else {
+    console.log(
+      "(No cards — open a results LIST page to audit the card layer.)",
+    );
   }
-  const n = sample.length;
-  console.table(
-    fields.map((f) => ({
-      field: f,
-      "hit %": Math.round((100 * hits[f]) / n) + "%",
-      "working selector": used[f] || "NONE  <-- rotted",
-    })),
-  );
+
+  // ── DETAIL layer (needs a job open) ─────────────────────────────────────
+  const D = DETAIL[name];
+  const paneSel = firstSel(D.pane);
   console.log(
-    `title (required to capture a card): ${used.titleLink ? "OK" : "MISSING -- nothing will be collected"}`,
+    `%cDETAIL pane: ${paneSel || "NONE  <-- no job open, or pane selectors rotted"}`,
+    "font-weight:bold",
   );
+  if (!paneSel) {
+    console.log(
+      "Click a job to open its detail pane, then re-run for the detail audit.",
+    );
+  } else {
+    const descSel = firstSel(D.description);
+    const descNode = descSel ? document.querySelector(descSel) : null;
+    const descLen = descNode ? (descNode.innerText || "").trim().length : 0;
+    const detailsHit = D.details.filter((s) => {
+      try {
+        return document.querySelector(s);
+      } catch (_) {
+        return false;
+      }
+    });
+    const applySel = firstSel(D.apply);
+    console.table([
+      {
+        field: "description",
+        "working selector": descSel || "NONE  <-- rotted (no body captured!)",
+        info: `${descLen} chars`,
+      },
+      {
+        field: "details(blob)",
+        "working selector": detailsHit[0] || "NONE  <-- rotted",
+        info: `${detailsHit.length}/${D.details.length} selectors hit`,
+      },
+      {
+        field: "apply",
+        "working selector": applySel || "(none)",
+        info: applySel
+          ? (document.querySelector(applySel).innerText || "")
+              .trim()
+              .slice(0, 40)
+          : "",
+      },
+    ]);
+    console.log(
+      `description: ${descSel && descLen > 40 ? "OK" : "MISSING/THIN -- the full body won't be captured"}`,
+    );
+  }
+
   console.log(
-    `Checked ${n} of ${cards.length} cards. Copy this whole output back to Claude.`,
+    "%cCopy this whole output back to Claude to patch any rotted selectors.",
+    "font-style:italic",
   );
 })();

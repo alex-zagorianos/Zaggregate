@@ -40,6 +40,42 @@ def test_inbox_add_many_no_batch_is_noop(tmp_db):
     assert not (db.inbox_all()[0]["extras"] or "")
 
 
+def test_inbox_add_many_stamps_browse_extras(tmp_db):
+    # A browser-harvested job carries a transient _extras dict; inbox_add_many
+    # persists it to the row's extras JSON (schema-free, like new_batch).
+    j = _job("https://x/3", False)
+    j._extras = {"browse": {"work_mode": "Remote", "applicants": 42}}
+    db.inbox_add_many([j])
+    e = json.loads(db.inbox_all()[0]["extras"] or "{}")
+    assert e["browse"] == {"work_mode": "Remote", "applicants": 42}
+
+
+def test_inbox_add_many_merges_browse_and_new_batch(tmp_db):
+    j = _job("https://x/4", True)
+    j._extras = {"browse": {"easy_apply": True}}
+    db.inbox_add_many([j], new_batch="B1")
+    e = json.loads(db.inbox_all()[0]["extras"] or "{}")
+    assert e["browse"] == {"easy_apply": True}
+    assert e["new_batch"] == "B1"
+
+
+def test_gui_browse_helpers():
+    from gui import _row_browse, _browse_summary
+    row = {"extras": json.dumps({"browse": {
+        "work_mode": "Remote", "employment_type": "Full-time",
+        "seniority": "Mid-Senior level", "applicants": 1,
+        "easy_apply": True, "promoted": True}})}
+    b = _row_browse(row)
+    assert b["work_mode"] == "Remote"
+    summary = _browse_summary(b)
+    assert summary == "Remote · Full-time · Mid-Senior level · 1 applicant · Easy Apply · Promoted"
+    # Non-browser rows / malformed extras -> empty, no crash.
+    assert _row_browse({"extras": None}) == {}
+    assert _row_browse({"extras": "not json"}) == {}
+    assert _row_browse({"extras": json.dumps({"new_batch": "x"})}) == {}
+    assert _browse_summary({}) == ""
+
+
 def test_gui_new_batch_helpers():
     from gui import _row_new_batch, _latest_new_batch, _is_new_row
     rows = [

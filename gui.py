@@ -656,6 +656,37 @@ def _row_new_batch(row) -> str:
     return data.get("new_batch", "") if isinstance(data, dict) else ""
 
 
+def _row_browse(row) -> dict:
+    """Browser-harvest metadata stamped on an inbox row's extras under "browse"
+    (work mode, employment type, seniority, applicants, easy-apply, promoted).
+    Empty dict when the row didn't come from the browser extension."""
+    raw = row.get("extras")
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    browse = data.get("browse") if isinstance(data, dict) else None
+    return browse if isinstance(browse, dict) else {}
+
+
+def _browse_summary(b: dict) -> str:
+    """One-line ' · '-joined summary of browse metadata ('' if nothing useful)."""
+    bits = []
+    for key in ("work_mode", "employment_type", "seniority"):
+        if b.get(key):
+            bits.append(str(b[key]))
+    if b.get("applicants") is not None:
+        n = b["applicants"]
+        bits.append(f"{n} applicant" + ("" if n == 1 else "s"))
+    if b.get("easy_apply"):
+        bits.append("Easy Apply")
+    if b.get("promoted"):
+        bits.append("Promoted")
+    return " · ".join(bits)
+
+
 def _latest_new_batch(rows) -> "str | None":
     """Most recent freshness batch across rows (None if none stamped). Latest
     batch wins, mirroring Top Picks' rec_batch convention."""
@@ -1116,6 +1147,12 @@ class InboxTab(ttk.Frame):
             if bd["penalties"]:
                 line += "   penalties: " + ", ".join(p["label"] for p in bd["penalties"])
             lines.append(line)
+
+        # Browser-harvest extras (work mode / type / seniority / applicants /
+        # easy-apply / promoted) when this row was collected while browsing.
+        summary = _browse_summary(_row_browse(r))
+        if summary:
+            lines.append("Captured while browsing: " + summary)
 
         desc = r.get("description") or ""
         if desc.strip():

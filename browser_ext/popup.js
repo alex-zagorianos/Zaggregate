@@ -2,6 +2,8 @@ const RECEIVER_URL = "http://localhost:5002";
 const TRACKER_URL = "http://localhost:5001";
 
 const countEl = document.getElementById("count");
+const detailLineEl = document.getElementById("detail-line");
+const hintEl = document.getElementById("hint");
 const sendBtn = document.getElementById("send-btn");
 const trackBtn = document.getElementById("track-btn");
 const clearBtn = document.getElementById("clear-btn");
@@ -15,14 +17,23 @@ function setStatus(msg, cls = "") {
 async function refreshCount() {
   const stored = await chrome.storage.local.get("jobs");
   const jobs = stored.jobs || [];
+  const detailed = jobs.filter((j) => j.detailed).length;
   countEl.textContent = jobs.length;
   const hasJobs = jobs.length > 0;
   trackBtn.disabled = !hasJobs;
   sendBtn.disabled = !hasJobs;
+
+  // Surface how many carry the full description/details. If you've collected a
+  // pile of cards but opened none — or detail capture has silently broken
+  // (selector rot) — this stays at 0 and the hint nudges you to open jobs.
   if (hasJobs) {
+    detailLineEl.textContent = `${detailed} of ${jobs.length} with full details`;
+    hintEl.style.display = detailed === 0 ? "block" : "none";
     sendBtn.textContent = `Send ${jobs.length} job${jobs.length === 1 ? "" : "s"} to Tool`;
     trackBtn.textContent = `Track All as Interested (${jobs.length})`;
   } else {
+    detailLineEl.textContent = "";
+    hintEl.style.display = "block";
     sendBtn.textContent = "Send to Tool (no jobs yet)";
     trackBtn.textContent = "Track All as Interested";
   }

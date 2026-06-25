@@ -178,24 +178,63 @@ def _to_job_result(j) -> JobResult | None:
     if salary_min is None:
         salary_min, salary_max = _parse_salary(j.get("salary_text", ""))
 
+    # The detail pass forwards the real posting body — populate it so harvested
+    # jobs score honestly (the 25-pt skill component is no longer always 0) and
+    # skill-gap / comp / ghost in the inbox detail pane have something to work on.
+    description = (j.get("description") or "").strip()
+
+    # Parse the raw detail blob (employment type, work mode, seniority,
+    # applicants, posted age, easy-apply) + the card's footer text (Promoted,
+    # posted age) — one server-side parser, like salary.
+    detail_blob = "\n".join(
+        s for s in (j.get("details_text"), j.get("card_text")) if s
+    )
+    meta = parse_details(detail_blob)
+    promoted = bool(re.search(r"\bpromoted\b", j.get("card_text") or "", re.I))
+    external_id = (j.get("external_id") or "").strip()
+
+    # `created` drives recency + ghost staleness. Prefer the posting's real age
+    # (derived from "N days ago") over the capture timestamp, which would make
+    # every browsed job look brand-new and defeat the staleness advisory.
     created = j.get("captured_at") or datetime.now(timezone.utc).isoformat()
+    posted_iso = _created_from_age(meta.get("posted_age_days"))
+    if posted_iso:
+        created = posted_iso
 
     uid = hashlib.md5(url.encode()).hexdigest()[:10]
     job_id = f"browser_{uid}"
 
-    return JobResult(
+    jr = JobResult(
         title=title,
         company=company,
         location=location,
         salary_min=salary_min,
         salary_max=salary_max,
-        description="",
+        description=description,
         url=url,
         source_keyword="(browser harvest)",
         created=created,
         job_id=job_id,
         source_api=f"{source}_browser",
     )
+
+    # Rich, schema-free metadata rides the inbox row's `extras` JSON (under a
+    # "browse" key) — surfaced in the Inbox detail pane, never folded into the
+    # honest 0-100 score. inbox_add_many stamps `_extras` at insert.
+    browse = {k: v for k, v in {
+        "work_mode": meta.get("work_mode"),
+        "employment_type": meta.get("employment_type"),
+        "seniority": meta.get("seniority"),
+        "applicants": meta.get("applicants"),
+        "posted_age_days": meta.get("posted_age_days"),
+        "easy_apply": meta.get("easy_apply") or None,
+        "promoted": promoted or None,
+        "external_id": external_id or None,
+        "detailed": bool(j.get("detailed")) or None,
+    }.items() if v not in (None, "", False)}
+    if browse:
+        jr._extras = {"browse": browse}
+    return jr
 
 
 # Hourly only when a rate unit is actually attached to a number — anchored so
@@ -262,6 +301,104 @@ def _parse_salary(text: str):
     if len(parsed) == 1:
         return parsed[0], None
     return None, None
+
+
+# ── Detail-pane field extraction (one source of truth, like salary) ────────────
+# The extension forwards the open job's full description plus a raw "details"
+# blob (the LinkedIn/Indeed top-card metadata). The JS just grabs containers;
+# all field extraction lives here so the two sides can't drift.
+_WORK_MODE_RE = re.compile(r"\b(remote|hybrid|on-?site|in[- ]office)\b", re.I)
+_EMP_TYPE_RE = re.compile(
+    r"\b(full[- ]?time|part[- ]?time|contract|internship|temporary|freelance|volunteer)\b",
+    re.I,
+)
+_SENIORITY_RE = re.compile(
+    r"\b(internships?|entry[- ]level|associate|mid[- ]senior level|director|executive)\b",
+    re.I,
+)
+# "47 applicants", "Over 200 applicants", "Be among the first 25 applicants".
+_APPLICANTS_RE = re.compile(r"(?:over\s+)?(\d[\d,]*)\s*\+?\s*applicant", re.I)
+_FIRST_N_RE = re.compile(r"first\s+(\d+)\s+applicant", re.I)
+# Relative posting age: "3 days ago", "2 weeks ago", "30+ days ago", "1 hour ago".
+_AGE_RE = re.compile(r"(\d+)\s*\+?\s*(hour|day|week|month)s?\s+ago", re.I)
+_EASY_RE = re.compile(r"easy apply|easily apply|indeed apply", re.I)
+_AGE_UNIT_DAYS = {"hour": 0, "day": 1, "week": 7, "month": 30}
+
+
+def _canon_work_mode(s: str) -> str:
+    s = s.lower().replace("-", "").replace(" ", "")
+    if s.startswith("remote"):
+        return "Remote"
+    if s.startswith("hybrid"):
+        return "Hybrid"
+    return "On-site"  # onsite / inoffice
+
+
+def _canon_emp(s: str) -> str:
+    s = s.lower().replace("-", "").replace(" ", "")
+    return {
+        "fulltime": "Full-time", "parttime": "Part-time", "contract": "Contract",
+        "internship": "Internship", "temporary": "Temporary",
+        "freelance": "Freelance", "volunteer": "Volunteer",
+    }.get(s, s.title())
+
+
+def _canon_seniority(s: str) -> str:
+    s = s.lower()
+    if "intern" in s:
+        return "Internship"
+    if "entry" in s:
+        return "Entry level"
+    if "associate" in s:
+        return "Associate"
+    if "mid" in s:
+        return "Mid-Senior level"
+    if "director" in s:
+        return "Director"
+    if "executive" in s:
+        return "Executive"
+    return ""
+
+
+def parse_details(text: str) -> dict:
+    """Extract structured fields from the detail blob. All keys always present;
+    values default to ''/None/False when not found."""
+    out = {"work_mode": "", "employment_type": "", "seniority": "",
+           "applicants": None, "posted_age_days": None, "easy_apply": False}
+    if not text:
+        return out
+    m = _WORK_MODE_RE.search(text)
+    if m:
+        out["work_mode"] = _canon_work_mode(m.group(1))
+    m = _EMP_TYPE_RE.search(text)
+    if m:
+        out["employment_type"] = _canon_emp(m.group(1))
+    m = _SENIORITY_RE.search(text)
+    if m:
+        out["seniority"] = _canon_seniority(m.group(1))
+    m = _APPLICANTS_RE.search(text) or _FIRST_N_RE.search(text)
+    if m:
+        try:
+            out["applicants"] = int(m.group(1).replace(",", ""))
+        except ValueError:
+            pass
+    # Take the smallest (most recent) age mentioned.
+    days = None
+    for n, unit in _AGE_RE.findall(text):
+        d = int(n) * _AGE_UNIT_DAYS[unit.lower()]
+        days = d if days is None else min(days, d)
+    out["posted_age_days"] = days
+    out["easy_apply"] = bool(_EASY_RE.search(text))
+    return out
+
+
+def _created_from_age(days):
+    """An ISO date `days` before today, or None — so a browsed job's recency +
+    staleness reflect the real posting age, not the moment it was scraped."""
+    if days is None:
+        return None
+    from datetime import timedelta
+    return (date.today() - timedelta(days=days)).isoformat()
 
 
 if __name__ == "__main__":

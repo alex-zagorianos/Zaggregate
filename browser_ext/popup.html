@@ -1,43 +1,152 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-           width: 280px; padding: 16px; background: #fafafa; color: #222; }
-    h2 { font-size: 1rem; color: #1a1a2e; margin-bottom: 4px; }
-    .subtitle { font-size: 0.75rem; color: #888; margin-bottom: 14px; }
-    .count-box { background: #1a1a2e; color: #fff; border-radius: 8px;
-                 padding: 12px 16px; margin-bottom: 14px; text-align: center; }
-    .count-box .num { font-size: 2rem; font-weight: 700; }
-    .count-box .label { font-size: 0.75rem; opacity: 0.8; margin-top: 2px; }
-    button { width: 100%; padding: 9px; border: none; border-radius: 6px;
-             font-size: 0.875rem; cursor: pointer; margin-bottom: 8px; }
-    #send-btn   { background: #1a1a2e; color: #fff; }
-    #send-btn:hover { background: #2a2a4e; }
-    #send-btn:disabled { background: #999; cursor: default; }
-    #track-btn  { background: #1565c0; color: #fff; }
-    #track-btn:hover { background: #0d47a1; }
-    #track-btn:disabled { background: #999; cursor: default; }
-    #clear-btn  { background: #f0f0f0; color: #555; }
-    #clear-btn:hover { background: #e0e0e0; }
-    #status { font-size: 0.78rem; min-height: 18px; color: #444; text-align: center; }
-    #status.ok  { color: #2e7d32; }
-    #status.err { color: #c62828; }
-  </style>
-</head>
-<body>
-  <h2>Job Harvester</h2>
-  <p class="subtitle">LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice</p>
-  <div class="count-box">
-    <div class="num" id="count">0</div>
-    <div class="label">jobs collected</div>
-  </div>
-  <button id="send-btn" disabled>Send to Tool (start receiver first)</button>
-  <button id="track-btn" disabled>Track All as Interested</button>
-  <button id="clear-btn">Clear collected jobs</button>
-  <div id="status"></div>
-  <script src="popup.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      :root {
+        --ink: #1a2030;
+        --muted: #5a6577;
+        --faint: #98a1b2;
+        --surface: #ffffff;
+        --window: #f5f7fa;
+        --border: #e3e8ef;
+        --accent: #4263eb;
+        --accent-dk: #3b51c9;
+        --ok: #2f9e44;
+        --err: #c92a2a;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          "Segoe UI",
+          -apple-system,
+          BlinkMacSystemFont,
+          Roboto,
+          sans-serif;
+        width: 300px;
+        padding: 16px;
+        background: var(--window);
+        color: var(--ink);
+      }
+      h2 {
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 2px;
+      }
+      .subtitle {
+        font-size: 0.72rem;
+        color: var(--faint);
+        margin-bottom: 14px;
+      }
+      .count-box {
+        background: var(--accent);
+        color: #fff;
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 6px;
+        text-align: center;
+      }
+      .count-box .num {
+        font-size: 2.1rem;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .count-box .label {
+        font-size: 0.72rem;
+        opacity: 0.85;
+        margin-top: 2px;
+      }
+      .detail-line {
+        font-size: 0.72rem;
+        color: var(--muted);
+        text-align: center;
+        margin-bottom: 14px;
+        min-height: 16px;
+      }
+      .hint {
+        font-size: 0.7rem;
+        color: var(--faint);
+        text-align: center;
+        margin: -6px 0 14px;
+        line-height: 1.4;
+      }
+      button {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 8px;
+        transition: background 0.12s;
+      }
+      #send-btn {
+        background: var(--accent);
+        color: #fff;
+      }
+      #send-btn:hover:not(:disabled) {
+        background: var(--accent-dk);
+      }
+      #track-btn {
+        background: var(--surface);
+        color: var(--ink);
+        border: 1px solid var(--border);
+      }
+      #track-btn:hover:not(:disabled) {
+        background: var(--window);
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #clear-btn {
+        background: transparent;
+        color: var(--muted);
+        font-weight: 500;
+        padding: 6px;
+        margin-bottom: 0;
+      }
+      #clear-btn:hover {
+        color: var(--err);
+      }
+      #status {
+        font-size: 0.76rem;
+        min-height: 18px;
+        color: var(--muted);
+        text-align: center;
+        margin-top: 6px;
+      }
+      #status.ok {
+        color: var(--ok);
+      }
+      #status.err {
+        color: var(--err);
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Job Harvester</h2>
+    <p class="subtitle">
+      LinkedIn &amp; Indeed (+ Glassdoor, ZipRecruiter, Dice)
+    </p>
+    <div class="count-box">
+      <div class="num" id="count">0</div>
+      <div class="label">jobs collected</div>
+    </div>
+    <div class="detail-line" id="detail-line"></div>
+    <p class="hint" id="hint">
+      Tip: open a job to capture its full description &amp; details.
+    </p>
+    <button id="send-btn" disabled>Send to Tool (start receiver first)</button>
+    <button id="track-btn" disabled>Track All as Interested</button>
+    <button id="clear-btn">Clear collected jobs</button>
+    <div id="status"></div>
+    <script src="popup.js"></script>
+  </body>
 </html>
