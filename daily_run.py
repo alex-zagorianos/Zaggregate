@@ -161,6 +161,19 @@ def main():
         except Exception as e:  # best-effort; never fail the run for a prune
             log(f"WARN: inbox prune skipped: {type(e).__name__}: {e}")
 
+    # Optionally grow the company registry from Common Crawl on the scheduled run
+    # (additive, user-wins). OFF by default — it's network-heavy and the funnel's
+    # own docstring says "occasional, not per-search"; opt in with
+    # "discover_on_daily": true (or run `cli --discover` by hand).
+    if cfg.get("discover_on_daily"):
+        try:
+            from discover.funnel import run_funnel
+            summary = run_funnel()
+            log(f"discovery funnel: harvested {summary.get('harvested', 0)} -> "
+                f"added {summary.get('added', 0)} board(s)")
+        except Exception as e:  # best-effort; never fail the run for discovery
+            log(f"WARN: discovery skipped: {type(e).__name__}: {e}")
+
     # Health beacon: 'zero' when nothing new landed, else 'ok', with per-source
     # counts of what the search returned this run.
     from collections import Counter
