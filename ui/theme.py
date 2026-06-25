@@ -181,6 +181,8 @@ def apply_theme(root, mode=None) -> ttk.Style:
     #   • Fresh root (the test suite builds a new Tk per test): the singleton is
     #     bound to a now-destroyed root, so drop stale subscriptions and rebind.
     base = _BASE_THEME[_mode]
+    target = root._root()  # the Tk interpreter this root belongs to
+
     # Drop accumulated widget subscriptions first. On a live toggle the
     # about-to-be-rebuilt tabs still hold combobox subscriptions; theme_use()
     # publishes to every subscriber, and any already-destroyed one crashes ("bad
@@ -188,17 +190,26 @@ def apply_theme(root, mode=None) -> ttk.Style:
     # widgets re-subscribe; new comboboxes also style their popdown at
     # construction, not via this publish.
     Publisher.clear_subscribers()
+
+    # Reuse the singleton ONLY when it's bound to *this exact* root (the app's
+    # live light<->dark toggle): theme_use accumulates each theme's builder on
+    # that instance, so a repeated flip is safe. Reusing an instance bound to a
+    # *different* still-alive root (the test suite builds many Tk roots; GC timing
+    # left one alive) would style the wrong interpreter — so otherwise rebind a
+    # fresh Style. ttkbootstrap's Style binds to tk._default_root, which can be a
+    # leaked root, so we pin the default to our target across construction.
     inst = tb.Style.instance
-    alive = False
+    same_root = False
     if inst is not None:
         try:
-            alive = bool(inst.master) and bool(inst.master.winfo_exists())
+            same_root = inst.master is target and bool(target.winfo_exists())
         except (tk.TclError, AttributeError):
-            alive = False
-    if inst is not None and alive:
+            same_root = False
+    if same_root:
         style = inst
         style.theme_use(base)
     else:
+        tk._default_root = target
         tb.Style.instance = None
         style = tb.Style(theme=base)
     root.configure(bg=WINDOW)
