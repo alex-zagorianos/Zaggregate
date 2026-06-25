@@ -856,14 +856,15 @@ class InboxTab(ttk.Frame):
 
         abar = tk.Frame(self, bg=theme.WINDOW, pady=6)
         abar.pack(fill="x", padx=6, side="bottom")
-        theme.tip(theme.btn(abar, "Track \N{BLACK RIGHT-POINTING SMALL TRIANGLE} Interested",
+        theme.tip(theme.btn(abar, "Track \N{BLACK RIGHT-POINTING SMALL TRIANGLE} Interested (T)",
                             self._track, "accent"),
-                  "Move the selected job(s) to your Apply Queue.").pack(side="left", padx=2)
-        theme.tip(theme.btn(abar, "Dismiss", self._dismiss, "ghost"),
-                  "Hide the selected job(s) from all future searches.").pack(side="left", padx=2)
+                  "Move the selected job(s) to your Apply Queue.  Shortcut: T").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Dismiss (D)", self._dismiss, "ghost"),
+                  "Hide the selected job(s) from all future searches.  Shortcut: D").pack(side="left", padx=2)
         theme.tip(theme.btn(abar, "Dismiss Company", self._dismiss_company, "ghost"),
                   "Hide every visible job from the selected company.").pack(side="left", padx=2)
-        theme.btn(abar, "Open", self._open_url, "ghost").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Open (O)", self._open_url, "ghost"),
+                  "Open the selected job in your browser.  Shortcut: O").pack(side="left", padx=2)
         theme.btn(abar, "Refresh", self.refresh, "ghost").pack(side="left", padx=2)
         theme.tip(theme.btn(abar, "Clean dead links", self._clean_dead_links, "ghost"),
                   "Check every job link and remove postings that have been taken "
