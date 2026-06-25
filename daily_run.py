@@ -149,6 +149,18 @@ def main():
     except Exception as e:  # re-score is best-effort; never fail the run for it
         log(f"WARN: inbox re-score skipped: {type(e).__name__}: {e}")
 
+    # Optionally remove dead (404) inbox links each run. OFF by default: it
+    # re-probes every career link (~1 network call/row), which materially slows a
+    # scheduled run; the GUI "Clean dead links" button and `cli --prune-inbox`
+    # cover the on-demand case. Opt in with "prune_inbox_daily": true in config.
+    if cfg.get("prune_inbox_daily"):
+        try:
+            from scrape.inbox_health import prune_inbox
+            removed = prune_inbox()
+            log(f"pruned {len(removed)} dead inbox link(s)")
+        except Exception as e:  # best-effort; never fail the run for a prune
+            log(f"WARN: inbox prune skipped: {type(e).__name__}: {e}")
+
     # Health beacon: 'zero' when nothing new landed, else 'ok', with per-source
     # counts of what the search returned this run.
     from collections import Counter

@@ -26,10 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import workspace
 from tracker import service as tracker_service
 from tracker.db import (
-    init_db, add_job, get_all, get_counts, count_followups_due, update_job, delete_job, get_job,
+    init_db, add_job, get_all, get_counts, count_followups_due, followups_due,
+    update_job, delete_job, get_job,
     archive_job, unarchive_job,
     seen_urls, normalize_url, dismiss_url,
     inbox_all, inbox_count, inbox_track, inbox_dismiss, inbox_set_fit,
+    inbox_delete_urls,
     STATUSES, STATUS_LABELS,
 )
 from config import DEFAULT_LOCATION, OUTPUT_DIR
@@ -38,6 +40,11 @@ from claude_bridge import (
     BridgeParseError, to_clipboard,
     build_fit_prompt, parse_fit_response, profile_summary,
 )
+from match import ghost as ghostmod
+from match import skillgap as skillgapmod
+from match.scorer import score_breakdown, extract_skill_terms
+from tracker import analytics as analyticsmod
+from scrape.inbox_health import prune_inbox
 from ui import theme
 from ui import help as uihelp
 from ui import setup_wizard
@@ -669,8 +676,8 @@ class InboxTab(ttk.Frame):
     row to the tracker; Dismiss hides the posting from all future searches."""
 
     _COLS = [
-        ("score",    "Score",     55, "center"),
-        ("fit",      "Fit",       45, "center"),
+        ("score",    "Score",     72, "center"),
+        ("fit",      "Fit",       62, "center"),
         ("title",    "Title",    300, "w"),
         ("company",  "Company",  150, "w"),
         ("size",     "Size",      60, "center"),
@@ -679,6 +686,20 @@ class InboxTab(ttk.Frame):
         ("source",   "Source",    80, "w"),
         ("added",    "Added",     85, "center"),
     ]
+
+    @staticmethod
+    def _score_cell(n) -> str:
+        """A score/fit value with a leading colored band circle, blank if unscored.
+        The emoji carries its own color, so a single cell reads red/amber/green
+        without ttk per-cell styling (works in light and dark)."""
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            return ""
+        if n < 0:
+            return ""
+        g = theme.score_glyph(n)
+        return f"{g} {n}" if g else str(n)
 
     @staticmethod
     def _size_badge(board_count) -> str:
@@ -721,6 +742,7 @@ class InboxTab(ttk.Frame):
         self._all: list[dict] = []   # unfiltered inbox snapshot
         self._sort_col: str | None = None  # None = round-robin default
         self._sort_asc = True
+        self._skill_terms = None     # cached per project for the skill-gap readout
         self._on_change = on_change  # notify App to refresh the tab badge
         # Home metro for the Location view-filter; resolved per active project in
         # refresh(). Agnostic defaults until then.
@@ -788,6 +810,13 @@ class InboxTab(ttk.Frame):
                                  activebackground=theme.WINDOW, activeforeground=theme.INK,
                                  font=theme.FONT_SM, command=self._render),
                   "Show only jobs new since the last daily update.").pack(side="left", padx=(0, 10))
+        self._f_hide_stale = tk.BooleanVar(value=False)
+        theme.tip(tk.Checkbutton(fbar, text="Hide stale", variable=self._f_hide_stale,
+                                 bg=theme.WINDOW, fg=theme.INK, selectcolor=theme.SURFACE,
+                                 activebackground=theme.WINDOW, activeforeground=theme.INK,
+                                 font=theme.FONT_SM, command=self._render),
+                  "Hide listings that look likely-dead or evergreen — old postings "
+                  "or perpetual 'always hiring' reqs.").pack(side="left", padx=(0, 10))
         tk.Label(fbar, text="Find:", bg=theme.WINDOW, fg=theme.INK,
                  font=theme.FONT_SM).pack(side="left")
         self._f_text = tk.StringVar()
@@ -816,8 +845,9 @@ class InboxTab(ttk.Frame):
         self._tree.bind("d", lambda _e: self._dismiss())
         self._tree.bind("o", lambda _e: self._open_url())
 
-        # Detail pane: why this job scored what it did + description preview
-        self._detail = tk.Text(self, height=4, wrap="word", bg=theme.SURFACE,
+        # Detail pane: why this job scored what it did (AI rationale + the local
+        # scorecard), what the JD also wants, a staleness advisory, and a preview.
+        self._detail = tk.Text(self, height=7, wrap="word", bg=theme.SURFACE,
                                fg=theme.MUTED, font=theme.FONT_SM, relief="flat",
                                padx=8, state="disabled")
         self._detail.pack(fill="x", padx=6)
@@ -834,6 +864,9 @@ class InboxTab(ttk.Frame):
                   "Hide every visible job from the selected company.").pack(side="left", padx=2)
         theme.btn(abar, "Open", self._open_url, "ghost").pack(side="left", padx=2)
         theme.btn(abar, "Refresh", self.refresh, "ghost").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Clean dead links", self._clean_dead_links, "ghost"),
+                  "Check every job link and remove postings that have been taken "
+                  "down (they 404 on the company's job board).").pack(side="left", padx=2)
         # Undo: dismiss permanently deletes the inbox row, so keep the last
         # batch and offer to re-insert it. Disabled until something's dismissed.
         self._undo_btn = theme.btn(abar, "Undo Dismiss", self._undo_dismiss, "ghost")
@@ -909,6 +942,7 @@ class InboxTab(ttk.Frame):
 
     def refresh(self):
         self._resolve_home()
+        self._skill_terms = None   # project may have changed -> reparse on demand
         self._all = list(inbox_all())
         sources = sorted({r["source"] for r in self._all if r["source"]})
         self._source_cb["values"] = ["All", *sources]
@@ -938,6 +972,9 @@ class InboxTab(ttk.Frame):
         if self._f_new.get():
             latest = _latest_new_batch(self._all)
             rows = [r for r in rows if _is_new_row(r, latest)]
+        if self._f_hide_stale.get():
+            rows = [r for r in rows
+                    if ghostmod.ghost_score(r).get("level") != "stale"]
         mode = self._f_location.get()
         if mode and mode != "All locations":
             rows = [r for r in rows
@@ -969,8 +1006,8 @@ class InboxTab(ttk.Frame):
             iid = str(r["id"])
             self._rows[iid] = r
             self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),), values=(
-                r["score"] if r["score"] >= 0 else "",
-                r["fit"] if r["fit"] >= 0 else "",
+                self._score_cell(r["score"]),
+                self._score_cell(r["fit"]),
                 r["title"], r["company"],
                 self._size_badge(r.get("board_count", -1)),
                 r["location"],
@@ -996,6 +1033,7 @@ class InboxTab(ttk.Frame):
         self._f_size.set("All")
         self._f_unscored.set(False)
         self._f_new.set(False)
+        self._f_hide_stale.set(False)
         self._f_text.set("")
         # Clear returns the view to the local-focused default (and persists it),
         # not to "All" — local focus is the intended out-of-box behavior.
@@ -1009,16 +1047,96 @@ class InboxTab(ttk.Frame):
 
     def _show_detail(self, _event=None):
         sel = self._selected()
-        text = ""
-        if len(sel) == 1:
-            r = sel[0]
-            why = r["fit_why"] or r["score_notes"] or ""
-            desc = " ".join((r["description"] or "").split())[:600]
-            text = f"{why}\n{desc}" if why and desc else (why or desc)
+        text = self._detail_text(sel[0]) if len(sel) == 1 else ""
         self._detail.config(state="normal")
         self._detail.delete("1.0", "end")
         self._detail.insert("1.0", text)
         self._detail.config(state="disabled")
+
+    def _detail_text(self, r) -> str:
+        """Compose the why/scorecard/skill-gap/staleness/preview readout for one
+        row from data the pipeline already produced (no AI call, no network)."""
+        lines = []
+        why = (r.get("fit_why") or "").strip()
+        if why:
+            lines.append(f"Why this matches: {why}")
+
+        bd = score_breakdown(r.get("score_notes") or "")
+        if bd["components"]:
+            parts = [f"{c['label']} {c['pct'] * 100:.0f}%" for c in bd["components"]]
+            line = f"Score {r.get('score', '')}: " + "  ".join(parts)
+            if bd["confidence"]:
+                line += f"   (confidence {bd['confidence']['present']}/{bd['confidence']['total']})"
+            if bd["penalties"]:
+                line += "   penalties: " + ", ".join(p["label"] for p in bd["penalties"])
+            lines.append(line)
+
+        desc = r.get("description") or ""
+        if desc.strip():
+            if self._skill_terms is None:
+                try:
+                    self._skill_terms = extract_skill_terms()
+                except Exception:
+                    self._skill_terms = frozenset()
+            try:
+                gap = skillgapmod.skill_gap(desc, skill_terms=self._skill_terms)
+                if gap["missing"]:
+                    lines.append("Job also wants (not in your skills): "
+                                 + ", ".join(gap["missing"][:8]))
+            except Exception:
+                pass
+
+        try:
+            g = ghostmod.ghost_score(r)
+            if g["level"] in ("aging", "stale"):
+                lines.append(f"\N{WARNING SIGN} Listing looks {g['level']}: "
+                             + "; ".join(g["reasons"][:2]))
+        except Exception:
+            pass
+
+        if desc.strip():
+            lines.append(" ".join(desc.split())[:500])
+        return "\n".join(lines)
+
+    def _clean_dead_links(self):
+        """Probe inbox career links and remove postings that now 404. The probe
+        is network-bound (~1 call/row), so it runs on a worker thread; the preview
+        + delete marshal back to the Tk thread via .after()."""
+        if getattr(self, "_cleaning", False):
+            return
+        self._cleaning = True
+        self._status.config(text="Checking links… this can take a minute.")
+
+        def work():
+            try:
+                dead, err = prune_inbox(dry_run=True), None
+            except Exception as e:        # network/db hiccup — report, don't crash
+                dead, err = None, str(e)
+            self.after(0, lambda: self._clean_dead_links_done(dead, err))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _clean_dead_links_done(self, dead, err):
+        self._cleaning = False
+        self._status.config(text="")
+        if err is not None:
+            messagebox.showerror("Clean dead links", f"Could not check links:\n{err}")
+            return
+        if not dead:
+            messagebox.showinfo("Clean dead links",
+                                "No dead links found — every posting is still reachable.")
+            return
+        sample = "\n".join(f"• {d['company']}: {d['title']}" for d in dead[:12])
+        more = f"\n…and {len(dead) - 12} more" if len(dead) > 12 else ""
+        if not messagebox.askyesno(
+                "Clean dead links",
+                f"{len(dead)} posting(s) appear to be gone (they 404 on the "
+                f"company's job board):\n\n{sample}{more}\n\nRemove them from your inbox?"):
+            return
+        # Delete the exact rows the dry-run found — no second network sweep.
+        removed = inbox_delete_urls([d["url"] for d in dead])
+        self.refresh()
+        messagebox.showinfo("Clean dead links", f"Removed {removed} dead link(s).")
 
     def _focus_index(self) -> int | None:
         """Position of the first selected row, so the selection can land on

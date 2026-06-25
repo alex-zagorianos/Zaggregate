@@ -608,6 +608,19 @@ def inbox_delete(inbox_id: int):
         conn.commit()
 
 
+def inbox_delete_urls(urls) -> int:
+    """Delete inbox rows by exact url (used by the 'Clean dead links' action so it
+    removes the rows a prune dry-run already identified, without re-probing the
+    network). Returns the number of rows removed."""
+    n = 0
+    with get_conn() as conn:
+        for u in urls:
+            if u:
+                n += conn.execute("DELETE FROM inbox WHERE url=?", (u,)).rowcount
+        conn.commit()
+    return n
+
+
 def inbox_track(inbox_id: int) -> int | None:
     """Promote an inbox row to a tracked application (status=interested).
     Returns the new application id, or None if the row vanished."""
