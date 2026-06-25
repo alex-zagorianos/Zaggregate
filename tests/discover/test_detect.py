@@ -17,3 +17,17 @@ def test_unknown_returns_none():
 
 def test_empty_returns_none():
     assert detect_ats("") is None
+
+def test_workday_public_url_resolves():
+    assert detect_ats("https://pg.wd5.myworkdayjobs.com/en-US/PGCareers") == \
+        ("workday", "pg:5:PGCareers")
+
+def test_enterprise_jsonld_boards_pass_through():
+    # icims/taleo/successfactors slugs are URLs (dots/slashes) — they must NOT be
+    # rejected by the board-slug validator meant for greenhouse/lever ids.
+    icims = "https://careers-kroger.icims.com/jobs/search"
+    assert detect_ats(icims) == ("icims", icims)
+    taleo = "https://ge.taleo.net/careersection/x/jobsearch.ftl"
+    assert detect_ats(taleo) == ("taleo", taleo)
+    sf = "https://career5.successfactors.com/career?company=acme"
+    assert detect_ats(sf) == ("successfactors", sf)

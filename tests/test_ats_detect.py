@@ -36,6 +36,22 @@ def test_direct_fallback():
     assert ats == "direct" and "emerson.com" in slug
 
 
+def test_enterprise_ats_icims_taleo_successfactors():
+    # No JSON API — tagged for the JSON-LD scraper; slug = the careers URL.
+    icims = "https://careers-kroger.icims.com/jobs/search"
+    assert detect_ats(icims) == ("icims", icims)
+    taleo = "https://ge.taleo.net/careersection/x/jobsearch.ftl"
+    assert detect_ats(taleo) == ("taleo", taleo)
+    sf = "https://career5.successfactors.com/career?company=acme"
+    assert detect_ats(sf) == ("successfactors", sf)
+
+
+def test_workday_public_pg_tenant():
+    # A big-employer public careers URL resolves to a scrapable tenant:N:site slug.
+    assert detect_ats("https://pg.wd5.myworkdayjobs.com/en-US/PGCareers") == \
+        ("workday", "pg:5:PGCareers")
+
+
 def test_parse_line_bare_url_derives_name():
     e = parse_line("https://boards.greenhouse.io/pathrobotics")
     assert (e.ats_type, e.slug, e.name) == ("greenhouse", "pathrobotics", "Pathrobotics")

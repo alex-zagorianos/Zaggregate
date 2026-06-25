@@ -127,7 +127,9 @@ class CareersClient(JobAPIClient):
             return scrape_rippling(company.slug)
         elif company.ats_type == "personio":
             return scrape_personio(company.slug)
-        elif company.ats_type == "jsonld":
+        elif company.ats_type in ("jsonld", "icims", "taleo", "successfactors"):
+            # Enterprise/custom boards with no JSON API — extract schema.org/
+            # JobPosting structured data from the career page.
             return scrape_jsonld(company, keyword, self.cache_dir, self.cache_enabled)
         else:
             return scrape_direct(company, keyword, self.cache_dir, self.cache_enabled)

@@ -69,6 +69,11 @@ def detect_ats(url_or_domain: str) -> tuple[str, str] | None:
     ats, slug = _legacy_detect(url_or_domain)
     if ats == "direct" or not slug:
         return None
+    # Enterprise JSON-LD boards (icims/taleo/successfactors) intentionally carry
+    # the careers URL as the slug — it has dots/slashes, so skip the board-slug
+    # validation that's meant for greenhouse/lever-style identifiers.
+    if ats in ("icims", "taleo", "successfactors"):
+        return (ats, slug)
     if not _slug_valid(slug):
         return None
     return (ats, slug)

@@ -87,6 +87,17 @@ def detect_ats(url: str) -> tuple[str, str]:
             if sub and sub not in ("www", "api"):
                 return ("personio", sub)
 
+    # Enterprise ATSes with no open public job-board API (the Cincinnati
+    # industrials run these). We can't hit a JSON API, but their career pages
+    # carry schema.org/JobPosting JSON-LD (the same data Google for Jobs reads),
+    # so tag them and scrape via the generic JSON-LD extractor. slug = the URL.
+    if ".icims.com" in host:
+        return ("icims", u)
+    if ".taleo.net" in host:
+        return ("taleo", u)
+    if "successfactors.com" in host or ".sapsf." in host:
+        return ("successfactors", u)
+
     return ("direct", u)
 
 
@@ -158,6 +169,14 @@ def probe_count(entry: CompanyEntry) -> int | None:
                 timeout=TO)
             if r.ok:
                 return r.json().get("total")
+        elif t in ("icims", "taleo", "successfactors", "jsonld"):
+            # JSON-LD-backed boards (no count API): count schema.org/JobPosting
+            # entries on the career page. 0 when the page hides them behind
+            # JS/bot-protection — best-effort, so the verify gate stays honest.
+            from scrape.jsonld_scraper import extract_jobs
+            r = requests.get(slug, timeout=TO, headers={"User-Agent": "Mozilla/5.0"})
+            if r.ok:
+                return len(extract_jobs(r.text, slug))
     except Exception:
         return None
     return None
