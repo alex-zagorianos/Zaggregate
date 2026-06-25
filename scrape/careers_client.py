@@ -48,6 +48,7 @@ class CareersClient(JobAPIClient):
         self._state = {}
         self._due_keys = None          # computed once per run on first search
         self._run_hits: dict[str, int] = {}
+        self._run_ok: set[str] = set()  # boards that responded (reachable) this run
         if self._tiered:
             from scrape import tiering
             self._state = tiering.load_state(self._state_path)
@@ -119,6 +120,7 @@ class CareersClient(JobAPIClient):
                         from scrape import tiering
                         k = tiering.company_key(company)
                         self._run_hits[k] = self._run_hits.get(k, 0) + len(jobs)
+                        self._run_ok.add(k)   # responded -> reachable (not cold)
                     results.extend(jobs)
                 except Exception as e:
                     print(f"  [careers] {company.name}: error — {e}")
@@ -136,8 +138,11 @@ class CareersClient(JobAPIClient):
         for company in self._base_companies:
             key = tiering.company_key(company)
             if key in self._due_keys:
+                # A due board that never responded this run (errored every keyword)
+                # is unreachable -> cold (retried monthly, not weekly).
                 tiering.update_after_scrape(self._state, company,
-                                            self._run_hits.get(key, 0), today)
+                                            self._run_hits.get(key, 0), today,
+                                            reachable=key in self._run_ok)
         tiering.save_state(self._state_path, self._state)
 
     def _record_winner(self, company: CompanyEntry) -> None:

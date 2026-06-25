@@ -108,3 +108,24 @@ def test_careers_client_tiered_scrapes_only_due_and_updates_state(tmp_path, monk
     assert saved[tiering.company_key(active)]["last_hit_count"] == 1
     # 'quiet' was deferred (not due) -> its state is untouched (no re-stamp).
     assert saved[tiering.company_key(quiet)]["tier"] == "warm"
+
+
+def test_careers_client_tiered_marks_unreachable_board_cold(tmp_path, monkeypatch):
+    from scrape.careers_client import CareersClient
+    state_path = tmp_path / "registry_state.json"
+    client = CareersClient(cache_dir=tmp_path, cache_enabled=False,
+                           discovery_enabled=False, tiered=True, state_path=state_path)
+    dead = _co("dead")
+    client._base_companies = [dead]
+    client._due_keys = None
+
+    def boom(company, keyword):
+        raise RuntimeError("board unreachable")
+    monkeypatch.setattr(client, "_scrape_one", boom)
+
+    client.search_and_parse("controls")   # error is caught inside the scrape loop
+    client.finalize_tiering()
+
+    saved = tiering.load_state(state_path)
+    # Never responded -> cold (monthly), not warm (weekly).
+    assert saved[tiering.company_key(dead)]["tier"] == "cold"
