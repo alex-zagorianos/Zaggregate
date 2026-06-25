@@ -402,6 +402,16 @@ function extractDetail() {
   const pane = first(document, SITE_DETAIL.pane);
   if (!pane) return null; // no job open
 
+  // Require the URL to identify WHICH job is open (currentJobId / vjk /
+  // jobs/view/<id>). Without an id we can neither reliably match the open job to
+  // its harvested card NOR re-find a standalone record we just pushed — so a
+  // detail pane that renders before the URL settles (e.g. Indeed auto-opening
+  // the first result with no vjk) would spam a fresh duplicate on every observer
+  // tick. Capturing only once the job is URL-identified eliminates that and is
+  // exactly "passive on the job you opened".
+  const externalId = externalIdFromUrl();
+  if (!externalId) return null;
+
   const description = firstText(document, SITE_DETAIL.description);
   if (!description || description.length < 40) return null; // pane not loaded yet
 
@@ -409,7 +419,7 @@ function extractDetail() {
   const applyTxt = firstText(document, SITE_DETAIL.apply);
 
   return {
-    external_id: externalIdFromUrl(),
+    external_id: externalId,
     description,
     // Combine the metadata blob + apply-button text; server parses work mode,
     // employment type, seniority, applicants, posted age, easy-apply out of it.
@@ -482,6 +492,20 @@ async function harvestDetail() {
 
   // Opened a job whose card was never harvested (e.g. a direct /jobs/view link)
   // — add it as a standalone, detail-only record so it's still collected.
+  const standaloneUrl = resolveUrl(location.href);
+  // Idempotency guard: never push a second standalone for the same job. idx===-1
+  // means no card matched, but a prior standalone (or a card whose id we missed)
+  // could still be present — dedup on external id OR url so a re-fire can't
+  // duplicate. (extractDetail already guarantees detail.external_id is set.)
+  if (
+    jobs.some(
+      (j) =>
+        (detail.external_id && j.external_id === detail.external_id) ||
+        (standaloneUrl && j.url === standaloneUrl),
+    )
+  ) {
+    return;
+  }
   const titleEl = first(document, [
     ".job-details-jobs-unified-top-card__job-title",
     "h2.jobsearch-JobInfoHeader-title",
@@ -500,7 +524,7 @@ async function harvestDetail() {
     title,
     company: companyEl ? (companyEl.innerText || "").trim() : "",
     location: "",
-    url: resolveUrl(location.href),
+    url: standaloneUrl,
     salary_text: "",
     source: SITE.name,
     card_text: "",
