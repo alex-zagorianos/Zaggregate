@@ -73,8 +73,21 @@ def test_location_score_prefers_match():
     assert _location_score("Cincinnati, OH", "Cincinnati") > _location_score("Austin, TX", "Cincinnati")
 
 
-def test_location_score_remote_zero_for_local_search():
-    assert _location_score("Remote", "Cincinnati") == 0
+def test_location_score_remote_credited_when_remote_ok():
+    # Remote is first-class: an acceptable-remote role gets full location credit
+    # (not 0), so it ranks fairly when the user is open to remote.
+    assert _location_score("Remote", "Cincinnati") == 3            # default remote_ok=True
+    assert _location_score("Remote", "Cincinnati", remote_ok=True) == 3
+
+
+def test_location_score_remote_zero_when_remote_not_ok():
+    # Local-only users (remote_ok=False) still score a remote-only role 0.
+    assert _location_score("Remote", "Cincinnati", remote_ok=False) == 0
+
+
+def test_location_score_hybrid_unaffected_by_remote_flag():
+    # A hybrid "Cincinnati, OH - Remote" matches the metro token regardless.
+    assert _location_score("Cincinnati, OH - Remote", "Cincinnati", remote_ok=False) > 0
 
 
 def test_state_map_covers_previously_missing_states():

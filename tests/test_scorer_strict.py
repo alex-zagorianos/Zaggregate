@@ -55,3 +55,25 @@ def test_not_query_in_keyword_triggers_gate():
     _, notes = scorer.score_job(_job("Senior Controls Engineer"), location=LOC,
                                 keywords=['"controls engineer" NOT senior'])
     assert "title-miss" in notes
+
+
+def _remote_job(title="Controls Engineer"):
+    return JobResult(title=title, company="C", location="Remote, US", salary_min=None,
+                     salary_max=None, description="", url="http://r", source_keyword="",
+                     created="", source_api="t")
+
+
+def test_remote_job_scores_full_location_when_remote_ok():
+    # remote_ok=True (default): a remote role gets full location credit, so it
+    # scores the same as the equivalent local role (loc component not zeroed).
+    remote = scorer.score_job(_remote_job(), keywords=KW, location=LOC, remote_ok=True)[0]
+    local = scorer.score_job(_job("Controls Engineer"), keywords=KW, location=LOC)[0]
+    assert remote == local
+
+
+def test_remote_job_penalized_when_remote_not_ok():
+    # Local-only (remote_ok=False): remote loses the 15 location points.
+    on = scorer.score_job(_remote_job(), keywords=KW, location=LOC, remote_ok=True)[0]
+    off, notes = scorer.score_job(_remote_job(), keywords=KW, location=LOC, remote_ok=False)
+    assert off < on
+    assert "loc 0%" in notes

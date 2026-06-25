@@ -99,12 +99,20 @@ def main():
     results = ranker.gate(results)
     if len(results) != _pre_gate:
         log(f"preferences hard-gate | {_pre_gate} -> {len(results)}")
+    # Remote-acceptable jobs get full location credit (not 0) so they rank fairly
+    # when the user is open to remote — honors preferences.json remote_ok.
+    try:
+        import preferences
+        _remote_ok = bool(preferences.load().get("hard", {}).get("remote_ok", True))
+    except Exception:
+        _remote_ok = True
     score_jobs(results, keywords=keywords, location=location,
                salary_floor=salary_min,
                exclude_keywords=cfg.get("exclude_keywords", []),
                exclude_titles=cfg.get("exclude_titles"),
                title_miss_penalty=cfg.get("title_miss_penalty"),
-               seniority_exclude=cfg.get("seniority_exclude"))
+               seniority_exclude=cfg.get("seniority_exclude"),
+               remote_ok=_remote_ok)
 
     # Freshness deltas: mark jobs new since the last daily run for THIS project
     # (manual GUI/CLI searches don't move this baseline). Non-destructive — just

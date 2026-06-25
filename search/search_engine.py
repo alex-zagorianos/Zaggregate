@@ -26,12 +26,19 @@ _STATE_ABBREVS = {
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 
-def _location_score(job_location: str, target: str) -> int:
-    """Score how closely a job's location matches the search target. Higher = closer."""
+def _location_score(job_location: str, target: str, *, remote_ok: bool = True) -> int:
+    """Score how closely a job's location matches the search target. Higher = closer.
+
+    A pure-remote posting (one carrying 'remote' but not the target metro) used to
+    score 0, which capped remote roles at 85/100 and buried them below local jobs.
+    When remote is acceptable (``remote_ok``), credit it as a full match instead:
+    the location component means 'somewhere I'd take the job' = local OR
+    acceptable-remote. With ``remote_ok=False`` a remote-only role still scores 0,
+    so local-only users are unaffected."""
     jl = (job_location or "").lower()
     tl = target.lower().strip()
     if "remote" in jl and tl not in jl:
-        return 0
+        return 3 if remote_ok else 0   # acceptable-remote -> full marks (l=1.0)
     target_tokens = [t.strip().rstrip(",") for t in tl.replace(",", " ").split()]
     score = 0
     for token in target_tokens:

@@ -231,6 +231,7 @@ def score_job(
     exclude_titles: Optional[Iterable[str]] = None,
     title_miss_penalty: Optional[int] = None,
     seniority_exclude: Optional[Iterable[str]] = None,
+    remote_ok: bool = True,
     queries: Optional[list] = None,
 ) -> tuple[int, str]:
     """Return (score 0-100, short breakdown string).
@@ -265,7 +266,7 @@ def score_job(
     t = _title_score(queries, tl)                     # graded positive overlap
     k = _skill_score(job.description, skill_terms)
     s = _salary_score(job, salary_floor)
-    loc_raw = _location_score(job.location, location)
+    loc_raw = _location_score(job.location, location, remote_ok=remote_ok)
     l = min(loc_raw / 3.0, 1.0)  # 3+ token hits = full marks
     r = _recency_score(job.created)
 
@@ -421,6 +422,7 @@ def score_jobs(
     exclude_titles: Optional[Iterable[str]] = None,
     title_miss_penalty: Optional[int] = None,
     seniority_exclude: Optional[Iterable[str]] = None,
+    remote_ok: bool = True,
 ) -> list[JobResult]:
     """Score in place and return the same list sorted best-first."""
     terms = extract_skill_terms()
@@ -434,7 +436,7 @@ def score_jobs(
             salary_floor=salary_floor, skill_terms=terms,
             exclude_keywords=exclude_keywords, exclude_titles=exclude_titles,
             title_miss_penalty=title_miss_penalty, seniority_exclude=seniority_exclude,
-            queries=queries,
+            remote_ok=remote_ok, queries=queries,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs

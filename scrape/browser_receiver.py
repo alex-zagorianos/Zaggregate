@@ -130,6 +130,11 @@ def harvest():
         from search.cli import load_user_config
         from tracker.db import inbox_add_many, init_db
         cfg = load_user_config()
+        try:
+            import preferences
+            remote_ok = bool(preferences.load().get("hard", {}).get("remote_ok", True))
+        except Exception:
+            remote_ok = True
         scored = score_jobs(
             results,
             keywords=cfg.get("keywords") or DEFAULT_KEYWORDS,
@@ -139,6 +144,7 @@ def harvest():
             exclude_titles=cfg.get("exclude_titles"),
             title_miss_penalty=cfg.get("title_miss_penalty"),
             seniority_exclude=cfg.get("seniority_exclude"),
+            remote_ok=remote_ok,
         )
         init_db()
         inboxed = inbox_add_many(scored)
