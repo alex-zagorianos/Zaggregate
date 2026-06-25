@@ -9,6 +9,7 @@ from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
+from scrape.greenhouse_url import embed_url
 
 _BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -74,6 +75,12 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
             continue
 
         location = (job.get("location") or {}).get("name") or ""
+        # Greenhouse's absolute_url is often the company's own JS careers SPA,
+        # which can render a generic "Work at X" page instead of the job. Build
+        # the server-rendered hosted application URL from slug + id instead;
+        # fall back to absolute_url only if the id is missing.
+        gh_id = job.get("id")
+        job_url = embed_url(company.slug, gh_id) if gh_id else (job.get("absolute_url") or "")
         results.append(JobResult(
             title=title,
             company=company.name,
@@ -81,7 +88,7 @@ def _filter_and_map(data: dict, company: CompanyEntry, keyword: str) -> list[Job
             salary_min=None,
             salary_max=None,
             description=_with_departments(_clean_content(job.get("content", "")), depts),
-            url=job.get("absolute_url") or "",
+            url=job_url,
             source_keyword=keyword,
             # first_published is the real posting date; updated_at makes big
             # boards that touch postings look perpetually fresh.

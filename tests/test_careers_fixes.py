@@ -79,6 +79,18 @@ def test_greenhouse_dept_reaches_description(tmp_path, monkeypatch):
     assert "Controls Engineering" in jobs[0].description
 
 
+def test_greenhouse_url_is_server_rendered_embed(tmp_path, monkeypatch):
+    # The saved link must be Greenhouse's hosted application URL (built from
+    # slug + id), NOT the company's absolute_url which can be a dead JS SPA.
+    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(_gh_payload()))
+    company = CompanyEntry("Acme", "greenhouse", "acme")
+    jobs = greenhouse_scraper.scrape_greenhouse(company, "controls technician",
+                                                tmp_path, cache_enabled=False)
+    assert jobs[0].url == (
+        "https://job-boards.greenhouse.io/embed/job_app?for=acme&token=1"
+    )
+
+
 def test_lever_dept_not_in_match_haystack(tmp_path, monkeypatch):
     payload = [{
         "id": "a1",

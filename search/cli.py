@@ -220,6 +220,18 @@ def main():
         help="Consecutive failed probes before a company is pruned (default: 2)",
     )
     parser.add_argument(
+        "--prune-inbox",
+        action="store_true",
+        help="Maintenance: probe the active project's inbox career links and "
+             "remove postings that now 404 (dead links), then exit. Pair with "
+             "--dry-run to preview.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --prune-inbox: report what would be removed without deleting.",
+    )
+    parser.add_argument(
         "--discover",
         action="store_true",
         help="Maintenance: run the discovery funnel (Common Crawl CDX slug "
@@ -312,6 +324,19 @@ def main():
             print(f"Pruned {len(removed)} dead/empty company(ies): {', '.join(removed)}")
         else:
             print("No companies pruned (all reachable with postings, or below threshold).")
+        sys.exit(0)
+
+    # Maintenance mode: remove dead (404) postings from the inbox and exit.
+    if args.prune_inbox:
+        from scrape.inbox_health import prune_inbox
+        removed = prune_inbox(dry_run=args.dry_run)
+        tag = "Would remove" if args.dry_run else "Removed"
+        if removed:
+            print(f"{tag} {len(removed)} dead inbox link(s):")
+            for r in removed:
+                print(f"  - {r['company']}: {r['title']}")
+        else:
+            print("No dead inbox links found (all reachable, or not probeable).")
         sys.exit(0)
 
     # Maintenance mode: run the discovery funnel and exit (no search). Additive —
