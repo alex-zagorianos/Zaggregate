@@ -13,7 +13,7 @@ DB_PATH = None
 # Bump whenever the schema (tables/columns/indexes below) changes. init_db()
 # stores this in PRAGMA user_version after a successful setup; if the db already
 # matches, init_db skips the whole probe + ALTER scan (cheap, concurrency-safe).
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def current_db_path() -> Path:
@@ -181,6 +181,23 @@ def init_db() -> bool:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_score_history_inbox "
                      "ON score_history(inbox_id)")
+        # v4 (TASK C): lightweight local contacts/referral CRM — the networking
+        # gap. Manual capture only (no scraping). app_id optionally links a
+        # contact back to a tracked application.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                name           TEXT NOT NULL,
+                role           TEXT DEFAULT '',
+                email          TEXT DEFAULT '',
+                linkedin       TEXT DEFAULT '',
+                company        TEXT DEFAULT '',
+                app_id         INTEGER,
+                last_contacted TEXT DEFAULT '',
+                note           TEXT DEFAULT '',
+                created        TEXT NOT NULL
+            )
+        """)
         conn.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
         conn.commit()
         return True
@@ -368,6 +385,50 @@ def get_job(job_id):
             "SELECT * FROM applications WHERE id=?", (job_id,)
         ).fetchone()
     return dict(row) if row else None
+
+
+# ── Contacts / referral CRM (manual capture — the networking gap) ─────────────
+
+def add_contact(name, role="", email="", linkedin="", company="", app_id=None,
+                last_contacted="", note="") -> int:
+    """Record a networking contact. app_id optionally ties the contact to a
+    tracked application. Returns the new contact id."""
+    from datetime import datetime, timezone
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO contacts "
+            "(name, role, email, linkedin, company, app_id, last_contacted, "
+            "note, created) VALUES (?,?,?,?,?,?,?,?,?)",
+            (name, role, email, linkedin, company, app_id, last_contacted, note,
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def list_contacts() -> list[dict]:
+    """All contacts, newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM contacts ORDER BY id DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def contacts_for_company(company) -> list[dict]:
+    """Contacts at a given company (case-insensitive match), newest first."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM contacts WHERE LOWER(company)=LOWER(?) ORDER BY id DESC",
+            (company or "",),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_contact(contact_id):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM contacts WHERE id=?", (contact_id,))
+        conn.commit()
 
 
 # ── Cross-run dedup ───────────────────────────────────────────────────────────

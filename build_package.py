@@ -34,6 +34,9 @@ _SEEDS = {
 }
 
 README = """\
+First time? Read FIRST-RUN.txt - it shows how to open the app past Windows'
+"unknown publisher" warning (the app is safe; it just isn't code-signed yet).
+
 JobScout - a personal job search that ranks roles to YOUR preferences using your
 own Claude.
 
@@ -52,6 +55,66 @@ Help -> Open my data folder (the app picks the right location automatically; on 
 protected install it lives under %LOCALAPPDATA%\\JobProgram). Nothing is sent
 anywhere except the prompts you choose to paste into your own Claude.
 """
+
+# Friendly walkthrough for getting past SmartScreen. A non-technical user reads
+# "unknown publisher" as "virus" - this spells out the two safe ways to open it.
+FIRST_RUN_TXT = """\
+HOW TO OPEN JOBSCOUT THE FIRST TIME
+===================================
+
+JobScout is safe, but it isn't "code-signed" yet, so Windows shows a warning
+the first time you open it. This is normal for small apps. Here is how to get
+past it - it only happens once.
+
+EASIEST WAY - unblock the app first
+  1. Open the JobProgram folder.
+  2. Right-click  JobProgram.exe  and choose  Properties.
+  3. At the bottom of the General tab, look for a checkbox or a button that says
+     "Unblock". Check it (or click it), then click  OK.
+  4. Now double-click  JobProgram.exe  to start the app.
+
+  (No "Unblock" option? It just means Windows already trusts the file - skip to
+  the next section and run it normally.)
+
+IF YOU STILL SEE A BLUE BOX - "Windows protected your PC"
+  1. Do NOT click "Don't run".
+  2. Click the small  "More info"  link in that blue box.
+  3. A  "Run anyway"  button appears at the bottom. Click  "Run anyway".
+  4. JobScout starts. You won't be asked again.
+
+PREFER A SHORTCUT?
+  You can also double-click  launch.bat  - it starts JobScout for you and shows
+  a friendly "Starting JobScout..." message.
+
+That's it. Once it has opened the first time, just double-click it like any
+other program from then on.
+"""
+
+# A .bat is far less likely to be quarantined than the .exe and lets us print a
+# friendly line. `start "" "..."` launches the exe and returns immediately; the
+# empty "" is the (required) window title for start, not part of the path.
+LAUNCH_BAT = """\
+@echo off
+echo Starting JobScout...
+start "" "JobProgram.exe"
+"""
+
+
+def write_first_run_kit(dest_dir):
+    """Write the SmartScreen first-run helpers into *dest_dir*.
+
+    Drops two plain-English files next to JobProgram.exe so a non-technical
+    Windows user can open the unsigned app:
+      - FIRST-RUN.txt : numbered steps to unblock / "Run anyway" past SmartScreen
+      - launch.bat    : a friendly one-liner that starts the exe
+
+    Returns the list of filenames created (handy for the build log).
+    """
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    (dest_dir / "FIRST-RUN.txt").write_text(FIRST_RUN_TXT, encoding="utf-8")
+    (dest_dir / "launch.bat").write_text(LAUNCH_BAT, encoding="utf-8")
+    return ["FIRST-RUN.txt", "launch.bat"]
 
 
 def run_pyinstaller() -> None:
@@ -82,8 +145,13 @@ def assemble() -> None:
         shutil.copyfile(companies, data / "companies.json")
         created.append("companies.json")
 
+    # SmartScreen first-run helpers, next to JobProgram.exe so launch.bat's
+    # relative `start "" "JobProgram.exe"` and the "Unblock" steps both line up.
+    kit = write_first_run_kit(app)
+
     (PKG / "README.txt").write_text(README, encoding="utf-8")
     print(f"      data/ seeded: {', '.join(created)}")
+    print(f"      first-run kit: {', '.join(kit)}")
 
 
 def zip_package() -> None:
@@ -91,6 +159,33 @@ def zip_package() -> None:
     out = shutil.make_archive(str(DIST / "JobScout"), "zip",
                               root_dir=str(DIST), base_dir="JobScout")
     print(f"Done -> {out}")
+
+
+def _sign_exe(exe_path) -> None:
+    """Authenticode-sign JobProgram.exe so Windows shows a real publisher and
+    SmartScreen stops warning. NOT called - left for the owner to enable.
+
+    The FIRST-RUN.txt workaround above exists *because* the exe is unsigned.
+    The real fix is a code-signing certificate. An OV ("Organization Validated")
+    cert or Microsoft's Azure Trusted Signing runs ~$100-200/yr and requires a
+    one-time identity validation; once the exe is signed, the publisher name
+    appears in the UAC/SmartScreen prompt and the "unknown publisher" warning
+    goes away (SmartScreen reputation still warms up over the first downloads,
+    or instantly with an EV cert).
+
+    To enable: get a cert, then uncomment + point this at signtool.exe and call
+    it from main() after run_pyinstaller(), before assemble().
+
+        # subprocess.run([
+        #     "signtool", "sign",
+        #     "/fd", "SHA256",                       # file digest algorithm
+        #     "/tr", "http://timestamp.digicert.com",  # RFC-3161 timestamp server
+        #     "/td", "SHA256",                       # timestamp digest algorithm
+        #     "/a",                                  # auto-select the best cert
+        #     str(exe_path),
+        # ], check=True)
+    """
+    raise NotImplementedError("Signing is disabled; see _sign_exe docstring.")
 
 
 def main() -> None:

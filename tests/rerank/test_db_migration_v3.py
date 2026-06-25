@@ -22,14 +22,14 @@ def v2_db(tmp_db):
     return tmp_db
 
 
-def test_schema_version_is_three():
-    assert db.SCHEMA_VERSION == 3
+def test_schema_version_is_current():
+    assert db.SCHEMA_VERSION == 4
 
 
 def test_v2_to_v3_migrates_and_preserves_rows(v2_db):
     assert db.init_db() is True               # migration ran
     with db.get_conn() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(inbox)")}
         assert "extras" in cols
         tables = {r["name"] for r in conn.execute(
