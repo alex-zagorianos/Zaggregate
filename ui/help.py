@@ -6,7 +6,7 @@ import sys
 import webbrowser
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 import config
 from ui import theme
@@ -165,6 +165,64 @@ def open_data_folder() -> None:
     folder = Path(config.USER_DATA_DIR)
     folder.mkdir(parents=True, exist_ok=True)
     _open_path(folder)
+
+
+def make_backup(dest_base: str) -> str:
+    """Zip the whole data folder to dest_base (+'.zip' if absent). Returns the zip
+    path. The single local root means one archive captures preferences, resume,
+    tracker DB, and settings."""
+    import shutil
+    base = dest_base[:-4] if dest_base.lower().endswith(".zip") else dest_base
+    shutil.make_archive(base, "zip", root_dir=str(Path(config.USER_DATA_DIR)))
+    return base + ".zip"
+
+
+def restore_backup(zip_path: str) -> None:
+    """Extract a backup zip over the data folder (created if missing)."""
+    import zipfile
+    dest = Path(config.USER_DATA_DIR)
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as z:
+        z.extractall(str(dest))
+
+
+def backup_data(parent=None) -> None:
+    """Pick a destination and snapshot the data folder — so 'local-first' isn't
+    'lose-everything-if-the-laptop-dies'."""
+    dest = filedialog.asksaveasfilename(
+        parent=parent, title="Back up my data", defaultextension=".zip",
+        initialfile="jobscout-backup.zip", filetypes=[("Zip archive", "*.zip")])
+    if not dest:
+        return
+    try:
+        out = make_backup(dest)
+        messagebox.showinfo(
+            "Backup complete",
+            f"Your data was backed up to:\n{out}\n\nNote: this archive includes any "
+            "saved API key — don't share it.", parent=parent)
+    except Exception as e:
+        messagebox.showerror("Backup failed", str(e), parent=parent)
+
+
+def restore_data(parent=None) -> None:
+    """Restore the data folder from a backup zip (overwrites current data)."""
+    path = filedialog.askopenfilename(
+        parent=parent, title="Restore from backup",
+        filetypes=[("Zip archive", "*.zip"), ("All files", "*.*")])
+    if not path:
+        return
+    if not messagebox.askyesno(
+            "Restore from backup",
+            "This overwrites your current data (preferences, tracker, settings) "
+            "with the backup. Continue?", parent=parent):
+        return
+    try:
+        restore_backup(path)
+        messagebox.showinfo("Restore complete",
+                            "Your data was restored. Please restart JobScout.",
+                            parent=parent)
+    except Exception as e:
+        messagebox.showerror("Restore failed", str(e), parent=parent)
 
 
 def show_quick_start(parent=None) -> None:

@@ -2410,6 +2410,11 @@ class App(tk.Tk):
         filem.add_command(label="Open my data folder",
                           command=uihelp.open_data_folder)
         filem.add_separator()
+        filem.add_command(label="Back up my data…",
+                          command=lambda: uihelp.backup_data(self))
+        filem.add_command(label="Restore from backup…",
+                          command=lambda: uihelp.restore_data(self))
+        filem.add_separator()
         filem.add_command(label="Exit", command=self.destroy)
         menubar.add_cascade(label="File", menu=filem)
 
