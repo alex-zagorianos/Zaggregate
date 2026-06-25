@@ -191,27 +191,28 @@ def apply_theme(root, mode=None) -> ttk.Style:
     # construction, not via this publish.
     Publisher.clear_subscribers()
 
-    # Reuse the singleton ONLY when it's bound to *this exact* root (the app's
-    # live light<->dark toggle): theme_use accumulates each theme's builder on
-    # that instance, so a repeated flip is safe. Reusing an instance bound to a
-    # *different* still-alive root (the test suite builds many Tk roots; GC timing
-    # left one alive) would style the wrong interpreter — so otherwise rebind a
-    # fresh Style. ttkbootstrap's Style binds to tk._default_root, which can be a
-    # leaked root, so we pin the default to our target across construction.
+    # ttkbootstrap's Style is a process-wide singleton designed for ONE long-lived
+    # root; the app honors that (one root for its whole life). The test suite,
+    # though, spins up many short-lived Tk roots. Re-constructing the Style per
+    # root re-runs Style.__init__ — including a localization/msgcat init that
+    # races against root setup/teardown and fails intermittently. So build the
+    # Style ONCE, then for any later root just REBIND it (master/tk) to that
+    # root's interpreter and re-apply the theme: theme_use() +
+    # _create_ttk_styles_on_theme_change() rebuild every registered style on the
+    # new interpreter, and our explicit configure() calls below re-paint our
+    # custom styles every call regardless.
     inst = tb.Style.instance
-    same_root = False
-    if inst is not None:
+    if inst is None:
+        tk._default_root = target
+        style = tb.Style(theme=base)
+    else:
         try:
-            same_root = inst.master is target and bool(target.winfo_exists())
+            inst.master = target
+            inst.tk = target.tk
         except (tk.TclError, AttributeError):
-            same_root = False
-    if same_root:
+            pass
         style = inst
         style.theme_use(base)
-    else:
-        tk._default_root = target
-        tb.Style.instance = None
-        style = tb.Style(theme=base)
     root.configure(bg=WINDOW)
 
     # Base — repaint the inherited flat theme with our palette.
