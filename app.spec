@@ -22,7 +22,7 @@ datas = [
 
 # Lazy-imported optional clients; PyInstaller's static analysis misses them
 # because they're imported inside functions. Best-effort list.
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 hiddenimports = [
     'anthropic',
@@ -30,7 +30,14 @@ hiddenimports = [
     'bs4',
     # coverage/ deps with C-extensions that PyInstaller's static analysis misses.
     'rapidfuzz',
+    # ui.theme's GUI engine. Pull the whole package so its theme builders +
+    # localization helpers come along; PIL is its only runtime dep (auto-hooked).
+    'ttkbootstrap',
+    'PIL',
 ]
+hiddenimports += collect_submodules('ttkbootstrap')
+# ttkbootstrap ships non-py data (localization .msg catalogs) the loader reads.
+datas += collect_data_files('ttkbootstrap')
 # The GUI lazily imports first-party app modules (scrapers, feed clients,
 # coverage, rerank, etc.) inside functions, so PyInstaller's static pass can
 # miss them. Pull in every submodule so the frozen exe never hits an

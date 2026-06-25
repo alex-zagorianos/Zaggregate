@@ -1,8 +1,17 @@
-"""Clean, light, modern Tk/ttk theme + reusable UI helpers.
+"""Modern Tk/ttk theme + reusable UI helpers, built on ttkbootstrap.
 
 Single source of truth for colors, fonts, themed-button factories, header bars,
-tip strips, zebra striping, and tooltips, so every tab looks consistent and a
-non-technical user always sees the same affordances.
+tip strips, zebra striping, text panes, and tooltips, so every tab looks
+consistent and a non-technical user always sees the same affordances.
+
+The visual engine is **ttkbootstrap**: `apply_theme()` installs a flat, modern
+ttkbootstrap base theme (cosmo for light, darkly for dark) and then layers the
+app's own palette + named styles on top. ttkbootstrap's element layouts are flat
+by design, so the old `clam` light/dark bevel — which rendered as jarring white
+outlines around every input in dark mode — is gone at the engine level. We keep
+full control of the brand palette (the indigo accent, surface elevation) by
+overriding colors on top of the base theme; the base only supplies the flat
+rendering and sane defaults for anything we don't touch.
 
 Call `apply_theme(root)` once, right after creating the root window and before
 building any widgets, so the ttk styles exist when tabs are constructed.
@@ -10,57 +19,88 @@ building any widgets, so the ttk styles exist when tabs are constructed.
 import tkinter as tk
 from tkinter import ttk
 
+# Capture the *vanilla* classic-tk widget constructors BEFORE importing
+# ttkbootstrap. On import, ttkbootstrap monkeypatches tk.Frame/Label/Text/etc. to
+# force-recolor every classic widget to its own flat palette (update_frame_style
+# forces bg=theme.bg, update_label_style forces fg/bg, update_text_style forces
+# the input colors). That would obliterate this app's hand-painted chrome — the
+# accent left-rules, the colored Job-Tracker status badges, the surface-elevation
+# step, the score-band label colors — and ignore the explicit colors we pass. We
+# only want ttkbootstrap's *ttk* theming (its flat, bevel-free element layouts are
+# what kills the old dark-mode white outlines); the classic tk widgets must keep
+# OUR colors. So we restore the vanilla constructors right after import.
+_TK_CLASSIC = (tk.Frame, tk.Label, tk.Text, tk.Canvas, tk.Listbox, tk.Toplevel,
+               tk.Menu, tk.Button, tk.Entry, tk.Checkbutton, tk.Radiobutton,
+               tk.Scale, tk.Spinbox, tk.LabelFrame, tk.Scrollbar, tk.Menubutton,
+               tk.PanedWindow, tk.Message)
+_VANILLA_TK_INIT = {c: c.__init__ for c in _TK_CLASSIC}
+
+import ttkbootstrap as tb
+from ttkbootstrap.publisher import Publisher
+
+for _cls, _init in _VANILLA_TK_INIT.items():
+    _cls.__init__ = _init
+
 # ── Palette ───────────────────────────────────────────────────────────────────
 # Two modes share one set of color *names*; `set_mode()` swaps which values those
 # module-level names hold, so every `theme.X` reference (and every helper below)
 # picks up the active mode the next time a widget is built. Light is the default.
+#
+# These are the app's own modern palette (indigo brand + clear surface
+# elevation). ttkbootstrap supplies the flat widget *rendering*; these supply the
+# *colors* — so the look stays on-brand and consistent between the ttk widgets and
+# the hand-painted tk chrome (headers, badges, score glyphs) that read these names.
 _LIGHT = {
-    "WINDOW":  "#eef1f5",  # app background behind the tabs
+    "WINDOW":  "#f5f7fa",  # app background behind the tabs
     "SURFACE": "#ffffff",  # cards, headers, tables
-    "ALT":     "#f5f7fa",  # zebra rows / subtle fills / table headings
-    "INK":     "#1f2937",  # primary text
-    "MUTED":   "#6b7280",  # secondary text
-    "FAINT":   "#9aa3af",  # hints / disabled text
-    "BORDER":  "#e3e7ec",  # separators, input borders, hairlines
-    "ACCENT":      "#3b5bdb",  # the single brand accent
-    "ACCENT_DK":   "#2f49b0",  # hover / pressed
+    "ALT":     "#eef1f6",  # zebra rows / subtle fills / table headings
+    "INK":     "#1a2030",  # primary text
+    "MUTED":   "#5a6577",  # secondary text
+    "FAINT":   "#98a1b2",  # hints / disabled text
+    "BORDER":  "#e3e8ef",  # separators, input borders, hairlines
+    "ACCENT":      "#4263eb",  # the single brand accent (modern indigo)
+    "ACCENT_DK":   "#3b51c9",  # hover / pressed
     "ACCENT_FG":   "#ffffff",  # text on an accent button
     "ACCENT_TINT": "#e7ecff",  # selected table row / soft accent fill
-    "ACCENT_DIM":  "#b9c2ea",  # disabled accent
+    "ACCENT_DIM":  "#bcc6f0",  # disabled accent
     "ACCENT_FG_DIM": "#eef1ff",  # text on a disabled accent button
-    "SUCCESS":     "#2e7d32",
-    "SUCCESS_DK":  "#1b5e20",
-    "SUCCESS_DIM": "#a9c8aa",   # disabled success button
-    "DANGER":      "#c62828",
-    "DANGER_DK":   "#a01b1b",
-    "WARN":        "#e65100",
-    "TOOLTIP_BG":  "#1f2937",   # dark chip on a light app
+    "SUCCESS":     "#2f9e44",
+    "SUCCESS_DK":  "#2b8a3e",
+    "SUCCESS_DIM": "#aed5b5",   # disabled success button
+    "DANGER":      "#e03131",
+    "DANGER_DK":   "#c92a2a",
+    "WARN":        "#e8590c",
+    "TOOLTIP_BG":  "#1a2030",   # dark chip on a light app
     "TOOLTIP_FG":  "#ffffff",
 }
 _DARK = {
-    "WINDOW":  "#1a1d23",  # near-black, not pure black (less eye strain)
-    "SURFACE": "#242830",  # raised cards / tables / headers
-    "ALT":     "#2c313b",  # zebra rows / subtle fills / table headings
-    "INK":     "#e7eaf0",  # primary text
-    "MUTED":   "#9aa3b2",  # secondary text
-    "FAINT":   "#6b7484",  # hints / disabled text
-    "BORDER":  "#3a414d",  # separators, input borders, hairlines
-    "ACCENT":      "#5c7cfa",  # brighter blue reads better on dark
+    "WINDOW":  "#14161b",  # near-black app background (not pure black — less strain)
+    "SURFACE": "#1e222a",  # raised cards / tables / headers (clear elevation step)
+    "ALT":     "#272c36",  # zebra rows / subtle fills / table headings
+    "INK":     "#e6e9f0",  # primary text
+    "MUTED":   "#9aa4b4",  # secondary text
+    "FAINT":   "#6b7585",  # hints / disabled text
+    "BORDER":  "#2f3540",  # separators, input borders — subtle, NOT white
+    "ACCENT":      "#5c7cfa",  # brighter indigo reads better on dark
     "ACCENT_DK":   "#4c6ef5",
     "ACCENT_FG":   "#ffffff",
-    "ACCENT_TINT": "#2b3553",  # selected table row (muted blue, dark)
+    "ACCENT_TINT": "#29324d",  # selected table row (muted indigo, dark)
     "ACCENT_DIM":  "#3a4566",
     "ACCENT_FG_DIM": "#c8d0e8",
-    "SUCCESS":     "#4caf50",
-    "SUCCESS_DK":  "#3d8b40",
-    "SUCCESS_DIM": "#3a5a3b",
-    "DANGER":      "#ef5350",
-    "DANGER_DK":   "#c62828",
-    "WARN":        "#ffa726",
-    "TOOLTIP_BG":  "#3a414d",  # light chip on a dark app
-    "TOOLTIP_FG":  "#e7eaf0",
+    "SUCCESS":     "#51cf66",
+    "SUCCESS_DK":  "#40c057",
+    "SUCCESS_DIM": "#2f5d3a",
+    "DANGER":      "#ff6b6b",
+    "DANGER_DK":   "#fa5252",
+    "WARN":        "#ffa94d",
+    "TOOLTIP_BG":  "#2f3540",  # light chip on a dark app
+    "TOOLTIP_FG":  "#e6e9f0",
 }
 _PALETTES = {"light": _LIGHT, "dark": _DARK}
+
+# Which flat ttkbootstrap base theme backs each mode. The base supplies the
+# bevel-free element layouts + sane defaults; our palette overrides the colors.
+_BASE_THEME = {"light": "cosmo", "dark": "darkly"}
 
 # Per-mode foreground colors for the Job-Tracker status badges. The light set is
 # the original saturated palette; the dark set is brightened so each status stays
@@ -112,20 +152,58 @@ FONT_H2   = ("Segoe UI", 11, "bold")
 FONT_MONO = ("Consolas", 10)
 
 
+def base_theme() -> str:
+    """The ttkbootstrap base theme name backing the active mode (for tests/debug)."""
+    return _BASE_THEME[_mode]
+
+
 def apply_theme(root, mode=None) -> ttk.Style:
-    """Install the modern ttk styling on `root` for the given mode ('light' or
-    'dark'; None keeps the current mode). Safe to call repeatedly — re-calling
-    with a new mode restyles every ttk widget live. Returns the ttk.Style."""
+    """Install the modern ttkbootstrap styling on `root` for the given mode
+    ('light' or 'dark'; None keeps the current mode). Safe to call repeatedly —
+    re-calling with a new mode restyles every ttk widget live. Returns the Style.
+
+    ttkbootstrap's ``Style`` is a process-wide singleton bound to the root it was
+    first built against. The test suite (and a live theme toggle) need a Style that
+    tracks the *current* root, so we reset the singleton and rebuild it here against
+    the active default root each call — the Tcl-level style state lives on the
+    interpreter, so existing widgets still restyle correctly."""
     if mode is not None:
         set_mode(mode)
-    style = ttk.Style(root)
-    try:
-        style.theme_use("clam")   # the most style-able built-in base theme
-    except tk.TclError:
-        pass
+
+    # ttkbootstrap keeps a process-wide Style singleton bound to the root it was
+    # first built against, plus a Publisher registry of widget subscriptions. Two
+    # cases to handle:
+    #   • Live toggle (same root): REUSE the existing Style and theme_use() the new
+    #     base. theme_use accumulates each theme's builder on that instance, so a
+    #     repeated light<->dark flip is safe. (Rebuilding the Style here instead
+    #     would land on theme_use's "already a Tcl theme" branch, which skips
+    #     populating the *new* instance's _theme_objects -> KeyError on configure.)
+    #   • Fresh root (the test suite builds a new Tk per test): the singleton is
+    #     bound to a now-destroyed root, so drop stale subscriptions and rebind.
+    base = _BASE_THEME[_mode]
+    # Drop accumulated widget subscriptions first. On a live toggle the
+    # about-to-be-rebuilt tabs still hold combobox subscriptions; theme_use()
+    # publishes to every subscriber, and any already-destroyed one crashes ("bad
+    # window path name"). The caller rebuilds its tabs right after, so fresh
+    # widgets re-subscribe; new comboboxes also style their popdown at
+    # construction, not via this publish.
+    Publisher.clear_subscribers()
+    inst = tb.Style.instance
+    alive = False
+    if inst is not None:
+        try:
+            alive = bool(inst.master) and bool(inst.master.winfo_exists())
+        except (tk.TclError, AttributeError):
+            alive = False
+    if inst is not None and alive:
+        style = inst
+        style.theme_use(base)
+    else:
+        tb.Style.instance = None
+        style = tb.Style(theme=base)
     root.configure(bg=WINDOW)
 
-    # Base
+    # Base — repaint the inherited flat theme with our palette.
     style.configure(".", background=WINDOW, foreground=INK, font=FONT)
     style.configure("TFrame", background=WINDOW)
     style.configure("Surface.TFrame", background=SURFACE)
@@ -136,75 +214,87 @@ def apply_theme(root, mode=None) -> ttk.Style:
     style.configure("H2.TLabel", background=WINDOW, foreground=INK, font=FONT_H2)
 
     # Buttons — flat, padded; one accent per context, ghost for the rest.
-    style.configure("TButton", font=FONT_SM, padding=(12, 6),
+    style.configure("TButton", font=FONT_SM, padding=(12, 7),
                     relief="flat", borderwidth=0)
     style.configure("Ghost.TButton", background=SURFACE, foreground=INK,
-                    bordercolor=BORDER, borderwidth=1, relief="solid")
+                    bordercolor=BORDER, borderwidth=1, relief="solid",
+                    focuscolor=ACCENT)
     style.map("Ghost.TButton",
-              background=[("active", ALT), ("pressed", BORDER), ("disabled", ALT)],
+              background=[("active", ALT), ("pressed", BORDER), ("disabled", SURFACE)],
               foreground=[("disabled", FAINT)],
-              bordercolor=[("active", ACCENT)])
+              bordercolor=[("active", ACCENT), ("focus", ACCENT)])
     style.configure("Accent.TButton", background=ACCENT, foreground=ACCENT_FG,
-                    bordercolor=ACCENT, borderwidth=0)
+                    bordercolor=ACCENT, borderwidth=0, focuscolor=ACCENT_FG)
     style.map("Accent.TButton",
               background=[("active", ACCENT_DK), ("pressed", ACCENT_DK),
                           ("disabled", ACCENT_DIM)],
               foreground=[("disabled", ACCENT_FG_DIM)])
     style.configure("Success.TButton", background=SUCCESS, foreground="#ffffff",
-                    borderwidth=0)
+                    borderwidth=0, focuscolor="#ffffff")
     style.map("Success.TButton",
               background=[("active", SUCCESS_DK), ("pressed", SUCCESS_DK),
                           ("disabled", SUCCESS_DIM)])
     style.configure("Danger.TButton", background=DANGER, foreground="#ffffff",
-                    borderwidth=0)
+                    borderwidth=0, focuscolor="#ffffff")
     style.map("Danger.TButton",
               background=[("active", DANGER_DK), ("pressed", DANGER_DK)])
 
     # Inputs
     style.configure("TEntry", fieldbackground=SURFACE, foreground=INK,
-                    bordercolor=BORDER, borderwidth=1, relief="solid", padding=4)
+                    bordercolor=BORDER, borderwidth=1, relief="flat",
+                    insertcolor=INK, padding=5)
     style.map("TEntry", bordercolor=[("focus", ACCENT)])
     style.configure("TCombobox", fieldbackground=SURFACE, background=SURFACE,
                     foreground=INK, bordercolor=BORDER, borderwidth=1,
-                    arrowcolor=INK, padding=3)
+                    arrowcolor=INK, padding=4)
     style.map("TCombobox",
               fieldbackground=[("readonly", SURFACE)],
               background=[("readonly", SURFACE)],
-              bordercolor=[("focus", ACCENT)])
-    style.configure("TCheckbutton", background=WINDOW, foreground=INK, font=FONT_SM)
-    style.map("TCheckbutton", background=[("active", WINDOW)])
+              foreground=[("readonly", INK)],
+              bordercolor=[("focus", ACCENT)],
+              arrowcolor=[("active", ACCENT)])
+    style.configure("TCheckbutton", background=WINDOW, foreground=INK, font=FONT_SM,
+                    focuscolor=ACCENT)
+    style.map("TCheckbutton",
+              background=[("active", WINDOW)],
+              indicatorcolor=[("selected", ACCENT)])
 
     # Treeview (tables)
     style.configure("Treeview", background=SURFACE, fieldbackground=SURFACE,
-                    foreground=INK, rowheight=27, borderwidth=0, font=FONT_SM)
+                    foreground=INK, rowheight=30, borderwidth=0, font=FONT_SM)
     style.configure("Treeview.Heading", background=ALT, foreground=MUTED,
-                    font=FONT_BOLD, relief="flat", padding=(6, 7), borderwidth=0)
+                    font=FONT_BOLD, relief="flat", padding=(8, 8), borderwidth=0)
     style.map("Treeview.Heading", background=[("active", BORDER)])
     style.map("Treeview",
               background=[("selected", ACCENT_TINT)],
               foreground=[("selected", INK)])
 
-    # Notebook (tab strip)
+    # Notebook (tab strip) — modern, flat, accent on the active tab.
     style.configure("TNotebook", background=WINDOW, borderwidth=0,
                     tabmargins=(8, 6, 8, 0))
     style.configure("TNotebook.Tab", background=WINDOW, foreground=MUTED,
-                    font=FONT_SM, padding=(16, 8), borderwidth=0)
+                    font=FONT_SM, padding=(16, 9), borderwidth=0)
     style.map("TNotebook.Tab",
-              background=[("selected", SURFACE)],
+              background=[("selected", SURFACE), ("active", ALT)],
               foreground=[("selected", ACCENT)],
               font=[("selected", FONT_BOLD)])
 
-    # Slim light scrollbars
+    # Slim themed scrollbars
     for orient in ("Vertical.TScrollbar", "Horizontal.TScrollbar"):
         style.configure(orient, background=ALT, troughcolor=WINDOW,
                         bordercolor=WINDOW, arrowcolor=MUTED, relief="flat",
                         borderwidth=0)
-        style.map(orient, background=[("active", BORDER)])
+        style.map(orient, background=[("active", BORDER), ("pressed", ACCENT)])
 
-    # Combobox dropdown list (the popdown) is a plain Tk Listbox that clam never
-    # reaches, so without this it stays OS-default white — a glaring white panel
-    # in dark mode. The option DB is read when each popdown is realized, so set
-    # it here (re-applied on every mode switch; comboboxes rebuild with the tabs).
+    # Progressbar (used by long-running search/generate flows)
+    style.configure("TProgressbar", background=ACCENT, troughcolor=ALT,
+                    bordercolor=ALT, borderwidth=0)
+
+    # Combobox dropdown list (the popdown) is a plain Tk Listbox that the ttk
+    # theme never reaches, so without this it stays OS-default white — a glaring
+    # white panel in dark mode. The option DB is read when each popdown is
+    # realized, so set it here (re-applied on every mode switch; comboboxes
+    # rebuild with the tabs).
     root.option_add("*TCombobox*Listbox.background", SURFACE)
     root.option_add("*TCombobox*Listbox.foreground", INK)
     root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
@@ -230,6 +320,20 @@ def style_menu(menu):
     return menu
 
 
+def text_widget(parent, **kw):
+    """A themed classic tk.Text pane. Classic tk widgets aren't reached by ttk
+    styling, so each one otherwise carries a default ~white focus highlight ring
+    — the second source (after clam's old bevels) of dark-mode white outlines.
+    This centralizes a flat, themed border: a 1px highlight ring painted in
+    BORDER that turns ACCENT on focus. Caller overrides any option via **kw
+    (width/height/wrap/font/bg…) and does the .pack/.grid."""
+    opts = dict(bg=SURFACE, fg=INK, insertbackground=INK, relief="flat",
+                borderwidth=0, highlightthickness=1, highlightbackground=BORDER,
+                highlightcolor=ACCENT, font=FONT_SM, wrap="word", padx=10, pady=8)
+    opts.update(kw)
+    return tk.Text(parent, **opts)
+
+
 def btn(parent, text, command, kind="ghost"):
     """A themed ttk.Button. `kind` is accent (one primary per context),
     ghost (secondary), success, or danger. Caller does the .pack/.grid."""
@@ -238,8 +342,8 @@ def btn(parent, text, command, kind="ghost"):
 
 
 def header_bar(parent, title, subtitle=None):
-    """A clean light header: accent left-rule, big title, optional subtitle, and
-    a bottom hairline. Self-packs at the top of `parent` and returns the bar
+    """A clean header: accent left-rule, big title, optional subtitle, and a
+    bottom hairline. Self-packs at the top of `parent` and returns the bar
     frame so callers can pack right-aligned controls (count labels, + buttons)
     into it with side='right'."""
     outer = tk.Frame(parent, bg=SURFACE)

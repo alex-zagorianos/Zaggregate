@@ -145,10 +145,8 @@ class JobDialog(tk.Toplevel):
 
         # Notes — full width
         ttk.Label(form, text="Notes").grid(row=4, column=0, sticky="nw", **p)
-        self._notes = tk.Text(form, width=70, height=5, wrap="word",
-                              font=("Segoe UI", 9), relief="solid", bd=1,
-                              bg=theme.SURFACE, fg=theme.INK,
-                              insertbackground=theme.INK)
+        self._notes = theme.text_widget(form, width=70, height=5,
+                                        font=("Segoe UI", 9))
         self._notes.grid(row=4, column=1, columnspan=4, sticky="ew", **p)
         if job and job.get("notes"):
             self._notes.insert("1.0", job["notes"])
@@ -208,9 +206,7 @@ class PasteDialog(tk.Toplevel):
         ttk.Label(self, text=hint, padding=(10, 8)).pack(anchor="w")
         body = ttk.Frame(self, padding=(10, 0, 10, 0))
         body.pack(fill="both", expand=True)
-        self._text = tk.Text(body, wrap="word", font=("Consolas", 9),
-                             relief="solid", bd=1, bg=theme.SURFACE,
-                             fg=theme.INK, insertbackground=theme.INK)
+        self._text = theme.text_widget(body, font=("Consolas", 9))
         vsb = ttk.Scrollbar(body, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=vsb.set)
         self._text.pack(side="left", fill="both", expand=True)
@@ -529,9 +525,7 @@ class ResumeTab(ttk.Frame):
 
         txt_f = ttk.Frame(body)
         txt_f.pack(fill="both", expand=True, pady=4)
-        self._text = tk.Text(txt_f, wrap="word", font=("Segoe UI", 10),
-                             relief="solid", bd=1, bg=theme.SURFACE,
-                             fg=theme.INK, insertbackground=theme.INK)
+        self._text = theme.text_widget(txt_f, font=("Segoe UI", 10))
         vsb = ttk.Scrollbar(txt_f, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=vsb.set)
         self._text.pack(side="left", fill="both", expand=True)
@@ -858,9 +852,8 @@ class InboxTab(ttk.Frame):
 
         # Detail pane: why this job scored what it did (AI rationale + the local
         # scorecard), what the JD also wants, a staleness advisory, and a preview.
-        self._detail = tk.Text(self, height=7, wrap="word", bg=theme.SURFACE,
-                               fg=theme.MUTED, font=theme.FONT_SM, relief="flat",
-                               padx=8, state="disabled")
+        self._detail = theme.text_widget(self, height=7, fg=theme.MUTED,
+                                         padx=8, state="disabled")
         self._detail.pack(fill="x", padx=6)
         self._tree.bind("<<TreeviewSelect>>", self._show_detail)
 
@@ -1606,8 +1599,7 @@ class AddCompaniesDialog(tk.Toplevel):
                       "Examples:  boards.greenhouse.io/acme   jobs.lever.co/acme   "
                       "Acme | acme.wd5.myworkdayjobs.com/Careers"
                  ).pack(fill="x", padx=10, pady=(10, 4))
-        self._box = tk.Text(self, height=7, wrap="none", bg=theme.SURFACE,
-                            fg=theme.INK, insertbackground=theme.INK)
+        self._box = theme.text_widget(self, height=7, wrap="none")
         self._box.pack(fill="x", padx=10)
 
         row = tk.Frame(self, bg=theme.WINDOW)

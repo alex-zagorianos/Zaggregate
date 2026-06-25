@@ -122,9 +122,28 @@ def root():
     r.destroy()
 
 
-def test_apply_theme_installs_clam(root):
-    style = theme.apply_theme(root)
-    assert style.theme_use() == "clam"
+def test_apply_theme_installs_ttkbootstrap_base(root):
+    # The engine is ttkbootstrap now: light -> cosmo, dark -> darkly (flat,
+    # bevel-free element layouts, which is what removed the old white outlines).
+    style = theme.apply_theme(root, mode="light")
+    assert style.theme_use() == "cosmo" == theme.base_theme()
+    style = theme.apply_theme(root, mode="dark")
+    assert style.theme_use() == "darkly" == theme.base_theme()
+
+
+def test_text_widget_themed_border_no_white_ring(root):
+    # The classic tk.Text panes must carry our themed border (highlight ring in
+    # BORDER, focus in ACCENT), not a default ~white ring — the dark-mode fix.
+    theme.apply_theme(root, mode="dark")
+    t = theme.text_widget(root, height=3)
+    assert str(t.cget("highlightbackground")) == theme.BORDER
+    assert str(t.cget("highlightcolor")) == theme.ACCENT
+    assert int(t.cget("highlightthickness")) == 1
+    assert str(t.cget("bg")) == theme.SURFACE
+    # caller overrides flow through
+    t2 = theme.text_widget(root, fg=theme.MUTED, wrap="none")
+    assert str(t2.cget("fg")) == theme.MUTED
+    assert str(t2.cget("wrap")) == "none"
 
 
 def test_apply_theme_dark_restyles_live(root):
@@ -169,9 +188,18 @@ def test_style_menu_takes_active_palette(root):
     assert str(m2.cget("background")) == theme.SURFACE   # follows the light palette
 
 
+def _avg_channel(hexcolor: str) -> float:
+    h = str(hexcolor).lstrip("#")
+    if len(h) != 6:
+        return 255.0  # unknown / named color -> treat as "light" so the test fails loud
+    return (int(h[0:2], 16) + int(h[2:4], 16) + int(h[4:6], 16)) / 3
+
+
 def test_combobox_popdown_is_darkened(root):
-    # The popdown Listbox isn't a ttk widget; apply_theme must set its colors via
-    # the option DB so the dropdown isn't OS-default white in dark mode.
+    # The popdown Listbox is the dropdown panel; in dark mode it must be themed
+    # dark, not OS-default white. ttkbootstrap styles the popdown for us (to its
+    # dark inputbg); our option DB entries are a fallback. Assert it's genuinely
+    # dark rather than pinning an exact hex we don't own.
     theme.apply_theme(root, mode="dark")
     cb = ttk.Combobox(root, values=["a", "b"])
     cb.pack()
@@ -181,4 +209,4 @@ def test_combobox_popdown_is_darkened(root):
         bg = cb.tk.call(f"{popdown}.f.l", "cget", "-background")
     except tk.TclError:
         pytest.skip("combobox popdown internals unavailable on this Tk build")
-    assert str(bg) == theme.SURFACE
+    assert _avg_channel(bg) < 90      # clearly dark, not OS-default white
