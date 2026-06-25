@@ -107,3 +107,17 @@ with a logged default and he answers on return). Companion to
 
 - **Q3:** daily auto-prune (`prune_inbox_daily`) defaults **off** (re-probes every link each run,
   ~minutes). The GUI "Clean dead links" button + `--prune-inbox` cover it. Want it on by default?
+
+## FINAL STATUS (Session 17 close)
+
+- **Shipped:** all Tier 1 (T1.1–T1.7) · Tier 2 T2.8/T2.9/T2.10/T2.11/T2.12 · Tier 3
+  T3.14/T3.18/T3.22/T3.23/T3.24 (T3.25 folded into T1.2). 572 → **682 tests**, **25 commits local**.
+- **Batch 2 merge note:** orphan-root worktrees → copied changed files + diff-reviewed the 2 edited
+  existing files (build_package.py purely additive; db.py only SCHEMA_VERSION 3→4 + contacts, earlier
+  additions intact).
+- **Remaining (specced, not built):** T2.13 browser-ext capture · T3.15 age/repost display · T3.16
+  size facets · T3.17 job_key dedup (held: subtle — do inline + characterization test) · T3.19 filter
+  presets · T3.20 review-mode card · T3.21 onboarding checklist · T3.27 tunable weights (**Q2**) ·
+  T3.28 auto-update. **Deferred (D2):** web reskin, email-OAuth.
+- **Needs Alex:** eyeball `py gui.py` → `git push` the 25 commits; answer Q1/Q2/Q3; `py
+build_package.py` exe build (now ships the SmartScreen kit).

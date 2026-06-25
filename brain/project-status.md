@@ -327,9 +327,47 @@ A familiarize → fix pass on findings from a fresh subsystem audit (9 parallel 
 
 Build mechanics: 9-reader audit Workflow → `AskUserQuestion` locked all 3 wire-ups in → 5 clusters built inline (TDD, each additive/lift-safe), 1 mechanical cluster delegated to GLM (fully-inlined weak-model-proof plan, file-disjoint, transferred into master after a confirming verify). +19 tests. **Doc-undercount note (now corrected here):** MCP exposes **8** tools — get_preferences/search_jobs/list_inbox/set_fit_scores/track_job/dismiss_job + **export_inbox/import_scores**; the company-size modifier has **4** bands (≤30 +8, ≤100 +4, ≤250 −2, >250 −6), not 3.
 
+## Session 17 — 2026-06-24 (cheap-backend, autonomous) — dead-link fix + competitive Tier 1–3 buildout
+
+Beta-test session → big autonomous build. (1) Diagnosed the AI-lane "dead links": Greenhouse
+`absolute_url` is often a company JS careers SPA that never renders the job; **build the
+server-rendered hosted URL** `job-boards.greenhouse.io/embed/job_app?for=slug&token=id` from slug+id
+(`scrape/greenhouse_url.py`), add an inbox **liveness prune** (`scrape/inbox_health.py`,
+`--prune-inbox` + GUI button, 404-only), and a repair script that fixed 914 existing rows
+(browser-verified). (2) Ran a 12-agent **market-research workflow** (no product ships JobScout's
+6-leg combo; closest = OSS Swiss Job Hunter 4/6) → 41 mined features (`E:\ClaudeWork\_jobscout_
+features_digest.md`). (3) **Built the Tier 1–3 roadmap.** Full record: `handoff_20260624_session17`,
+plan `brain/plan-2026-06-24-all-tiers-buildout.md`, decisions/questions `brain/buildout-log-2026-06-24.md`.
+
+**Shipped:** all of **Tier 1** (T1.1 clean-dead-links + daily prune · T1.2 structured scorecard in
+the detail pane via `scorer.score_breakdown` · T1.3 colored score cells · T1.4 empty states · T1.5
+Tools▸Due via `db.followups_due` · T1.6 Tools▸Connect-AI key box via `config.read/write_secret` +
+`ui.settings` · T1.7 Help▸Privacy) · **Tier 2** T2.8 Tools▸Funnel (`tracker/analytics.py`) · T2.9
+ghost staleness + Hide-stale (`match/ghost.py`) · T2.10 skill-gap (`match/skillgap.py`) · T2.11
+SmartScreen kit in `build_package.py` · T2.12 first-search on Setup finish · **Tier 3** T3.14 comp
+normalizer + pay-floor filter (`match/comp.py`) · T3.18 contacts CRM (`contacts` table,
+SCHEMA_VERSION **3→4**) + Tools▸Contacts · T3.22 opt-in daily discovery refresh · T3.23 T/D/O hints
+· T3.24 File▸Backup/Restore. New engine modules built **in parallel via delegated worktree agents**
+(Workflow), reviewed + merged; gui.py wiring done inline (single delicate file). Every new
+liveness/ghost/comp/location signal is **view-level — the 0-100 score is untouched** (the
+location-filter precedent).
+
+**Not built (remaining roadmap, specced in the plan):** T2.13 browser-ext capture-on-submit; T3.15
+age/repost display; T3.16 size facets; T3.17 `job_key` dedup (held — subtle); T3.19 filter presets;
+T3.20 review-mode card; T3.21 onboarding checklist; T3.27 tunable weights (**Q2 — Alex's call**);
+T3.28 auto-update. **Deferred (D2):** web/Tauri reskin, Gmail-OAuth email status.
+
+**Open questions:** Q1 docx title-line; Q2 expose tunable weights?; Q3 daily auto-prune on by
+default? (all default-handled, logged in the buildout log).
+
 ## Git
 
-- Session 16 (latent-gap wires + mechanical sweep, 4 commits) on top of Session 15 (Top Picks) + Session 14 (UI/UX + dark mode + AI guide) = **10 local commits on `master`, NOT pushed** — still awaiting Alex's `py gui.py` eyeball (light + dark + Top Picks + the new "New only" Inbox filter). On top of `6bf3722` sit `00f97f0` → `db82cb2` → `5350056` → `b328f00`. Repo private.
-- Remote: `git@github.com:alex-zagorianos/Job-Program.git`
-- Full suite: **572 passed** (`py -m pytest -q`, ~7s; a single multi-Tk test is display-guarded and skips when headless). Python command: `py`.
-- Active project workspace: `projects/controls-cincinnati/` (1098-row inbox). Switch via GUI header or `--project`. In dev, the data folder = repo root (unchanged); frozen exe uses external `./data`. DB schema untouched by S15 — Top Picks is additive over `extras`.
+- Sessions 14–17 = **25 local commits on `master`, NOT pushed** — awaiting Alex's `py gui.py`
+  eyeball (now includes: colored score cells, the scorecard detail pane, Hide-stale / Meets-pay-floor
+  / New filters, Clean-dead-links, empty states, the **Tools** menu [Due/Funnel/Contacts/Connect-AI],
+  **Help▸Privacy**, **File▸Backup/Restore**) then `git push`. master at `fe96b71` + 25.
+- Remote: `git@github.com:alex-zagorianos/Job-Program.git` (private).
+- Full suite: **682 passed** (`py -m pytest -q`, ~8–17s; display-guarded Tk tests skip headless).
+  Python command: `py`. GUI launches clean.
+- Active project: `applied-ai` (672-row inbox after the S17 dead-link prune). DB schema now v4
+  (contacts table added; everything else additive over `extras`).
