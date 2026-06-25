@@ -93,6 +93,24 @@ def test_filtered_to_zero_then_cleared(inbox_tab):
     assert tab._empty_widget is None  # rows visible again -> overlay removed
 
 
+def test_pay_floor_filter(inbox_tab):
+    tab, _ = inbox_tab
+    tab._f_location.set("All locations")
+    tab._pay_floor = 100000
+    for r in tab._all:                # force known comp to isolate the filter logic
+        if r["company"] == "Acme":
+            r["_comp"] = {"min": 120000, "max": 140000, "disclosed": True,
+                          "display": "$120,000–$140,000"}
+        else:
+            r["_comp"] = {"min": None, "max": None, "disclosed": False,
+                          "display": "Not listed"}
+    tab._f_floor.set(False)
+    assert {r["company"] for r in tab._filtered()} >= {"Acme", "Beta"}
+    tab._f_floor.set(True)
+    cos = {r["company"] for r in tab._filtered()}
+    assert "Acme" in cos and "Beta" not in cos   # undisclosed pay is hidden
+
+
 def test_hide_stale_filter_drops_evergreen(inbox_tab):
     tab, _ = inbox_tab
     tab._f_location.set("All locations")   # isolate from the location view-filter

@@ -36,6 +36,16 @@ def test_due_dialog_builds(root_with_data):
     root_with_data.update_idletasks()
 
 
+def test_contacts_dialog_builds_and_lists(root_with_data):
+    import gui
+    from tracker import db
+    db.add_contact("Jordan Lee", role="Recruiter", company="Acme",
+                   email="j@acme.com")
+    gui.App._show_contacts(root_with_data)
+    root_with_data.update_idletasks()
+    assert any(c["name"] == "Jordan Lee" for c in db.list_contacts())
+
+
 def test_show_privacy_exists_and_callable():
     from ui import help as uihelp
     assert callable(uihelp.show_privacy)

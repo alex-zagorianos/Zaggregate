@@ -32,6 +32,7 @@ from tracker.db import (
     seen_urls, normalize_url, dismiss_url,
     inbox_all, inbox_count, inbox_track, inbox_dismiss, inbox_set_fit,
     inbox_delete_urls,
+    add_contact, list_contacts, delete_contact,
     STATUSES, STATUS_LABELS,
 )
 from config import DEFAULT_LOCATION, OUTPUT_DIR
@@ -42,6 +43,7 @@ from claude_bridge import (
 )
 from match import ghost as ghostmod
 from match import skillgap as skillgapmod
+from match import comp as compmod
 from match.scorer import score_breakdown, extract_skill_terms
 from tracker import analytics as analyticsmod
 from scrape.inbox_health import prune_inbox
@@ -743,6 +745,7 @@ class InboxTab(ttk.Frame):
         self._sort_col: str | None = None  # None = round-robin default
         self._sort_asc = True
         self._skill_terms = None     # cached per project for the skill-gap readout
+        self._pay_floor = None       # resolved per project in _resolve_home()
         self._empty_widget = None    # overlay shown when the table is empty
         self._on_change = on_change  # notify App to refresh the tab badge
         # Home metro for the Location view-filter; resolved per active project in
@@ -818,6 +821,13 @@ class InboxTab(ttk.Frame):
                                  font=theme.FONT_SM, command=self._render),
                   "Hide listings that look likely-dead or evergreen — old postings "
                   "or perpetual 'always hiring' reqs.").pack(side="left", padx=(0, 10))
+        self._f_floor = tk.BooleanVar(value=False)
+        theme.tip(tk.Checkbutton(fbar, text="Meets pay floor", variable=self._f_floor,
+                                 bg=theme.WINDOW, fg=theme.INK, selectcolor=theme.SURFACE,
+                                 activebackground=theme.WINDOW, activeforeground=theme.INK,
+                                 font=theme.FONT_SM, command=self._render),
+                  "Show only jobs whose listed pay meets your salary floor (from "
+                  "your preferences). Jobs with no pay listed are hidden.").pack(side="left", padx=(0, 10))
         tk.Label(fbar, text="Find:", bg=theme.WINDOW, fg=theme.INK,
                  font=theme.FONT_SM).pack(side="left")
         self._f_text = tk.StringVar()
@@ -927,16 +937,24 @@ class InboxTab(ttk.Frame):
         location, else the global default. Never hardcoded to one city."""
         area = (workspace.load_config().get("location") or "").strip()
         remote_ok = True
+        floor = None
         try:
             import preferences
             hard = preferences.load().get("hard", {})
             if not area and hard.get("locations"):
                 area = str(hard["locations"][0]).strip()
             remote_ok = bool(hard.get("remote_ok", True))
+            floor = hard.get("salary_min")
         except Exception:
             pass
+        if not floor:
+            floor = workspace.load_config().get("salary_min")
         self._home_area = area or DEFAULT_LOCATION
         self._home_remote_ok = remote_ok
+        try:
+            self._pay_floor = int(floor) if floor else None
+        except (TypeError, ValueError):
+            self._pay_floor = None
 
     def _on_location_change(self):
         uisettings.set_location_mode(self._f_location.get())
@@ -946,6 +964,10 @@ class InboxTab(ttk.Frame):
         self._resolve_home()
         self._skill_terms = None   # project may have changed -> reparse on demand
         self._all = list(inbox_all())
+        # Normalize disclosed pay once per load (not per filter keystroke) so the
+        # Salary column and the pay-floor filter are cheap to render.
+        for r in self._all:
+            r["_comp"] = compmod.normalize_comp(r)
         sources = sorted({r["source"] for r in self._all if r["source"]})
         self._source_cb["values"] = ["All", *sources]
         if self._f_source.get() not in self._source_cb["values"]:
@@ -977,6 +999,13 @@ class InboxTab(ttk.Frame):
         if self._f_hide_stale.get():
             rows = [r for r in rows
                     if ghostmod.ghost_score(r).get("level") != "stale"]
+        if self._f_floor.get() and self._pay_floor:
+            def _meets(c):
+                if not c or not c.get("disclosed"):
+                    return False
+                top = c["max"] if c["max"] is not None else c["min"]
+                return top is not None and top >= self._pay_floor
+            rows = [r for r in rows if _meets(r.get("_comp"))]
         mode = self._f_location.get()
         if mode and mode != "All locations":
             rows = [r for r in rows
@@ -1013,7 +1042,8 @@ class InboxTab(ttk.Frame):
                 r["title"], r["company"],
                 self._size_badge(r.get("board_count", -1)),
                 r["location"],
-                r["salary_text"], r["source"], r["date_added"]))
+                (r.get("_comp") or {}).get("display") or r["salary_text"],
+                r["source"], r["date_added"]))
         total = len(self._all)
         label = (f"{len(rows)} of {total} awaiting triage"
                  if len(rows) != total else f"{total} awaiting triage")
@@ -1056,6 +1086,7 @@ class InboxTab(ttk.Frame):
         self._f_unscored.set(False)
         self._f_new.set(False)
         self._f_hide_stale.set(False)
+        self._f_floor.set(False)
         self._f_text.set("")
         # Clear returns the view to the local-focused default (and persists it),
         # not to "All" — local focus is the intended out-of-box behavior.
@@ -2392,6 +2423,7 @@ class App(tk.Tk):
         toolsm.add_command(label="Due — follow-ups & deadlines…",
                            command=self._show_due)
         toolsm.add_command(label="Application funnel…", command=self._show_funnel)
+        toolsm.add_command(label="Contacts / referrals…", command=self._show_contacts)
         toolsm.add_separator()
         toolsm.add_command(label="Connect your AI (API key)…",
                            command=self._show_settings)
@@ -2607,6 +2639,79 @@ class App(tk.Tk):
         bb.pack(fill="x", padx=10, pady=8)
         theme.btn(bb, "Open posting", open_posting, "ghost").pack(side="left", padx=2)
         theme.btn(bb, "Snooze 7 days", snooze, "ghost").pack(side="left", padx=2)
+        theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
+
+    def _show_contacts(self):
+        """A small local contacts / referral CRM — manual capture only. Referrals
+        convert far better than cold applies; this keeps 'who do I know here' next
+        to the search, on this machine."""
+        dlg = tk.Toplevel(self)
+        dlg.title("Contacts / referrals")
+        dlg.transient(self)
+        dlg.configure(bg=theme.WINDOW)
+        dlg.geometry("760x460")
+        theme.header_bar(dlg, "Contacts & referrals",
+                         "People you know at target companies. Stays on this computer.")
+        tf = ttk.Frame(dlg)
+        tf.pack(fill="both", expand=True, padx=10, pady=6)
+        cols = [("name", "Name", 140), ("role", "Role", 110), ("company", "Company", 140),
+                ("email", "Email", 160), ("linkedin", "LinkedIn", 120), ("note", "Note", 160)]
+        tree = ttk.Treeview(tf, columns=[c[0] for c in cols], show="headings")
+        for c, l, w in cols:
+            tree.heading(c, text=l)
+            tree.column(c, width=w, anchor="w")
+        theme.zebra(tree)
+        tree.pack(side="left", fill="both", expand=True)
+        rowmap = {}
+
+        def reload():
+            for iid in tree.get_children():
+                tree.delete(iid)
+            rowmap.clear()
+            for i, c in enumerate(list_contacts()):
+                iid = str(c["id"])
+                rowmap[iid] = c
+                tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),),
+                            values=(c["name"], c["role"], c["company"], c["email"],
+                                    c["linkedin"], c["note"]))
+
+        reload()
+
+        # Add form (name + a few optional fields).
+        form = tk.Frame(dlg, bg=theme.WINDOW)
+        form.pack(fill="x", padx=10, pady=(0, 4))
+        vars_ = {}
+        for label in ("name", "role", "company", "email", "linkedin", "note"):
+            tk.Label(form, text=label.title() + ":", bg=theme.WINDOW, fg=theme.INK,
+                     font=theme.FONT_SM).pack(side="left")
+            v = tk.StringVar()
+            vars_[label] = v
+            ttk.Entry(form, textvariable=v, width=12).pack(side="left", padx=(2, 8))
+
+        def add():
+            name = vars_["name"].get().strip()
+            if not name:
+                messagebox.showinfo("Name needed", "Enter at least a name.", parent=dlg)
+                return
+            add_contact(name, role=vars_["role"].get().strip(),
+                        email=vars_["email"].get().strip(),
+                        linkedin=vars_["linkedin"].get().strip(),
+                        company=vars_["company"].get().strip(),
+                        note=vars_["note"].get().strip())
+            for v in vars_.values():
+                v.set("")
+            reload()
+
+        def remove():
+            s = tree.selection()
+            if s and s[0] in rowmap:
+                delete_contact(int(s[0]))
+                reload()
+
+        bb = tk.Frame(dlg, bg=theme.WINDOW)
+        bb.pack(fill="x", padx=10, pady=8)
+        theme.btn(bb, "Add contact", add, "accent").pack(side="left", padx=2)
+        theme.btn(bb, "Delete selected", remove, "ghost").pack(side="left", padx=2)
         theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
 
     # ── theme (light / dark) ────────────────────────────────────────────────────
