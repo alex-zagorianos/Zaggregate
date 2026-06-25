@@ -9,27 +9,28 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — **Session 18** modernized the GUI on **ttkbootstrap** (flat, indigo, real dark-mode elevation) and **fixed the jarring dark-mode white outlines**, then built the **browser extension** out to pull full job data: open a job and it captures the whole description + work-mode/type/seniority/applicants/easy-apply, scores it honestly, and surfaces it in the Inbox. A pre-push adversarial review (Workflow, 5 dims) caught + fixed one duplicate-record bug. **696 tests; 31 commits LOCAL, not pushed (repo private)** — pending Alex's `py gui.py` eyeball (light & dark) + extension reload + live selector_check. New dep: `ttkbootstrap`. (Prior: S17 dead-link fix + competitive Tier 1–3 buildout — scorecard, colored cells, ghost/skill-gap/comp, Tools menu, Backup/Restore, contacts CRM, all view-level.)** (Orientation stub; canonical brain is [[project-status]].)
+> Status: **🟢 Active — **Session 19** researched LinkedIn/Indeed data acquisition + how jobs are really found (web workflow + fact-check: no read API for either, they're ATS syndication, the company **registry is the binding coverage constraint**), then planned + built a **company-acquisition pipeline**: a metro **enumeration CLI** (`enumerate_companies.py` — an LLM proposes local companies, a **probe-verify gate** drops the fakes), **enterprise-ATS** coverage (Workday/iCIMS/Taleo/SF via JSON-LD), **tiered scheduling** (keep a big registry fast), and **remote-first-class** scoring (remote no longer zeroed). Pre-push review: no real bugs. **725 tests; 37 commits LOCAL, not pushed** — pending Alex's `py gui.py` eyeball + push, and running the enumeration on Cincinnati. (Prior: S18 modern ttkbootstrap UI + dark-outline fix + extension full-detail capture.)** (Orientation stub; canonical brain is [[project-status]].)
 
 ---
 
 ## Core Documents
 
-| Document                                                | Purpose                                                                                                                 |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                                                |
-| [[handoff_20260625_session18]]                          | **Latest session** — modern ttkbootstrap UI + dark-outline fix + extension full-detail capture (31 commits, 696 tests). |
-| [[handoff_20260624_session17]]                          | Dead-link fix + competitive Tier 1–3 buildout (25 commits, 682 tests).                                                  |
-| `brain\plan-2026-06-24-all-tiers-buildout.md`           | The all-tiers roadmap (with per-item status) + `brain\buildout-log-2026-06-24.md` decisions.                            |
-| [[handoff_20260624_session16]]                          | Wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep.                                             |
-| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                                                   |
-| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                                           |
-| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                                                    |
-| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                                               |
-| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.                              |
-| [[experience]]                                          | Career master file (resume/cover source).                                                                               |
-| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                                             |
-| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                                           |
+| Document                                                | Purpose                                                                                                                                                   |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                                                                                  |
+| [[handoff_20260625_session19]]                          | **Latest session** — research → company-acquisition pipeline (metro enumeration + enterprise-ATS + tiering) + remote-first-class (37 commits, 725 tests). |
+| [[handoff_20260625_session18]]                          | Modern ttkbootstrap UI + dark-outline fix + extension full-detail capture (31 commits, 696 tests).                                                        |
+| [[handoff_20260624_session17]]                          | Dead-link fix + competitive Tier 1–3 buildout (25 commits, 682 tests).                                                                                    |
+| `brain\plan-2026-06-24-all-tiers-buildout.md`           | The all-tiers roadmap (with per-item status) + `brain\buildout-log-2026-06-24.md` decisions.                                                              |
+| [[handoff_20260624_session16]]                          | Wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep.                                                                               |
+| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                                                                                     |
+| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                                                                             |
+| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                                                                                      |
+| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                                                                                 |
+| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.                                                                |
+| [[experience]]                                          | Career master file (resume/cover source).                                                                                                                 |
+| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                                                                               |
+| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                                                                             |
 
 ## Pipeline
 

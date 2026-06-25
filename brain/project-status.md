@@ -411,19 +411,66 @@ privacy/security/packaging regressions found.
 best-known + generously-fallback'd but unverified against the live DOM — paste `selector_check.js`
 with a job open and send the output to patch any rot.
 
+## Session 19 — 2026-06-25 (cheap-backend, ultracode) — company-acquisition pipeline + remote-first-class
+
+Research → plan → build. A 6-angle web-research workflow (+ adversarial fact-check of the
+load-bearing stats) on **how LinkedIn/Indeed data is acquired and how jobs are actually found**
+concluded: there's **no read API** for either (LinkedIn's is write-only/closed; Indeed's died ~2020),
+all that's left is fragile/legally-hazardous scraping (Proxycurl, the biggest, was sued + shut down
+2025), and the **safest way to touch them is the user's own browser session — exactly the existing
+extension**. Structurally, LinkedIn/Indeed are **syndication layers on top of the ATS** (Greenhouse
+Limited Listings + Indeed XML feeds are fed FROM the ATS), so a comprehensive **company-careers/ATS
+registry captures the canonical posting, often earlier** — and **the registry (which companies to
+poll) is the binding coverage constraint**, not extraction. The "80% hidden / 85% networking" stats
+are debunked folklore; measured ATS data (Ashby, 38M apps) says inbound/posted applications dominate
+tech hires. Residual gap of skipping the boards = the no-ATS SMB/industrial/agency tail (Indeed-only)
+→ that's the extension's job. Full record: `handoff_20260625_session19`; plan
+`~/.claude/plans/shimmering-moseying-wadler.md`. master → **+5 commits**, **696 → 725 tests**, push HELD.
+
+**Built (4 phases, plan-mode approved):** **(1) Remote first-class** (`dbcc793`): `_location_score(…,
+remote_ok)` credits an acceptable-remote role with full location points (was 0 — capping remote at
+85/100 and burying it below local); `remote_ok` threaded through `score_job`/`score_jobs`, sourced
+from `preferences.json` at daily_run/browser_receiver/GUI. **(2) Metro enumeration** (`67cd176`): the
+core "add companies" engine — `discover/enumerate.py` (an LLM proposes {name,domain} for a metro +
+industries; **Bridge/Api duality** like `ranker` — API if key, else clipboard-bridge) +
+`enumerate_companies.py` (enumerate → resolve via `career_link`+`detect_ats` → **probe-verify gate**
+→ `save_companies`). The probe gate makes LLM enumeration safe: hallucinated/dead companies resolve
+to no live board and are dropped. **(3) Enterprise-ATS** (`c520849`): Workday public-URL →
+`tenant:N:site` (already worked; tested); **iCIMS/Taleo/SuccessFactors** detected by host + routed to
+the existing `jsonld_scraper` (their pages carry schema.org/JobPosting LD — the data Google for Jobs
+reads), with a `probe_count` JSON-LD branch so enumeration can vet them. Lightweight — no bespoke
+fragile API scrapers. **(4) Tiered scheduling** (`e5375d6`+`111bd84`): `scrape/tiering.py` (pure;
+hot=daily/warm=weekly/cold=monthly; an active board is **never starved** so coverage can't regress)
+
+- opt-in `CareersClient(tiered=…)` (default OFF → byte-identical) + `daily_run` `tiered_scrape` flag,
+  so a 1–2k-company registry keeps the daily run fast.
+
+**Reused ~70%:** discover/funnel + career*link + detect_ats, verify_and_add probe pattern,
+company_registry.save_companies (user-wins, append-only), coverage/ benchmark + lift-gate,
+geo/filter + metro_variants, ranker key/SDK + claude_bridge.\_extract_json, FileCache/RateLimiter/
+ThreadPool. **Deviations (justified):** no hardcoded seed list of guessed Workday/iCIMS slugs (risks
+dead entries — enumeration discovers them properly); skipped `arbeitnow` (EU-noise). **Pre-push
+adversarial review** (1 agent over the diff): **no real bugs**; refined one minor wart (the cold tier
+was dead in the live path → now an errored board is correctly marked cold). **Open minor:** the CLI
+location-\_sort* tiebreak hardcodes remote_ok=True (inbox **scoring** honors prefs correctly).
+
 ## Git
 
-- Sessions 14–18 = **31 local commits on `master`, NOT pushed** — awaiting Alex's `py gui.py`
+- Sessions 14–19 = **37 local commits on `master`, NOT pushed** — awaiting Alex's `py gui.py`
   eyeball then `git push`. Now includes, on top of the S14–17 surface (colored score cells, scorecard
   detail pane, Hide-stale / Meets-pay-floor / New filters, Clean-dead-links, empty states, **Tools**
   menu [Due/Funnel/Contacts/Connect-AI], **Help▸Privacy**, **File▸Backup/Restore**): the **S18 modern
-  ttkbootstrap theme + dark-mode white-outline fix** (eyeball in both light & dark) and the **browser
-  extension's full-detail capture**. master `fe96b71` + 31.
+  ttkbootstrap theme + dark-mode white-outline fix** (eyeball in both light & dark), the **browser
+  extension's full-detail capture** (S18), and the **S19 company-acquisition pipeline + remote-
+  first-class** (metro enumeration CLI, enterprise-ATS, tiered scheduling — all opt-in/additive).
+  master `fe96b71` + 37.
 - **New dependency (S18):** `ttkbootstrap==1.20.4` (+ Pillow, already present) — in `requirements.txt`
   and `app.spec`. First `py build_package.py` after this needs the EXE re-tested (ttkbootstrap data +
-  PIL now bundled).
+  PIL now bundled). S19 added **no new deps** (anthropic SDK already present).
 - Remote: `git@github.com:alex-zagorianos/Job-Program.git` (private).
-- Full suite: **696 passed** (`py -m pytest -q`, ~15–24s; display-guarded Tk tests skip headless,
-  shows as 695 + 1 skip). Python command: `py`. GUI constructs + live light↔dark toggle verified.
+- Full suite: **725 passed** (`py -m pytest -q`, ~9–17s; display-guarded Tk tests skip headless,
+  shows as 724 + 1 skip). Python command: `py`. GUI constructs + live light↔dark toggle verified.
 - Active project: `applied-ai` (672-row inbox after the S17 dead-link prune). DB schema **unchanged
-  at v4** — the S18 browser-harvest metadata rides the existing `extras` JSON (no migration).
+  at v4** — S18 browse metadata + S19 tier state ride JSON (extras / registry_state.json; no migration).
+- **S19 new entry points:** `py enumerate_companies.py` (grow the registry; API or clipboard-bridge),
+  `"tiered_scrape": true` project-config flag (tiered daily run).
