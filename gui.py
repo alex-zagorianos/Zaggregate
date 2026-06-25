@@ -2366,6 +2366,15 @@ class App(tk.Tk):
                               command=self._toggle_dark)
         menubar.add_cascade(label="View", menu=viewm)
 
+        toolsm = theme.style_menu(tk.Menu(menubar, tearoff=0))
+        toolsm.add_command(label="Due — follow-ups & deadlines…",
+                           command=self._show_due)
+        toolsm.add_command(label="Application funnel…", command=self._show_funnel)
+        toolsm.add_separator()
+        toolsm.add_command(label="Connect your AI (API key)…",
+                           command=self._show_settings)
+        menubar.add_cascade(label="Tools", menu=toolsm)
+
         helpm = theme.style_menu(tk.Menu(menubar, tearoff=0))
         helpm.add_command(label="Quick Start",
                           command=lambda: uihelp.show_quick_start(self))
@@ -2380,6 +2389,8 @@ class App(tk.Tk):
         helpm.add_command(label="Open my data folder",
                           command=uihelp.open_data_folder)
         helpm.add_separator()
+        helpm.add_command(label="Privacy: what leaves this computer",
+                          command=lambda: uihelp.show_privacy(self))
         helpm.add_command(label="About", command=lambda: uihelp.show_about(self))
         menubar.add_cascade(label="Help", menu=helpm)
 
@@ -2397,6 +2408,171 @@ class App(tk.Tk):
         if applied:
             self._rebuild_tabs()
         self._open_guide()
+
+    # ── Tools dialogs ───────────────────────────────────────────────────────────
+    def _show_settings(self):
+        """Optional 'Connect your AI' key box. The free clipboard bridge stays the
+        default — a key only powers auto-rank + AI resume/cover generation."""
+        dlg = tk.Toplevel(self)
+        dlg.title("Settings — Connect your AI")
+        dlg.transient(self)
+        dlg.configure(bg=theme.WINDOW)
+        dlg.resizable(False, False)
+        tk.Label(dlg, text="Connect your AI (optional)", bg=theme.WINDOW,
+                 fg=theme.INK, font=theme.FONT_H2).pack(anchor="w", padx=14, pady=(12, 2))
+        tk.Label(dlg, justify="left", bg=theme.WINDOW, fg=theme.MUTED,
+                 font=theme.FONT_SM,
+                 text="Ranking your jobs is FREE and needs no key — use “Ask AI to "
+                      "rank these”.\nA key only powers optional auto-ranking and AI "
+                      "resume/cover writing.\nYour key is stored only on this "
+                      "computer.").pack(anchor="w", padx=14)
+        row = tk.Frame(dlg, bg=theme.WINDOW)
+        row.pack(fill="x", padx=14, pady=(10, 2))
+        tk.Label(row, text="Anthropic API key:", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM, width=16, anchor="w").pack(side="left")
+        akey = tk.StringVar(value=uisettings.get_api_key("anthropic"))
+        ttk.Entry(row, textvariable=akey, width=44, show="*").pack(side="left")
+        status = tk.Label(dlg, text="", bg=theme.WINDOW, fg=theme.MUTED,
+                          font=theme.FONT_SM)
+        status.pack(anchor="w", padx=14, pady=(4, 0))
+
+        def save():
+            v = akey.get().strip()
+            uisettings.set_api_key("anthropic", v)
+            ok = (not v) or uisettings.looks_like_key("anthropic", v)
+            status.config(text="Saved." if ok else
+                          "Saved — but that doesn't look like an Anthropic key (sk-ant-…).",
+                          fg=theme.SUCCESS if ok else theme.WARN)
+
+        def test():
+            v = akey.get().strip()
+            if not v:
+                status.config(text="No key entered.", fg=theme.MUTED)
+                return
+            ok = uisettings.looks_like_key("anthropic", v)
+            status.config(text="Looks valid (format only — not a live check)." if ok
+                          else "Doesn't look like an Anthropic key (should start sk-ant-).",
+                          fg=theme.SUCCESS if ok else theme.WARN)
+
+        bb = tk.Frame(dlg, bg=theme.WINDOW)
+        bb.pack(fill="x", padx=14, pady=12)
+        theme.btn(bb, "Save", save, "accent").pack(side="left", padx=2)
+        theme.btn(bb, "Test key", test, "ghost").pack(side="left", padx=2)
+        theme.btn(bb, "Where do I get a key?",
+                  lambda: webbrowser.open("https://console.anthropic.com/settings/keys"),
+                  "ghost").pack(side="left", padx=2)
+        theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
+        dlg.grab_set()
+
+    def _show_funnel(self):
+        """Local application-funnel analytics from status_history (no cloud)."""
+        data = analyticsmod.compute()
+        f, by_src = data["funnel"], data["by_source"]
+        dlg = tk.Toplevel(self)
+        dlg.title("Application funnel")
+        dlg.transient(self)
+        dlg.configure(bg=theme.WINDOW)
+        dlg.geometry("560x600")
+        since = f" since {f['tracked_since']}" if f["tracked_since"] else ""
+        theme.header_bar(dlg, "Your application funnel",
+                         f"{f['total_tracked']} tracked{since}")
+        body = tk.Frame(dlg, bg=theme.WINDOW)
+        body.pack(fill="both", expand=True, padx=16, pady=10)
+        if f["total_tracked"] == 0:
+            tk.Label(body, text="No tracked applications yet.\nTrack jobs from your "
+                                "Inbox and they'll show up here.",
+                     bg=theme.WINDOW, fg=theme.MUTED, font=theme.FONT,
+                     justify="center").pack(pady=40)
+            theme.btn(dlg, "Close", dlg.destroy, "ghost").pack(pady=8)
+            return
+
+        tk.Label(body, text="Stages reached", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_H2).pack(anchor="w")
+        for s in f["stage_counts"]:
+            name = s["stage"].replace("_", " ").title()
+            tk.Label(body, text=f"   {name:14s}  {s['count']}", bg=theme.WINDOW,
+                     fg=theme.INK, font=theme.FONT_SM, anchor="w").pack(anchor="w")
+
+        rr = f"{f['response_rate'] * 100:.0f}%"
+        mdr = (f"{f['median_days_to_response']:.0f} days"
+               if f["median_days_to_response"] is not None else "—")
+        tk.Label(body, text=f"\nResponse rate (applied → phone screen): {rr}",
+                 bg=theme.WINDOW, fg=theme.INK, font=theme.FONT_SM,
+                 anchor="w").pack(anchor="w")
+        tk.Label(body, text=f"Median days to first response: {mdr}", bg=theme.WINDOW,
+                 fg=theme.MUTED, font=theme.FONT_SM, anchor="w").pack(anchor="w")
+
+        tk.Label(body, text="\nBy source", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_H2).pack(anchor="w")
+        cols = [("source", "Source", 150), ("applied", "Applied", 70),
+                ("iv", "Interview+", 90), ("rate", "Rate", 70)]
+        tree = ttk.Treeview(body, columns=[c[0] for c in cols], show="headings",
+                            height=8)
+        for c, l, w in cols:
+            tree.heading(c, text=l)
+            tree.column(c, width=w, anchor="w" if c == "source" else "center")
+        theme.zebra(tree)
+        for i, s in enumerate(by_src):
+            rate = f"{s['response_rate'] * 100:.0f}%" + (" (low n)" if s["low_n"] else "")
+            tree.insert("", "end", tags=(theme.row_tag(i),),
+                        values=(s["source"], s["applied"], s["interview_plus"], rate))
+        tree.pack(fill="both", expand=True, pady=(2, 0))
+        theme.btn(dlg, "Close", dlg.destroy, "ghost").pack(pady=8)
+
+    def _show_due(self):
+        """Follow-ups + deadlines that have arrived, with open / snooze."""
+        rows = followups_due(within_days=0)
+        dlg = tk.Toplevel(self)
+        dlg.title("Due — follow-ups & deadlines")
+        dlg.transient(self)
+        dlg.configure(bg=theme.WINDOW)
+        dlg.geometry("700x420")
+        theme.header_bar(dlg, "Due now",
+                         "Follow-ups and application deadlines that have arrived.")
+        tf = ttk.Frame(dlg)
+        tf.pack(fill="both", expand=True, padx=10, pady=6)
+        cols = [("due", "Due", 95), ("kind", "Kind", 80),
+                ("title", "Title", 270), ("company", "Company", 150)]
+        tree = ttk.Treeview(tf, columns=[c[0] for c in cols], show="headings")
+        for c, l, w in cols:
+            tree.heading(c, text=l)
+            tree.column(c, width=w, anchor="w")
+        theme.zebra(tree)
+        tree.pack(side="left", fill="both", expand=True)
+        rowmap = {}
+        for i, r in enumerate(rows):
+            iid = str(r["id"])
+            rowmap[iid] = r
+            tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),),
+                        values=(r["due_date"], r["due_kind"], r["title"], r["company"]))
+        if not rows:
+            tk.Label(dlg, text="Nothing due right now. Nice.", bg=theme.WINDOW,
+                     fg=theme.MUTED, font=theme.FONT).pack(pady=8)
+
+        def _sel():
+            s = tree.selection()
+            return rowmap.get(s[0]) if s else None
+
+        def open_posting():
+            r = _sel()
+            if r and (r.get("url") or "").strip():
+                webbrowser.open(r["url"])
+
+        def snooze():
+            r = _sel()
+            if not r:
+                return
+            from datetime import timedelta
+            update_job(r["id"],
+                       follow_up_date=(date.today() + timedelta(days=7)).isoformat())
+            dlg.destroy()
+            self._show_due()
+
+        bb = tk.Frame(dlg, bg=theme.WINDOW)
+        bb.pack(fill="x", padx=10, pady=8)
+        theme.btn(bb, "Open posting", open_posting, "ghost").pack(side="left", padx=2)
+        theme.btn(bb, "Snooze 7 days", snooze, "ghost").pack(side="left", padx=2)
+        theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
 
     # ── theme (light / dark) ────────────────────────────────────────────────────
     def _toggle_dark(self):

@@ -223,6 +223,32 @@ def show_ai_help(parent=None) -> None:
         parent=parent)
 
 
+def show_privacy(parent=None) -> None:
+    """Make the local-first promise concrete: exactly what does and doesn't leave
+    this computer. The strongest differentiator, shown not just asserted."""
+    messagebox.showinfo(
+        "Privacy — what leaves this computer",
+        "JobScout runs on your machine. The only things ever sent out are:\n\n"
+        "JOB SEARCHES\n"
+        "   When you Search (or the daily update runs), JobScout queries public\n"
+        "   job boards and company career pages — Greenhouse, Lever, Ashby,\n"
+        "   Workday, Adzuna, USAJobs, The Muse, RemoteOK, Hacker News and the\n"
+        "   like. It sends only your search KEYWORDS and LOCATION to look up\n"
+        "   matching public postings. Never your resume, profile, or tracker.\n\n"
+        "AI RANKING  (only if you use it)\n"
+        "   “Ask AI to rank these” copies a prompt to YOUR clipboard. Nothing is\n"
+        "   sent until YOU paste it into the AI chat you chose. If you add an\n"
+        "   optional API key, the job text + a profile summary go to YOUR key's\n"
+        "   provider — and nowhere else.\n\n"
+        "CHECKING LINKS\n"
+        "   “Clean dead links” visits each job's URL to see if it still exists.\n\n"
+        "WHAT NEVER LEAVES\n"
+        "   Your resume, experience, preferences, scores, notes, and application\n"
+        "   tracker stay in your local data folder. No account, no cloud, no\n"
+        "   analytics or telemetry. JobScout never applies for you.",
+        parent=parent)
+
+
 def show_about(parent=None) -> None:
     messagebox.showinfo(
         "About " + APP_NAME,
