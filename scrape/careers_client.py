@@ -29,6 +29,8 @@ class CareersClient(JobAPIClient):
         industry_filter: Optional[str] = None,
         discovery_enabled: bool = True,
         companies_file: Optional[Path] = None,
+        tiered: bool = False,
+        state_path: Optional[Path] = None,
     ):
         self.cache_dir = (cache_dir or CACHE_DIR) / "careers"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -36,6 +38,19 @@ class CareersClient(JobAPIClient):
         self.top_n = top_n
         self.discovery_enabled = discovery_enabled
         self._base_companies = get_registry(industry_filter, user_json=companies_file)
+        # Opt-in tiered scheduling: scrape only the registry companies that are
+        # "due" this run (active boards every run, quiet/dead ones less often), so
+        # a large registry doesn't make the daily run O(N). Off by default -> the
+        # full registry is scraped exactly as before.
+        self._tiered = tiered
+        from config import CACHE_DIR as _CACHE
+        self._state_path = state_path or (_CACHE / "registry_state.json")
+        self._state = {}
+        self._due_keys = None          # computed once per run on first search
+        self._run_hits: dict[str, int] = {}
+        if self._tiered:
+            from scrape import tiering
+            self._state = tiering.load_state(self._state_path)
         # Industry tag applied to any discovered company we persist; falls back
         # to "discovered" so saved entries stay filterable by --industry.
         self.industry_tag = (industry_filter or "discovered").lower().replace(" ", "_")
@@ -61,6 +76,17 @@ class CareersClient(JobAPIClient):
         # dropped whole registries — health_informatics is listed first, so the
         # controls_engineering companies were never reached with industry=None.)
         companies = list(self._base_companies)
+        # Tiered mode: narrow the base registry to the boards due this run. The
+        # due set is computed once per client (= once per run) and reused across
+        # keywords so a company is decided once, not per-keyword.
+        if self._tiered:
+            from datetime import date
+            from scrape import tiering
+            if self._due_keys is None:
+                due = tiering.due_companies(companies, self._state, date.today())
+                self._due_keys = {tiering.company_key(c) for c in due}
+            companies = [c for c in companies
+                         if tiering.company_key(c) in self._due_keys]
         discovered_slugs: set[str] = set()
         if self.discovery_enabled:
             known_slugs = {c.slug for c in companies}
@@ -89,10 +115,30 @@ class CareersClient(JobAPIClient):
                         print(f"  [careers] {company.name}: {len(jobs)} match(es)")
                         if company.slug in discovered_slugs:
                             self._record_winner(company)
+                    if self._tiered:
+                        from scrape import tiering
+                        k = tiering.company_key(company)
+                        self._run_hits[k] = self._run_hits.get(k, 0) + len(jobs)
                     results.extend(jobs)
                 except Exception as e:
                     print(f"  [careers] {company.name}: error — {e}")
         return results
+
+    def finalize_tiering(self) -> None:
+        """Persist this run's per-board activity so the next run can schedule by
+        tier. No-op unless tiered. Only boards actually scraped this run (the due
+        set) are updated, so a deferred board keeps counting toward its interval."""
+        if not self._tiered or self._due_keys is None:
+            return
+        from datetime import date
+        from scrape import tiering
+        today = date.today()
+        for company in self._base_companies:
+            key = tiering.company_key(company)
+            if key in self._due_keys:
+                tiering.update_after_scrape(self._state, company,
+                                            self._run_hits.get(key, 0), today)
+        tiering.save_state(self._state_path, self._state)
 
     def _record_winner(self, company: CompanyEntry) -> None:
         if company.slug not in self._discovered_winners:

@@ -42,6 +42,7 @@ def build_clients(
     industry_filter: str | None = None,
     discovery_enabled: bool = True,
     companies_file: Path | None = None,
+    tiered_careers: bool = False,
 ) -> list[JobAPIClient]:
     clients: list[JobAPIClient] = []
 
@@ -100,6 +101,7 @@ def build_clients(
                 industry_filter=industry_filter,
                 discovery_enabled=discovery_enabled,
                 companies_file=companies_file,
+                tiered=tiered_careers,
             ))
 
         elif source == "arbeitnow":

@@ -79,7 +79,12 @@ def main():
     log(f"daily_run start | sources={sources} | {len(keywords)} keywords | "
         f"location={location} | min_score={min_score} | industry={industry}")
 
-    clients = build_clients(sources, cache_enabled=True, industry_filter=industry)
+    # Opt-in tiered scraping: as the registry grows, scrape only the boards "due"
+    # this run (active boards every run, quiet/dead ones less often) so the daily
+    # run stays fast. Off by default — the full registry is scraped as before.
+    tiered = bool(cfg.get("tiered_scrape"))
+    clients = build_clients(sources, cache_enabled=True, industry_filter=industry,
+                            tiered_careers=tiered)
     if not clients:
         log("ABORT: no sources could be initialized (check .env).")
         # Don't leave the beacon row stuck 'running' — this is a failed run.
@@ -91,6 +96,10 @@ def main():
         keywords=keywords, location=location, salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,
     )
+    if tiered:
+        for c in clients:
+            if hasattr(c, "finalize_tiering"):
+                c.finalize_tiering()
     # Preference hard-gate: drop jobs violating the user's hard constraints
     # (salary floor / location / dealbreakers) before scoring + inbox. No-op when
     # preferences.json is absent or permissive (a fresh data folder).
