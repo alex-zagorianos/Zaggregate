@@ -330,3 +330,57 @@ def tip(widget, text):
     """Attach a tooltip and return the widget (so it chains in expressions)."""
     Tooltip(widget, text)
     return widget
+
+
+# ── Score bands (glanceable triage color coding) ────────────────────────────────
+# >=70 strong / 45-69 fair / 0-44 weak / <0 unscored. Surfaced as a colored emoji
+# circle prepended to the Score (or Fit) table cell: emoji carry their own color,
+# so a single cell reads as red/amber/green WITHOUT ttk per-cell styling, and it
+# looks identical in light and dark mode.
+def score_band(n) -> str:
+    """Band key for a 0-100 score/fit value: 'good' | 'mid' | 'low' | 'none'."""
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return "none"
+    if n < 0:
+        return "none"
+    if n >= 70:
+        return "good"
+    if n >= 45:
+        return "mid"
+    return "low"
+
+
+BAND_GLYPH = {"good": "\U0001F7E2", "mid": "\U0001F7E1",  # 🟢 🟡
+              "low": "\U0001F534", "none": ""}            # 🔴 (blank when unscored)
+
+
+def score_glyph(n) -> str:
+    """Colored circle for a score/fit value, for the Score column ('' if unscored)."""
+    return BAND_GLYPH[score_band(n)]
+
+
+def band_color(n) -> str:
+    """Active-palette color for a score band (for non-table chips/labels). Accepts
+    a numeric value or a band key."""
+    key = n if n in BAND_GLYPH else score_band(n)
+    return {"good": SUCCESS, "mid": WARN, "low": DANGER, "none": FAINT}[key]
+
+
+def empty_state(parent, text, button_text=None, command=None,
+                icon="\N{INBOX TRAY}"):
+    """A centered empty-state panel: faint icon + message + optional CTA button.
+    Self-contained (the caller does .pack(fill='both', expand=True) and
+    .pack_forget()/destroy when data arrives) — mirrors TopPicksTab's empty label
+    but generalized with a call-to-action. Returns the frame."""
+    frame = tk.Frame(parent, bg=SURFACE)
+    inner = tk.Frame(frame, bg=SURFACE)
+    inner.place(relx=0.5, rely=0.42, anchor="center")
+    tk.Label(inner, text=icon, bg=SURFACE, fg=FAINT,
+             font=("Segoe UI", 30)).pack()
+    tk.Label(inner, text=text, bg=SURFACE, fg=MUTED, font=FONT, justify="center",
+             wraplength=460).pack(pady=(8, 12))
+    if button_text and command:
+        btn(inner, button_text, command, kind="accent").pack()
+    return frame

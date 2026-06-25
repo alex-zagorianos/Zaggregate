@@ -22,6 +22,47 @@ def test_row_tag_alternates():
     assert theme.row_tag(2) == "oddrow"
 
 
+def test_score_band_thresholds():
+    assert theme.score_band(82) == "good"
+    assert theme.score_band(70) == "good"
+    assert theme.score_band(69) == "mid"
+    assert theme.score_band(45) == "mid"
+    assert theme.score_band(44) == "low"
+    assert theme.score_band(0) == "low"
+    assert theme.score_band(-1) == "none"        # unscored
+    assert theme.score_band(None) == "none"
+    assert theme.score_band("x") == "none"
+
+
+def test_score_glyph_and_band_color():
+    assert theme.score_glyph(90) == theme.BAND_GLYPH["good"]
+    assert theme.score_glyph(-1) == ""           # blank when unscored
+    # band_color accepts a number or a key, and tracks the active palette
+    theme.set_mode("light")
+    assert theme.band_color(90) == theme.SUCCESS
+    assert theme.band_color("low") == theme.DANGER
+    theme.set_mode("dark")
+    assert theme.band_color(90) == theme.SUCCESS  # resolves to the dark green
+
+
+def test_empty_state_builds(_restore_mode=None):
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        import pytest
+        pytest.skip("no display")
+    try:
+        theme.apply_theme(root)
+        calls = []
+        f = theme.empty_state(root, "Nothing here yet", "Go to Search",
+                              lambda: calls.append(1))
+        f.pack(fill="both", expand=True)
+        root.update_idletasks()
+        assert f.winfo_exists()
+    finally:
+        root.destroy()
+
+
 def test_modes_swap_palette_and_track_current():
     theme.set_mode("light")
     assert theme.current_mode() == "light"

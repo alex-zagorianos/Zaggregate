@@ -62,3 +62,46 @@ def set_location_mode(mode: str) -> None:
     data = load()
     data["location_mode"] = mode
     save(data)
+
+
+# ── Optional AI API keys (the in-app "Connect your AI" box) ──────────────────────
+# Keys live as plaintext files under config.SECRETS_DIR (gitignored, never bundled),
+# exactly where the read-side resolvers already look (ranker.api_key reads
+# secrets/anthropic_key; serpapi reads secrets/serpapi_key). The clipboard bridge
+# stays the default — a key only powers the optional auto-rank + AI resume/cover.
+_KEY_FILES = {"anthropic": "anthropic_key", "serpapi": "serpapi_key"}
+
+
+def get_api_key(provider: str) -> str:
+    """The stored key for a provider ('anthropic'|'serpapi'), or '' if unset.
+    Prefers the matching env var (so a power user's .env still wins)."""
+    import os
+    env = {"anthropic": "ANTHROPIC_API_KEY", "serpapi": "SERPAPI_KEY"}.get(provider)
+    if env and os.getenv(env):
+        return os.getenv(env)
+    name = _KEY_FILES.get(provider)
+    return (config.read_secret(name) or "") if name else ""
+
+
+def has_api_key(provider: str) -> bool:
+    return bool(get_api_key(provider))
+
+
+def set_api_key(provider: str, value: str) -> bool:
+    """Persist (or clear, if blank) a provider key to SECRETS_DIR. Returns True on
+    success / no-op. Unknown provider returns False."""
+    name = _KEY_FILES.get(provider)
+    if not name:
+        return False
+    return config.write_secret(name, value)
+
+
+def looks_like_key(provider: str, value: str) -> bool:
+    """Cheap, offline sanity check for the 'Test key' button (NOT a live API call).
+    Anthropic keys start with 'sk-ant-'; otherwise just require some non-space text."""
+    v = (value or "").strip()
+    if not v:
+        return False
+    if provider == "anthropic":
+        return v.startswith("sk-ant-") and len(v) > 20
+    return len(v) >= 8

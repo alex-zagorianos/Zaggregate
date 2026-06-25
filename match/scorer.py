@@ -349,6 +349,68 @@ def score_job(
     return score, notes
 
 
+# --- Structured breakdown of the score_notes string (for the GUI scorecard) ---
+# score_job emits a fixed, parseable notes string; rather than change its return
+# signature (and every caller), parse that string into a structured dict the GUI
+# can render as labeled chips/bars. Pure and forgiving: unknown/missing tokens
+# are skipped, so it never throws on an old or partial notes string.
+_COMPONENT_META = [
+    ("title", "Title", 35), ("skills", "Skills", 25), ("salary", "Salary", 15),
+    ("loc", "Location", 15), ("new", "Recency", 10),
+]
+_BD_PCT_RE = re.compile(r"^(title|skills|salary|loc|new)\s+(-?\d+)%$")
+_BD_CONF_RE = re.compile(r"^conf\s+(\d+)/(\d+)$")
+_BD_SIZE_RE = re.compile(r"^size\s+([+-]\d+)\s+\((-?\d+) on board\)$")
+_BD_PEN_RE = re.compile(r"^(.*?)\s+(-\d+)$")
+
+
+def score_breakdown(notes: str) -> dict:
+    """Parse a score_notes string (as built by score_job) into a structured
+    breakdown for display: weighted components, confidence (present/total),
+    company-size modifier, and penalties. Returns:
+
+        {"components": [{"key","label","pct","weight"}, ...],
+         "confidence": {"present": int, "total": int} | None,
+         "size_adj": int | None, "board_count": int | None,
+         "penalties": [{"label": str, "value": int}, ...]}
+    """
+    labels = {k: lbl for k, lbl, _ in _COMPONENT_META}
+    weights = {k: w for k, _, w in _COMPONENT_META}
+    out = {"components": [], "confidence": None, "size_adj": None,
+           "board_count": None, "penalties": []}
+    for tok in (notes or "").split("|"):
+        tok = tok.strip()
+        if not tok:
+            continue
+        m = _BD_PCT_RE.match(tok)
+        if m:
+            key = m.group(1)
+            out["components"].append({"key": key, "label": labels[key],
+                                      "pct": int(m.group(2)) / 100.0,
+                                      "weight": weights[key]})
+            continue
+        m = _BD_CONF_RE.match(tok)
+        if m:
+            out["confidence"] = {"present": int(m.group(1)), "total": int(m.group(2))}
+            continue
+        m = _BD_SIZE_RE.match(tok)
+        if m:
+            out["size_adj"] = int(m.group(1))
+            out["board_count"] = int(m.group(2))
+            continue
+        if tok.startswith("PENALTY:"):
+            for kw in tok[len("PENALTY:"):].split(","):
+                kw = kw.strip()
+                if kw:
+                    out["penalties"].append({"label": kw, "value": -30})
+            continue
+        m = _BD_PEN_RE.match(tok)  # title-miss -12 | excl-title(ai) -45 | seniority(sr) -20
+        if m:
+            out["penalties"].append({"label": m.group(1).strip(),
+                                     "value": int(m.group(2))})
+    return out
+
+
 def score_jobs(
     jobs: list[JobResult],
     *,

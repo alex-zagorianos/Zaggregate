@@ -60,6 +60,33 @@ PREFERENCES_JSON = USER_DATA_DIR / "preferences.json"
 USER_CONFIG_JSON = USER_DATA_DIR / "user_config.json"
 SECRETS_DIR      = USER_DATA_DIR / "secrets"
 
+
+def read_secret(name):
+    """Read a secret (e.g. 'anthropic_key') from SECRETS_DIR; None if absent/empty.
+    The canonical accessor so every key resolver reads the same place."""
+    try:
+        v = (SECRETS_DIR / name).read_text(encoding="utf-8").strip()
+        return v or None
+    except OSError:
+        return None
+
+
+def write_secret(name, value):
+    """Write/replace a plaintext secret file under SECRETS_DIR (created on demand);
+    an empty/None value deletes it. Single-user local app — SECRETS_DIR is
+    gitignored and never bundled into the distributable. Returns True on success."""
+    try:
+        SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+        path = SECRETS_DIR / name
+        if not value or not str(value).strip():
+            path.unlink(missing_ok=True)
+            return True
+        path.write_text(str(value).strip(), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
 # Writable runtime state (under the data folder).
 CACHE_DIR = USER_DATA_DIR / "cache"
 OUTPUT_DIR = USER_DATA_DIR / "output"

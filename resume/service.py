@@ -14,13 +14,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import config
 from config import ANTHROPIC_API_KEY
 from resume.docx_builder import build_cover_letter_docx, build_resume_docx
 from resume.experience_parser import load_experience
 
 
 def api_available() -> bool:
-    return bool(ANTHROPIC_API_KEY)
+    """True when an Anthropic key is configured — the env var OR a key the user
+    pasted into the in-app Settings box (secrets/anthropic_key). Consulted live so
+    the 'Generate via API' button lights up right after a key is saved."""
+    return bool(config.ANTHROPIC_API_KEY or config.read_secret("anthropic_key"))
 
 
 def _slug(text: str, max_len: int = 30) -> str:

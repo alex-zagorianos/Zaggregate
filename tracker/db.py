@@ -249,6 +249,52 @@ def count_followups_due(today=None):
     return int(row[0])
 
 
+def followups_due(within_days=0, today=None, include_deadlines=True):
+    """Active applications needing attention soon, for the 'Due' view. Returns the
+    actual rows (count_followups_due only tallies): every non-archived application
+    whose follow_up_date is due (status applied/phone_screen/interview) and, when
+    include_deadlines, whose application deadline is approaching for a not-yet-applied
+    role (status interested/applied). `within_days` widens the window (0 = due today
+    or overdue). Each row gains 'due_kind' ('follow-up'|'deadline') and 'due_date';
+    sorted soonest-first. Snooze = update_job(id, follow_up_date=<later>)."""
+    from datetime import date, timedelta
+    if today is None:
+        today = date.today()
+    elif isinstance(today, str):
+        today = date.fromisoformat(today)
+    horizon = (today + timedelta(days=within_days)).isoformat()
+    out, seen = [], set()
+    with get_conn() as conn:
+        for r in conn.execute(
+            "SELECT * FROM applications WHERE archived=0 "
+            "AND follow_up_date IS NOT NULL AND follow_up_date != '' "
+            "AND follow_up_date <= ? "
+            "AND status IN ('applied','phone_screen','interview') "
+            "ORDER BY follow_up_date",
+            (horizon,),
+        ).fetchall():
+            d = dict(r)
+            d["due_kind"], d["due_date"] = "follow-up", r["follow_up_date"]
+            out.append(d)
+            seen.add(r["id"])
+        if include_deadlines:
+            for r in conn.execute(
+                "SELECT * FROM applications WHERE archived=0 "
+                "AND deadline IS NOT NULL AND deadline != '' "
+                "AND deadline <= ? "
+                "AND status IN ('interested','applied') "
+                "ORDER BY deadline",
+                (horizon,),
+            ).fetchall():
+                if r["id"] in seen:
+                    continue
+                d = dict(r)
+                d["due_kind"], d["due_date"] = "deadline", r["deadline"]
+                out.append(d)
+    out.sort(key=lambda d: (d["due_date"], d["due_kind"]))
+    return out
+
+
 def get_counts():
     with get_conn() as conn:
         rows = conn.execute(
