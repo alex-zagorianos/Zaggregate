@@ -6,11 +6,15 @@ and keep unknown/empty locations (don't over-cut the wide net).
 """
 from __future__ import annotations
 
+import re
+
 from coverage.geography import metro_variants
 
-# Tokens that signal a US-acceptable remote posting.
-_US_OK = ("us", "u.s", "united states", "usa", "anywhere", "remote")
+# A US-acceptable remote posting (word-boundary so "us" doesn't match australia).
+_US_OK_RE = re.compile(r"\b(u\.?s\.?|usa|united states|anywhere)\b", re.I)
 _GLOBAL_ONLY = ("worldwide", "global", "anywhere in the world", "international")
+# "remote" as a whole word, but NOT the "remote sensing/monitoring" noun compounds.
+_REMOTE_RE = re.compile(r"\bremote\b(?!\s+(?:sensing|monitoring|sensors?))", re.I)
 
 # View-filter modes for the Inbox "Location" control (canonical, agnostic). The
 # default focuses on the user's home metro but always keeps remote + unknown so
@@ -20,7 +24,7 @@ DEFAULT_LOCATION_MODE = "Local + remote"
 
 
 def _is_remote(loc: str, title: str) -> bool:
-    return "remote" in loc or "remote" in title
+    return bool(_REMOTE_RE.search(loc or "") or _REMOTE_RE.search(title or ""))
 
 
 def _remote_region_ok(loc: str, remote_region: str | None) -> bool:
@@ -30,7 +34,7 @@ def _remote_region_ok(loc: str, remote_region: str | None) -> bool:
     if region == "us":
         if any(g in loc for g in _GLOBAL_ONLY):
             return False
-        return any(tok in loc for tok in _US_OK)
+        return bool(_US_OK_RE.search(loc or ""))
     return region in loc
 
 
