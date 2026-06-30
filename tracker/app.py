@@ -31,6 +31,30 @@ def _cors(r):
     r.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return r
 
+
+def _write_origin_ok() -> bool:
+    """For a mutating request, allow the tracker's own loopback pages and the
+    browser extension; reject a present-but-foreign Origin/Referer (CSRF). When
+    BOTH headers are absent it's not a browser CSRF (curl/direct) -> allow."""
+    for hdr in ("Origin", "Referer"):
+        val = request.headers.get(hdr, "")
+        if not val:
+            continue
+        p = urlparse(val)
+        if p.scheme == "chrome-extension":
+            return True
+        if p.hostname in ("localhost", "127.0.0.1", "::1"):
+            return True
+        return False  # present but foreign -> reject
+    return True  # no Origin and no Referer
+
+
+@app.before_request
+def _csrf_guard():
+    from flask import abort
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not _write_origin_ok():
+        abort(403)
+
 PORT = PORT_TRACKER
 
 
