@@ -202,6 +202,11 @@ BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 CAREERS_MAX_WORKERS = 8
 CAREERS_REQUEST_TIMEOUT = 20
 
+# Scrapling stealth/JS fetch fallback for direct/JS-SPA career pages. On by
+# default; a graceful no-op if the `scrapling` package isn't installed. Set
+# SCRAPLING_FALLBACK=0 to disable.
+SCRAPLING_FALLBACK = os.getenv("SCRAPLING_FALLBACK", "1") != "0"
+
 # Arbeitnow — free public job-board API, no key. Remote + EU/US listings.
 ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
 ARBEITNOW_RATE_LIMIT = 5
