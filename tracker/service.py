@@ -286,15 +286,23 @@ def match_fit(jobs, parsed) -> list:
 
 
 def score_inbox_from_reply(jobs, reply: str) -> int:
-    """Parse a fit reply and write token-verified scores back to inbox rows
-    (jobs carry their row id in .job_id). Returns how many were applied."""
+    """Parse a fit reply, write token-verified fits back to inbox rows, AND derive
+    a Top-Picks shortlist (rank best-first) from those fits so the free clipboard
+    round-trip fills the Top Picks tab without the file-import/MCP path."""
     parsed = parse_fit_reply(reply, len(jobs))
+    scored = []  # (inbox_id, fit)
     applied = 0
     for job, fit_score, rationale in match_fit(jobs, parsed):
         if not job.job_id:
             continue
         db.inbox_set_fit(int(job.job_id), fit_score, rationale)
+        scored.append((int(job.job_id), fit_score))
         applied += 1
+    if scored:
+        batch = new_rec_batch()
+        for rank, (jid, _fit) in enumerate(
+                sorted(scored, key=lambda t: -t[1]), start=1):
+            db.inbox_merge_extras(jid, rank_patch(rank, batch))
     return applied
 
 
