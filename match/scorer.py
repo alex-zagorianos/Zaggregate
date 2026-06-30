@@ -148,9 +148,10 @@ _SALARY_RE = re.compile(
 )
 
 
-def _parse_money(tok: Optional[str]) -> Optional[float]:
-    """'$165,000' / '95k' / '45.50' (hourly) -> annual dollars, or None if it
-    fails sanity bounds (30k-500k) — filters out 401k figures, fees, etc."""
+def _parse_money(tok: Optional[str], hourly: bool = False) -> Optional[float]:
+    """'$165,000' / '95k' / '45.50' -> annual dollars, or None if it fails sanity
+    bounds (30k-500k). A bare small value is annualized ONLY when `hourly` is set
+    (an explicit /hr context), so a '$75 stipend' is no longer read as $156k."""
     if not tok:
         return None
     t = tok.lower().replace(",", "").strip()
@@ -160,7 +161,7 @@ def _parse_money(tok: Optional[str]) -> Optional[float]:
         val = float(t) * mult
     except ValueError:
         return None
-    if val < 200:  # plausible hourly rate -> annualize
+    if hourly and val < 200:  # annualize an explicit hourly rate
         val *= 2080
     return val if 30_000 <= val <= 500_000 else None
 
@@ -174,17 +175,35 @@ _SALARY_RE_BARE = re.compile(
 )
 
 
+# Context guards for salary_from_text: an explicit hourly marker (annualize) and
+# clearly-non-salary dollar mentions (skip).
+_HOURLY_CTX = re.compile(r"/\s?hr\b|/\s?hour\b|\bper hour\b|\bhourly\b|\ban hour\b", re.I)
+_NON_SALARY_CTX = re.compile(
+    r"\bstipend\b|\bgift\s?card\b|\binsurance\b|401\s?\(?k\)?|\breimburs\w*|"
+    r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b", re.I)
+
+
 def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
-    """Best-effort (min, max) annual salary parsed from free text."""
-    for m in _SALARY_RE.finditer(text or ""):
-        lo = _parse_money(m.group(1))
-        hi = _parse_money(m.group(2))
+    """Best-effort (min, max) annual salary parsed from free text. A lone value is
+    only annualized under an explicit hourly context, and dollar amounts in a
+    clearly non-salary context (stipend/401k/gift card/insurance/...) are skipped."""
+    text = text or ""
+    for m in _SALARY_RE.finditer(text):
+        ctx = text[max(0, m.start() - 30): m.end() + 30]
+        if _NON_SALARY_CTX.search(ctx):
+            continue
+        hourly = bool(_HOURLY_CTX.search(ctx))
+        lo = _parse_money(m.group(1), hourly)
+        hi = _parse_money(m.group(2), hourly)
         if lo and hi:
             return (min(lo, hi), max(lo, hi))
         if lo:
             return (lo, None)
-    # No '$'-anchored hit -> try a bare comma-grouped range (both ends required).
-    for m in _SALARY_RE_BARE.finditer(text or ""):
+    # No usable '$'-anchored hit -> try a bare comma-grouped range (both ends required).
+    for m in _SALARY_RE_BARE.finditer(text):
+        ctx = text[max(0, m.start() - 30): m.end() + 30]
+        if _NON_SALARY_CTX.search(ctx):
+            continue
         lo = _parse_money(m.group(1))
         hi = _parse_money(m.group(2))
         if lo and hi:
