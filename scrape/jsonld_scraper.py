@@ -93,6 +93,13 @@ def _to_jobresult(obj: dict, base_url: str) -> JobResult | None:
     url = obj.get("url") or ""
     if url and base_url and "://" not in url:
         url = urljoin(base_url, url)
+    if not url and base_url:
+        # No posting URL in the JSON-LD: synthesize a stable, page-anchored identity
+        # so url-less postings don't all collapse onto the inbox's UNIQUE(norm_url).
+        import hashlib as _hl
+        ident = _hl.md5(f"{title}|{obj.get('hiringOrganization')}".encode("utf-8")).hexdigest()[:10]
+        sep = "&" if "?" in base_url else "?"
+        url = f"{base_url}{sep}ld={ident}"
     return JobResult(
         title=_clean(title) or title,
         company=_org_name(obj.get("hiringOrganization")),
