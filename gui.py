@@ -679,7 +679,10 @@ class ResumeTab(ttk.Frame):
 
     def _open_folder(self, _event=None):
         if self._output_dir:
-            subprocess.Popen(f'explorer "{self._output_dir}"')
+            try:
+                subprocess.Popen(["explorer", str(self._output_dir)])
+            except OSError:
+                pass
 
 
 # ── Inbox tab (daily-run results) ─────────────────────────────────────────────
@@ -2652,6 +2655,9 @@ class App(tk.Tk):
         toolsm.add_separator()
         toolsm.add_command(label="Connect your AI (API key)…",
                            command=self._show_settings)
+        toolsm.add_separator()
+        toolsm.add_command(label="Enable stealth fetching (downloads browser)…",
+                           command=self._enable_stealth)
         menubar.add_cascade(label="Tools", menu=toolsm)
 
         helpm = theme.style_menu(tk.Menu(menubar, tearoff=0))
@@ -2702,6 +2708,38 @@ class App(tk.Tk):
         self._open_guide()
 
     # ── Tools dialogs ───────────────────────────────────────────────────────────
+    def _enable_stealth(self):
+        """One-time browser download so the Scrapling JS/anti-bot fetch fallback
+        can run. The exe ships lean (no bundled browser); this enables it on
+        demand. Runs off the UI thread."""
+        from scrape import stealth_fetch
+        if not stealth_fetch.available():
+            messagebox.showinfo(
+                "Stealth fetching",
+                "The stealth fetch library isn't available in this build.")
+            return
+        if stealth_fetch.browsers_ready():
+            messagebox.showinfo("Stealth fetching",
+                                "Stealth fetching is already enabled.")
+            return
+        if not messagebox.askyesno(
+                "Enable stealth fetching",
+                "This downloads a browser (about 300 MB, one-time) so the app can "
+                "read JavaScript-heavy or anti-bot career pages. It can take a few "
+                "minutes. Continue?"):
+            return
+
+        def _work():
+            ok, msg = stealth_fetch.install()
+            self.after(0, lambda: (messagebox.showinfo if ok else messagebox.showwarning)(
+                "Stealth fetching", msg))
+
+        threading.Thread(target=_work, daemon=True).start()
+        messagebox.showinfo(
+            "Stealth fetching",
+            "Downloading in the background — you can keep using the app. "
+            "You'll get a message when it's ready.")
+
     def _show_settings(self):
         """Optional 'Connect your AI' key box. The free clipboard bridge stays the
         default — a key only powers auto-rank + AI resume/cover generation."""
