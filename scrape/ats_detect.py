@@ -130,6 +130,16 @@ def parse_line(line: str) -> CompanyEntry | None:
         return CompanyEntry(name=name or _name_from(ats, slug, url),
                             ats_type=ats, slug=slug, industries=[])
 
+    # "Name, URL" comma form (only when there's no '|'): split on the FIRST comma
+    # and treat the remainder as a URL when it looks like one.
+    if "," in line:
+        name, _, rest = line.partition(",")
+        rest = rest.strip()
+        if rest and ("http" in rest or "." in rest):
+            ats, slug = detect_ats(rest)
+            return CompanyEntry(name=name.strip() or _name_from(ats, slug, rest),
+                                ats_type=ats, slug=slug, industries=[])
+
     url = parts[0]       # bare URL
     ats, slug = detect_ats(url)
     return CompanyEntry(name=_name_from(ats, slug, url),
