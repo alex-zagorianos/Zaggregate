@@ -58,38 +58,70 @@ def _strip_trailing_commas(text: str) -> str:
     return re.sub(r",(\s*[}\]])", r"\1", text)
 
 
+def _balanced_span(s: str, opener: str, closer: str):
+    """The first balanced opener..closer substring, respecting JSON strings and
+    escapes. Handles a reply whose surrounding prose contains stray brackets
+    better than a greedy first-opener/last-closer slice. None if no balanced run."""
+    start = s.find(opener)
+    if start == -1:
+        return None
+    depth = 0
+    in_str = esc = False
+    for i in range(start, len(s)):
+        c = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == opener:
+            depth += 1
+        elif c == closer:
+            depth -= 1
+            if depth == 0:
+                return s[start:i + 1]
+    return None
+
+
 def _extract_json(text: str, prefer: str = "object") -> str:
     """Pull the JSON payload out of a pasted reply: strips ```json fences and
     any prose before/after the outermost JSON value. ``prefer`` ('object' or
     'array') chooses which container to try first, so a resume object that
     contains an array field isn't mistaken for the whole payload.
 
-    Tolerant pass: if a candidate span fails strict json.loads, retry once with
-    trailing commas stripped before giving up on it."""
+    Tries a bracket-balanced span first (robust to stray brackets in prose), then
+    falls back to the greedy first-opener/last-closer slice. If a candidate fails
+    strict json.loads, retry once with trailing commas stripped before moving on."""
     t = (text or "").strip()
     fence = re.search(r"```(?:json)?\s*(.*?)```", t, re.DOTALL)
     if fence:
         t = fence.group(1).strip()
     spans = (("[", "]"), ("{", "}")) if prefer == "array" else (("{", "}"), ("[", "]"))
     for opener, closer in spans:
+        candidates = []
+        bal = _balanced_span(t, opener, closer)
+        if bal:
+            candidates.append(bal)
         start, end = t.find(opener), t.rfind(closer)
-        # Guard the span against index errors: both delimiters must be present
-        # and properly ordered before we slice.
-        if start == -1 or end == -1 or end <= start:
-            continue
-        candidate = t[start:end + 1]
-        try:
-            json.loads(candidate)
-            return candidate
-        except json.JSONDecodeError:
-            repaired = _strip_trailing_commas(candidate)
-            if repaired != candidate:
-                try:
-                    json.loads(repaired)
-                    return repaired
-                except json.JSONDecodeError:
-                    pass
-            continue
+        if not (start == -1 or end == -1 or end <= start):
+            candidates.append(t[start:end + 1])  # greedy fallback
+        for candidate in candidates:
+            try:
+                json.loads(candidate)
+                return candidate
+            except json.JSONDecodeError:
+                repaired = _strip_trailing_commas(candidate)
+                if repaired != candidate:
+                    try:
+                        json.loads(repaired)
+                        return repaired
+                    except json.JSONDecodeError:
+                        pass
     return t
 
 
