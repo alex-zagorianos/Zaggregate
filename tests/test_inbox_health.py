@@ -71,26 +71,34 @@ def test_default_probe_dispatches_by_ats(monkeypatch):
     import scrape.inbox_health as ih
 
     class _Resp:
-        def __init__(self, status):
+        def __init__(self, status, payload=None):
             self.status_code = status
+            self._payload = payload or {}
         @property
         def ok(self):
             return self.status_code < 400
+        def json(self):
+            return self._payload
 
     calls = []
     def fake_get(url, **kw):
         calls.append(url)
-        # greenhouse boards-api job endpoint -> 404; lever -> 200; ashby -> 404
+        # greenhouse boards-api job endpoint -> 404; lever -> 200; ashby board API
+        # returns a board WITHOUT our posting id -> the posting is gone (dead).
         if "boards-api.greenhouse.io" in url:
             return _Resp(404)
         if "api.lever.co" in url:
             return _Resp(200)
+        if "api.ashbyhq.com" in url:
+            return _Resp(200, {"jobs": [{"id": "other"}]})
         return _Resp(404)
     monkeypatch.setattr(ih.requests, "get", fake_get)
 
     assert ih._probe("https://job-boards.greenhouse.io/embed/job_app?for=a&token=9") is False
     assert "boards-api.greenhouse.io/v1/boards/a/jobs/9" in calls[-1]
     assert ih._probe("https://jobs.lever.co/acme/abc-123") is True
+    # Ashby now checks board-API membership: posting "uuid" absent -> dead.
     assert ih._probe("https://jobs.ashbyhq.com/acme/uuid") is False
+    assert "api.ashbyhq.com/posting-api/job-board/acme" in calls[-1]
     # workday / direct are not reliably probeable -> unknown (keep)
     assert ih._probe("https://cat.wd5.myworkdayjobs.com/x/job/1") is None
