@@ -1,0 +1,220 @@
+"""Deterministic job-fact extraction — the 'extract' stage of the AI-ranking
+pipeline (brain/spec-2026-06-29-ai-pipeline-optimization.md §5 Task A).
+
+Pulls a small, structured fact set out of a messy job posting using regex +
+keyword heuristics, so the downstream gate (match/gate) can filter and the
+compact AI request (ranker.build_compact_request) can score from ~40 tokens of
+facts instead of 1500 chars of HTML. No model tokens, cached by job_key.
+
+When the deferred local-model work lands, the model only fills the handful of
+fields heuristics get wrong — the contract (the JobFacts dict) stays the same.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Optional
+
+from match.scorer import salary_from_text, _term_pattern
+
+# ── seniority ────────────────────────────────────────────────────────────────
+# Checked in priority order against the TITLE first, then the description.
+_SENIORITY = [
+    ("intern",   re.compile(r"\bintern(ship)?\b|\bco-?op\b", re.I)),
+    ("director", re.compile(r"\bdirector\b|\bhead of\b|\bvp\b|vice president|\bchief\b", re.I)),
+    ("manager",  re.compile(r"\bmanager\b|\bmgr\b", re.I)),
+    ("lead",     re.compile(r"\blead\b|\bprincipal\b|\bstaff\b", re.I)),
+    ("senior",   re.compile(r"\bsenior\b|\bsr\.?\b", re.I)),
+    ("entry",    re.compile(r"\bentry[- ]?level\b|\bjunior\b|\bjr\.?\b|\bassociate\b|new ?grad|\blevel\s*1\b|\bl1\b", re.I)),
+]
+# Roman-numeral job level in a title: "Engineer I/II/III".
+_ROMAN = re.compile(r"(?:^|\s|-)\s*(I{1,3})\s*(?:$|\s|-|,)")
+_ROMAN_MAP = {"I": "entry", "II": "mid", "III": "senior"}
+
+_YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:years|yrs)\b", re.I)
+
+_CLEARANCE = re.compile(
+    r"security clearance|ts/sci|top secret|secret clearance|active clearance|"
+    r"polygraph|\bdod\b\s+clearance|clearance (?:is\s+)?required|must (?:have|possess) "
+    r"(?:an?\s+)?(?:active\s+)?clearance", re.I)
+
+# ── work-authorization / location restrictions ───────────────────────────────
+_RESTRICTIONS = [
+    ("Japan work visa required",   re.compile(r"japanese work visa|valid japanese|located in japan", re.I)),
+    ("EU/UK work authorization required", re.compile(r"\beu work|located in (?:europe|the eu)|uk work visa|united kingdom work", re.I)),
+    ("Non-US location required",   re.compile(r"must (?:be )?(?:located|reside) in (?!the united states|the us\b)(?:canada|australia|india|germany|mexico|brazil)", re.I)),
+    ("No visa sponsorship (US work auth required)", re.compile(r"unable to (?:offer|provide|sponsor)[^.]{0,30}(?:visa|sponsorship)|no visa sponsorship|without sponsorship|not (?:able|eligible) to sponsor", re.I)),
+    ("US work authorization required", re.compile(r"must be authorized to work in the united states|\bu\.?s\.? person\b|u\.?s\.? citizen", re.I)),
+]
+
+# ── role archetype (title weighted ×3) ───────────────────────────────────────
+_ROLE_KEYWORDS = {
+    "manage":   ["people management", "manage a team", "manage the team", "direct reports",
+                 "engineering manager", "director of", "head of", "lead and grow", "build and lead the team"],
+    "sales":    ["sales", "account executive", "quota", "pre-sales", "presales",
+                 "solutions engineer", "solution engineer", "customer success", "business development"],
+    "test":     ["sdet", "test engineer", "qa engineer", "quality assurance", "validation",
+                 "test automation", "hardware-in-the-loop", "hardware in the loop", "developer engineer in test"],
+    "maintain": ["maintenance", "sustaining", "field service", "support engineer",
+                 "on-call support", "sustainment"],
+    "research": ["research scientist", "research engineer", "r&d ", "analysis engineer",
+                 "applied research", "investigate novel"],
+    "integrate":["integration engineer", "systems integration", "bring-up", "bring up",
+                 "commissioning", "deployment engineer"],
+    "build":    ["design", "develop", "build", "implement", "architect", "create",
+                 "firmware", "prototype", "new product", "control system"],
+}
+
+_SKILL_VOCAB = [
+    "c++", "c#", ".net", "python", "embedded", "firmware", "stm32", "rtos", "freertos",
+    "plc", "scada", "motion control", "servo", "real-time", "ros2", "ros", "can bus",
+    "ethercat", "labview", "fpga", "verilog", "vhdl", "matlab", "simulink", "gd&t",
+    "solidworks", "creo", "fea", "hardware-in-the-loop", "hil", "linux", "control systems",
+    "kinematics", "pcb", "kicad", "machine vision", "opencv", "sensor fusion", "gnc",
+    "controls", "automation", "robotics", "mechatronics", "hmi", "cnc", "i2c", "uart",
+]
+
+
+def _detect_seniority(title: str, desc: str) -> str:
+    for level, pat in _SENIORITY:
+        if pat.search(title):
+            return level
+    m = _ROMAN.search(title)
+    if m:
+        return _ROMAN_MAP[m.group(1).upper()]
+    for level, pat in _SENIORITY:
+        if pat.search(desc):
+            return level
+    return "mid"
+
+
+def _detect_required_years(text: str) -> Optional[int]:
+    yrs = [int(m.group(1)) for m in _YEARS.finditer(text) if int(m.group(1)) <= 30]
+    return max(yrs) if yrs else None
+
+
+def _detect_location_type(location: str, desc_head: str) -> str:
+    blob = f"{location} {desc_head}".lower()
+    if "hybrid" in blob:
+        return "hybrid"
+    if "remote" in blob:
+        return "remote"
+    if (location or "").strip():
+        return "onsite"
+    return "unknown"
+
+
+def _detect_restriction(text: str) -> Optional[str]:
+    for label, pat in _RESTRICTIONS:
+        if pat.search(text):
+            return label
+    return None
+
+
+def _detect_role_type(title: str, desc: str) -> str:
+    tl, dl = title.lower(), desc.lower()
+    scores = {role: 0 for role in _ROLE_KEYWORDS}
+    for role, kws in _ROLE_KEYWORDS.items():
+        for kw in kws:
+            if kw in tl:
+                scores[role] += 3
+            elif kw in dl:
+                scores[role] += 1
+    best = max(scores, key=lambda r: scores[r])
+    return best if scores[best] > 0 else "build"
+
+
+def _detect_skills(desc: str, limit: int = 6) -> list[str]:
+    dl = (desc or "").lower()
+    hits = []
+    for term in _SKILL_VOCAB:
+        if _term_pattern(term).search(dl):
+            hits.append(term)
+        if len(hits) >= limit:
+            break
+    return hits
+
+
+def extract_facts(job) -> dict:
+    """Pure deterministic extraction of structured facts from a JobResult.
+
+    Returns a JobFacts dict:
+      {seniority, required_years, role_type, clearance_required, location_type,
+       restriction, comp_min, comp_max, top_skills}
+    """
+    title = job.title or ""
+    desc = job.description or ""
+    text = f"{title}\n{desc}"
+
+    comp_min, comp_max = job.salary_min, job.salary_max
+    if comp_min is None and comp_max is None and desc:
+        comp_min, comp_max = salary_from_text(desc)
+
+    return {
+        "seniority": _detect_seniority(title, desc),
+        "required_years": _detect_required_years(text),
+        "role_type": _detect_role_type(title, desc),
+        "clearance_required": bool(_CLEARANCE.search(text)),
+        "location_type": _detect_location_type(job.location or "", desc[:600]),
+        "restriction": _detect_restriction(text),
+        "comp_min": int(comp_min) if comp_min else None,
+        "comp_max": int(comp_max) if comp_max else None,
+        "top_skills": _detect_skills(desc),
+    }
+
+
+def facts_summary(facts: dict) -> str:
+    """A compact one-line fact block for the AI prompt (~30-40 tokens vs a
+    1500-char description)."""
+    sen = facts["seniority"]
+    yrs = facts.get("required_years")
+    sen_str = f"{sen} ({yrs}+ yrs req)" if yrs else sen
+    comp = ""
+    lo, hi = facts.get("comp_min"), facts.get("comp_max")
+    if lo and hi:
+        comp = f" | Comp: ${lo//1000}k-${hi//1000}k"
+    elif lo:
+        comp = f" | Comp: ${lo//1000}k+"
+    skills = ", ".join(facts.get("top_skills") or []) or "n/a"
+    parts = [
+        f"Seniority: {sen_str}",
+        f"Role: {facts['role_type']}",
+        f"Location: {facts['location_type']}",
+        f"Skills: {skills}",
+        f"Clearance: {'yes' if facts['clearance_required'] else 'no'}",
+    ]
+    line = " | ".join(parts) + comp
+    if facts.get("restriction"):
+        line += f" | Restriction: {facts['restriction']}"
+    return line
+
+
+# ── cache seam (immutable per posting; ready for a model-backed extractor) ────
+def _cache_dir() -> Path:
+    from config import CACHE_DIR
+    d = CACHE_DIR / "extracted"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def facts_for(job, *, use_cache: bool = True) -> dict:
+    """Cached extraction keyed by job_key. Deterministic today (cache is a no-op
+    win); the cache is what makes a future model-backed extractor near-free on
+    re-runs — only net-new postings are ever extracted."""
+    if not use_cache:
+        return extract_facts(job)
+    from scrape.cache_helpers import read_cache, write_cache
+    try:
+        key = job.job_key
+    except Exception:
+        return extract_facts(job)
+    path = _cache_dir() / f"{key}.json"
+    cached = read_cache(path)
+    if isinstance(cached, dict) and "seniority" in cached:
+        return cached
+    facts = extract_facts(job)
+    try:
+        write_cache(path, facts)
+    except OSError:
+        pass
+    return facts

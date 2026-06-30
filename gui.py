@@ -1371,11 +1371,31 @@ class InboxTab(ttk.Frame):
         if not rows:
             messagebox.showinfo("Inbox empty", "Nothing left to score.")
             return
-        prompt, jobs = tracker_service.fit_prompt_for_rows(rows)
+        # Compact, gated AI request (spec-2026-06-29): facts+rubric instead of raw
+        # descriptions, and structural non-fits are filtered out before the prompt
+        # so no AI is spent on them.
+        prompt, jobs, dropped = tracker_service.compact_fit_prompt_for_rows(rows)
+        if dropped:
+            try:
+                tracker_service.mark_inbox_gated(dropped)
+            except Exception:
+                pass
+            self.refresh()  # gated rows now carry a fit -> won't re-surface
+        if not jobs:
+            reasons = ", ".join(sorted({r for d in dropped for r in d["reasons"]}))
+            messagebox.showinfo(
+                "All auto-filtered",
+                f"All {len(rows)} job(s) were auto-filtered ({reasons}). They kept a "
+                "low local fit and won't re-surface — nothing to AI-rank.", parent=self)
+            return
         self._fit_jobs = jobs
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         copy_or_warn(self, prompt,
                      lambda m: set_status(self._status, m, "work"))
+        if dropped:
+            set_status(self._status,
+                       f"Copied — AI-ranking {len(jobs)}; auto-filtered "
+                       f"{len(dropped)} (kept local score)", "work")
 
     def _paste_fit(self):
         if not self._fit_jobs:
@@ -2377,11 +2397,24 @@ class ApplyQueueTab(ttk.Frame):
             return
         # Route through the service: preference-anchored prompt + token-verified
         # scoring (so a reordered/skipped reply lands on the right application).
-        prompt, jobs = tracker_service.fit_prompt_for_rows(rows)
+        # Compact, gated AI request (spec-2026-06-29): facts+rubric, structural
+        # non-fits filtered out before the prompt.
+        prompt, jobs, dropped = tracker_service.compact_fit_prompt_for_rows(rows)
+        if not jobs:
+            reasons = ", ".join(sorted({r for d in dropped for r in d["reasons"]}))
+            messagebox.showinfo(
+                "All auto-filtered",
+                f"All {len(rows)} queued job(s) were auto-filtered ({reasons}).",
+                parent=self)
+            return
         self._fit_jobs = jobs
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         copy_or_warn(self, prompt,
                      lambda m: self._status.config(text=m, fg=theme.WARN))
+        if dropped:
+            self._status.config(
+                text=f"AI-ranking {len(jobs)}; auto-filtered {len(dropped)}",
+                fg=theme.WARN)
 
     def _paste_fit(self):
         if not getattr(self, "_fit_jobs", None):

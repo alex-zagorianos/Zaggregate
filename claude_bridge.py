@@ -157,6 +157,28 @@ def build_fit_prompt(jobs: list[JobResult], profile_md: str,
     return "\n".join(lines)
 
 
+def build_fit_prompt_compact(jobs: list[JobResult], facts_list: list[dict],
+                             profile_md: str,
+                             preference: str = DEFAULT_FIT_PREFERENCE) -> str:
+    """Like build_fit_prompt, but feeds each job's compact extracted FACTS
+    (match.facts.facts_summary) instead of its raw description — ~15x less context
+    per job. ``facts_list[i]`` is the JobFacts dict for ``jobs[i]``. Output
+    contract is identical, so parse_fit_response/match_fit_to_jobs are unchanged."""
+    from match.facts import facts_summary
+    instructions = _FIT_INSTRUCTIONS.replace("__PREFERENCE__", preference.strip())
+    lines = [instructions, "\n## CANDIDATE PROFILE\n", profile_md.strip(), "\n## JOBS\n"]
+    for n, (j, facts) in enumerate(zip(jobs, facts_list), 1):
+        bc = getattr(j, "board_count", -1)
+        size = f"Board openings: {bc}\n" if bc >= 0 else ""
+        lines.append(
+            f"### Job {n}\n"
+            f"Token: {fit_token(j)}\n"
+            f"Title: {j.title}\nCompany: {j.company}\nLocation: {j.location}\n"
+            f"Salary: {j.salary_display()}\n{size}Facts: {facts_summary(facts)}\n"
+        )
+    return "\n".join(lines)
+
+
 def parse_fit_response(text: str, expected_count: int | None = None) -> list[dict]:
     """Parse the pasted reply into a list of {i, token, fit_score, rationale,
     flags} dicts — one per valid entry, preserving the reply's order. Malformed

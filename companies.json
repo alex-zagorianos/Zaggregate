@@ -2126,6 +2126,86 @@
         "ohio",
         "midwest"
       ]
+    },
+    {
+      "name": "Samsara",
+      "ats_type": "greenhouse",
+      "slug": "samsara",
+      "industries": [
+        "controls_engineering",
+        "iot",
+        "fleet"
+      ]
+    },
+    {
+      "name": "PsiQuantum",
+      "ats_type": "greenhouse",
+      "slug": "psiquantum",
+      "industries": [
+        "controls_engineering",
+        "semiconductor",
+        "quantum"
+      ]
+    },
+    {
+      "name": "Neuralink",
+      "ats_type": "greenhouse",
+      "slug": "neuralink",
+      "industries": [
+        "controls_engineering",
+        "medical",
+        "bci"
+      ]
+    },
+    {
+      "name": "Epirus",
+      "ats_type": "greenhouse",
+      "slug": "epirus",
+      "industries": [
+        "controls_engineering",
+        "defense",
+        "directed-energy"
+      ]
+    },
+    {
+      "name": "Noah Medical",
+      "ats_type": "greenhouse",
+      "slug": "noahmedical",
+      "industries": [
+        "controls_engineering",
+        "medical",
+        "robotics"
+      ]
+    },
+    {
+      "name": "Tenstorrent",
+      "ats_type": "greenhouse",
+      "slug": "tenstorrent",
+      "industries": [
+        "controls_engineering",
+        "semiconductor",
+        "compute"
+      ]
+    },
+    {
+      "name": "Atomic Machines",
+      "ats_type": "greenhouse",
+      "slug": "atomicmachines",
+      "industries": [
+        "controls_engineering",
+        "manufacturing",
+        "mems"
+      ]
+    },
+    {
+      "name": "Turion Space",
+      "ats_type": "ashby",
+      "slug": "turion-space",
+      "industries": [
+        "controls_engineering",
+        "aerospace",
+        "space"
+      ]
     }
   ]
 }

@@ -197,6 +197,50 @@ def fit_prompt_for_rows(rows: list[dict]) -> tuple[str, list]:
     return prompt, jobs
 
 
+# A nominal low fit recorded for jobs the deterministic gate auto-filters, so they
+# stop re-surfacing in the next "rank these" round and the user can see WHY (the
+# "Auto-filtered:" rationale). Distinct from a real AI judgment.
+_GATE_FIT = 10
+
+
+def compact_fit_prompt_for_rows(rows: list[dict], prefs: dict | None = None,
+                                cfg: dict | None = None) -> tuple[str, list, list]:
+    """Compact, gated fit prompt (spec-2026-06-29): each job is fed as extracted
+    FACTS + a rubric instead of its raw description (~60% less context), and
+    structural non-fits (internship / clearance / foreign-visa / people-management
+    / excluded title / over-senior) are gated out before the prompt — no AI spend.
+
+    Returns (prompt, kept_jobs, dropped):
+      - kept_jobs: JobResults carrying each row's id in .job_id; pass to
+        score_*_from_reply (token-matched write-back, unchanged).
+      - dropped: [{"id", "title", "company", "reasons":[...]}] excluded from the AI
+        batch. They keep their local score; pass to mark_inbox_gated so they don't
+        re-surface.
+    """
+    import ranker
+    jobs = jobs_from_rows(rows)
+    res = ranker.prepare_compact(jobs, prefs=prefs, cfg=cfg)
+    kept_jobs = [j for j, _f, _g in res["kept"]]
+    dropped = [{"id": int(j.job_id) if getattr(j, "job_id", None) else None,
+                "title": j.title, "company": j.company, "reasons": g["reasons"]}
+               for j, _f, g in res["dropped"]]
+    return res["prompt"], kept_jobs, dropped
+
+
+def mark_inbox_gated(dropped: list[dict]) -> int:
+    """Record auto-gated inbox jobs with a low fit + an "Auto-filtered:" reason so
+    they don't re-surface in the next rank round and the user sees why. Returns how
+    many rows were marked (those carrying a row id)."""
+    n = 0
+    for d in dropped:
+        if d.get("id") is None:
+            continue
+        why = "Auto-filtered: " + ", ".join(d.get("reasons", []))
+        db.inbox_set_fit(int(d["id"]), _GATE_FIT, why, source="gate")
+        n += 1
+    return n
+
+
 def unscored_inbox_rows(rows, per_company: int = 2, limit: int = 20) -> list[dict]:
     """Pick a diverse batch of still-unscored rows: at most `per_company` per
     company so one mega-board can't burn all the slots. Input order is assumed

@@ -48,6 +48,43 @@ def build_request(jobs, prefs: dict | None = None,
     return bridge.build_fit_prompt(jobs, profile_md=profile)
 
 
+# ── Compact (decomposed) request — spec-2026-06-29 ────────────────────────────
+# Streamlined AI integration: feed each job's compact extracted FACTS + a rubric
+# instead of raw HTML descriptions, and gate out structural non-fits before any
+# model call. Same parse_response contract; a future local model swaps in by
+# changing only who runs the prompt.
+
+def build_compact_request(jobs, prefs: dict | None = None,
+                          cfg: dict | None = None) -> str:
+    """A compact ranking prompt: per-job extracted facts (not descriptions) + a
+    rubric (match.rubric). ~15x less context per job than build_request."""
+    from match import facts as _facts, rubric as _rubric
+    prefs = prefs if prefs is not None else preferences.load()
+    facts_list = [_facts.facts_for(j) for j in jobs]
+    rb = _rubric.build_rubric(prefs, cfg)
+    return bridge.build_fit_prompt_compact(jobs, facts_list, _rubric.rubric_text(rb))
+
+
+def prepare_compact(jobs, prefs: dict | None = None, cfg: dict | None = None) -> dict:
+    """The streamlined entry point: extract facts -> deterministic gate -> compact
+    prompt for the kept set. Returns
+        {"kept": [(job, facts, gate)], "dropped": [(job, facts, gate)],
+         "prompt": str, "rubric": dict}
+    `dropped` are excluded from the AI batch (clear structural non-fits) but keep
+    their local score in the inbox. Parse the model's reply for `kept` with
+    parse_response, exactly as for build_request."""
+    from match import facts as _facts, rubric as _rubric, gate as _gate
+    prefs = prefs if prefs is not None else preferences.load()
+    rb = _rubric.build_rubric(prefs, cfg)
+    pairs = [(j, _facts.facts_for(j)) for j in jobs]
+    kept, dropped = _gate.partition(pairs, rb)
+    kept_jobs = [j for j, _f, _g in kept]
+    kept_facts = [f for _j, f, _g in kept]
+    prompt = (bridge.build_fit_prompt_compact(kept_jobs, kept_facts, _rubric.rubric_text(rb))
+              if kept_jobs else "")
+    return {"kept": kept, "dropped": dropped, "prompt": prompt, "rubric": rb}
+
+
 def parse_response(text: str, jobs) -> list:
     """Parse a model reply into [(job, fit_score, rationale)] in jobs order,
     mapping by echoed token (falling back to index). Skips unmatched entries."""
