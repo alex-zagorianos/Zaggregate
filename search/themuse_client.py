@@ -42,7 +42,13 @@ class TheMuseClient(SingleFeedClient):
             response.raise_for_status()
             return response.json()
 
-        return self._cached(key, fetch)
+        data = self._cached(key, fetch)
+        # Signal whether the RAW feed (not the keyword-filtered result) is spent,
+        # so the engine keeps paging a keyword-blind feed even when a page yields
+        # zero client-side matches. Absent on other clients -> engine defaults to
+        # "stop on empty" (unchanged behavior).
+        self._raw_exhausted = not bool(data.get("results"))
+        return data
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches

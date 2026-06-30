@@ -134,7 +134,13 @@ class SearchEngine:
                     print(f"  [{source}] {keyword!r} page {page} error: {e}")
                     break
                 if not results:
-                    break  # genuine end-of-results for this keyword
+                    # A keyword-blind feed (e.g. The Muse) can return a page with
+                    # raw postings but zero client-side keyword matches; keep
+                    # paging until its RAW feed is spent. Other clients have no
+                    # _raw_exhausted flag -> default True -> stop on empty (as before).
+                    if getattr(client, "_raw_exhausted", True):
+                        break  # genuine end-of-results for this keyword
+                    continue
                 out.extend(results)
         return out
 
