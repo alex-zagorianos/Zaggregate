@@ -91,6 +91,12 @@ def init_db() -> bool:
             import shutil
             src = current_db_path()
             try:
+                # Flush the WAL into the main db first, else copy2 of the bare
+                # .db file can miss committed-but-not-checkpointed data.
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception:
+                    pass
                 shutil.copy2(str(src), str(src) + f".bak-v{old_version}")
             except OSError:
                 pass  # backup is best-effort; never block the migration
