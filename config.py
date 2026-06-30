@@ -146,6 +146,12 @@ DEFAULT_KEYWORDS = [
 ]
 
 CACHE_TTL_HOURS = 24
+# Negative-cache (dead-URL "_FAILED" markers) live far longer than content: a
+# 404/timeout URL doesn't recover overnight, but the 24h content TTL used to
+# expire the failure marker too, so every daily run re-paid the full timeout on
+# every known-dead board (~"150 doomed requests a day" per direct_scraper). A
+# 7-day marker TTL means a dead URL is retried ~weekly, not daily.
+FAILED_TTL_HOURS = 168
 
 # Flask server ports
 PORT_RESUME   = 5000
@@ -200,7 +206,20 @@ BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
 # Careers scraper
 CAREERS_MAX_WORKERS = 8
-CAREERS_REQUEST_TIMEOUT = 20
+# Tiered timeouts: fast JSON ATS APIs (greenhouse/lever/ashby/workable/recruitee/
+# rippling/personio/smartrecruiters) answer in <1-2s, so a 12s cap fails dead
+# boards ~40% sooner without cutting healthy ones. Workday is the exception —
+# big enterprise boards + CSRF priming + offset pagination legitimately need
+# longer — so it uses CAREERS_SLOW_TIMEOUT.
+CAREERS_REQUEST_TIMEOUT = 12
+CAREERS_SLOW_TIMEOUT = 20
+
+# Search engine concurrency: how many (client[, keyword]) fetch units run at
+# once. The old engine capped at 4 clients, so 5+ sources queued behind the
+# first wave; lifting it lets every source (and, for keyword-parameterized
+# clients, every keyword) fetch concurrently. Per-source RateLimiters still
+# bound real request rates, so this speeds wall-clock without abusing any API.
+SEARCH_MAX_WORKERS = 12
 
 # Scrapling stealth/JS fetch fallback for direct/JS-SPA career pages. On by
 # default; a graceful no-op if the `scrapling` package isn't installed. Set

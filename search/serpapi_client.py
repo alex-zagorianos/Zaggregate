@@ -29,6 +29,10 @@ def _resolve_key(explicit: Optional[str]) -> Optional[str]:
 
 
 class SerpApiClient(JobAPIClient):
+    # Keyword-parameterized + stateless across keywords → SearchEngine may fetch
+    # each keyword concurrently (see search_engine.run_full_search).
+    parallel_keywords = True
+
     def __init__(self, api_key: Optional[str] = None, cache_dir: Optional[Path] = None,
                  cache_enabled: bool = True):
         self.api_key = _resolve_key(api_key)

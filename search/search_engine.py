@@ -1,7 +1,10 @@
+import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
 
+from config import SEARCH_MAX_WORKERS
 from models import JobResult, normalize_url
 from search.base_client import JobAPIClient
 
@@ -80,27 +83,50 @@ class SearchEngine:
     ) -> list[JobResult]:
         all_results: list[JobResult] = []
 
-        # One task per client; each client walks its own keywords/pages. Clients
-        # run concurrently (the rate limiter and file cache are thread-safe), so
-        # a slow source no longer blocks the others. CareersClient is internally
-        # parallel and counts as a single task here.
-        max_workers = min(len(self.clients), 4) or 1
+        # Build the fetch work-list. Every client runs concurrently (the rate
+        # limiter and file cache are thread-safe), and a keyword-parameterized
+        # client (parallel_keywords=True: Adzuna/JSearch/SerpApi/USAJobs) is
+        # ALSO split into one unit per keyword so its keywords fetch in parallel
+        # instead of serially — the old engine capped at 4 client tasks and ran
+        # each client's keywords one-by-one, so a multi-keyword search serialized
+        # most of its work. Keyword-blind feeds (SingleFeedClient: The Muse,
+        # RemoteOK, …) stay a single unit: they fetch once and filter every
+        # keyword client-side, and some carry per-instance paging state
+        # (_raw_exhausted) that concurrent keywords on one instance would race.
+        units: list[tuple[JobAPIClient, list[str]]] = []
+        for client in self.clients:
+            if getattr(client, "parallel_keywords", False) and len(keywords) > 1:
+                units.extend((client, [kw]) for kw in keywords)
+            else:
+                units.append((client, list(keywords)))
+
+        agg_n: dict[str, int] = defaultdict(int)
+        agg_t: dict[str, float] = defaultdict(float)
+        max_workers = min(len(units), SEARCH_MAX_WORKERS) or 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(
-                    self._run_client, client, keywords, location,
+                    self._timed_run_client, client, kws, location,
                     salary_min, max_pages_per_keyword,
-                ): client
-                for client in self.clients
+                ): type(client).__name__
+                for client, kws in units
             }
             for future in as_completed(futures):
-                source = type(futures[future]).__name__
+                source = futures[future]
                 try:
-                    res = future.result()
-                    print(f"[{source}] {len(res)} results")
+                    res, elapsed = future.result()
+                    agg_n[source] += len(res)
+                    # Units of one source run concurrently → its wall-clock is the
+                    # slowest unit, not their sum.
+                    agg_t[source] = max(agg_t[source], elapsed)
                     all_results.extend(res)
                 except Exception as e:
                     print(f"[{source}] failed: {e}")
+
+        # Per-source summary with timing (no per-source instrumentation existed
+        # before, so a slow source couldn't be identified without guessing).
+        for source in sorted(agg_n):
+            print(f"[{source}] {agg_n[source]} results in ~{agg_t[source]:.1f}s")
 
         deduped = self._deduplicate(all_results)
         if sort_by == "location":
@@ -110,6 +136,13 @@ class SearchEngine:
 
         print(f"\nTotal: {len(all_results)} raw -> {len(deduped)} after dedup")
         return deduped
+
+    def _timed_run_client(self, client, keywords, location, salary_min, max_pages):
+        """_run_client wrapped with a wall-clock measurement (for the per-source
+        timing summary). Returns (results, elapsed_seconds)."""
+        t0 = time.perf_counter()
+        res = self._run_client(client, keywords, location, salary_min, max_pages)
+        return res, time.perf_counter() - t0
 
     def _run_client(
         self,

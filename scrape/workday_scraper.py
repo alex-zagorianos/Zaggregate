@@ -2,9 +2,9 @@ from pathlib import Path
 
 import requests
 
-from config import CAREERS_REQUEST_TIMEOUT
+from config import CAREERS_SLOW_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
+from scrape.cache_helpers import is_failed, mark_failed, read_cache, read_failed, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
 from search.http_util import make_session as _make_session
 
@@ -51,7 +51,7 @@ def _prime_csrf(tenant: str, n: str, site: str) -> dict:
     Fails silently (returns {}) — CSRF priming is best-effort."""
     careers_url = f"https://{tenant}.wd{n}.myworkdayjobs.com/{site}"
     try:
-        resp = requests.get(careers_url, timeout=CAREERS_REQUEST_TIMEOUT)
+        resp = requests.get(careers_url, timeout=CAREERS_SLOW_TIMEOUT)
         resp.raise_for_status()
         token = None
         for name in ("CALYPSO_CSRF_TOKEN", "wd-browser-id", "PLAY_SESSION"):
@@ -84,8 +84,8 @@ def scrape_workday(
     failed_file = cache_dir / f"workday_{slug_safe(company.slug)}_FAILED.json"
 
     if cache_enabled:
-        if is_failed(read_cache(failed_file)):
-            return []  # known-dead this TTL window
+        if is_failed(read_failed(failed_file)):
+            return []  # known-dead this FAILED_TTL window (skipped ~a week)
         cached = read_cache(cache_file)
         if cached is not None:
             return _map_results(cached, company, keyword, tenant, n, site)
@@ -99,7 +99,7 @@ def scrape_workday(
         headers = {"Content-Type": "application/json", "Accept": "application/json", **csrf_headers}
         try:
             resp = requests.post(url, json=payload, headers=headers,
-                                 timeout=CAREERS_REQUEST_TIMEOUT)
+                                 timeout=CAREERS_SLOW_TIMEOUT)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:

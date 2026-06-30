@@ -14,6 +14,10 @@ from search.http_util import FileCache, RateLimiter, cache_key, make_session, to
 
 
 class USAJobsClient(JobAPIClient):
+    # Keyword-parameterized + stateless across keywords → SearchEngine may fetch
+    # each keyword concurrently (see search_engine.run_full_search).
+    parallel_keywords = True
+
     def __init__(
         self,
         api_key: Optional[str] = None,

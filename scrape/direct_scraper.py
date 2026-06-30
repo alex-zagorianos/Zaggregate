@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import is_failed, mark_failed, read_cache, write_cache
+from scrape.cache_helpers import is_failed, mark_failed, read_cache, read_failed, write_cache
 from scrape.company_registry import CompanyEntry
 from scrape.jsonld_scraper import extract_jobs as _jsonld_extract
 
@@ -40,14 +40,16 @@ def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> 
     url_hash = hashlib.md5(company.slug.encode()).hexdigest()[:12]
     cache_file = cache_dir / f"direct_{url_hash}.html"
     # Negative-cache marker: a dead URL (404/403/timeout) was retried once per
-    # keyword per run — ~150 doomed 20s requests a day across the registry's
-    # dead entries. The shared is_failed/mark_failed JSON marker (used by
-    # gh/lever/ashby/smartrecruiters) makes it one attempt per TTL window.
+    # keyword per run — ~150 doomed requests a day across the registry's dead
+    # entries. The shared is_failed/mark_failed JSON marker (used by
+    # gh/lever/ashby/smartrecruiters) makes it one attempt per TTL window;
+    # read_failed gives that marker the long FAILED_TTL so a dead URL is skipped
+    # for ~a week instead of being re-probed (at full timeout) every daily run.
     failed_file = cache_dir / f"direct_{url_hash}_FAILED.json"
 
     if cache_enabled:
-        if is_failed(read_cache(failed_file)):
-            return None  # known-dead this TTL window; stay quiet, don't re-fetch
+        if is_failed(read_failed(failed_file)):
+            return None  # known-dead this FAILED_TTL window; don't re-fetch
         html = read_cache(cache_file)
     else:
         html = None

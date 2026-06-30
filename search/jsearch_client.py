@@ -22,6 +22,10 @@ from search.http_util import (
 
 
 class JSearchClient(JobAPIClient):
+    # Keyword-parameterized + stateless across keywords → SearchEngine may fetch
+    # each keyword concurrently. The MonthlyQuota guard is thread-safe.
+    parallel_keywords = True
+
     def __init__(
         self,
         api_key: Optional[str] = None,

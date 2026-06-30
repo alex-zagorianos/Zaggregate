@@ -5,24 +5,31 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from config import CACHE_TTL_HOURS
+from config import CACHE_TTL_HOURS, FAILED_TTL_HOURS
 
 # Characters that are illegal in Windows filenames (": " breaks Workday slugs
 # like "cat:5:CaterpillarCareers" -> [Errno 22] Invalid argument).
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*,\s]+')
 
 
-def read_cache(cache_file: Path) -> Optional[Any]:
+def read_cache(cache_file: Path, ttl_hours: float = CACHE_TTL_HOURS) -> Optional[Any]:
     if not cache_file.exists():
         return None
     age = datetime.now() - datetime.fromtimestamp(cache_file.stat().st_mtime)
-    if age > timedelta(hours=CACHE_TTL_HOURS):
+    if age > timedelta(hours=ttl_hours):
         return None
     with open(cache_file, "r", encoding="utf-8") as f:
         content = f.read()
     if cache_file.suffix == ".json":
         return json.loads(content)
     return content
+
+
+def read_failed(failed_file: Path) -> Optional[Any]:
+    """Read a negative-cache "_FAILED" marker on the longer FAILED_TTL_HOURS
+    window. Use with is_failed() so a known-dead URL is skipped for a week
+    instead of being re-probed (at full request timeout) on every daily run."""
+    return read_cache(failed_file, ttl_hours=FAILED_TTL_HOURS)
 
 
 def write_cache(cache_file: Path, data: Any) -> None:

@@ -2026,7 +2026,14 @@ class SearchTab(ttk.Frame):
             from search.cli import build_clients, ALL_SOURCES
             from search.search_engine import SearchEngine
             from match.scorer import score_jobs
-            clients = build_clients(ALL_SOURCES, cache_enabled=True)
+            # Respect the user's source toggles (Settings) like the CLI does
+            # (cli.py: [s for s in ALL_SOURCES if cfg_sources.get(s, True)]).
+            # Previously the GUI queried ALL_SOURCES unconditionally, so every
+            # search spent the paid JSearch 200/month quota and hit sources the
+            # user had disabled.
+            _cfg_sources = (self._user_cfg or {}).get("sources", {}) or {}
+            _sources = [s for s in ALL_SOURCES if _cfg_sources.get(s, True)]
+            clients = build_clients(_sources, cache_enabled=True)
             results = (
                 SearchEngine(clients).run_full_search(
                     keywords=keywords, location=location,
