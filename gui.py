@@ -841,7 +841,7 @@ class InboxTab(ttk.Frame):
         self._f_minscore = tk.StringVar()
         ms = ttk.Entry(fbar, textvariable=self._f_minscore, width=4)
         ms.pack(side="left", padx=(2, 10))
-        ms.bind("<KeyRelease>", lambda _e: self._render())
+        ms.bind("<KeyRelease>", self._schedule_render)
         tk.Label(fbar, text="Source:", bg=theme.WINDOW, fg=theme.INK,
                  font=theme.FONT_SM).pack(side="left")
         self._f_source = tk.StringVar(value="All")
@@ -900,7 +900,7 @@ class InboxTab(ttk.Frame):
         self._f_text = tk.StringVar()
         ft = ttk.Entry(fbar, textvariable=self._f_text, width=18)
         ft.pack(side="left", padx=(2, 6))
-        ft.bind("<KeyRelease>", lambda _e: self._render())
+        ft.bind("<KeyRelease>", self._schedule_render)
         theme.btn(fbar, "Clear", self._clear_filters, "ghost").pack(side="left")
 
         self._tf = tf = ttk.Frame(self)
@@ -1085,7 +1085,20 @@ class InboxTab(ttk.Frame):
                     or q in (r["company"] or "").lower()]
         return rows
 
+    def _schedule_render(self, _event=None):
+        """Debounce per-keystroke filter renders: typing in a filter box rebuilds
+        the table at most once per ~200ms instead of on every key (keeps a large
+        inbox responsive)."""
+        job = getattr(self, "_render_job", None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+        self._render_job = self.after(200, self._render)
+
     def _render(self):
+        self._render_job = None
         rows = self._filtered()
         if self._sort_col:
             rows = sorted(rows, key=self._SORT_KEYS[self._sort_col],
