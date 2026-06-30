@@ -6,7 +6,7 @@ from urllib.parse import urlsplit, parse_qsl, urlencode
 
 # Query params that carry no identity (tracking/analytics) -> dropped.
 _TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
-                    "utm_content", "gh_src", "fbclid", "gclid", "ref"}
+                    "utm_content", "gh_src", "fbclid", "gclid", "ref", "se"}
 # Query params that DO identify a specific posting -> kept.
 _IDENTITY_PARAMS = {"gh_jid", "jobid", "id", "lever"}
 
