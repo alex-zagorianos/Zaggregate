@@ -1,0 +1,29 @@
+{
+  "scope_hash": "e7b1fc9c1765",
+  "area": "Cincinnati, OH",
+  "window": "",
+  "soc_grouping": "15-1252.00",
+  "source_ids": [
+    "adzuna",
+    "themuse"
+  ],
+  "composite_score": 38.196555217831815,
+  "cov_cr": 0.46808510638297873,
+  "cov_cr_ci": [
+    0.25402330051276933,
+    1.0
+  ],
+  "cov_upper": 33.5,
+  "c_hat": 0.16666666666666663,
+  "cov_proxy_weighted": null,
+  "jolts_verdict": "skip",
+  "dedup_f1": null,
+  "per_soc": {},
+  "n_clusters": 11,
+  "n_raw": 12,
+  "paths_used": {
+    "cr": "chapman",
+    "reference": "skip",
+    "jolts": "skip"
+  }
+}

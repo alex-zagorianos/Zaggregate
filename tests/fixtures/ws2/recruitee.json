@@ -1,0 +1,26 @@
+{
+  "offers": [
+    {
+      "title": "Automation Engineer",
+      "id": 111,
+      "company_name": "Beta Co",
+      "city": "Cincinnati",
+      "country": "US",
+      "description": "<p>Automate lines.</p>",
+      "careers_url": "https://beta.recruitee.com/o/automation-engineer",
+      "published_at": "2026-06-03",
+      "department": "Engineering"
+    },
+    {
+      "title": "Office Manager",
+      "id": 222,
+      "company_name": "Beta Co",
+      "city": "Remote",
+      "country": "US",
+      "description": "Run the office.",
+      "careers_url": "https://beta.recruitee.com/o/office-manager",
+      "published_at": "2026-06-04",
+      "department": "Ops"
+    }
+  ]
+}

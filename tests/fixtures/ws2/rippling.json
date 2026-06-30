@@ -1,0 +1,16 @@
+[
+  {
+    "id": "r1",
+    "name": "Test Engineer",
+    "workLocation": { "label": "Cincinnati, OH" },
+    "url": "https://app.rippling.com/jobs/r1",
+    "department": { "label": "QA" }
+  },
+  {
+    "id": "r2",
+    "name": "Sales Lead",
+    "workLocation": { "label": "Remote - US" },
+    "url": "https://app.rippling.com/jobs/r2",
+    "department": { "label": "Sales" }
+  }
+]

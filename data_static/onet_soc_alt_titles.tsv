@@ -1,0 +1,41 @@
+# onet_version=29.0  (curated public-domain subset; see README.md)
+# format: alt_title<TAB>soc_code<TAB>soc_title
+software developer	15-1252.00	Software Developers
+software engineer	15-1252.00	Software Developers
+full stack developer	15-1252.00	Software Developers
+frontend developer	15-1252.00	Software Developers
+backend developer	15-1252.00	Software Developers
+web developer	15-1254.00	Web Developers
+computer programmer	15-1251.00	Computer Programmers
+data scientist	15-2051.00	Data Scientists
+data analyst	15-2051.00	Data Scientists
+machine learning engineer	15-2099.00	Computer Occupations, All Other
+devops engineer	15-1299.00	Computer Occupations, All Other
+site reliability engineer	15-1299.00	Computer Occupations, All Other
+database administrator	15-1242.00	Database Administrators
+network engineer	15-1244.00	Network and Computer Systems Administrators
+systems administrator	15-1244.00	Network and Computer Systems Administrators
+information security analyst	15-1212.00	Information Security Analysts
+computer systems analyst	15-1211.00	Computer Systems Analysts
+it project manager	15-1252.00	Software Developers
+mechanical engineer	17-2141.00	Mechanical Engineers
+mechanical design engineer	17-2141.00	Mechanical Engineers
+manufacturing engineer	17-2112.00	Industrial Engineers
+industrial engineer	17-2112.00	Industrial Engineers
+electrical engineer	17-2071.00	Electrical Engineers
+electronics engineer	17-2072.00	Electronics Engineers, Except Computer
+controls engineer	17-2199.00	Miscellaneous Engineers
+automation engineer	17-2199.00	Miscellaneous Engineers
+embedded systems engineer	17-2199.00	Miscellaneous Engineers
+firmware engineer	17-2199.00	Miscellaneous Engineers
+robotics engineer	17-2199.00	Miscellaneous Engineers
+test engineer	17-2199.00	Miscellaneous Engineers
+quality engineer	17-2111.00	Industrial Engineers, Including Health and Safety
+civil engineer	17-2051.00	Civil Engineers
+aerospace engineer	17-2011.00	Aerospace Engineers
+chemical engineer	17-2041.00	Chemical Engineers
+project manager	11-9021.00	Industrial Production Managers
+product manager	11-1021.00	General and Operations Managers
+registered nurse	29-1141.00	Registered Nurses
+medical assistant	31-9092.00	Medical Assistants
+health informatics specialist	15-1211.00	Computer Systems Analysts
