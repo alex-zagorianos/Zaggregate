@@ -325,12 +325,31 @@ function shrinkToSalary(el) {
   return best.innerText?.trim() || full;
 }
 
+// Query params that IDENTIFY a specific posting and must survive normalization
+// (Indeed keeps the job id in ?jk=/?vjk=; some boards use ?currentJobId=). The
+// old code stripped the whole query, collapsing every Indeed card onto a single
+// dead .../viewjob URL. Tracking params are still dropped.
+const ID_PARAMS = ["jk", "vjk", "currentjobid"];
 function resolveUrl(raw) {
   if (!raw) return "";
-  if (raw.startsWith("http")) return raw.split("?")[0].replace(/\/$/, "");
-  if (raw.startsWith("/"))
-    return SITE.baseUrl + raw.split("?")[0].replace(/\/$/, "");
-  return "";
+  let abs = "";
+  if (raw.startsWith("http")) abs = raw;
+  else if (raw.startsWith("/")) abs = SITE.baseUrl + raw;
+  else return "";
+  try {
+    const u = new URL(abs);
+    const keep = [];
+    for (const [k, v] of u.searchParams) {
+      if (ID_PARAMS.includes(k.toLowerCase())) keep.push([k, v]);
+    }
+    u.search = "";
+    for (const [k, v] of keep) u.searchParams.append(k, v);
+    const base = (u.origin + u.pathname).replace(/\/$/, "");
+    return base + (u.search || "");
+  } catch (e) {
+    // Malformed URL: fall back to the old strip-query behavior.
+    return abs.split("?")[0].replace(/\/$/, "");
+  }
 }
 
 // Stable per-posting id (LinkedIn numeric job id, Indeed jk). Lets a detail
