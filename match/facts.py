@@ -31,12 +31,35 @@ _SENIORITY = [
 _ROMAN = re.compile(r"(?:^|\s|-)\s*(I{1,3})\s*(?:$|\s|-|,)")
 _ROMAN_MAP = {"I": "entry", "II": "mid", "III": "senior"}
 
-_YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:years|yrs)\b", re.I)
+# A number of years counts as a REQUIREMENT only when an experience qualifier is
+# nearby; "over 25 years in business / serving / founded" is company tenure, not
+# a requirement, and must NOT gate the job.
+_YEARS_EXP = re.compile(
+    r"(\d{1,2})\s*\+?\s*(?:years|yrs)(?=[^.\n]{0,30}?\b(?:experience|exp|background)\b)"
+    r"|\b(?:experience|exp|minimum|at least|min\.?)\b[^.\n]{0,30}?(\d{1,2})\s*\+?\s*(?:years|yrs)",
+    re.I)
 
 _CLEARANCE = re.compile(
     r"security clearance|ts/sci|top secret|secret clearance|active clearance|"
     r"polygraph|\bdod\b\s+clearance|clearance (?:is\s+)?required|must (?:have|possess) "
     r"(?:an?\s+)?(?:active\s+)?clearance", re.I)
+
+# A negator near a clearance mention means the job does NOT require one
+# ("No security clearance required", "ability to obtain a clearance").
+_CLEARANCE_NEG = re.compile(
+    r"\b(?:no|not|without|don't|do not|does not|do not require|does not require|"
+    r"not require[ds]?|ability to obtain|able to obtain|eligible to obtain|"
+    r"willing to obtain|will (?:help )?(?:you )?obtain)\b", re.I)
+
+
+def _detect_clearance(text: str) -> bool:
+    """True only if a clearance is AFFIRMATIVELY required. A negator within ~40
+    chars (before or after) of a clearance mention suppresses it."""
+    for m in _CLEARANCE.finditer(text):
+        window = text[max(0, m.start() - 40): m.end() + 40]
+        if not _CLEARANCE_NEG.search(window):
+            return True
+    return False
 
 # ── work-authorization / location restrictions ───────────────────────────────
 _RESTRICTIONS = [
@@ -89,7 +112,11 @@ def _detect_seniority(title: str, desc: str) -> str:
 
 
 def _detect_required_years(text: str) -> Optional[int]:
-    yrs = [int(m.group(1)) for m in _YEARS.finditer(text) if int(m.group(1)) <= 30]
+    yrs = []
+    for m in _YEARS_EXP.finditer(text):
+        g = m.group(1) or m.group(2)
+        if g and int(g) <= 30:
+            yrs.append(int(g))
     return max(yrs) if yrs else None
 
 
@@ -150,11 +177,18 @@ def extract_facts(job) -> dict:
     if comp_min is None and comp_max is None and desc:
         comp_min, comp_max = salary_from_text(desc)
 
+    seniority = _detect_seniority(title, desc)
+    role_type = _detect_role_type(title, desc)
+    # A manager/director title IS people-management for the gate's purposes, even
+    # when generic "build" keywords dominate the body.
+    if seniority in ("manager", "director"):
+        role_type = "manage"
+
     return {
-        "seniority": _detect_seniority(title, desc),
+        "seniority": seniority,
         "required_years": _detect_required_years(text),
-        "role_type": _detect_role_type(title, desc),
-        "clearance_required": bool(_CLEARANCE.search(text)),
+        "role_type": role_type,
+        "clearance_required": _detect_clearance(text),
         "location_type": _detect_location_type(job.location or "", desc[:600]),
         "restriction": _detect_restriction(text),
         "comp_min": int(comp_min) if comp_min else None,
