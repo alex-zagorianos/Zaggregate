@@ -47,6 +47,19 @@ for _pkg in ('search', 'scrape', 'coverage', 'discover', 'rerank',
              'resume', 'tracker', 'match', 'geo', 'ui'):
     hiddenimports += collect_submodules(_pkg)
 
+# Optional Scrapling stealth/JS fetch fallback (scrape/stealth_fetch.py). Bundle
+# the PYTHON packages + the Playwright node driver only — NOT the ~1.4GB browser
+# binaries. The seam is a graceful no-op until the user picks "Enable stealth
+# fetching", which downloads Chromium on demand via the bundled driver.
+hiddenimports += ['scrapling', 'playwright', 'patchright', 'curl_cffi',
+                  'browserforge', 'msgspec', 'orjson']
+for _opt in ('scrapling', 'playwright', 'patchright', 'browserforge'):
+    try:
+        hiddenimports += collect_submodules(_opt)
+        datas += collect_data_files(_opt)
+    except Exception:
+        pass
+
 a = Analysis(
     ['gui.py'],
     pathex=[],

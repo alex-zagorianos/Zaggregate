@@ -18,6 +18,59 @@ def available() -> bool:
         return False
 
 
+def browsers_ready() -> bool:
+    """Best-effort: True when Scrapling AND a Playwright Chromium are installed, so
+    stealth fetching will actually work (not just import). Used by the GUI to show
+    'Enable stealth fetching' vs 'Stealth fetching ready'."""
+    if not available():
+        return False
+    try:
+        import os
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            path = p.chromium.executable_path
+        return bool(path and os.path.exists(path))
+    except Exception:
+        return False
+
+
+def install(timeout: int = 900) -> "tuple[bool, str]":
+    """One-time download of the stealth/JS browser (Chromium, ~300MB) so the
+    fallback can run. Returns (ok, message). Works from source (python) and
+    best-effort in a frozen build via the bundled Playwright driver; on failure
+    the message carries the manual command for the user."""
+    import os
+    import subprocess
+    import sys
+    if not available():
+        return False, ("Scrapling isn't installed. From source: "
+                       "pip install \"scrapling[fetchers]\".")
+    attempts = []  # (argv, env)
+    # Frozen-safe path: drive the bundled Playwright node CLI directly.
+    try:
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
+        drv = compute_driver_executable()
+        argv = (list(drv) if isinstance(drv, (list, tuple)) else [drv]) + ["install", "chromium"]
+        attempts.append((argv, {**os.environ, **get_driver_env()}))
+    except Exception:
+        pass
+    # Dev fallback: the module CLI (sys.executable is python when not frozen).
+    if not getattr(sys, "frozen", False):
+        attempts.append(([sys.executable, "-m", "playwright", "install", "chromium"], None))
+    last = ""
+    for argv, env in attempts:
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True,
+                               timeout=timeout, env=env)
+            if r.returncode == 0:
+                return True, "Stealth fetching is ready."
+            last = (r.stderr or r.stdout or "").strip()[-300:]
+        except Exception as e:
+            last = f"{type(e).__name__}: {e}"
+    return False, ("Couldn't install the stealth browser automatically. "
+                   f"Run this once in a terminal:  scrapling install\n{last}".strip())
+
+
 def fetch_html(url: str) -> "str | None":
     """Return rendered HTML for `url` using Scrapling, or None if Scrapling is
     absent or the fetch fails. Tries the lightweight Fetcher first, then escalates
