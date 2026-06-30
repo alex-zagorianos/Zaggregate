@@ -27,6 +27,29 @@ _UA = {"User-Agent": "Mozilla/5.0 (job-program inbox-health probe)"}
 _GH_JOB = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{token}"
 _LEVER_JOB = "https://api.lever.co/v0/postings/{slug}/{token}?mode=json"
 _LEVER_RE = re.compile(r"lever\.co/(?P<slug>[^/]+)/(?P<token>[^/?#]+)")
+_ASHBY_BOARD = "https://api.ashbyhq.com/posting-api/job-board/{org}"
+_ASHBY_RE = re.compile(r"jobs\.ashbyhq\.com/(?P<org>[^/]+)/(?P<jobid>[^/?#]+)")
+
+
+def _ashby_alive(url: str):
+    """True/False/None for an Ashby posting via the org board API (the SPA page
+    itself returns 200 for any path). None = unknown -> keep."""
+    m = _ASHBY_RE.search(url)
+    if not m:
+        return None
+    try:
+        r = requests.get(_ASHBY_BOARD.format(org=m["org"]),
+                         timeout=CAREERS_REQUEST_TIMEOUT, headers=_UA)
+    except requests.RequestException:
+        return None
+    if not r.ok:
+        return None
+    try:
+        ids = {p.get("id") for p in (r.json().get("jobs") or [])}
+    except ValueError:
+        return None
+    return m["jobid"] in ids
+
 
 # Inbox `source` values produced by the career-page scrapers (greenhouse / lever
 # / ashby / workday / direct all set source_api="careers"). Only these are probed.
@@ -58,8 +81,8 @@ def _probe(url: str) -> Optional[bool]:
         return _status(_LEVER_JOB.format(slug=m["slug"], token=m["token"])) if m else None
 
     if "ashbyhq.com" in host:
-        # Ashby posting pages 404 honestly when a job is pulled.
-        return _status(url)
+        # The Ashby SPA returns 200 for any path, so probe board-API membership.
+        return _ashby_alive(url)
 
     # Workday / direct portals / aggregators: not reliably probeable.
     return None
