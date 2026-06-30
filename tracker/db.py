@@ -67,6 +67,18 @@ def _existing_columns(conn) -> set[str]:
     return {r["name"] for r in conn.execute("PRAGMA table_info(applications)")}
 
 
+def _safe_add_column(conn, table: str, col: str, decl: str) -> None:
+    """ALTER ADD COLUMN that tolerates a concurrent first-init race: if another
+    process added the column between our PRAGMA probe and here, SQLite raises
+    'duplicate column name' - swallow exactly that and re-raise anything else."""
+    import sqlite3
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" not in str(e).lower():
+            raise
+
+
 def init_db() -> bool:
     """Create/upgrade the schema. Gated on PRAGMA user_version: if the db is
     already at SCHEMA_VERSION, skip the probe + ALTER scan entirely. Returns
@@ -100,7 +112,7 @@ def init_db() -> bool:
         existing = _existing_columns(conn)
         for col, decl in _EXTRA_COLUMNS.items():
             if col not in existing:
-                conn.execute(f"ALTER TABLE applications ADD COLUMN {col} {decl}")
+                _safe_add_column(conn, "applications", col, decl)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON applications(status)")
         # Jobs the user explicitly dismissed — filtered out of future searches.
         conn.execute("""
@@ -135,7 +147,7 @@ def init_db() -> bool:
         inbox_existing = {r["name"] for r in conn.execute("PRAGMA table_info(inbox)")}
         for col, decl in {"board_count": "INTEGER DEFAULT -1"}.items():
             if col not in inbox_existing:
-                conn.execute(f"ALTER TABLE inbox ADD COLUMN {col} {decl}")
+                _safe_add_column(conn, "inbox", col, decl)
         # Round-robin window orders by company; without this index every render
         # does a full partition sort over the whole inbox.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_company ON inbox(company)")
@@ -166,7 +178,7 @@ def init_db() -> bool:
         # v3 (WS-3): round-trip extras blob + score-change audit/undo log.
         inbox_existing_v3 = {r["name"] for r in conn.execute("PRAGMA table_info(inbox)")}
         if "extras" not in inbox_existing_v3:
-            conn.execute("ALTER TABLE inbox ADD COLUMN extras TEXT DEFAULT ''")
+            _safe_add_column(conn, "inbox", "extras", "TEXT DEFAULT ''")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS score_history (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -614,7 +626,7 @@ def inbox_merge_extras(inbox_id: int, patch: dict):
                 current = {}
         current.update(patch)
         conn.execute("UPDATE inbox SET extras=? WHERE id=?",
-                     (json.dumps(current), inbox_id))
+                     (json.dumps(current, separators=(",", ":")), inbox_id))
         conn.commit()
 
 

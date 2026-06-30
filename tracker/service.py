@@ -80,7 +80,7 @@ def dismiss_job(inbox_id: int) -> None:
 _INBOX_RESTORE_COLS = (
     "norm_url", "title", "company", "location", "url", "salary_text",
     "description", "source", "score", "score_notes", "fit", "fit_why",
-    "created", "date_added", "board_count",
+    "created", "date_added", "board_count", "extras",
 )
 
 
@@ -331,7 +331,8 @@ def inbox_rows_by_key() -> dict:
 def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> int:
     """Write imported re-rank scores back to the inbox: new_fit -> fit,
     fit_rationale -> fit_why (via inbox_set_fit, which snapshots score_history),
-    and the optional extras JSON blob -> inbox.extras. Returns rows updated."""
+    and the optional extras blob MERGED into inbox.extras (preserving
+    new_batch/browse/etc). Returns rows updated."""
     applied = 0
     for u in updates:
         try:
@@ -343,7 +344,15 @@ def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> 
                          source=source)
         extras = u.get("extras")
         if extras:
-            db.inbox_set_extras(inbox_id, str(extras))
+            patch = extras if isinstance(extras, dict) else None
+            if patch is None:
+                try:
+                    loaded = json.loads(extras)
+                    patch = loaded if isinstance(loaded, dict) else None
+                except (ValueError, TypeError):
+                    patch = None
+            if patch:
+                db.inbox_merge_extras(inbox_id, patch)
         applied += 1
     return applied
 
