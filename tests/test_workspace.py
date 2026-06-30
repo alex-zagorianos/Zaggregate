@@ -64,3 +64,58 @@ def test_preferences_paths_follow_active_project(tmp_base):
     # so they never desync from it.
     assert pj == tmp_base / "projects" / slug / "preferences.json"
     assert pm.parent == workspace.config_path().parent
+
+
+# ── Item 3: first-project migration ──────────────────────────────────────────
+
+def test_first_create_registers_default_and_new(tmp_base):
+    """First create_project must register BOTH 'default' (root) and the new slug."""
+    # Simulate a pre-existing root inbox
+    (tmp_base / "tracker.db").write_text("existing", encoding="utf-8")
+
+    slug = workspace.create_project("Foo", make_active=True)
+    projs = workspace.list_projects()
+    slugs = [p["slug"] for p in projs]
+    assert "default" in slugs, "root must be registered as 'default'"
+    assert slug in slugs, "new project must be registered"
+    assert len(projs) == 2
+
+
+def test_default_project_resolves_to_root(tmp_base):
+    """After first-project migration, 'default' paths point at the ROOT, not
+    projects/default/, so the pre-existing tracker.db is reachable."""
+    (tmp_base / "tracker.db").write_text("root db", encoding="utf-8")
+    (tmp_base / "user_config.json").write_text('{"k": 1}', encoding="utf-8")
+
+    workspace.create_project("Bar", make_active=True)
+
+    # root tracker.db accessible via "default"
+    assert workspace.db_path("default") == tmp_base / "tracker.db"
+    assert workspace.db_path("default").read_text(encoding="utf-8") == "root db"
+
+    # root config accessible via "default"
+    assert workspace.config_path("default") == tmp_base / "user_config.json"
+    assert workspace.load_config("default")["k"] == 1
+
+    # root experience.md accessible via "default"
+    assert workspace.experience_file("default") == tmp_base / "experience.md"
+
+    # new project does NOT collide with root
+    assert workspace.db_path("bar") == tmp_base / "projects" / "bar" / "tracker.db"
+
+
+def test_second_create_does_not_duplicate_default(tmp_base):
+    """Calling create_project a second time must not add a second 'default' entry."""
+    workspace.create_project("Alpha", make_active=True)
+    workspace.create_project("Beta")
+    slugs = [p["slug"] for p in workspace.list_projects()]
+    assert slugs.count("default") == 1
+
+
+def test_none_active_slug_does_not_crash_create(tmp_base):
+    """create_project must not crash when called with copy_resume_from=None
+    (which happens when active_slug() is None before the first project)."""
+    assert workspace.active_slug() is None
+    slug = workspace.create_project("Safe", make_active=True, copy_resume_from=None)
+    assert slug == "safe"
+    assert workspace.active_slug() == "safe"

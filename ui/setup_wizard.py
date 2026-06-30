@@ -79,6 +79,52 @@ def build_preferences(answers: dict) -> dict:
     return {"hard": hard, "profile_md": "\n".join(lines)}
 
 
+def prefill_from_existing(prefs: dict | None = None, cfg: dict | None = None) -> dict:
+    """Return {roles, location, remote_ok, salary_min, about} loaded from the
+    current preferences + search config for wizard pre-population.  Pure: when
+    prefs and cfg are supplied no I/O happens, making this easy to unit-test.
+    Reads from disk when either argument is None."""
+    if prefs is None:
+        try:
+            import preferences as _prefs_mod
+            prefs = _prefs_mod.load()
+        except Exception:
+            prefs = {}
+    if cfg is None:
+        try:
+            cfg = workspace.load_config()
+        except Exception:
+            cfg = {}
+    hard = (prefs or {}).get("hard", {})
+
+    # Roles: prefer hard.target_roles, fall back to cfg.keywords
+    roles_list = hard.get("target_roles") or cfg.get("keywords") or []
+    roles_str = ", ".join(roles_list)
+
+    # Location: prefer hard.locations[0], fall back to cfg.location
+    locations = hard.get("locations") or []
+    location = (locations[0] if locations else None) or cfg.get("location") or ""
+
+    remote_ok = bool(hard.get("remote_ok", True))
+
+    salary_min = hard.get("salary_min")
+
+    # About: extract the section after "## About me" in the profile_md
+    md = (prefs or {}).get("profile_md", "")
+    about = ""
+    _marker = "## About me / what I'm looking for"
+    if _marker in md:
+        about = md.split(_marker, 1)[1].strip()
+
+    return {
+        "roles": roles_str,
+        "location": str(location),
+        "remote_ok": remote_ok,
+        "salary_min": str(salary_min) if salary_min else "",
+        "about": about,
+    }
+
+
 def _search_config(answers: dict, existing: dict | None = None) -> dict:
     """Seed the search-tab config (keywords/location/salary) from answers so the
     Search tab pre-fills. Preserves any existing keys."""
@@ -136,6 +182,17 @@ class SetupWizard(tk.Toplevel):
             "remote_ok": tk.BooleanVar(value=True),
             "salary_min": tk.StringVar(),
         }
+        # Pre-populate from existing preferences/config so re-running the wizard
+        # to edit one field does not blank-overwrite the rest.
+        try:
+            _existing = prefill_from_existing()
+            self._vars["roles"].set(_existing["roles"])
+            self._vars["location"].set(_existing["location"])
+            self._vars["remote_ok"].set(_existing["remote_ok"])
+            self._vars["salary_min"].set(_existing["salary_min"])
+            self._about_cache = _existing["about"]
+        except Exception:
+            self._about_cache = ""
         self._build_chrome()
         self._steps = [self._step_welcome, self._step_roles,
                        self._step_where, self._step_resume]

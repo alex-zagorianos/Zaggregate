@@ -18,11 +18,13 @@ import subprocess
 import webbrowser
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import ranker as _ranker_mod
 import workspace
 from tracker import service as tracker_service
 from tracker.db import (
@@ -53,6 +55,42 @@ from ui import setup_wizard
 from ui import settings as uisettings
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def safe_url(url):
+    """Return url unchanged only when its scheme is http or https.
+    Rejects javascript:, data:, file:, and any other scheme.
+    Returns '' so callers can test: if u := safe_url(raw): webbrowser.open(u)"""
+    if not url:
+        return ""
+    try:
+        return url if urlparse(url).scheme in ("http", "https") else ""
+    except ValueError:
+        return ""
+
+
+def _call_prompt_via_api(prompt):
+    """Send a pre-built prompt to the Anthropic API and return the raw text reply.
+    Uses the key from ranker.api_key() and config.ANTHROPIC_MODEL. Raises
+    RuntimeError when no key is configured; re-raises any API error."""
+    import config as _cfg
+    key = _ranker_mod.api_key()
+    if not key:
+        raise RuntimeError(
+            "No Anthropic API key -- set ANTHROPIC_API_KEY or save one in "
+            "Tools > Connect your AI.")
+    import anthropic
+    client = anthropic.Anthropic(api_key=key)
+    msg = client.messages.create(
+        model=_cfg.ANTHROPIC_MODEL,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return "".join(
+        getattr(b, "text", "") for b in msg.content
+        if getattr(b, "type", None) == "text"
+    )
+
 
 # ── Palette ── all sourced from ui.theme (clean light/modern) so the whole app
 # shares one set of colors. Legacy names kept so existing call sites still read.
@@ -485,8 +523,9 @@ class TrackerTab(ttk.Frame):
         if not iid:
             return
         url = (tracker_service.get_job(int(iid)) or {}).get("url", "")
-        if url:
-            webbrowser.open(url)
+        surl = safe_url(url)
+        if surl:
+            webbrowser.open(surl)
         else:
             messagebox.showinfo("No URL", "This job has no URL saved.")
 
@@ -1354,8 +1393,9 @@ class InboxTab(ttk.Frame):
 
     def _open_url(self):
         for r in self._selected()[:5]:  # cap tab-storm
-            if r["url"]:
-                webbrowser.open(r["url"])
+            u = safe_url(r.get("url"))
+            if u:
+                webbrowser.open(u)
 
     # Claude fit-scoring (copy-paste bridge) — selected rows, or a diverse
     # batch of unscored rows if none selected.
@@ -1390,12 +1430,43 @@ class InboxTab(ttk.Frame):
             return
         self._fit_jobs = jobs
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
-        copy_or_warn(self, prompt,
-                     lambda m: set_status(self._status, m, "work"))
-        if dropped:
-            set_status(self._status,
-                       f"Copied — AI-ranking {len(jobs)}; auto-filtered "
-                       f"{len(dropped)} (kept local score)", "work")
+        # API auto-route: when a key is present, rank directly without paste step.
+        if _ranker_mod.has_api_key():
+            n = len(jobs)
+            suffix = (f"; auto-filtered {len(dropped)}" if dropped else "")
+            set_status(self._status, f"Ranking {n} job(s) via API{suffix}...", "work")
+            threading.Thread(
+                target=self._api_rank_worker, args=(prompt, jobs), daemon=True).start()
+        else:
+            # Clipboard bridge: user pastes prompt into claude.ai and pastes reply back.
+            copy_or_warn(self, prompt,
+                         lambda m: set_status(self._status, m, "work"))
+            if dropped:
+                set_status(self._status,
+                           f"Copied -- AI-ranking {len(jobs)}; auto-filtered "
+                           f"{len(dropped)} (kept local score)", "work")
+
+    def _api_rank_worker(self, prompt, jobs):
+        """Background thread: call the API with the compact fit prompt and apply
+        scores back to inbox rows. Posts results to the main thread via after()."""
+        try:
+            reply = _call_prompt_via_api(prompt)
+        except Exception as exc:
+            self.after(0, lambda: set_status(self._status, f"API error: {exc}", "err"))
+            return
+        try:
+            applied = tracker_service.score_inbox_from_reply(jobs, reply)
+        except Exception as exc:
+            self.after(0, lambda: set_status(
+                self._status, f"Parse error: {exc}", "err"))
+            return
+        self.after(0, self._api_rank_done, applied)
+
+    def _api_rank_done(self, applied):
+        if not self.winfo_exists():
+            return
+        set_status(self._status, f"Ranked {applied} job(s) via API.", "ok")
+        self.refresh()
 
     def _paste_fit(self):
         if not self._fit_jobs:
@@ -1624,8 +1695,9 @@ class TopPicksTab(ttk.Frame):
 
     def _open_url(self):
         for r in self._selected()[:5]:
-            if r.get("url"):
-                webbrowser.open(r["url"])
+            u = safe_url(r.get("url"))
+            if u:
+                webbrowser.open(u)
 
 
 # ── Search tab ────────────────────────────────────────────────────────────────
@@ -1777,10 +1849,11 @@ class SearchTab(ttk.Frame):
         ("source",   "Source",    90, "w"),
     ]
 
-    def __init__(self, parent):
+    def __init__(self, parent, open_guide_cb=None):
         super().__init__(parent)
         self._results = []  # list[JobResult], indexed by tree iid
         self._user_cfg = self._load_cfg()
+        self._open_guide_cb = open_guide_cb   # () -> None, opens Guide tab
         self._build()
 
     @staticmethod
@@ -1813,6 +1886,10 @@ class SearchTab(ttk.Frame):
         ttk.Entry(ctrl, textvariable=self._loc, width=18).grid(row=0, column=3, padx=6)
         self._search_btn = theme.btn(ctrl, "Search", self._search, "accent")
         self._search_btn.grid(row=0, column=4, padx=8)
+        self._save_btn = theme.btn(ctrl, "Save", self._save_searches, "ghost")
+        theme.tip(self._save_btn, "Save current keywords/location/salary as "
+                  "defaults for this project.")
+        self._save_btn.grid(row=0, column=5, padx=4)
         self._hide_tracked = tk.BooleanVar(value=True)
         ttk.Checkbutton(ctrl, text="Hide tracked / dismissed",
                         variable=self._hide_tracked).grid(
@@ -1825,6 +1902,10 @@ class SearchTab(ttk.Frame):
         self._status = tk.Label(ctrl, text="", font=theme.FONT_SM,
                                 bg=theme.WINDOW, fg=theme.MUTED)
         self._status.grid(row=2, column=1, columnspan=4, sticky="w")
+        # Indeterminate progress bar -- visible only while a search is running.
+        self._pb = ttk.Progressbar(ctrl, mode='indeterminate', length=200)
+        self._pb.grid(row=2, column=5, sticky="w", padx=4)
+        self._pb.grid_remove()   # hidden until search starts
         ctrl.columnconfigure(1, weight=1)
 
         tf = ttk.Frame(self)
@@ -1863,18 +1944,52 @@ class SearchTab(ttk.Frame):
         tk.Label(abar, text="  Ctrl/Shift-click to select multiple",
                  bg=theme.WINDOW, fg=theme.FAINT, font=theme.FONT_SM).pack(side="left")
 
+    def _save_searches(self):
+        """Persist current keyword/location/salary fields to the workspace config
+        so the Search tab pre-fills them next session."""
+        keywords = [k.strip() for k in self._kw.get().split(",") if k.strip()]
+        loc = self._loc.get().strip()
+        try:
+            salary_min = int(self._salary.get().strip() or 0) or None
+        except ValueError:
+            salary_min = None
+        cfg = workspace.load_config()
+        if keywords:
+            cfg["keywords"] = keywords
+        elif "keywords" in cfg:
+            del cfg["keywords"]
+        if loc:
+            cfg["location"] = loc
+        if salary_min:
+            cfg["salary_min"] = salary_min
+        elif "salary_min" in cfg:
+            del cfg["salary_min"]
+        workspace.save_config(cfg)
+        set_status(self._status, "Search settings saved to this project.", "ok")
+
     def _set_busy(self, busy: bool):
         """Disable/enable the search + result controls for the worker's
         duration, so a second search can't fire mid-flight (GUI-8)."""
         state = "disabled" if busy else "normal"
         self._search_btn.config(state=state)
+        self._save_btn.config(state=state)
         for b in self._action_btns:
             b.config(state=state)
+        if busy:
+            self._pb.grid()
+            self._pb.start(15)
+        else:
+            self._pb.stop()
+            self._pb.grid_remove()
 
     def _search(self):
         keywords = [k.strip() for k in self._kw.get().split(",") if k.strip()]
         if not keywords:
-            messagebox.showinfo("Keywords needed", "Enter at least one keyword.")
+            if self._open_guide_cb:
+                self._open_guide_cb()
+            else:
+                set_status(self._status,
+                           "Enter at least one keyword, then click Search.", "err")
             return
         try:
             salary_min = int(self._salary.get().strip() or 0) or None
@@ -1937,7 +2052,11 @@ class SearchTab(ttk.Frame):
                 j.title, j.company, j.location, j.salary_display(), j.source_api))
         if not had_clients:
             set_status(self._status,
-                       "No sources configured — add API keys to .env.", "err")
+                       "No sources configured -- add API keys to .env.", "err")
+        elif not results:
+            set_status(self._status,
+                       "No results. Try broader keywords or a different location.",
+                       "muted")
         else:
             set_status(self._status, f"{len(results)} result(s).", "ok")
 
@@ -1993,8 +2112,9 @@ class SearchTab(ttk.Frame):
 
     def _open_url(self):
         for j in self._sel_many()[:5]:
-            if j.url:
-                webbrowser.open(j.url)
+            u = safe_url(j.url)
+            if u:
+                webbrowser.open(u)
 
 
 # ── Apply Queue tab ───────────────────────────────────────────────────────────
@@ -2130,8 +2250,9 @@ class ApplyQueueTab(ttk.Frame):
 
     def _open_url(self):
         j = self._sel()
-        if j and j.get("url"):
-            webbrowser.open(j["url"])
+        surl = safe_url((j or {}).get("url")) if j else ""
+        if surl:
+            webbrowser.open(surl)
         elif j:
             messagebox.showinfo("No URL", "This job has no URL saved.")
 
@@ -2409,12 +2530,43 @@ class ApplyQueueTab(ttk.Frame):
             return
         self._fit_jobs = jobs
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
-        copy_or_warn(self, prompt,
-                     lambda m: self._status.config(text=m, fg=theme.WARN))
-        if dropped:
-            self._status.config(
-                text=f"AI-ranking {len(jobs)}; auto-filtered {len(dropped)}",
-                fg=theme.WARN)
+        # API auto-route: when a key is present, rank directly without paste step.
+        if _ranker_mod.has_api_key():
+            n = len(jobs)
+            suffix = (f"; auto-filtered {len(dropped)}" if dropped else "")
+            set_status(self._status, f"Ranking {n} job(s) via API{suffix}...", "work")
+            threading.Thread(
+                target=self._api_rank_worker, args=(prompt, jobs), daemon=True).start()
+        else:
+            # Clipboard bridge: user pastes prompt into claude.ai and pastes reply back.
+            copy_or_warn(self, prompt,
+                         lambda m: self._status.config(text=m, fg=theme.WARN))
+            if dropped:
+                self._status.config(
+                    text=f"AI-ranking {len(jobs)}; auto-filtered {len(dropped)}",
+                    fg=theme.WARN)
+
+    def _api_rank_worker(self, prompt, jobs):
+        """Background thread: call the API with the compact fit prompt and apply
+        scores back to apply-queue applications."""
+        try:
+            reply = _call_prompt_via_api(prompt)
+        except Exception as exc:
+            self.after(0, lambda: set_status(self._status, f"API error: {exc}", "err"))
+            return
+        try:
+            applied = tracker_service.score_applications_from_reply(jobs, reply)
+        except Exception as exc:
+            self.after(0, lambda: set_status(
+                self._status, f"Parse error: {exc}", "err"))
+            return
+        self.after(0, self._api_rank_done, applied)
+
+    def _api_rank_done(self, applied):
+        if not self.winfo_exists():
+            return
+        set_status(self._status, f"Ranked {applied} job(s) via API.", "ok")
+        self.refresh(keep_selection=True)
 
     def _paste_fit(self):
         if not getattr(self, "_fit_jobs", None):
@@ -2560,12 +2712,14 @@ class App(tk.Tk):
         dlg.resizable(False, False)
         tk.Label(dlg, text="Connect your AI (optional)", bg=theme.WINDOW,
                  fg=theme.INK, font=theme.FONT_H2).pack(anchor="w", padx=14, pady=(12, 2))
-        tk.Label(dlg, justify="left", bg=theme.WINDOW, fg=theme.MUTED,
+        tk.Label(dlg, justify='left', bg=theme.WINDOW, fg=theme.MUTED,
                  font=theme.FONT_SM,
-                 text="Ranking your jobs is FREE and needs no key — use “Ask AI to "
-                      "rank these”.\nA key only powers optional auto-ranking and AI "
-                      "resume/cover writing.\nYour key is stored only on this "
-                      "computer.").pack(anchor="w", padx=14)
+                 text='Without a key: click "Ask AI to rank" to copy a prompt,\n'
+                      'paste it into claude.ai, then paste the reply back.\n'
+                      'With a key saved here: "Ask AI to rank" calls the API\n'
+                      'automatically -- no copy/paste step needed.\n'
+                      'A key also enables AI resume/cover writing.\n'
+                      'Your key is stored only on this computer.').pack(anchor='w', padx=14)
         row = tk.Frame(dlg, bg=theme.WINDOW)
         row.pack(fill="x", padx=14, pady=(10, 2))
         tk.Label(row, text="Anthropic API key:", bg=theme.WINDOW, fg=theme.INK,
@@ -2695,8 +2849,9 @@ class App(tk.Tk):
 
         def open_posting():
             r = _sel()
-            if r and (r.get("url") or "").strip():
-                webbrowser.open(r["url"])
+            u = safe_url((r or {}).get("url")) if r else ""
+            if u:
+                webbrowser.open(u)
 
         def snooze():
             r = _sel()
@@ -2890,7 +3045,8 @@ class App(tk.Tk):
         init_db()  # ensure the active project's tracker.db exists/upgraded
         self._inbox    = InboxTab(self._nb, on_change=self._update_badges)
         self._toppicks = TopPicksTab(self._nb, on_change=self._update_badges)
-        self._search   = SearchTab(self._nb)
+        self._search   = SearchTab(self._nb,
+                                   open_guide_cb=lambda: self._nb.select(self._guide))
         self._queue    = ApplyQueueTab(self._nb)
         self._tracker  = TrackerTab(self._nb)
         self._resume   = ResumeTab(self._nb)
