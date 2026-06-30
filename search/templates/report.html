@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Search Results — {{ search_params.date }}</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f5f5f5;
+        color: #333;
+        padding: 20px;
+      }
+      .container {
+        max-width: 1000px;
+        margin: 0 auto;
+      }
+      header {
+        background: #1a1a2e;
+        color: #fff;
+        padding: 24px 32px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+      }
+      header h1 {
+        font-size: 1.5rem;
+        margin-bottom: 8px;
+      }
+      header .meta {
+        font-size: 0.85rem;
+        opacity: 0.8;
+      }
+      .controls {
+        background: #fff;
+        padding: 16px 24px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .controls label {
+        font-weight: 600;
+        font-size: 0.85rem;
+      }
+      .controls select,
+      .controls input {
+        padding: 6px 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.85rem;
+      }
+      .summary {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+      }
+      .summary .chip {
+        background: #e8eaf6;
+        color: #1a1a2e;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 0.8rem;
+      }
+      .job-card {
+        background: #fff;
+        padding: 20px 24px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        transition: box-shadow 0.2s;
+      }
+      .job-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+      .job-card h2 {
+        font-size: 1.1rem;
+        margin-bottom: 6px;
+      }
+      .job-card h2 a {
+        color: #1565c0;
+        text-decoration: none;
+      }
+      .job-card h2 a:hover {
+        text-decoration: underline;
+      }
+      .job-card .details {
+        font-size: 0.85rem;
+        color: #666;
+        margin-bottom: 8px;
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .job-card .details span {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .job-card .description {
+        font-size: 0.85rem;
+        color: #555;
+        line-height: 1.5;
+      }
+      .badge {
+        display: inline-block;
+        background: #e3f2fd;
+        color: #1565c0;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      .track-btn {
+        display: inline-block;
+        background: #1a1a2e;
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-decoration: none;
+        vertical-align: middle;
+      }
+      .track-btn:hover {
+        background: #2d2d52;
+      }
+      .source-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+      .source-adzuna {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      .source-jsearch {
+        background: #fff3e0;
+        color: #e65100;
+      }
+      .source-usajobs {
+        background: #fce4ec;
+        color: #880e4f;
+      }
+      .source-careers {
+        background: #e8f4fd;
+        color: #0277bd;
+      }
+      [class*="source-"][class*="_browser"] {
+        background: #f3e5f5;
+        color: #6a1b9a;
+      }
+      .salary {
+        color: #2e7d32;
+        font-weight: 600;
+      }
+      .score-badge {
+        display: inline-block;
+        padding: 2px 9px;
+        border-radius: 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #fff;
+      }
+      .score-hi {
+        background: #2e7d32;
+      }
+      .score-mid {
+        background: #e65100;
+      }
+      .score-lo {
+        background: #9e9e9e;
+      }
+      .no-results {
+        text-align: center;
+        padding: 40px;
+        color: #999;
+      }
+      .count {
+        font-size: 0.85rem;
+        color: #666;
+        margin-bottom: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Job Search Results</h1>
+        <div class="meta">
+          {{ search_params.date }} | Location: {{ search_params.location }} | {{
+          total }} results found {% if search_params.salary_min %} | Min salary:
+          ${{ "{:,.0f}".format(search_params.salary_min) }}{% endif %}
+        </div>
+      </header>
+
+      <div class="controls">
+        <label for="source-filter">Source:</label>
+        <select id="source-filter" onchange="filterJobs()">
+          <option value="all">All sources</option>
+        </select>
+        <label for="keyword-filter">Keyword:</label>
+        <select id="keyword-filter" onchange="filterJobs()">
+          <option value="all">All keywords</option>
+          {% for kw, count in keyword_counts.items() %}
+          <option value="{{ kw }}">{{ kw }} ({{ count }})</option>
+          {% endfor %}
+        </select>
+        <label for="sort-select">Sort by:</label>
+        <select id="sort-select" onchange="sortJobs()">
+          <option value="score">Best match</option>
+          <option value="date">Newest first</option>
+          <option value="salary">Highest salary</option>
+        </select>
+        <label for="search-input">Search:</label>
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Filter by title or company..."
+          oninput="filterJobs()"
+        />
+      </div>
+
+      <div class="summary">
+        {% for kw, count in keyword_counts.items() %}
+        <span class="chip">{{ kw }}: {{ count }}</span>
+        {% endfor %}
+      </div>
+
+      <div class="count" id="visible-count">
+        Showing {{ total }} of {{ total }} results
+      </div>
+
+      <div id="results">
+        {% if results %} {% for job in results %}
+        <div
+          class="job-card"
+          data-keyword="{{ job.source_keyword }}"
+          data-source="{{ job.source_api }}"
+          data-salary="{{ job.salary_max or 0 }}"
+          data-date="{{ job.created }}"
+          data-score="{{ job.score }}"
+        >
+          <h2>
+            {% if job.score >= 0 %}<span
+              class="score-badge {% if job.score >= 70 %}score-hi{% elif job.score >= 40 %}score-mid{% else %}score-lo{% endif %}"
+              title="{{ job.score_notes }}"
+              >{{ job.score }}</span
+            >{% endif %}
+            <a href="{{ job.url|safe_url }}" target="_blank" rel="noopener"
+              >{{ job.title }}</a
+            >
+          </h2>
+          <div class="details">
+            <span><strong>{{ job.company }}</strong></span>
+            <span>{{ job.location }}</span>
+            <span class="salary">{{ job.salary_display() }}</span>
+            <span class="badge">{{ job.source_keyword }}</span>
+            <span class="source-badge source-{{ job.source_api }}"
+              >{{ job.source_api }}</span
+            >
+          </div>
+          <div class="description">
+            {{ job.description[:300] }}{% if job.description|length > 300
+            %}...{% endif %}
+          </div>
+          <div style="margin-top: 8px">
+            <a
+              class="track-btn"
+              href="http://localhost:{{ tracker_port }}/add?title={{ job.title|urlencode }}&company={{ job.company|urlencode }}&location={{ job.location|urlencode }}&url={{ job.url|urlencode }}&salary={{ (job.salary_display())|urlencode }}"
+              target="_blank"
+              >+ Track</a
+            >
+          </div>
+        </div>
+        {% endfor %} {% else %}
+        <div class="no-results">
+          No results found. Try adjusting your search keywords or location.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <script>
+      // Build source filter options from the actual cards present in this report
+      (function buildSourceFilter() {
+        const counts = {};
+        document.querySelectorAll(".job-card").forEach((c) => {
+          const s = c.dataset.source;
+          counts[s] = (counts[s] || 0) + 1;
+        });
+        const sel = document.getElementById("source-filter");
+        Object.keys(counts)
+          .sort()
+          .forEach((src) => {
+            sel.add(new Option(`${src} (${counts[src]})`, src));
+          });
+      })();
+
+      function filterJobs() {
+        const source = document.getElementById("source-filter").value;
+        const keyword = document.getElementById("keyword-filter").value;
+        const search = document
+          .getElementById("search-input")
+          .value.toLowerCase();
+        const cards = document.querySelectorAll(".job-card");
+        let visible = 0;
+        cards.forEach((card) => {
+          const matchSource =
+            source === "all" || card.dataset.source === source;
+          const matchKeyword =
+            keyword === "all" || card.dataset.keyword === keyword;
+          const text = card.textContent.toLowerCase();
+          const matchSearch = !search || text.includes(search);
+          const show = matchSource && matchKeyword && matchSearch;
+          card.style.display = show ? "" : "none";
+          if (show) visible++;
+        });
+        document.getElementById("visible-count").textContent =
+          `Showing ${visible} of {{ total }} results`;
+      }
+
+      function sortJobs() {
+        const container = document.getElementById("results");
+        const cards = Array.from(container.querySelectorAll(".job-card"));
+        const sortBy = document.getElementById("sort-select").value;
+        cards.sort((a, b) => {
+          if (sortBy === "salary") {
+            return (
+              (parseFloat(b.dataset.salary) || 0) -
+              (parseFloat(a.dataset.salary) || 0)
+            );
+          }
+          if (sortBy === "score") {
+            return (
+              (parseInt(b.dataset.score) || -1) -
+              (parseInt(a.dataset.score) || -1)
+            );
+          }
+          return (b.dataset.date || "").localeCompare(a.dataset.date || "");
+        });
+        cards.forEach((card) => container.appendChild(card));
+      }
+    </script>
+  </body>
+</html>

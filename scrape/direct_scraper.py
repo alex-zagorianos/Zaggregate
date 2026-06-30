@@ -1,0 +1,126 @@
+from pathlib import Path
+from urllib.parse import urljoin
+import hashlib
+
+import requests
+from bs4 import BeautifulSoup
+
+from config import CAREERS_REQUEST_TIMEOUT
+from models import JobResult
+from scrape.cache_helpers import is_failed, mark_failed, read_cache, write_cache
+from scrape.company_registry import CompanyEntry
+from scrape.jsonld_scraper import extract_jobs as _jsonld_extract
+
+_JOB_URL_PATTERNS = ("/job/", "/jobs/", "/opening/", "/openings/", "/position/", "/careers/job", "/career/")
+_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+
+
+def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> str | None:
+    """Fetch (or read cached) HTML for a company's page, with the shared
+    negative-failure cache. Returns None on a known-dead or failed fetch.
+    Factored out so the JSON-LD scraper can reuse the same fetch + cache path."""
+    url_hash = hashlib.md5(company.slug.encode()).hexdigest()[:12]
+    cache_file = cache_dir / f"direct_{url_hash}.html"
+    # Negative-cache marker: a dead URL (404/403/timeout) was retried once per
+    # keyword per run — ~150 doomed 20s requests a day across the registry's
+    # dead entries. The shared is_failed/mark_failed JSON marker (used by
+    # gh/lever/ashby/smartrecruiters) makes it one attempt per TTL window.
+    failed_file = cache_dir / f"direct_{url_hash}_FAILED.json"
+
+    if cache_enabled:
+        if is_failed(read_cache(failed_file)):
+            return None  # known-dead this TTL window; stay quiet, don't re-fetch
+        html = read_cache(cache_file)
+    else:
+        html = None
+
+    if html is None:
+        try:
+            resp = requests.get(
+                company.slug, headers=_HEADERS, timeout=CAREERS_REQUEST_TIMEOUT
+            )
+            resp.raise_for_status()
+            html = resp.text
+        except Exception as e:
+            print(f"  [direct] {company.name}: fetch error — {e}")
+            if cache_enabled:
+                mark_failed(failed_file)
+            return None
+        if cache_enabled:
+            write_cache(cache_file, html)
+    return html
+
+
+def scrape_direct(
+    company: CompanyEntry,
+    keyword: str,
+    cache_dir: Path,
+    cache_enabled: bool,
+) -> list[JobResult]:
+    html = _fetch_html(company, cache_dir, cache_enabled)
+    if html is None:
+        return []
+
+    print(f"  [direct] {company.name}: link extraction + JSON-LD — verify results manually")
+    jobs = _extract_jobs(html, company, keyword)
+    return _merge_jsonld(jobs, html, company, keyword)
+
+
+def _merge_jsonld(jobs: list[JobResult], html: str, company: CompanyEntry,
+                  keyword: str) -> list[JobResult]:
+    """Additively fold any schema.org/JobPosting JSON-LD on the SAME page into the
+    link-extracted results — strictly more, never fewer (deduped by identity_key).
+    A direct page that embeds structured JobPosting data (common on modern career
+    sites) now yields those richer postings too, instead of link text only."""
+    existing = {j.identity_key for j in jobs}
+    for j in _jsonld_extract(html, company.slug, keyword=keyword):
+        if not j.company:
+            j.company = company.name
+        if j.identity_key not in existing:
+            existing.add(j.identity_key)
+            jobs.append(j)
+    return jobs
+
+
+def _extract_jobs(html: str, company: CompanyEntry, keyword: str) -> list[JobResult]:
+    soup = BeautifulSoup(html, "html.parser")
+    base = company.slug
+    results = []
+    seen_urls: set[str] = set()
+
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        text = a.get_text(strip=True)
+        if not text or not _is_job_link(href):
+            continue
+        if not _matches(keyword, text):
+            continue
+        full_url = urljoin(base, href)
+        if full_url in seen_urls:
+            continue
+        seen_urls.add(full_url)
+        results.append(JobResult(
+            title=text[:200],
+            company=company.name,
+            location="",
+            salary_min=None,
+            salary_max=None,
+            description="",
+            url=full_url,
+            source_keyword=keyword,
+            created="",
+            job_id=f"direct_{hashlib.md5(full_url.encode()).hexdigest()[:8]}",
+            source_api="careers",
+        ))
+
+    return results
+
+
+def _is_job_link(href: str) -> bool:
+    href_lower = href.lower()
+    return any(pat in href_lower for pat in _JOB_URL_PATTERNS)
+
+
+def _matches(keyword: str, text: str) -> bool:
+    from scrape.text_match import keyword_matches
+    return keyword_matches(keyword, text)

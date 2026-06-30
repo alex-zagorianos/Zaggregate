@@ -1,0 +1,26 @@
+{
+  "data": [
+    {
+      "title": "Controls Engineer",
+      "company_name": "Acme",
+      "location": "Cincinnati, OH",
+      "url": "https://arbeitnow.com/view/controls-engineer",
+      "description": "<p>PLC work.</p>",
+      "tags": ["engineering"],
+      "created_at": 1717200000,
+      "remote": false,
+      "slug": "controls-engineer"
+    },
+    {
+      "title": "Barista",
+      "company_name": "Cafe",
+      "location": "Remote",
+      "url": "https://arbeitnow.com/view/barista",
+      "description": "Make coffee.",
+      "tags": ["food"],
+      "created_at": 1717300000,
+      "remote": true,
+      "slug": "barista"
+    }
+  ]
+}

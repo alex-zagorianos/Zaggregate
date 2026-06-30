@@ -1,0 +1,15 @@
+{
+  "totalCount": 1,
+  "jobs": [
+    {
+      "title": "Automation Engineer",
+      "company": "Beta",
+      "location": "Cincinnati, OH",
+      "link": "https://jooble.org/jdp/123",
+      "snippet": "Automate <b>lines</b>.",
+      "updated": "2026-06-08T00:00:00",
+      "id": 123,
+      "salary": "$90,000"
+    }
+  ]
+}

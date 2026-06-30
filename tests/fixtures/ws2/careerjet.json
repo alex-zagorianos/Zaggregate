@@ -1,0 +1,16 @@
+{
+  "type": "JOBS",
+  "hits": 1,
+  "jobs": [
+    {
+      "title": "Test Engineer",
+      "company": "Gamma",
+      "locations": "Cincinnati, OH",
+      "url": "https://www.careerjet.com/jobad/abc",
+      "description": "Run <b>tests</b>.",
+      "date": "Sun, 08 Jun 2026 00:00:00 GMT",
+      "salary_min": 80000,
+      "salary_max": 100000
+    }
+  ]
+}

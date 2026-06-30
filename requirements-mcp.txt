@@ -1,0 +1,3 @@
+# Extra dependency for the Claude Code / MCP channel (mcp_server.py). Kept out of
+# the main requirements.txt so the GUI .exe build stays lean.
+mcp>=1.2.0

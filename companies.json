@@ -1,0 +1,2211 @@
+{
+  "_comment": "Add your own companies here. They are merged with the built-in registry at runtime.",
+  "_instructions": [
+    "ats_type options: 'greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workday', 'direct'",
+    "  greenhouse: slug = the board name from boards.greenhouse.io/YOUR_SLUG",
+    "  lever:      slug = the company slug from jobs.lever.co/YOUR_SLUG",
+    "  ashby:      slug = the company slug from jobs.ashbyhq.com/YOUR_SLUG",
+    "  smartrecruiters: slug = the company id from jobs.smartrecruiters.com/YOUR_SLUG (case-sensitive)",
+    "  workday:    slug = 'tenant:N:site'  e.g. 'cat:5:CaterpillarCareers'",
+    "  direct:     slug = full careers page URL (best-effort HTML scrape)",
+    "industries: list of tags \u2014 used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",
+    "If a company name matches one already in the built-in registry, your entry overrides it."
+  ],
+  "companies": [
+    {
+      "_example": "Greenhouse company \u2014 remove _example key when using",
+      "name": "Example Greenhouse Co",
+      "ats_type": "greenhouse",
+      "slug": "exampleco",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "_example": "Lever company",
+      "name": "Example Lever Co",
+      "ats_type": "lever",
+      "slug": "exampleco",
+      "industries": [
+        "controls_engineering"
+      ]
+    },
+    {
+      "_example": "Direct URL company (Workday with CSRF, custom portal, etc.)",
+      "name": "Example Direct Co",
+      "ats_type": "direct",
+      "slug": "https://careers.example.com/jobs",
+      "industries": [
+        "health_informatics",
+        "controls_engineering"
+      ]
+    },
+    {
+      "name": "Shield AI",
+      "ats_type": "lever",
+      "slug": "shieldai",
+      "industries": [
+        "defense",
+        "autonomy",
+        "robotics",
+        "embedded",
+        "aerospace",
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "Rocket Lab",
+      "ats_type": "greenhouse",
+      "slug": "rocketlab",
+      "industries": [
+        "space",
+        "aerospace",
+        "embedded",
+        "hardware",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "Crusoe",
+      "ats_type": "ashby",
+      "slug": "crusoe",
+      "industries": [
+        "energy",
+        "software",
+        "applied_ai",
+        "climate",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Harvey",
+      "ats_type": "ashby",
+      "slug": "harvey",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Saronic",
+      "ats_type": "ashby",
+      "slug": "saronic",
+      "industries": [
+        "defense",
+        "autonomy",
+        "robotics",
+        "embedded",
+        "controls_engineering",
+        "hardware",
+        "manufacturing",
+        "automation"
+      ]
+    },
+    {
+      "name": "Xometry",
+      "ats_type": "greenhouse",
+      "slug": "xometry",
+      "industries": [
+        "manufacturing",
+        "cnc",
+        "additive_manufacturing",
+        "software"
+      ]
+    },
+    {
+      "name": "Scout Motors",
+      "ats_type": "greenhouse",
+      "slug": "scoutmotors",
+      "industries": [
+        "ev",
+        "embedded",
+        "controls_engineering",
+        "manufacturing",
+        "hardware"
+      ]
+    },
+    {
+      "name": "MaintainX",
+      "ats_type": "greenhouse",
+      "slug": "maintainx",
+      "industries": [
+        "manufacturing",
+        "software",
+        "iot",
+        "automation"
+      ]
+    },
+    {
+      "name": "Lucid Motors",
+      "ats_type": "greenhouse",
+      "slug": "lucidmotors",
+      "industries": [
+        "ev",
+        "battery",
+        "embedded",
+        "hardware",
+        "motion_control",
+        "automation",
+        "controls_engineering",
+        "software",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "True Anomaly",
+      "ats_type": "greenhouse",
+      "slug": "trueanomalyinc",
+      "industries": [
+        "space",
+        "defense",
+        "aerospace",
+        "embedded",
+        "autonomy",
+        "software"
+      ]
+    },
+    {
+      "name": "Archer Aviation",
+      "ats_type": "greenhouse",
+      "slug": "archer56",
+      "industries": [
+        "ev",
+        "aerospace",
+        "embedded",
+        "controls_engineering",
+        "manufacturing",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Glean",
+      "ats_type": "greenhouse",
+      "slug": "gleanwork",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Astera Labs",
+      "ats_type": "greenhouse",
+      "slug": "asteralabs",
+      "industries": [
+        "semiconductor",
+        "hardware",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Hadrian Automation",
+      "ats_type": "ashby",
+      "slug": "hadrian-automation",
+      "industries": [
+        "automation",
+        "manufacturing",
+        "aerospace",
+        "robotics",
+        "cnc",
+        "defense",
+        "additive_manufacturing"
+      ]
+    },
+    {
+      "name": "CHAOS Industries",
+      "ats_type": "greenhouse",
+      "slug": "chaosindustries",
+      "industries": [
+        "defense",
+        "hardware",
+        "embedded",
+        "aerospace"
+      ]
+    },
+    {
+      "name": "Vast Space",
+      "ats_type": "greenhouse",
+      "slug": "vast",
+      "industries": [
+        "space",
+        "aerospace",
+        "controls_engineering",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Aurora Innovation",
+      "ats_type": "greenhouse",
+      "slug": "aurorainnovation",
+      "industries": [
+        "autonomy",
+        "software",
+        "applied_ai",
+        "machine_vision",
+        "controls_engineering",
+        "embedded"
+      ]
+    },
+    {
+      "name": "K2 Space",
+      "ats_type": "greenhouse",
+      "slug": "k2spacecorporation",
+      "industries": [
+        "space",
+        "aerospace",
+        "hardware",
+        "embedded",
+        "manufacturing",
+        "cnc",
+        "controls_engineering",
+        "software"
+      ]
+    },
+    {
+      "name": "Sierra",
+      "ats_type": "ashby",
+      "slug": "sierra",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Skydio",
+      "ats_type": "ashby",
+      "slug": "skydio",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "defense",
+        "machine_vision",
+        "applied_ai",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Hermeus",
+      "ats_type": "lever",
+      "slug": "hermeus",
+      "industries": [
+        "aerospace",
+        "defense",
+        "embedded",
+        "hardware",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "Decagon",
+      "ats_type": "ashby",
+      "slug": "decagon",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "BETA Technologies",
+      "ats_type": "greenhouse",
+      "slug": "betatechnologiesinc",
+      "industries": [
+        "aerospace",
+        "ev",
+        "embedded",
+        "hardware",
+        "battery",
+        "motion_control"
+      ]
+    },
+    {
+      "name": "Cresta",
+      "ats_type": "greenhouse",
+      "slug": "cresta",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Apex (Apex Space)",
+      "ats_type": "ashby",
+      "slug": "apex-technology-inc",
+      "industries": [
+        "space",
+        "aerospace",
+        "embedded",
+        "hardware",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "Helion Energy",
+      "ats_type": "ashby",
+      "slug": "helion",
+      "industries": [
+        "energy",
+        "controls_engineering",
+        "embedded",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Figure",
+      "ats_type": "greenhouse",
+      "slug": "figureai",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "humanoid",
+        "embedded",
+        "controls_engineering",
+        "machine_vision",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Oura",
+      "ats_type": "greenhouse",
+      "slug": "oura",
+      "industries": [
+        "hardware",
+        "embedded",
+        "iot"
+      ]
+    },
+    {
+      "name": "Cerebras Systems",
+      "ats_type": "greenhouse",
+      "slug": "cerebrassystems",
+      "industries": [
+        "semiconductor",
+        "applied_ai",
+        "hardware",
+        "embedded",
+        "software"
+      ]
+    },
+    {
+      "name": "Field AI",
+      "ats_type": "lever",
+      "slug": "field-ai",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "applied_ai",
+        "embedded",
+        "automation"
+      ]
+    },
+    {
+      "name": "Varda Space Industries",
+      "ats_type": "greenhouse",
+      "slug": "vardaspace",
+      "industries": [
+        "space",
+        "aerospace",
+        "embedded",
+        "hardware",
+        "controls_engineering",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "Astranis Space Technologies",
+      "ats_type": "greenhouse",
+      "slug": "astranis",
+      "industries": [
+        "space",
+        "aerospace",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Form Energy",
+      "ats_type": "ashby",
+      "slug": "formenergy",
+      "industries": [
+        "battery",
+        "energy",
+        "manufacturing",
+        "controls_engineering",
+        "climate"
+      ]
+    },
+    {
+      "name": "Mach Industries",
+      "ats_type": "ashby",
+      "slug": "mach",
+      "industries": [
+        "defense",
+        "autonomy",
+        "aerospace",
+        "manufacturing",
+        "hardware",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Mujin",
+      "ats_type": "lever",
+      "slug": "mujininc",
+      "industries": [
+        "robotics",
+        "automation",
+        "motion_control",
+        "controls_engineering",
+        "manufacturing",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Alarm.com",
+      "ats_type": "greenhouse",
+      "slug": "alarmcom",
+      "industries": [
+        "iot",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Radiant (microreactor) Ashby board",
+      "ats_type": "ashby",
+      "slug": "radiant-industries",
+      "industries": [
+        "energy",
+        "embedded",
+        "controls_engineering",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "TerraPower",
+      "ats_type": "greenhouse",
+      "slug": "terrapowerllc",
+      "industries": [
+        "energy",
+        "controls_engineering",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Perplexity",
+      "ats_type": "ashby",
+      "slug": "perplexity",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Cognition",
+      "ats_type": "ashby",
+      "slug": "cognition",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Commonwealth Fusion Systems",
+      "ats_type": "lever",
+      "slug": "cfsenergy",
+      "industries": [
+        "energy",
+        "controls_engineering",
+        "embedded",
+        "software",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Reliable Robotics",
+      "ats_type": "ashby",
+      "slug": "reliable-robotics",
+      "industries": [
+        "autonomy",
+        "aerospace",
+        "embedded",
+        "controls_engineering",
+        "software",
+        "machine_vision",
+        "robotics"
+      ]
+    },
+    {
+      "name": "Mainspring Energy",
+      "ats_type": "lever",
+      "slug": "mainspringenergy",
+      "industries": [
+        "energy",
+        "controls_engineering",
+        "embedded",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Allen Control Systems",
+      "ats_type": "ashby",
+      "slug": "allen-control-systems",
+      "industries": [
+        "defense",
+        "robotics",
+        "controls_engineering",
+        "motion_control",
+        "embedded",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Baseten",
+      "ats_type": "ashby",
+      "slug": "baseten",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Loft Orbital",
+      "ats_type": "lever",
+      "slug": "loftorbital",
+      "industries": [
+        "space",
+        "aerospace",
+        "embedded",
+        "software",
+        "controls_engineering",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Harbinger Motors",
+      "ats_type": "greenhouse",
+      "slug": "harbingermotors",
+      "industries": [
+        "ev",
+        "battery",
+        "embedded",
+        "controls_engineering",
+        "manufacturing",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Gatik",
+      "ats_type": "greenhouse",
+      "slug": "gatikaiinc",
+      "industries": [
+        "autonomy",
+        "software",
+        "applied_ai",
+        "machine_vision",
+        "ev",
+        "controls_engineering"
+      ]
+    },
+    {
+      "name": "Vention",
+      "ats_type": "smartrecruiters",
+      "slug": "vention",
+      "industries": [
+        "automation",
+        "robotics",
+        "manufacturing",
+        "motion_control",
+        "software"
+      ]
+    },
+    {
+      "name": "Waabi",
+      "ats_type": "lever",
+      "slug": "waabi",
+      "industries": [
+        "autonomy",
+        "applied_ai",
+        "software",
+        "machine_vision",
+        "controls_engineering"
+      ]
+    },
+    {
+      "name": "1X Technologies",
+      "ats_type": "ashby",
+      "slug": "1x",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "embedded",
+        "controls_engineering",
+        "hardware",
+        "autonomy"
+      ]
+    },
+    {
+      "name": "Together AI",
+      "ats_type": "greenhouse",
+      "slug": "togetherai",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Serve Robotics",
+      "ats_type": "ashby",
+      "slug": "serverobotics",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "applied_ai",
+        "machine_vision",
+        "embedded",
+        "software",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Kodiak AI",
+      "ats_type": "greenhouse",
+      "slug": "kodiak",
+      "industries": [
+        "autonomy",
+        "software",
+        "applied_ai",
+        "machine_vision",
+        "embedded",
+        "controls_engineering"
+      ]
+    },
+    {
+      "name": "Skild AI",
+      "ats_type": "greenhouse",
+      "slug": "skildai-careers",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "software",
+        "autonomy",
+        "embedded",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Reflection AI",
+      "ats_type": "ashby",
+      "slug": "reflectionai",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Freeform",
+      "ats_type": "greenhouse",
+      "slug": "freeformfuturecorp",
+      "industries": [
+        "additive_manufacturing",
+        "manufacturing",
+        "applied_ai",
+        "hardware",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Mercor",
+      "ats_type": "ashby",
+      "slug": "mercor",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Oklo",
+      "ats_type": "greenhouse",
+      "slug": "oklo",
+      "industries": [
+        "energy",
+        "software",
+        "controls_engineering",
+        "hardware",
+        "climate",
+        "ohio"
+      ]
+    },
+    {
+      "name": "Torc Robotics",
+      "ats_type": "greenhouse",
+      "slug": "torcrobotics",
+      "industries": [
+        "autonomy",
+        "software",
+        "applied_ai",
+        "embedded",
+        "controls_engineering",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Muon Space",
+      "ats_type": "greenhouse",
+      "slug": "muonspace",
+      "industries": [
+        "space",
+        "aerospace",
+        "hardware",
+        "embedded",
+        "climate",
+        "software"
+      ]
+    },
+    {
+      "name": "ICON",
+      "ats_type": "greenhouse",
+      "slug": "iconcareers",
+      "industries": [
+        "additive_manufacturing",
+        "robotics",
+        "automation",
+        "hardware",
+        "software"
+      ]
+    },
+    {
+      "name": "Protolabs",
+      "ats_type": "lever",
+      "slug": "protolabs",
+      "industries": [
+        "manufacturing",
+        "cnc",
+        "additive_manufacturing",
+        "hardware"
+      ]
+    },
+    {
+      "name": "May Mobility",
+      "ats_type": "greenhouse",
+      "slug": "maymobility",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "automation",
+        "software",
+        "embedded",
+        "midwest",
+        "ev"
+      ]
+    },
+    {
+      "name": "Atomic Semi",
+      "ats_type": "ashby",
+      "slug": "atomicsemi",
+      "industries": [
+        "semiconductor",
+        "hardware",
+        "embedded",
+        "manufacturing",
+        "automation"
+      ]
+    },
+    {
+      "name": "Avride",
+      "ats_type": "greenhouse",
+      "slug": "avride",
+      "industries": [
+        "autonomy",
+        "robotics",
+        "applied_ai",
+        "machine_vision",
+        "controls_engineering",
+        "software"
+      ]
+    },
+    {
+      "name": "Exa",
+      "ats_type": "ashby",
+      "slug": "exa",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Beyond Finance",
+      "ats_type": "greenhouse",
+      "slug": "beyondfinance",
+      "industries": [
+        "software",
+        "applied_ai",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Vannevar Labs",
+      "ats_type": "greenhouse",
+      "slug": "vannevarlabs",
+      "industries": [
+        "defense",
+        "applied_ai",
+        "software",
+        "autonomy",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "SPAN",
+      "ats_type": "ashby",
+      "slug": "span",
+      "industries": [
+        "energy",
+        "hardware",
+        "embedded",
+        "ev",
+        "climate",
+        "iot",
+        "software"
+      ]
+    },
+    {
+      "name": "Fireworks AI",
+      "ats_type": "ashby",
+      "slug": "fireworksai",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Modal",
+      "ats_type": "ashby",
+      "slug": "modal",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Array Labs",
+      "ats_type": "lever",
+      "slug": "arraylabs.io",
+      "industries": [
+        "space",
+        "aerospace",
+        "software",
+        "machine_vision",
+        "autonomy",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Senra Systems",
+      "ats_type": "greenhouse",
+      "slug": "senrasystems",
+      "industries": [
+        "manufacturing",
+        "aerospace",
+        "automation",
+        "hardware",
+        "defense"
+      ]
+    },
+    {
+      "name": "Dexory",
+      "ats_type": "greenhouse",
+      "slug": "dexory",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "machine_vision",
+        "automation",
+        "software"
+      ]
+    },
+    {
+      "name": "Intrinsic",
+      "ats_type": "greenhouse",
+      "slug": "intrinsicrobotics",
+      "industries": [
+        "robotics",
+        "software",
+        "automation",
+        "applied_ai",
+        "manufacturing",
+        "controls_engineering",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "KoBold Metals",
+      "ats_type": "greenhouse",
+      "slug": "koboldmetals",
+      "industries": [
+        "applied_ai",
+        "battery",
+        "software",
+        "climate",
+        "energy"
+      ]
+    },
+    {
+      "name": "Bot Auto",
+      "ats_type": "greenhouse",
+      "slug": "botauto",
+      "industries": [
+        "autonomy",
+        "software",
+        "applied_ai",
+        "machine_vision",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Adaptyv",
+      "ats_type": "ashby",
+      "slug": "adaptyv",
+      "industries": [
+        "applied_ai",
+        "robotics",
+        "automation",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Dyna Robotics",
+      "ats_type": "ashby",
+      "slug": "dyna-robotics",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "autonomy",
+        "manufacturing",
+        "automation"
+      ]
+    },
+    {
+      "name": "Sila Nanotechnologies",
+      "ats_type": "greenhouse",
+      "slug": "silananotechnologies",
+      "industries": [
+        "battery",
+        "manufacturing",
+        "hardware",
+        "ev",
+        "climate"
+      ]
+    },
+    {
+      "name": "Saildrone",
+      "ats_type": "greenhouse",
+      "slug": "saildroneinc",
+      "industries": [
+        "autonomy",
+        "robotics",
+        "hardware",
+        "defense",
+        "energy"
+      ]
+    },
+    {
+      "name": "Augury",
+      "ats_type": "greenhouse",
+      "slug": "augury",
+      "industries": [
+        "manufacturing",
+        "applied_ai",
+        "iot",
+        "software"
+      ]
+    },
+    {
+      "name": "Physical Intelligence",
+      "ats_type": "ashby",
+      "slug": "physicalintelligence",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "software",
+        "controls_engineering",
+        "embedded",
+        "autonomy",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Standard Bots",
+      "ats_type": "ashby",
+      "slug": "standardbots",
+      "industries": [
+        "robotics",
+        "automation",
+        "manufacturing",
+        "motion_control",
+        "controls_engineering",
+        "cnc",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Kairos Power",
+      "ats_type": "greenhouse",
+      "slug": "kairospower",
+      "industries": [
+        "energy",
+        "controls_engineering",
+        "embedded",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Bedrock Robotics",
+      "ats_type": "ashby",
+      "slug": "bedrock-robotics",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "applied_ai",
+        "embedded",
+        "controls_engineering",
+        "software",
+        "machine_vision",
+        "manufacturing",
+        "hardware",
+        "automation"
+      ]
+    },
+    {
+      "name": "Velo3D",
+      "ats_type": "lever",
+      "slug": "velo3d",
+      "industries": [
+        "additive_manufacturing",
+        "manufacturing",
+        "aerospace",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Wing",
+      "ats_type": "greenhouse",
+      "slug": "wing",
+      "industries": [
+        "autonomy",
+        "aerospace",
+        "robotics",
+        "embedded",
+        "controls_engineering",
+        "software"
+      ]
+    },
+    {
+      "name": "Monumental",
+      "ats_type": "ashby",
+      "slug": "monumental",
+      "industries": [
+        "robotics",
+        "automation",
+        "autonomy",
+        "hardware",
+        "software"
+      ]
+    },
+    {
+      "name": "Antora Energy",
+      "ats_type": "greenhouse",
+      "slug": "antora",
+      "industries": [
+        "energy",
+        "climate",
+        "hardware",
+        "embedded",
+        "manufacturing",
+        "controls_engineering"
+      ]
+    },
+    {
+      "name": "Distyl AI",
+      "ats_type": "ashby",
+      "slug": "distyl",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "InCharge Energy",
+      "ats_type": "greenhouse",
+      "slug": "inchargeenergy",
+      "industries": [
+        "ev",
+        "software",
+        "energy",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Stack AV",
+      "ats_type": "greenhouse",
+      "slug": "stackav",
+      "industries": [
+        "autonomy",
+        "robotics",
+        "applied_ai",
+        "embedded",
+        "software"
+      ]
+    },
+    {
+      "name": "Electric Hydrogen",
+      "ats_type": "greenhouse",
+      "slug": "eh2",
+      "industries": [
+        "energy",
+        "controls_engineering",
+        "manufacturing",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Astronomer",
+      "ats_type": "ashby",
+      "slug": "astronomer",
+      "industries": [
+        "software",
+        "applied_ai",
+        "iot",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Mind Robotics",
+      "ats_type": "ashby",
+      "slug": "mindrobotics",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "manufacturing",
+        "automation"
+      ]
+    },
+    {
+      "name": "Pickle Robot",
+      "ats_type": "lever",
+      "slug": "picklerobot",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "automation",
+        "machine_vision",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Lunar Energy",
+      "ats_type": "greenhouse",
+      "slug": "lunarenergy",
+      "industries": [
+        "energy",
+        "battery",
+        "hardware",
+        "embedded",
+        "climate",
+        "firmware",
+        "software"
+      ]
+    },
+    {
+      "name": "CoLab Software",
+      "ats_type": "greenhouse",
+      "slug": "colabsoftware",
+      "industries": [
+        "applied_ai",
+        "manufacturing",
+        "software",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Nimble Robotics",
+      "ats_type": "greenhouse",
+      "slug": "nimblerobotics",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "automation",
+        "machine_vision",
+        "manufacturing",
+        "autonomy"
+      ]
+    },
+    {
+      "name": "Radiant Industries (Radiant Nuclear)",
+      "ats_type": "ashby",
+      "slug": "radiant",
+      "industries": [
+        "energy",
+        "embedded",
+        "controls_engineering",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Pyka",
+      "ats_type": "lever",
+      "slug": "pyka",
+      "industries": [
+        "autonomy",
+        "aerospace",
+        "robotics",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Generalist AI",
+      "ats_type": "ashby",
+      "slug": "generalist",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "software",
+        "autonomy"
+      ]
+    },
+    {
+      "name": "HavocAI",
+      "ats_type": "ashby",
+      "slug": "havocai",
+      "industries": [
+        "defense",
+        "autonomy",
+        "robotics",
+        "embedded",
+        "controls_engineering",
+        "software"
+      ]
+    },
+    {
+      "name": "Venus Aerospace",
+      "ats_type": "lever",
+      "slug": "venusaero",
+      "industries": [
+        "space",
+        "aerospace",
+        "controls_engineering",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Persona AI",
+      "ats_type": "ashby",
+      "slug": "persona.ai",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "controls_engineering",
+        "embedded",
+        "manufacturing",
+        "automation",
+        "hardware",
+        "autonomy"
+      ]
+    },
+    {
+      "name": "Cyngn",
+      "ats_type": "lever",
+      "slug": "cyngn",
+      "industries": [
+        "autonomy",
+        "robotics",
+        "automation",
+        "machine_vision",
+        "software",
+        "controls_engineering",
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "First Resonance",
+      "ats_type": "ashby",
+      "slug": "first-resonance",
+      "industries": [
+        "manufacturing",
+        "software",
+        "aerospace",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Atomic Industries",
+      "ats_type": "ashby",
+      "slug": "atomicindustries",
+      "industries": [
+        "manufacturing",
+        "automation",
+        "software",
+        "cnc"
+      ]
+    },
+    {
+      "name": "SmartRent",
+      "ats_type": "greenhouse",
+      "slug": "smartrent",
+      "industries": [
+        "iot",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "DroneDeploy",
+      "ats_type": "lever",
+      "slug": "dronedeploy",
+      "industries": [
+        "autonomy",
+        "software",
+        "robotics",
+        "machine_vision",
+        "applied_ai",
+        "iot"
+      ]
+    },
+    {
+      "name": "Gravis Robotics",
+      "ats_type": "lever",
+      "slug": "gravisrobotics",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "embedded",
+        "controls_engineering",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Runlayer",
+      "ats_type": "ashby",
+      "slug": "runlayer",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Forge Biologics",
+      "ats_type": "greenhouse",
+      "slug": "forgebiologics",
+      "industries": [
+        "manufacturing",
+        "automation",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Alif Semiconductor",
+      "ats_type": "lever",
+      "slug": "alifsemi",
+      "industries": [
+        "semiconductor",
+        "embedded",
+        "hardware",
+        "iot"
+      ]
+    },
+    {
+      "name": "Branch Insurance",
+      "ats_type": "greenhouse",
+      "slug": "branch",
+      "industries": [
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Diligent Robotics",
+      "ats_type": "greenhouse",
+      "slug": "diligentrobotics",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "autonomy",
+        "embedded",
+        "software",
+        "automation",
+        "hardware",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Flux",
+      "ats_type": "ashby",
+      "slug": "flux",
+      "industries": [
+        "hardware",
+        "software",
+        "applied_ai",
+        "embedded",
+        "manufacturing",
+        "semiconductor"
+      ]
+    },
+    {
+      "name": "Cobalt Robotics",
+      "ats_type": "lever",
+      "slug": "cobaltrobotics",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "embedded",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Zoo",
+      "ats_type": "greenhouse",
+      "slug": "zoo",
+      "industries": [
+        "applied_ai",
+        "cnc",
+        "manufacturing",
+        "hardware",
+        "software",
+        "automation"
+      ]
+    },
+    {
+      "name": "Waymark",
+      "ats_type": "greenhouse",
+      "slug": "waymark",
+      "industries": [
+        "software",
+        "applied_ai",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Traeger Grills",
+      "ats_type": "greenhouse",
+      "slug": "traegergrills",
+      "industries": [
+        "hardware",
+        "embedded",
+        "iot"
+      ]
+    },
+    {
+      "name": "AllSpice",
+      "ats_type": "ashby",
+      "slug": "allspice",
+      "industries": [
+        "hardware",
+        "software",
+        "embedded",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "GrayMatter Robotics",
+      "ats_type": "ashby",
+      "slug": "graymatter-robotics",
+      "industries": [
+        "robotics",
+        "automation",
+        "manufacturing",
+        "applied_ai",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Foxglove",
+      "ats_type": "ashby",
+      "slug": "foxglove",
+      "industries": [
+        "robotics",
+        "software",
+        "autonomy",
+        "embedded",
+        "applied_ai",
+        "iot"
+      ]
+    },
+    {
+      "name": "Luminovo",
+      "ats_type": "ashby",
+      "slug": "luminovo",
+      "industries": [
+        "hardware",
+        "software",
+        "manufacturing",
+        "embedded"
+      ]
+    },
+    {
+      "name": "General Robotics",
+      "ats_type": "ashby",
+      "slug": "generalrobotics",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "autonomy",
+        "automation"
+      ]
+    },
+    {
+      "name": "Embrace Pet Insurance",
+      "ats_type": "greenhouse",
+      "slug": "embrace",
+      "industries": [
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Collaborative Robotics (Cobot)",
+      "ats_type": "ashby",
+      "slug": "cobot",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "automation",
+        "controls_engineering",
+        "machine_vision",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Built Robotics",
+      "ats_type": "ashby",
+      "slug": "built-robotics",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "automation",
+        "controls_engineering",
+        "embedded",
+        "machine_vision",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Corvus Robotics",
+      "ats_type": "ashby",
+      "slug": "corvus-robotics",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "machine_vision",
+        "applied_ai",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Viam",
+      "ats_type": "greenhouse",
+      "slug": "viamrobotics",
+      "industries": [
+        "robotics",
+        "software",
+        "automation",
+        "iot"
+      ]
+    },
+    {
+      "name": "Dirac",
+      "ats_type": "greenhouse",
+      "slug": "diracinc",
+      "industries": [
+        "manufacturing",
+        "software",
+        "automation",
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "Chariot Defense",
+      "ats_type": "greenhouse",
+      "slug": "chariotdefense",
+      "industries": [
+        "defense",
+        "hardware",
+        "embedded",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Group14 Technologies",
+      "ats_type": "greenhouse",
+      "slug": "group14",
+      "industries": [
+        "battery",
+        "manufacturing",
+        "controls_engineering",
+        "climate"
+      ]
+    },
+    {
+      "name": "FourKites",
+      "ats_type": "greenhouse",
+      "slug": "fourkites",
+      "industries": [
+        "software",
+        "automation",
+        "iot",
+        "applied_ai",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Beam Benefits (Beam Dental)",
+      "ats_type": "greenhouse",
+      "slug": "beam",
+      "industries": [
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Reflex Robotics",
+      "ats_type": "ashby",
+      "slug": "reflexrobotics",
+      "industries": [
+        "robotics",
+        "embedded",
+        "controls_engineering",
+        "hardware",
+        "applied_ai",
+        "automation",
+        "motion_control"
+      ]
+    },
+    {
+      "name": "Third Wave Automation",
+      "ats_type": "greenhouse",
+      "slug": "thirdwaveautomation",
+      "industries": [
+        "autonomy",
+        "robotics",
+        "automation",
+        "motion_control",
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "ANELLO Photonics",
+      "ats_type": "greenhouse",
+      "slug": "anellophotonics",
+      "industries": [
+        "autonomy",
+        "hardware",
+        "embedded",
+        "semiconductor",
+        "robotics"
+      ]
+    },
+    {
+      "name": "Oden Technologies",
+      "ats_type": "ashby",
+      "slug": "oden-technologies",
+      "industries": [
+        "manufacturing",
+        "applied_ai",
+        "software",
+        "iot"
+      ]
+    },
+    {
+      "name": "Sema4.ai",
+      "ats_type": "ashby",
+      "slug": "sema4.ai",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Base Power Company",
+      "ats_type": "ashby",
+      "slug": "base",
+      "industries": [
+        "battery",
+        "energy",
+        "controls_engineering",
+        "hardware",
+        "climate"
+      ]
+    },
+    {
+      "name": "Mandolin",
+      "ats_type": "ashby",
+      "slug": "mandolin",
+      "industries": [
+        "software",
+        "applied_ai",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Robust AI",
+      "ats_type": "lever",
+      "slug": "robust-ai",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "automation",
+        "hardware",
+        "embedded"
+      ]
+    },
+    {
+      "name": "Markforged",
+      "ats_type": "greenhouse",
+      "slug": "markforged",
+      "industries": [
+        "additive_manufacturing",
+        "manufacturing",
+        "hardware",
+        "software",
+        "machine_vision"
+      ]
+    },
+    {
+      "name": "Boxbot",
+      "ats_type": "lever",
+      "slug": "boxbot",
+      "industries": [
+        "robotics",
+        "automation",
+        "hardware",
+        "embedded"
+      ]
+    },
+    {
+      "name": "CrossnoKaye",
+      "ats_type": "greenhouse",
+      "slug": "crossnokaye",
+      "industries": [
+        "controls_engineering",
+        "automation",
+        "plc",
+        "iot",
+        "software",
+        "energy"
+      ]
+    },
+    {
+      "name": "WeaveGrid",
+      "ats_type": "ashby",
+      "slug": "weave-grid",
+      "industries": [
+        "energy",
+        "software",
+        "ev",
+        "applied_ai",
+        "climate"
+      ]
+    },
+    {
+      "name": "Loop Returns",
+      "ats_type": "lever",
+      "slug": "loopreturns",
+      "industries": [
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Relay Robotics",
+      "ats_type": "lever",
+      "slug": "relayrobotics.com",
+      "industries": [
+        "robotics",
+        "autonomy",
+        "embedded",
+        "controls_engineering",
+        "software",
+        "automation",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Glacier",
+      "ats_type": "ashby",
+      "slug": "glacier",
+      "industries": [
+        "robotics",
+        "automation",
+        "machine_vision",
+        "applied_ai",
+        "climate"
+      ]
+    },
+    {
+      "name": "Reflect Orbital",
+      "ats_type": "ashby",
+      "slug": "reflect-orbital",
+      "industries": [
+        "space",
+        "aerospace",
+        "embedded",
+        "hardware",
+        "energy"
+      ]
+    },
+    {
+      "name": "Verne Robotics",
+      "ats_type": "ashby",
+      "slug": "verne robotics",
+      "industries": [
+        "robotics",
+        "automation",
+        "applied_ai",
+        "manufacturing"
+      ]
+    },
+    {
+      "name": "Trace Labs",
+      "ats_type": "ashby",
+      "slug": "tracelabs",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "machine_vision",
+        "autonomy",
+        "software"
+      ]
+    },
+    {
+      "name": "Updater",
+      "ats_type": "greenhouse",
+      "slug": "updater",
+      "industries": [
+        "software",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Aescape",
+      "ats_type": "ashby",
+      "slug": "aescape",
+      "industries": [
+        "robotics",
+        "applied_ai",
+        "motion_control",
+        "controls_engineering",
+        "hardware",
+        "machine_vision",
+        "automation",
+        "embedded"
+      ]
+    },
+    {
+      "name": "AON3D",
+      "ats_type": "greenhouse",
+      "slug": "aon3d",
+      "industries": [
+        "additive_manufacturing",
+        "manufacturing",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Tenex",
+      "ats_type": "ashby",
+      "slug": "tenexlabs",
+      "industries": [
+        "software",
+        "applied_ai",
+        "automation"
+      ]
+    },
+    {
+      "name": "Impulse Space",
+      "ats_type": "ashby",
+      "slug": "impulse",
+      "industries": [
+        "space",
+        "aerospace",
+        "controls_engineering",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Axuall",
+      "ats_type": "greenhouse",
+      "slug": "axuall",
+      "industries": [
+        "software",
+        "applied_ai",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Splash Financial",
+      "ats_type": "greenhouse",
+      "slug": "splashfinancial",
+      "industries": [
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "BlastPoint",
+      "ats_type": "greenhouse",
+      "slug": "blastpoint",
+      "industries": [
+        "software",
+        "applied_ai",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Ekumen",
+      "ats_type": "ashby",
+      "slug": "ekumenlabs",
+      "industries": [
+        "robotics",
+        "software",
+        "autonomy",
+        "embedded",
+        "controls_engineering"
+      ]
+    },
+    {
+      "name": "AMP Robotics",
+      "ats_type": "greenhouse",
+      "slug": "ampsortation",
+      "industries": [
+        "robotics",
+        "machine_vision",
+        "applied_ai",
+        "automation",
+        "climate"
+      ]
+    },
+    {
+      "name": "Emporia Energy",
+      "ats_type": "greenhouse",
+      "slug": "emporiarevolutionizinghomeenergy",
+      "industries": [
+        "energy",
+        "ev",
+        "embedded",
+        "hardware",
+        "iot"
+      ]
+    },
+    {
+      "name": "Arbor Batteries",
+      "ats_type": "ashby",
+      "slug": "arbor",
+      "industries": [
+        "battery",
+        "energy",
+        "hardware",
+        "manufacturing",
+        "midwest"
+      ]
+    },
+    {
+      "name": "SkySafe",
+      "ats_type": "lever",
+      "slug": "skysafe",
+      "industries": [
+        "defense",
+        "autonomy",
+        "embedded",
+        "software",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Apex Space",
+      "ats_type": "greenhouse",
+      "slug": "apex",
+      "industries": [
+        "space",
+        "aerospace",
+        "manufacturing",
+        "embedded",
+        "hardware"
+      ]
+    },
+    {
+      "name": "Cavnue",
+      "ats_type": "greenhouse",
+      "slug": "cavnue",
+      "industries": [
+        "autonomy",
+        "software",
+        "automation",
+        "iot",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Chestnut Carbon",
+      "ats_type": "lever",
+      "slug": "chestnutcarbon",
+      "industries": [
+        "climate",
+        "software"
+      ]
+    },
+    {
+      "name": "Patriot Software",
+      "ats_type": "greenhouse",
+      "slug": "55564patriot334567software868575745",
+      "industries": [
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Physna",
+      "ats_type": "direct",
+      "slug": "https://www.physna.com/careers",
+      "industries": [
+        "applied_ai",
+        "machine_vision",
+        "manufacturing",
+        "software",
+        "cnc",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Toolpath",
+      "ats_type": "direct",
+      "slug": "https://toolpath.com/join-team-toolpath",
+      "industries": [
+        "applied_ai",
+        "cnc",
+        "cam",
+        "manufacturing",
+        "software",
+        "ohio",
+        "midwest"
+      ]
+    },
+    {
+      "name": "Samsara",
+      "ats_type": "greenhouse",
+      "slug": "samsara",
+      "industries": [
+        "controls_engineering",
+        "iot",
+        "fleet"
+      ]
+    },
+    {
+      "name": "PsiQuantum",
+      "ats_type": "greenhouse",
+      "slug": "psiquantum",
+      "industries": [
+        "controls_engineering",
+        "semiconductor",
+        "quantum"
+      ]
+    },
+    {
+      "name": "Neuralink",
+      "ats_type": "greenhouse",
+      "slug": "neuralink",
+      "industries": [
+        "controls_engineering",
+        "medical",
+        "bci"
+      ]
+    },
+    {
+      "name": "Epirus",
+      "ats_type": "greenhouse",
+      "slug": "epirus",
+      "industries": [
+        "controls_engineering",
+        "defense",
+        "directed-energy"
+      ]
+    },
+    {
+      "name": "Noah Medical",
+      "ats_type": "greenhouse",
+      "slug": "noahmedical",
+      "industries": [
+        "controls_engineering",
+        "medical",
+        "robotics"
+      ]
+    },
+    {
+      "name": "Tenstorrent",
+      "ats_type": "greenhouse",
+      "slug": "tenstorrent",
+      "industries": [
+        "controls_engineering",
+        "semiconductor",
+        "compute"
+      ]
+    },
+    {
+      "name": "Atomic Machines",
+      "ats_type": "greenhouse",
+      "slug": "atomicmachines",
+      "industries": [
+        "controls_engineering",
+        "manufacturing",
+        "mems"
+      ]
+    },
+    {
+      "name": "Turion Space",
+      "ats_type": "ashby",
+      "slug": "turion-space",
+      "industries": [
+        "controls_engineering",
+        "aerospace",
+        "space"
+      ]
+    }
+  ]
+}

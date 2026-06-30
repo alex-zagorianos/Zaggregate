@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Job Harvester",
+  "version": "1.4",
+  "description": "Collect jobs as you browse LinkedIn, Indeed, Glassdoor, ZipRecruiter, and Dice — open a job and it also captures the full description & details. Sends to local tool on port 5002.",
+  "permissions": ["storage", "activeTab"],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://www.indeed.com/*",
+    "https://www.glassdoor.com/*",
+    "https://www.ziprecruiter.com/*",
+    "https://www.dice.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/jobs/*",
+        "https://www.indeed.com/*",
+        "https://www.glassdoor.com/Job/*",
+        "https://www.glassdoor.com/jobs/*",
+        "https://www.ziprecruiter.com/jobs/*",
+        "https://www.ziprecruiter.com/candidate/*",
+        "https://www.dice.com/jobs/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Job Harvester",
+    "default_badge_background_color": "#1a1a2e",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
