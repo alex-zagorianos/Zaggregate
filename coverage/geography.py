@@ -3,8 +3,14 @@ from coverage._paths import static_path
 
 @functools.lru_cache(maxsize=1)
 def _rows() -> list[dict]:
-    with static_path("cbsa_delineation.csv").open(encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f))
+    # Degrade gracefully: a missing/unreadable data file (e.g. data_static not
+    # bundled in a frozen build) must NOT crash the inbox - fall back to an empty
+    # CBSA table so metro_variants/classify still work on substring matching.
+    try:
+        with static_path("cbsa_delineation.csv").open(encoding="utf-8", newline="") as f:
+            return list(csv.DictReader(f))
+    except OSError:
+        return []
 
 def resolve_cbsa(city: str | None, state: str | None) -> str | None:
     if not city or not state:

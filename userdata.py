@@ -37,6 +37,17 @@ def scaffold(data_dir) -> list[str]:
         if not dst.exists() and src.exists():
             shutil.copyfile(src, dst)
             created.append(target_name)
+    # Seed the starter careers registry too. It lives at the bundle ROOT (app.spec
+    # ships companies.json there), not under data_templates/. Without this a
+    # locked-down (LOCALAPPDATA) install or any non-exe first run gets only the
+    # tiny hardcoded REGISTRY. Resolve from the templates bundle's parent so this
+    # tracks the same bundle the templates came from (in production that parent IS
+    # config.DATA_DIR, the PyInstaller bundle root).
+    companies_dst = data_dir / "companies.json"
+    companies_src = tdir.parent / "companies.json"
+    if not companies_dst.exists() and companies_src.exists():
+        shutil.copyfile(companies_src, companies_dst)
+        created.append("companies.json")
     return created
 
 

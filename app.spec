@@ -15,6 +15,7 @@ datas = [
     # via userdata.bootstrap(). companies.json is the public starter careers
     # registry (board slugs only — not personal).
     ('companies.json', '.'),
+    ('data_static', 'data_static'),
     ('data_templates', 'data_templates'),
     ('search/templates', 'search/templates'),
     ('resume/templates', 'resume/templates'),
@@ -73,7 +74,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     target_arch=None,
@@ -87,7 +88,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='JobProgram',
 )
