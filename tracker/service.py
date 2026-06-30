@@ -333,6 +333,8 @@ def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> 
     fit_rationale -> fit_why (via inbox_set_fit, which snapshots score_history),
     and the optional extras blob MERGED into inbox.extras (preserving
     new_batch/browse/etc). Returns rows updated."""
+    import uuid
+    batch = uuid.uuid4().hex[:12]
     applied = 0
     for u in updates:
         try:
@@ -341,7 +343,7 @@ def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> 
         except (KeyError, TypeError, ValueError):
             continue
         db.inbox_set_fit(inbox_id, fit, str(u.get("fit_rationale", "") or ""),
-                         source=source)
+                         source=source, batch=batch)
         extras = u.get("extras")
         if extras:
             patch = extras if isinstance(extras, dict) else None
