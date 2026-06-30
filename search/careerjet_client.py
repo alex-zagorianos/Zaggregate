@@ -1,5 +1,6 @@
 """Careerjet public search API — free affiliate id (CAREERJET_AFFID) required.
 Key-optional: without an affid the client logs loudly and degrades to empty."""
+import hashlib
 from typing import Optional
 
 from config import CAREERJET_AFFID, CAREERJET_RATE_LIMIT, CAREERJET_URL
@@ -46,7 +47,7 @@ class CareerjetClient(SingleFeedClient):
                 url=item.get("url", "") or "",
                 source_keyword=source_keyword,
                 created=item.get("date", "") or "",
-                job_id=f"careerjet_{abs(hash(item.get('url', '')))}",
+                job_id=f"careerjet_{hashlib.md5((item.get('url', '') or '').encode('utf-8')).hexdigest()[:12]}",
                 source_api="careerjet",
             ))
         return results

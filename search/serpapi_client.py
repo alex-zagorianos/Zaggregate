@@ -44,6 +44,10 @@ class SerpApiClient(JobAPIClient):
 
     def search(self, keyword: str, location: str = "Cincinnati, OH",
                salary_min: Optional[int] = None, page: int = 1) -> dict:
+        # SerpApi Google Jobs is single-page here; a page>1 request would re-fetch
+        # page 1, spend another quota unit, and return duplicates. Short-circuit.
+        if page > 1:
+            return {"jobs_results": []}
         key = cache_key("serpapi", keyword, location, page)
         if self.cache_enabled:
             cached = self.cache.get(key)
