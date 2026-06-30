@@ -81,8 +81,14 @@ def build_prompt(profile_md: str) -> str:
     """The versioned re-rank prompt: the same scoring guide the bridge/API use,
     plus the user's preferences profile, plus explicit round-trip instructions
     (fill new_fit/new_rank/fit_rationale; leave job_key untouched)."""
-    from claude_bridge import _FIT_INSTRUCTIONS, DEFAULT_FIT_PREFERENCE
-    guide = _FIT_INSTRUCTIONS.replace("__PREFERENCE__", DEFAULT_FIT_PREFERENCE.strip())
+    # Only the scoring SCALE - NOT the bridge's "respond with a JSON array
+    # {i,token,fit}" contract, which contradicts this route's CSV/job_key answer.
+    guide = ("Scoring guide: 90+ apply today; 70-89 strong; 50-69 plausible "
+             "stretch; <50 skip. Judge against the candidate's real experience "
+             "level - do not inflate. A role requiring 10+ years or an active "
+             "clearance the candidate lacks caps at 40. The candidate prefers "
+             "smaller companies: when fit is otherwise comparable, rank the "
+             "smaller firm higher.")
     cols = ", ".join(RERANK_CSV_COLUMNS)
     return "\n".join([
         f"# Job re-rank request (prompt version {PROMPT_VERSION})",
