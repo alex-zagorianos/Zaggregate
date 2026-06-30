@@ -5,7 +5,9 @@ homepage careers-anchor regex (one-hop). All HTTP behind _get() so tests mock
 one seam. Fail-soft: every step returns None/[] on error, never raises.
 """
 from __future__ import annotations
+import ipaddress
 import re
+import socket
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
@@ -17,10 +19,39 @@ _JOB_RE = re.compile(r"job|career|position|opening|vacanc", re.I)
 _HEADERS = {"User-Agent": "JobSearchTool/1.0 (personal use)"}
 
 
+def _url_ok(url: str) -> bool:
+    """SSRF guard for LLM/user-supplied domains: only http(s), and reject any URL
+    whose host resolves to a loopback/private/link-local/reserved/multicast IP."""
+    try:
+        p = urlsplit(url)
+    except Exception:
+        return False
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(p.hostname, None)
+    except Exception:
+        return False
+    for info in infos:
+        try:
+            addr = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (addr.is_private or addr.is_loopback or addr.is_link_local
+                or addr.is_reserved or addr.is_multicast or addr.is_unspecified):
+            return False
+    return True
+
+
 def _get(url: str) -> str | None:
+    if not _url_ok(url):
+        return None
     try:
         resp = make_session().get(url, headers=_HEADERS, timeout=20)
         resp.raise_for_status()
+        # Re-check after redirects so a public host can't bounce us to an internal IP.
+        if not _url_ok(resp.url):
+            return None
         return resp.text
     except Exception:
         return None
