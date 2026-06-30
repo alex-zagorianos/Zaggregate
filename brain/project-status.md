@@ -474,3 +474,32 @@ location-\_sort* tiebreak hardcodes remote_ok=True (inbox **scoring** honors pre
   at v4** — S18 browse metadata + S19 tier state ride JSON (extras / registry_state.json; no migration).
 - **S19 new entry points:** `py enumerate_companies.py` (grow the registry; API or clipboard-bridge),
   `"tiered_scrape": true` project-config flag (tiered daily run).
+
+## Session 20 — 2026-06-30 (Opus 4.8 + GLM + Sonnet) — deep review + remediation buildout
+
+Reviewed the whole app (41 verified findings via a multi-agent workflow), ran a **live new-user
+test of the built `.exe`**, then fixed **every** finding via a plan-mode-approved remediation
+delegated across **GLM** (cheap engine fixes, `cc-delegate`) and **Sonnet** (the Scrapling seam +
+the delicate gui.py UX cluster), with Opus doing build-judgment/delicate bits inline. **ALL LOCAL
+on `master`, push HELD.** Full record: [[../handoff_20260630_session20]]; plan
+`brain/plan-2026-06-30-review-remediation.md` (coverage map). Suite **725 → 841**.
+
+- 🔴 **CRITICAL found + fixed + re-verified on the rebuilt exe:** the distributable crashed on
+  first real use — `app.spec` never bundled `data_static/`, so the inbox's default "Local + remote"
+  filter hit a missing `cbsa_delineation.csv` → windowed exe died ("Unhandled exception in script").
+  Only surfaces with a _populated_ inbox in the _frozen_ build (empty-inbox launch passes). Fixed
+  (bundle + graceful `geography._rows`); rebuilt exe boots on the populated inbox.
+- **Schema v4 → v5** (`score_history.batch`, additive ALTER; undo now reverts the whole rerank
+  batch + clears Top-Picks rank).
+- **Scrapling integrated (lean-exe variant — Alex's call):** lazy stealth/JS fetch fallback in
+  `direct_scraper` (config-gated, graceful no-op); **Tools ▸ Enable stealth fetching** downloads
+  Chromium (~300 MB) on demand; app.spec bundles scrapling/playwright python+driver, NOT the 1.4 GB
+  browsers. New dep `scrapling` in requirements.txt.
+- **Top Picks now fills from the FREE clipboard pass** (was empty for the taught workflow); **New
+  Project** registers a "Default" project so the root inbox isn't orphaned; **tracker CSRF/Origin
+  guard**; `safe_url` on all URL-open sinks; Indeed `?jk=` preserved (extension manifest **1.4**);
+  Ashby prune via board-API; many parser/gate accuracy fixes.
+- **Deferred (1):** F25 (job_key-collision on import scores only the first row) — `inbox_rows_by_key`
+  has ~15 dependents; a collision means two canonically-identical postings (first-row-wins is
+  acceptable, the other keeps its local score, not dropped). Revisit with a batch_id 1:1 join if needed.
+- **Needs Alex:** eyeball `py gui.py` → **push ~98 commits**; reload extension (manifest 1.4).

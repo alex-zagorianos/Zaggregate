@@ -1,8 +1,8 @@
 ---
 title: Review Remediation + Scrapling Integration — implementation plan
 date: 2026-06-30
-status: plan (awaiting approval)
-execution: delegate to GLM executor (cc-delegate), Opus verifies + escalates
+status: EXECUTED 2026-06-30 (all waves merged; suite 725→841). F25 deferred (see handoff). push HELD.
+execution: GLM (cc-delegate) for engine fixes + Sonnet agents for Scrapling seam & gui.py; Opus inline for delicate/build bits
 tags: [plan, fixes, packaging, scraper, security, scrapling]
 ---
 
