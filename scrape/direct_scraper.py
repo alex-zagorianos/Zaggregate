@@ -15,10 +15,28 @@ _JOB_URL_PATTERNS = ("/job/", "/jobs/", "/opening/", "/openings/", "/position/",
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 
+def _looks_js_shell(html: str) -> bool:
+    """True when the HTML looks like a JS-gated SPA shell: very short or
+    contains no anchor elements that a browser would render. Used to decide
+    whether to escalate to the Scrapling fallback on an apparent 200 response."""
+    stripped = html.strip()
+    if len(stripped) < 2000:
+        return True
+    # No <a  links -> nothing for link-extraction to find; probably client-rendered.
+    if "<a " not in stripped.lower():
+        return True
+    return False
+
+
 def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> str | None:
     """Fetch (or read cached) HTML for a company's page, with the shared
     negative-failure cache. Returns None on a known-dead or failed fetch.
-    Factored out so the JSON-LD scraper can reuse the same fetch + cache path."""
+    Factored out so the JSON-LD scraper can reuse the same fetch + cache path.
+
+    When a plain requests fetch fails (403/anti-bot/timeout) or returns a
+    JS-only shell, the Scrapling stealth fetcher is tried as a fallback if
+    config.SCRAPLING_FALLBACK is true and the scrapling package is installed.
+    The fallback is lazy-imported so normal runs never touch scrapling."""
     url_hash = hashlib.md5(company.slug.encode()).hexdigest()[:12]
     cache_file = cache_dir / f"direct_{url_hash}.html"
     # Negative-cache marker: a dead URL (404/403/timeout) was retried once per
@@ -42,10 +60,32 @@ def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> 
             resp.raise_for_status()
             html = resp.text
         except Exception as e:
-            print(f"  [direct] {company.name}: fetch error — {e}")
+            print(f"  [direct] {company.name}: fetch error -- {e}")
+            # (a) Try stealth fallback before marking the URL as dead.
+            import config
+            from scrape import stealth_fetch
+            if config.SCRAPLING_FALLBACK and stealth_fetch.available():
+                print(f"  [direct] {company.name}: escalating to stealth fetch")
+                html = stealth_fetch.fetch_html(company.slug)
+                if html:
+                    if cache_enabled:
+                        write_cache(cache_file, html)
+                    return html
+            # Both requests and stealth fallback failed.
             if cache_enabled:
                 mark_failed(failed_file)
             return None
+
+        # (b) 200 response but JS-only shell -- try stealth fetch for rendered HTML.
+        if _looks_js_shell(html):
+            import config
+            from scrape import stealth_fetch
+            if config.SCRAPLING_FALLBACK and stealth_fetch.available():
+                print(f"  [direct] {company.name}: JS shell detected, escalating to stealth fetch")
+                fallback = stealth_fetch.fetch_html(company.slug)
+                if fallback:
+                    html = fallback
+
         if cache_enabled:
             write_cache(cache_file, html)
     return html

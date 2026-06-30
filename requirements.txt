@@ -13,3 +13,6 @@ rapidfuzz==3.14.5
 defusedxml==0.7.1
 # Modern flat GUI theme engine (ui/theme.py). Pure-Python; pulls in Pillow.
 ttkbootstrap==1.20.4
+# Optional stealth/JS fetch fallback (scrape/stealth_fetch.py). Browser binaries
+# are a separate one-time `scrapling install`; absent package => graceful no-op.
+scrapling
