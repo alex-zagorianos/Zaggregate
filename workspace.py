@@ -1,11 +1,15 @@
 """Workspace = the active job-search *project*. A project groups everything for
-one search campaign — its config, resume base, inbox/applications/dismissed
-(tracker.db), and generated output — under projects/<slug>/, so two campaigns
+one search campaign -- its config, resume base, inbox/applications/dismissed
+(tracker.db), and generated output -- under projects/<slug>/, so two campaigns
 (e.g. controls-cincinnati and dad-health-informatics) never mix.
 
 Paths are resolved at call-time from projects/projects.json, so the app can
 switch the active project at runtime. Back-compat: when no projects/ dir exists
 (pre-migration), every path falls back to the current root, so nothing changes.
+
+First-project migration: when the FIRST real project is created, the existing
+root workspace is automatically registered as "default" so its inbox, config,
+and experience stay reachable in the project switcher.
 
 Shared (NOT per-project): .env keys, cache/, companies.json, source/scraper code.
 """
@@ -15,6 +19,10 @@ from datetime import date
 from pathlib import Path
 
 import config
+
+# Slug for the pre-migration root workspace entry.  project_dir("default") always
+# resolves to BASE_DIR so every existing root-level file is reachable unchanged.
+_ROOT_SLUG = "default"
 
 # The user data folder (external + writable) is the project root. config resolves
 # it: the repo root in dev, <exe>/data when frozen — so projects/ and tracker.db
@@ -86,9 +94,10 @@ def active_slug() -> str | None:
 
 
 def project_dir(slug: str | None = None) -> Path:
-    """The active (or named) project's data root. Root BASE_DIR pre-migration."""
+    """The active (or named) project's data root. ROOT BASE_DIR pre-migration and
+    always for the 'default' slug so existing root files stay reachable."""
     slug = slug or active_slug()
-    if not has_projects() or not slug:
+    if not has_projects() or not slug or slug == _ROOT_SLUG:
         return BASE_DIR
     return _projects_dir() / slug
 
@@ -108,7 +117,12 @@ def output_dir(slug=None) -> Path:
 
 
 def config_path(slug=None) -> Path:
-    return (BASE_DIR / "user_config.json") if not has_projects() else project_dir(slug) / "config.json"
+    # The root workspace used "user_config.json"; named projects use "config.json".
+    # "default" is a registry alias for BASE_DIR, so it keeps the old filename.
+    resolved = slug or active_slug()
+    if not has_projects() or not resolved or resolved == _ROOT_SLUG:
+        return BASE_DIR / "user_config.json"
+    return project_dir(resolved) / "config.json"
 
 
 def preferences_paths(slug=None) -> tuple[Path, Path]:
@@ -140,6 +154,22 @@ def save_config(cfg: dict, slug=None) -> Path:
 
 
 # ── mutations ─────────────────────────────────────────────────────────────────
+
+def _ensure_default_root_registered(today: str | None = None) -> None:
+    """Register the pre-migration root workspace as slug 'default' so it stays
+    reachable in the project switcher after the first real project is created.
+    No-op when 'default' is already registered. Does NOT move or delete any files;
+    project_dir('default') always resolves to BASE_DIR."""
+    reg = _registry()
+    existing = {p["slug"] for p in reg.get("projects", [])}
+    if _ROOT_SLUG not in existing:
+        reg.setdefault("projects", []).insert(0, {
+            "slug": _ROOT_SLUG, "name": "Default",
+            "created": today or date.today().isoformat(), "daily": False,
+        })
+        _write_registry(reg)
+
+
 def slugify(name: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return s or "project"
@@ -157,7 +187,16 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
                    copy_resume_from: str | Path | None = None,
                    make_active: bool = False, today: str | None = None) -> str:
     """Create projects/<slug>/ with config.json, experience.md, output/. Returns
-    the slug. copy_resume_from = a project slug or a path to seed experience.md."""
+    the slug. copy_resume_from = a project slug or a path to seed experience.md.
+
+    When this is the very FIRST project (no registry exists yet), the existing root
+    workspace is automatically registered as 'default' first so the root inbox,
+    config, and experience stay reachable via the project switcher after the switch.
+    """
+    # First-project guard: register the root as "default" before creating a new
+    # campaign, so the existing data is never orphaned in the switcher.
+    if not has_projects():
+        _ensure_default_root_registered(today=today)
     slug = slug or slugify(name)
     reg = _registry()
     existing = {p["slug"] for p in reg.get("projects", [])}

@@ -113,3 +113,74 @@ def test_apply_colocates_preferences_with_active_project(isolated):
     loaded = preferences.load()                      # bare -> active project
     assert loaded["hard"]["target_roles"] == ["plc engineer"]
     assert "automation" in loaded["profile_md"]
+
+
+# ── Item 4: wizard pre-populate ───────────────────────────────────────────────
+
+def test_prefill_from_existing_uses_prefs_and_cfg():
+    """prefill_from_existing() correctly reads roles/location/salary/about
+    from the preferences dict and the search-config dict (pure, no I/O)."""
+    prefs = {
+        "hard": {
+            "target_roles": ["controls engineer", "plc programmer"],
+            "locations": ["Cincinnati, OH"],
+            "remote_ok": False,
+            "salary_min": 95000,
+        },
+        "profile_md": (
+            "# My Job Preferences\n\n"
+            "Target roles / keywords: controls engineer\n\n"
+            "## About me / what I'm looking for\n\n"
+            "I love motion control and automation.\n"
+        ),
+    }
+    cfg = {"keywords": ["old keyword"], "location": "Columbus"}
+    out = sw.prefill_from_existing(prefs=prefs, cfg=cfg)
+    # roles come from hard.target_roles (not cfg.keywords)
+    assert "controls engineer" in out["roles"]
+    assert "plc programmer" in out["roles"]
+    # location comes from hard.locations[0]
+    assert out["location"] == "Cincinnati, OH"
+    # remote_ok
+    assert out["remote_ok"] is False
+    # salary_min as string
+    assert out["salary_min"] == "95000"
+    # about extracted from profile_md
+    assert "I love motion control" in out["about"]
+
+
+def test_prefill_falls_back_to_cfg_when_no_hard_roles():
+    """When hard.target_roles is empty, prefill falls back to cfg.keywords."""
+    prefs = {"hard": {"target_roles": [], "locations": [], "remote_ok": True,
+                      "salary_min": None}, "profile_md": ""}
+    cfg = {"keywords": ["mechanical engineer"], "location": "Remote"}
+    out = sw.prefill_from_existing(prefs=prefs, cfg=cfg)
+    assert "mechanical engineer" in out["roles"]
+    assert out["location"] == "Remote"
+
+
+def test_prefill_empty_when_nothing_configured():
+    """prefill with no data returns safe empty defaults."""
+    out = sw.prefill_from_existing(prefs={}, cfg={})
+    assert out["roles"] == ""
+    assert out["location"] == ""
+    assert out["remote_ok"] is True
+    assert out["salary_min"] == ""
+    assert out["about"] == ""
+
+
+def test_prefill_about_not_contaminated_by_other_sections():
+    """The 'about' extraction stops after the marker; other md sections are not
+    included (they would confuse the user seeing a long pre-filled block)."""
+    prefs = {
+        "hard": {},
+        "profile_md": (
+            "# Prefs\n\n"
+            "Target roles: foo\n\n"
+            "## About me / what I'm looking for\n\n"
+            "Just the about text here.\n"
+        ),
+    }
+    out = sw.prefill_from_existing(prefs=prefs, cfg={})
+    assert "Just the about text here." in out["about"]
+    assert "Target roles" not in out["about"]
