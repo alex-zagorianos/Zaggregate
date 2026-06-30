@@ -502,4 +502,4 @@ on `master`, push HELD.** Full record: [[../handoff_20260630_session20]]; plan
 - **Deferred (1):** F25 (job_key-collision on import scores only the first row) — `inbox_rows_by_key`
   has ~15 dependents; a collision means two canonically-identical postings (first-row-wins is
   acceptable, the other keeps its local score, not dropped). Revisit with a batch_id 1:1 join if needed.
-- **Needs Alex:** eyeball `py gui.py` → **push ~98 commits**; reload extension (manifest 1.4).
+- **Needs Alex:** eyeball `py gui.py` → **push the 79 local commits**; reload extension (manifest 1.4).

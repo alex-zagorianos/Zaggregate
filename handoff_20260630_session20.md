@@ -7,7 +7,7 @@
 
 ## TL;DR
 
-- master `eecaf3a` → **+~40 commits** (now ~**98 ahead** of origin), tree clean.
+- master `eecaf3a` → **+40 commits** (now **79 ahead** of origin), tree clean.
   Suite **725 → 841 passing** (`py -m pytest -q`, ~15s; 1 display-gated skip headless).
 - **The flagship find:** the shipped `.exe` crashed on first real use — `app.spec`
   never bundled `data_static/`, so the inbox's default "Local + remote" filter hit a
@@ -71,7 +71,7 @@ every finding → wave). Delegate plans: `ZAG0001 - Local AI Stack/delegate-plan
 ## Needs Alex
 
 - **Eyeball `py gui.py`** (new Tools ▸ Enable stealth fetching; Search ▸ Save; wizard re-run
-  pre-fill; New-Project shows "Default") → then **push** the ~98 local commits.
+  pre-fill; New-Project shows "Default") → then **push** the 79 local commits.
 - Reload the unpacked extension (manifest 1.4) for the Indeed `?jk=` fix.
 - New deps in `requirements.txt`: `scrapling` (+ its tree). The exe build now bundles them; the
   ~300 MB browser download is on-demand via the Tools menu (or `scrapling install`).

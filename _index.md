@@ -43,11 +43,12 @@ Wide-net search → preferences JSON hard-gate → local 0–100 match scoring (
 ## Open (next — Alex's machine/decision only)
 
 - [ ] **Live coverage baseline number** — the lift-gates prove improvement on fixtures; a real area measurement needs a live network run (free sources need no keys), best done interactively.
-- [ ] **Push the 5 local commits** (Session 14 UI/UX + dark mode + AI guide; Session 15 location filter + Top Picks) to `origin/master` once Alex eyeballs `py gui.py` — committed locally only. Check both light & dark, and the new **Top Picks** tab.
+- [ ] **Push the 79 local commits** (Sessions 14–20) to `origin/master` once Alex eyeballs `py gui.py` — committed locally only. Check the new **Tools ▸ Enable stealth fetching**, **Search ▸ Save**, wizard re-run pre-fill, and that **New Project** shows a "Default" entry.
+- [ ] **Reload the unpacked extension** (manifest 1.4) for the Indeed `?jk=` link fix.
 - [ ] **Build + test the exe:** `py build_package.py` → `dist/JobScout.zip`. GUI is windowed → needs a live launch (`py gui.py` also sanity-checks the merge). If the frozen exe hits an `ImportError`, add the module to `app.spec` `hiddenimports`.
 - [ ] **docx title-line decision** — kept relaunch bold-concat `Company — Title`; flip to allfixes ATS-split on request.
 - [ ] Optional: WS-3 undo `batch_id` (vs second-precision ts grouping); per-project scheduler (Projects Phase 4); company remove/edit UI; delete root `tracker.db.bak`.
 
 ---
 
-_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 15" + latest handoff. Last updated 2026-06-22._
+_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 20" + `handoff_20260630_session20.md`. Last updated 2026-06-30 (Session 20: review + fix-all-findings remediation; 725→841 tests; 79 ahead, push held)._
