@@ -188,9 +188,11 @@ def init_db() -> bool:
                 new_fit   INTEGER,
                 old_score INTEGER,
                 source    TEXT DEFAULT '',
+                batch     TEXT DEFAULT '',
                 ts        TEXT NOT NULL
             )
         """)
+        _safe_add_column(conn, "score_history", "batch", "TEXT DEFAULT ''")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_score_history_inbox "
                      "ON score_history(inbox_id)")
         # v4 (TASK C): lightweight local contacts/referral CRM — the networking
@@ -566,12 +568,19 @@ def inbox_all(order: str = "roundrobin") -> list[dict]:
     return out
 
 
-def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual"):
+def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual", batch: str = ""):
     """Set an inbox row's fit + why. Snapshots the prior fit/score to
     score_history BEFORE the UPDATE (mirrors the status_history precedent), so
     a re-rank can be undone and before/after diffed. `source` tags the change
     ('manual', 'file_import', ...)."""
     from datetime import datetime, timezone
+    # A batch groups one logical re-rank so undo reverts the whole set at once.
+    # apply_rerank_scores passes one shared id; a direct/manual call gets its own
+    # singleton batch so it's still individually undoable (never an empty batch,
+    # which the batch-keyed undo would skip).
+    if not batch:
+        import uuid
+        batch = uuid.uuid4().hex[:12]
     def _job_key_of(row) -> str:
         try:
             from models import JobResult
@@ -591,10 +600,11 @@ def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual"):
         if row is not None:
             conn.execute(
                 "INSERT INTO score_history "
-                "(inbox_id, job_key, old_fit, new_fit, old_score, source, ts) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "(inbox_id, job_key, old_fit, new_fit, old_score, source, batch, ts) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 (inbox_id, _job_key_of(row), row["fit"], fit, row["score"],
-                 source, datetime.now(timezone.utc).replace(microsecond=0).isoformat()))
+                 source, batch,
+                 datetime.now(timezone.utc).replace(microsecond=0).isoformat()))
         conn.execute("UPDATE inbox SET fit=?, fit_why=? WHERE id=?",
                      (fit, why, inbox_id))
         conn.commit()
@@ -631,32 +641,49 @@ def inbox_merge_extras(inbox_id: int, patch: dict):
 
 
 def inbox_undo_last_rerank(scope: str) -> int:
-    """Revert the most recent re-rank batch: restore each inbox row's fit to the
-    old_fit recorded in the newest score_history timestamp group for `scope`
-    ('any' = ignore source). Deletes the reverted history rows. Returns rows
-    restored."""
+    """Revert the most recent re-rank BATCH: restore each inbox row's fit to the
+    old_fit recorded for the newest score_history `batch` matching `scope`
+    ('any' = ignore source). Also strips rank/rec_batch from those rows' extras so
+    Top Picks drops the undone shortlist. Deletes the reverted history rows.
+    Returns rows restored."""
+    import json
     with get_conn() as conn:
         if scope == "any":
-            row = conn.execute("SELECT MAX(ts) AS ts FROM score_history").fetchone()
+            row = conn.execute(
+                "SELECT batch FROM score_history WHERE batch != '' "
+                "ORDER BY ts DESC, id DESC LIMIT 1").fetchone()
         else:
             row = conn.execute(
-                "SELECT MAX(ts) AS ts FROM score_history WHERE source=?",
-                (scope,)).fetchone()
-        last_ts = row["ts"] if row else None
-        if not last_ts:
+                "SELECT batch FROM score_history WHERE batch != '' AND source=? "
+                "ORDER BY ts DESC, id DESC LIMIT 1", (scope,)).fetchone()
+        last_batch = row["batch"] if row else None
+        if not last_batch:
             return 0
         if scope == "any":
             hist = conn.execute(
-                "SELECT id, inbox_id, old_fit FROM score_history WHERE ts=?",
-                (last_ts,)).fetchall()
+                "SELECT id, inbox_id, old_fit FROM score_history WHERE batch=?",
+                (last_batch,)).fetchall()
         else:
             hist = conn.execute(
                 "SELECT id, inbox_id, old_fit FROM score_history "
-                "WHERE ts=? AND source=?", (last_ts, scope)).fetchall()
+                "WHERE batch=? AND source=?", (last_batch, scope)).fetchall()
         restored = 0
         for h in hist:
             conn.execute("UPDATE inbox SET fit=? WHERE id=?",
                          (h["old_fit"], h["inbox_id"]))
+            # F23: drop the shortlist keys so top_picks() no longer surfaces this batch.
+            erow = conn.execute("SELECT extras FROM inbox WHERE id=?",
+                                (h["inbox_id"],)).fetchone()
+            if erow and erow["extras"]:
+                try:
+                    blob = json.loads(erow["extras"])
+                except (ValueError, TypeError):
+                    blob = None
+                if isinstance(blob, dict):
+                    blob.pop("rank", None)
+                    blob.pop("rec_batch", None)
+                    conn.execute("UPDATE inbox SET extras=? WHERE id=?",
+                                 (json.dumps(blob), h["inbox_id"]))
             conn.execute("DELETE FROM score_history WHERE id=?", (h["id"],))
             restored += 1
         conn.commit()
