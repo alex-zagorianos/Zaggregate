@@ -2966,5 +2966,38 @@ class App(tk.Tk):
             pass
 
 
+def _log_fatal(exc: BaseException) -> str:
+    """Write a fatal startup/runtime traceback to output/gui_error.log and return
+    it. Used by main() so a CONSTRUCTION-time crash in a windowed build leaves a
+    log + dialog instead of the raw PyInstaller 'Unhandled exception' box."""
+    import traceback
+    from datetime import datetime
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    try:
+        from config import OUTPUT_DIR
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        with open(OUTPUT_DIR / "gui_error.log", "a", encoding="utf-8") as fh:
+            fh.write(f"\n[{datetime.now().isoformat()}]\n{tb}\n")
+    except Exception:
+        pass
+    return tb
+
+
+def main() -> int:
+    try:
+        App().mainloop()
+        return 0
+    except Exception as e:
+        _log_fatal(e)
+        try:
+            messagebox.showerror(
+                "JobScout could not start",
+                "An unexpected error occurred at startup. Details were saved to "
+                "output/gui_error.log.")
+        except Exception:
+            pass
+        return 1
+
+
 if __name__ == "__main__":
-    App().mainloop()
+    raise SystemExit(main())
