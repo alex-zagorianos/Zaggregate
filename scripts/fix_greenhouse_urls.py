@@ -13,8 +13,9 @@ Slugs: hosted-path links carry the slug; company-embed `gh_jid` links don't, so
 the slug is resolved from the company name via the registry. Unresolvable rows
 are left untouched. Safe to re-run (idempotent).
 
-Run: py -m scripts.fix_greenhouse_urls [--dry-run] [--all-projects]
+Run: py -m scripts.fix_greenhouse_urls [--dry-run] [--all-projects] [--project SLUG]
 """
+import argparse
 import sqlite3
 import sys
 from pathlib import Path
@@ -85,12 +86,26 @@ def _all_project_dbs() -> list[tuple[str, Path]]:
 
 
 if __name__ == "__main__":
-    dry = "--dry-run" in sys.argv
+    import workspace
+    ap = argparse.ArgumentParser(description="Backfill Greenhouse inbox URLs.")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--all-projects", action="store_true")
+    ap.add_argument("--project", default=None,
+                    help="Operate on this project (default: active). Pinned "
+                         "once so a concurrent switch can't move our target DB.")
+    args = ap.parse_args()
+
+    dry = args.dry_run
     tag = "[dry-run] would fix" if dry else "fixed"
-    if "--all-projects" in sys.argv:
+    if args.all_projects:
         targets = _all_project_dbs()
     else:
-        targets = [("(active)", current_db_path())]
+        # Resolve the target project ONCE and pin it for the whole run, so a
+        # concurrent GUI switch / daily_run can't redirect current_db_path()
+        # mid-run (the S27 cross-project write class).
+        slug = args.project or workspace.active_slug()
+        workspace.pin_active(slug)
+        targets = [(slug or "(active)", current_db_path())]
     grand = [0, 0, 0]
     for slug, db in targets:
         f, s, d = fix(db_path=db, dry_run=dry)

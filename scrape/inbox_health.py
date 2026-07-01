@@ -22,6 +22,7 @@ import requests
 
 from config import CAREERS_REQUEST_TIMEOUT
 from scrape import greenhouse_url
+from tracker.db import current_db_path
 
 _UA = {"User-Agent": "Mozilla/5.0 (job-program inbox-health probe)"}
 _GH_JOB = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{token}"
@@ -93,13 +94,34 @@ def prune_inbox(
     probe: Callable[[str], Optional[bool]] = _probe,
     dry_run: bool = False,
     sources=_CAREERS_SOURCES,
+    project: Optional[str] = None,
 ) -> list[dict]:
     """Probe every career inbox row; DELETE the ones that 404. Returns the list
     of removed rows as {title, company, url}. With dry_run=True, reports what
-    WOULD be removed without deleting."""
-    from tracker.db import current_db_path
+    WOULD be removed without deleting.
 
-    db_path = db_path or current_db_path()
+    Resolves the target project ONCE and pins it for the whole (slow, network-
+    bound) probe loop, so a concurrent GUI project switch / daily_run can't
+    redirect current_db_path() mid-run and make us delete rows from a DIFFERENT
+    project's inbox (the S27 cross-project write class). An explicit `db_path`
+    still wins and skips pinning; `project` overrides the active slug. The prior
+    process pin is restored on exit."""
+    import workspace
+
+    if db_path is not None:
+        # Caller gave an authoritative DB; do NOT touch the process pin.
+        return _prune_inbox_at(db_path, probe, dry_run, sources)
+
+    prior_pin = workspace._PINNED_SLUG
+    # Pin the resolved slug once so every current_db_path() below is stable.
+    workspace.pin_active(project or workspace.active_slug())
+    try:
+        return _prune_inbox_at(current_db_path(), probe, dry_run, sources)
+    finally:
+        workspace.pin_active(prior_pin)
+
+
+def _prune_inbox_at(db_path, probe, dry_run, sources) -> list[dict]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     rows = conn.execute(

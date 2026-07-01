@@ -102,3 +102,55 @@ def test_default_probe_dispatches_by_ats(monkeypatch):
     assert "api.ashbyhq.com/posting-api/job-board/acme" in calls[-1]
     # workday / direct are not reliably probeable -> unknown (keep)
     assert ih._probe("https://cat.wd5.myworkdayjobs.com/x/job/1") is None
+
+
+# ── A3: resolve+pin the project once for the (slow) probe loop ─────────────────
+def test_prune_pins_active_project_for_the_run(tmp_path, monkeypatch):
+    """With no explicit db_path, prune_inbox resolves via current_db_path UNDER a
+    pin, so a concurrent project switch mid-probe can't move the target DB."""
+    import scrape.inbox_health as ih
+    import workspace
+
+    db = tmp_path / "t.db"
+    _seed(db, [("D", "Dead",
+                "https://job-boards.greenhouse.io/embed/job_app?for=d&token=2", "careers")])
+
+    pins = []
+    monkeypatch.setattr(workspace, "pin_active", lambda s: pins.append(s))
+    monkeypatch.setattr(workspace, "active_slug", lambda: "controls")
+    monkeypatch.setattr(ih, "current_db_path", lambda: db)
+
+    removed = ih.prune_inbox(probe=lambda url: False)     # db_path=None -> pins
+    assert [r["company"] for r in removed] == ["Dead"]
+    # Pinned the resolved active slug, then RESTORED the prior pin (None) on exit.
+    assert pins[0] == "controls"
+    assert pins[-1] is None
+
+
+def test_prune_explicit_project_overrides_active(tmp_path, monkeypatch):
+    import scrape.inbox_health as ih
+    import workspace
+
+    db = tmp_path / "t.db"
+    _seed(db, [("D", "Dead",
+                "https://job-boards.greenhouse.io/embed/job_app?for=d&token=2", "careers")])
+    pins = []
+    monkeypatch.setattr(workspace, "pin_active", lambda s: pins.append(s))
+    monkeypatch.setattr(ih, "current_db_path", lambda: db)
+
+    ih.prune_inbox(probe=lambda url: False, project="dad")
+    assert pins[0] == "dad"
+
+
+def test_prune_explicit_db_path_skips_pinning(tmp_path, monkeypatch):
+    """An explicit db_path is authoritative and must NOT touch the process pin."""
+    import scrape.inbox_health as ih
+    import workspace
+
+    db = tmp_path / "t.db"
+    _seed(db, [("D", "Dead",
+                "https://job-boards.greenhouse.io/embed/job_app?for=d&token=2", "careers")])
+    monkeypatch.setattr(workspace, "pin_active",
+                        lambda s: (_ for _ in ()).throw(AssertionError("must not pin")))
+    removed = ih.prune_inbox(db_path=db, probe=lambda url: False)
+    assert [r["company"] for r in removed] == ["Dead"]
