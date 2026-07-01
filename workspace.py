@@ -14,7 +14,9 @@ and experience stay reachable in the project switcher.
 Shared (NOT per-project): .env keys, cache/, companies.json, source/scraper code.
 """
 import json
+import os
 import re
+import time
 from datetime import date
 from pathlib import Path
 
@@ -23,6 +25,17 @@ import config
 # Slug for the pre-migration root workspace entry.  project_dir("default") always
 # resolves to BASE_DIR so every existing root-level file is reachable unchanged.
 _ROOT_SLUG = "default"
+
+
+class RegistryCorruptError(RuntimeError):
+    """projects.json exists but is unreadable (corrupt/partial write).
+
+    Raised instead of silently falling back to an EMPTY registry — because an
+    empty registry reroutes every db/config/output path to the ROOT workspace,
+    which after a project switch means one project's writes land in another's
+    data (the S27 cross-project bleed). Write-path resolution and any mutation
+    REFUSE on corruption; the fresh-install (no-file) path is unaffected.
+    """
 
 # The user data folder (external + writable) is the project root. config resolves
 # it: the repo root in dev, <exe>/data when frozen — so projects/ and tracker.db
@@ -65,18 +78,130 @@ def has_projects() -> bool:
 
 
 def _registry() -> dict:
+    """Load projects.json.
+
+    No file yet (fresh install / pre-migration) -> a clean empty registry, so
+    the root-fallback path is unchanged. But a file that EXISTS and won't parse
+    is corruption, not "no projects": we do NOT silently return empty (that
+    reroutes every path to the ROOT workspace = cross-project bleed). We log
+    loudly and raise RegistryCorruptError so both read and write callers get a
+    clear error instead of silent data loss.
+    """
     p = _registry_path()
-    if p.exists():
+    if not p.exists():
+        return {"active": None, "projects": []}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as e:
+        msg = (f"CORRUPT project registry at {p}: {e}. Refusing to fall back to "
+               f"the root workspace (would misroute this project's data). Fix or "
+               f"remove the file.")
         try:
-            return json.loads(p.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+            import logging
+            logging.getLogger(__name__).error(msg)
+        except Exception:
             pass
-    return {"active": None, "projects": []}
+        raise RegistryCorruptError(msg) from e
 
 
 def _write_registry(reg: dict) -> None:
+    """Write projects.json ATOMICALLY (tmp file + os.replace) so a crash mid-write
+    can never leave a truncated/partial registry that later reads as corrupt.
+    Mirrors scrape.cache_helpers.write_cache."""
     _projects_dir().mkdir(parents=True, exist_ok=True)
-    _registry_path().write_text(json.dumps(reg, indent=2), encoding="utf-8")
+    dest = _registry_path()
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    tmp.write_text(json.dumps(reg, indent=2), encoding="utf-8")
+    os.replace(tmp, dest)
+
+
+# ── cross-process registry lock (advisory) ────────────────────────────────────
+# A lockfile created O_EXCL beside projects.json. Registry MUTATIONS acquire it
+# so GUI + daily_run + MCP racing on set_active/create_project/upsert serialize
+# their read-modify-write instead of clobbering each other's registry. It is
+# ADVISORY: only code that goes through _registry_lock() honors it. On timeout we
+# warn and proceed (a stale lock from a crashed process must not deadlock the
+# app) rather than blocking forever.
+_LOCK_TIMEOUT_S = 10.0
+_LOCK_POLL_S = 0.05
+_LOCK_STALE_S = 60.0   # a lockfile older than this is assumed abandoned
+
+
+def _lock_path() -> Path:
+    return _registry_path().with_suffix(".json.lock")
+
+
+class _RegistryLock:
+    """Context manager: best-effort exclusive lock around a registry mutation.
+
+    Acquire = create the lockfile with O_CREAT|O_EXCL (atomic "only one wins").
+    On contention, poll until timeout; on timeout, warn-and-proceed (never
+    deadlock). A lockfile older than _LOCK_STALE_S is treated as abandoned by a
+    crashed holder and reclaimed. Release removes the file if we own it.
+    """
+
+    def __init__(self, timeout: float = _LOCK_TIMEOUT_S):
+        self.timeout = timeout
+        self._held = False
+
+    def _try_create(self) -> bool:
+        try:
+            fd = os.open(str(_lock_path()), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return False
+        except OSError:
+            return False
+        try:
+            os.write(fd, str(os.getpid()).encode("ascii", "ignore"))
+        finally:
+            os.close(fd)
+        return True
+
+    def _reclaim_if_stale(self) -> None:
+        lp = _lock_path()
+        try:
+            age = time.time() - lp.stat().st_mtime
+        except OSError:
+            return
+        if age > _LOCK_STALE_S:
+            try:
+                lp.unlink()
+            except OSError:
+                pass
+
+    def __enter__(self):
+        _projects_dir().mkdir(parents=True, exist_ok=True)
+        deadline = time.time() + self.timeout
+        while True:
+            if self._try_create():
+                self._held = True
+                return self
+            self._reclaim_if_stale()
+            if time.time() >= deadline:
+                try:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "registry lock %s contended past %.0fs; proceeding "
+                        "without it (another process may be mid-write).",
+                        _lock_path(), self.timeout)
+                except Exception:
+                    pass
+                return self          # warn-and-proceed, unlocked
+            time.sleep(_LOCK_POLL_S)
+
+    def __exit__(self, *exc):
+        if self._held:
+            try:
+                _lock_path().unlink()
+            except OSError:
+                pass
+            self._held = False
+        return False
+
+
+def _registry_lock(timeout: float = _LOCK_TIMEOUT_S) -> _RegistryLock:
+    """Acquire the advisory registry lock (see _RegistryLock). Use `with`."""
+    return _RegistryLock(timeout=timeout)
 
 
 # ── queries ───────────────────────────────────────────────────────────────────
@@ -249,11 +374,12 @@ def slugify(name: str) -> str:
 
 
 def set_active(slug: str) -> None:
-    reg = _registry()
-    if slug not in {p["slug"] for p in reg.get("projects", [])}:
-        raise ValueError(f"unknown project: {slug}")
-    reg["active"] = slug
-    _write_registry(reg)
+    with _registry_lock():
+        reg = _registry()
+        if slug not in {p["slug"] for p in reg.get("projects", [])}:
+            raise ValueError(f"unknown project: {slug}")
+        reg["active"] = slug
+        _write_registry(reg)
 
 
 def create_project(name: str, *, slug: str | None = None, config: dict | None = None,
@@ -269,40 +395,44 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
     workspace is automatically registered as 'default' first so the root inbox,
     config, and experience stay reachable via the project switcher after the switch.
     """
-    # First-project guard: register the root as "default" before creating a new
-    # campaign, so the existing data is never orphaned in the switcher.
-    if not has_projects():
-        _ensure_default_root_registered(today=today)
-    slug = slug or slugify(name)
-    reg = _registry()
-    existing = {p["slug"] for p in reg.get("projects", [])}
-    pdir = _projects_dir() / slug
-    pdir.mkdir(parents=True, exist_ok=True)
-    (pdir / "output").mkdir(exist_ok=True)
+    # Serialize the whole read-modify-write against concurrent registry mutators
+    # (GUI switch / daily_run / MCP). _ensure_default_root_registered is called
+    # lock-free below because it only ever runs INSIDE this held lock.
+    with _registry_lock():
+        # First-project guard: register the root as "default" before creating a
+        # new campaign, so the existing data is never orphaned in the switcher.
+        if not has_projects():
+            _ensure_default_root_registered(today=today)
+        slug = slug or slugify(name)
+        reg = _registry()
+        existing = {p["slug"] for p in reg.get("projects", [])}
+        pdir = _projects_dir() / slug
+        pdir.mkdir(parents=True, exist_ok=True)
+        (pdir / "output").mkdir(exist_ok=True)
 
-    cfg_file = pdir / "config.json"
-    if not cfg_file.exists():
-        cfg_data = dict(config or {})
-        _attach_onet_soc(cfg_data)
-        cfg_file.write_text(json.dumps(cfg_data, indent=2), encoding="utf-8")
+        cfg_file = pdir / "config.json"
+        if not cfg_file.exists():
+            cfg_data = dict(config or {})
+            _attach_onet_soc(cfg_data)
+            cfg_file.write_text(json.dumps(cfg_data, indent=2), encoding="utf-8")
 
-    exp = pdir / "experience.md"
-    if not exp.exists():
-        src = None
-        if copy_resume_from is not None:
-            src = Path(copy_resume_from)
-            if not src.exists():            # treat as a project slug
-                src = _projects_dir() / str(copy_resume_from) / "experience.md"
-        exp.write_text(src.read_text(encoding="utf-8") if src and src.exists()
-                       else _EXPERIENCE_STUB, encoding="utf-8")
+        exp = pdir / "experience.md"
+        if not exp.exists():
+            src = None
+            if copy_resume_from is not None:
+                src = Path(copy_resume_from)
+                if not src.exists():            # treat as a project slug
+                    src = _projects_dir() / str(copy_resume_from) / "experience.md"
+            exp.write_text(src.read_text(encoding="utf-8") if src and src.exists()
+                           else _EXPERIENCE_STUB, encoding="utf-8")
 
-    if slug not in existing:
-        entry = {"slug": slug, "name": name,
-                 "created": today or date.today().isoformat(), "daily": False}
-        if person is not None:
-            entry["person"] = person       # omit when unassigned (back-compat)
-        reg.setdefault("projects", []).append(entry)
-    if make_active or reg.get("active") is None:
-        reg["active"] = slug
-    _write_registry(reg)
+        if slug not in existing:
+            entry = {"slug": slug, "name": name,
+                     "created": today or date.today().isoformat(), "daily": False}
+            if person is not None:
+                entry["person"] = person       # omit when unassigned (back-compat)
+            reg.setdefault("projects", []).append(entry)
+        if make_active or reg.get("active") is None:
+            reg["active"] = slug
+        _write_registry(reg)
     return slug
