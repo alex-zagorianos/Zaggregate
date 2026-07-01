@@ -1,9 +1,10 @@
 """Jobicy public API — free, no key, remote-only postings. Single feed
-(max 50 jobs, engineering category) fetched once per cache cycle and
-filtered client-side per keyword. No salary fields in the API."""
+(max 50 jobs) fetched once per cache cycle and filtered client-side per keyword.
+The industry slice is derived from the active project's field (was hardcoded to
+'engineering', which returned 0 for any non-eng seeker). No salary fields."""
 from typing import Optional
 
-from config import JOBICY_COUNT, JOBICY_INDUSTRY, JOBICY_RATE_LIMIT, JOBICY_URL
+from config import JOBICY_COUNT, JOBICY_RATE_LIMIT, JOBICY_URL
 from models import JobResult
 from search.single_feed_client import SingleFeedClient
 
@@ -22,17 +23,20 @@ class JobicyClient(SingleFeedClient):
         if page > 1:
             return {"jobs": []}  # single-document feed; no further pages
 
+        from search.source_taxonomy import jobicy_industry
+        industry = jobicy_industry()  # None → omit the param (all remote jobs)
+
         def fetch():
             self.limiter.acquire()
-            response = self.session.get(
-                JOBICY_URL,
-                params={"count": JOBICY_COUNT, "industry": JOBICY_INDUSTRY},
-                timeout=30,
-            )
+            params = {"count": JOBICY_COUNT}
+            if industry:
+                params["industry"] = industry
+            response = self.session.get(JOBICY_URL, params=params, timeout=30)
             response.raise_for_status()
             return {"jobs": response.json().get("jobs", [])}
 
-        return self._cached("feed", fetch)
+        # Industry in the cache key so an eng and a health project don't collide.
+        return self._cached(f"feed:{industry or 'all'}", fetch)
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches

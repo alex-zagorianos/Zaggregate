@@ -3,7 +3,7 @@ so one HTTP fetch per (location, page) is cached and shared across keywords;
 keyword filtering happens client-side in parse_results."""
 from typing import Optional
 
-from config import THEMUSE_BASE_URL, THEMUSE_CATEGORIES, THEMUSE_RATE_LIMIT
+from config import THEMUSE_BASE_URL, THEMUSE_RATE_LIMIT
 from models import JobResult
 from search.http_util import cache_key
 from search.single_feed_client import SingleFeedClient
@@ -31,12 +31,19 @@ class TheMuseClient(SingleFeedClient):
     ) -> dict:
         # Keyword deliberately NOT in the cache key: the fetch is keyword-blind,
         # so 10 keywords share one cached page instead of 10 identical fetches.
-        key = cache_key("themuse", location, page)
+        # Category IS in the key — it varies by the active project's industry, so
+        # a health and an engineering project must not share a cached page.
+        from search.source_taxonomy import themuse_categories
+        cats = themuse_categories()
+        key = cache_key("themuse", location, page, ",".join(cats) or "all")
 
         def fetch():
             self.limiter.acquire()
             params = [("page", page - 1)]  # The Muse pages are 0-based
-            for cat in THEMUSE_CATEGORIES:
+            # Category is derived from the active project's industry so a non-eng
+            # field (health/finance/...) is actually requested server-side instead
+            # of the old hardcoded Engineering-only filter; [] = no filter (all).
+            for cat in cats:
                 params.append(("category", cat))
             response = self.session.get(THEMUSE_BASE_URL, params=params, timeout=30)
             response.raise_for_status()
