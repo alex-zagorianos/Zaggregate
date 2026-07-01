@@ -41,11 +41,23 @@ def build_profile(prefs: dict | None = None, experience_summary: str | None = No
     return "\n\n".join(parts) if parts else "(no profile provided)"
 
 
+def _fit_preference(prefs: dict | None) -> str:
+    """The per-profile fit-preference bias sentence ('' = neutral). Read from the
+    passed prefs, else preferences.load(). Empty when the profile sets none, so
+    no bias is baked into the ranking (de-Alex'd default)."""
+    if prefs is None:
+        prefs = preferences.load()
+    return (prefs.get("fit_preference") or "").strip()
+
+
 def build_request(jobs, prefs: dict | None = None,
                   experience_summary: str | None = None) -> str:
-    """The single ranking prompt, shared by the bridge / API / MCP routes."""
+    """The single ranking prompt, shared by the bridge / API / MCP routes. Weaves
+    in the per-profile fit_preference ('' = neutral, no bias sentence)."""
+    prefs = prefs if prefs is not None else preferences.load()
     profile = build_profile(prefs, experience_summary)
-    return bridge.build_fit_prompt(jobs, profile_md=profile)
+    return bridge.build_fit_prompt(jobs, profile_md=profile,
+                                   preference=_fit_preference(prefs))
 
 
 # ── Compact (decomposed) request — spec-2026-06-29 ────────────────────────────
@@ -97,7 +109,8 @@ def build_compact_request(jobs, prefs: dict | None = None,
                                    soc_code=soc_code)
                   for j in jobs]
     rb = _rubric.build_rubric(prefs, cfg)
-    return bridge.build_fit_prompt_compact(jobs, facts_list, _rubric.rubric_text(rb))
+    return bridge.build_fit_prompt_compact(jobs, facts_list, _rubric.rubric_text(rb),
+                                           preference=_fit_preference(prefs))
 
 
 def prepare_compact(jobs, prefs: dict | None = None, cfg: dict | None = None) -> dict:
@@ -118,7 +131,8 @@ def prepare_compact(jobs, prefs: dict | None = None, cfg: dict | None = None) ->
     kept, dropped = _gate.partition(pairs, rb)
     kept_jobs = [j for j, _f, _g in kept]
     kept_facts = [f for _j, f, _g in kept]
-    prompt = (bridge.build_fit_prompt_compact(kept_jobs, kept_facts, _rubric.rubric_text(rb))
+    prompt = (bridge.build_fit_prompt_compact(kept_jobs, kept_facts, _rubric.rubric_text(rb),
+                                              preference=_fit_preference(prefs))
               if kept_jobs else "")
     return {"kept": kept, "dropped": dropped, "prompt": prompt, "rubric": rb}
 
@@ -234,10 +248,13 @@ class FileRanker:
         from rerank import schema
         if prefs is not None and prefs.get("profile_md") is not None:
             profile = prefs.get("profile_md") or ""
+            fit_pref = prefs.get("fit_preference", "") or ""
         else:
             import preferences as _prefs_mod
-            profile = (_prefs_mod.load() or {}).get("profile_md", "") or ""
-        return schema.build_prompt(profile)
+            p = _prefs_mod.load() or {}
+            profile = p.get("profile_md", "") or ""
+            fit_pref = p.get("fit_preference", "") or ""
+        return schema.build_prompt(profile, fit_pref)
 
     def parse_response(self, text: str, jobs) -> list:
         # The file route resolves scores by job_key via import_scores, not by the

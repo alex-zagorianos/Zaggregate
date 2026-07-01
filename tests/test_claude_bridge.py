@@ -180,17 +180,30 @@ def test_fit_token_falls_back_to_title_company_without_url():
     assert len(fit_token(a)) == 8
 
 
-# ── EXT-6: persona is parameterized ───────────────────────────────────────────
+# ── EXT-6 / P4: fit preference is per-profile and neutral by default ───────────
 
-def test_default_fit_preference_present_in_prompt():
+def test_default_fit_preference_is_neutral():
+    """De-Alex'd: the app-wide 'prefers smaller companies' bias is gone. The
+    default preference is empty and adds NO bias sentence to the prompt."""
+    assert cb.DEFAULT_FIT_PREFERENCE == ""
     prompt = build_fit_prompt([_job()], "P")
-    assert cb.DEFAULT_FIT_PREFERENCE.split(":")[0] in prompt
+    assert "smaller companies" not in prompt
+    # No orphaned placeholder left in the instructions.
+    assert "__PREFERENCE__" not in prompt
 
 
 def test_fit_preference_can_be_overridden():
     prompt = build_fit_prompt([_job()], "P", preference="Prefers remote roles.")
     assert "Prefers remote roles." in prompt
     assert "smaller companies" not in prompt
+
+
+def test_compact_prompt_omits_bias_when_neutral():
+    from match.facts import facts_for
+    j = _job()
+    prompt = cb.build_fit_prompt_compact([j], [facts_for(j)], "P")
+    assert "smaller companies" not in prompt
+    assert "__PREFERENCE__" not in prompt
 
 
 # ── parse_resume_response: type + truncation guards (RESUME-2) ─────────────────

@@ -16,6 +16,14 @@ def _profile_md() -> str:
         return ""
 
 
+def _fit_preference() -> str:
+    try:
+        import preferences
+        return (preferences.load() or {}).get("fit_preference", "") or ""
+    except Exception:
+        return ""
+
+
 def _write_csv(out: Path, rows: list[dict]) -> Path:
     # utf-8-sig: Excel opens it without mojibake; the importer strips the BOM.
     with out.open("w", encoding="utf-8-sig", newline="") as f:
