@@ -444,6 +444,21 @@ def score_job(
         except Exception:
             m = None
 
+    # Semantic veto of generic-token full title matches: when semantic ranking is
+    # ACTIVE (m is not None) and the profile<->job similarity is very low, a full
+    # keyword title match (e.g. a QA role earning title-100% for "automation
+    # engineer") is treated as generic-token noise and the title component is
+    # capped. Abstain-safe: m is None whenever semantic is off / model absent /
+    # texts missing, so the keyword-only score stays byte-identical.
+    title_capped = False
+    if m is not None:
+        import config as _cfg
+        veto = getattr(_cfg, "SEMANTIC_TITLE_VETO_SIM", 0.35)
+        cap = getattr(_cfg, "SEMANTIC_TITLE_CAP", 0.6)
+        if m < veto and t > cap:
+            t = cap
+            title_capped = True
+
     # Weight-renormalization over data-PRESENT components. Title + location are
     # always present; skill/salary/recency emit a neutral 0.5 when their data is
     # missing, which used to inflate data-poor jobs. Drop the missing components'
@@ -494,6 +509,8 @@ def score_job(
     score += size_adj
 
     notes_extra = []
+    if title_capped:
+        notes_extra.append("sem-title-cap")
 
     # Target-level fit: nudge roles toward the user's target seniority when they
     # are explicitly targeting management/exec. Neutral for IC/senior searches.
