@@ -106,9 +106,9 @@ def test_stage_counts_at_least(tmp_path):
     conn = _seed(tmp_path / "t.db")
     f = funnel(conn)
     stages = {s["stage"]: s["count"] for s in f["stage_counts"]}
-    # ordering preserved
+    # ordering preserved (D1: 'accepted' is the success terminal at the tail)
     assert [s["stage"] for s in f["stage_counts"]] == [
-        "interested", "applied", "phone_screen", "interview", "offer"
+        "interested", "applied", "phone_screen", "interview", "offer", "accepted"
     ]
     # reached interested: all 6
     assert stages["interested"] == 6
@@ -164,7 +164,7 @@ def test_by_source(tmp_path):
     gh = rows["greenhouse"]
     assert gh["applied"] == 2
     assert gh["interview_plus"] == 2
-    assert gh["response_rate"] == 1.0
+    assert gh["interview_rate"] == 1.0  # D1: renamed from response_rate
     assert gh["low_n"] is True          # <5
     # adzuna: jobs 3 (phone),4 (applied) -> 2 applied, 1 interview_plus? no.
     az = rows["adzuna"]
