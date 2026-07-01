@@ -8,12 +8,47 @@ import json
 from discover.detect import detect_ats
 from search.http_util import make_session
 
-_CDX_INDEX = "https://index.commoncrawl.org/CC-MAIN-2025-05-index"
+# Ultimate fallback if the live crawl lookup fails. Common Crawl adds a new crawl
+# every ~1-2 months; pinning a single hardcoded id (the old behaviour) meant the
+# harvest silently queried an ever-staler snapshot. _latest_crawl_index() resolves
+# the newest crawl at runtime instead, falling back to this only on network error.
+_FALLBACK_INDEX = "https://index.commoncrawl.org/CC-MAIN-2025-05-index"
+_COLLINFO_URL = "https://index.commoncrawl.org/collinfo.json"
+_latest_index_cache: str | None = None
+
+
+def _latest_crawl_index() -> str:
+    """Newest Common Crawl CDX-API index URL, from collinfo.json (published
+    newest-first), cached for the process. Degrades to _FALLBACK_INDEX on any
+    error so an offline/hiccup run doesn't hard-fail — it just uses the fallback."""
+    global _latest_index_cache
+    if _latest_index_cache:
+        return _latest_index_cache
+    try:
+        resp = make_session().get(_COLLINFO_URL, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            api = data[0].get("cdx-api")
+            if api:
+                _latest_index_cache = api
+                return api
+    except Exception as e:
+        print(f"  [cc_harvest] NOTE: could not resolve the latest crawl "
+              f"({e}); using fallback index {_FALLBACK_INDEX}")
+    _latest_index_cache = _FALLBACK_INDEX
+    return _FALLBACK_INDEX
+
+
+def _index_url(crawl_id: str | None) -> str:
+    """Explicit crawl id -> that crawl's index; otherwise the newest crawl."""
+    return (f"https://index.commoncrawl.org/CC-MAIN-{crawl_id}-index"
+            if crawl_id else _latest_crawl_index())
 
 
 def _cdx_fetch(host: str, crawl_id: str | None, limit: int | None) -> list:
     """Return CDX NDJSON lines for `host`. Isolated so tests mock it."""
-    index = f"https://index.commoncrawl.org/CC-MAIN-{crawl_id}-index" if crawl_id else _CDX_INDEX
+    index = _index_url(crawl_id)
     session = make_session()
     params = {"url": f"{host}/*", "output": "json"}
     if limit:
@@ -70,7 +105,7 @@ def _cdx_fetch_host(host: str, crawl_id: str | None, limit: int | None, *,
                     page: int | None = None, page_size: int | None = None) -> list:
     """CDX NDJSON for a whole registered DOMAIN (matchType=domain). Isolated so
     tests mock it; one page per call (paginate via `page`)."""
-    index = f"https://index.commoncrawl.org/CC-MAIN-{crawl_id}-index" if crawl_id else _CDX_INDEX
+    index = _index_url(crawl_id)
     session = make_session()
     params = {"url": host, "matchType": "domain", "output": "json"}
     if limit:
@@ -86,7 +121,7 @@ def _cdx_fetch_host(host: str, crawl_id: str | None, limit: int | None, *,
 
 def _cdx_num_pages(host: str, crawl_id: str | None, page_size: int | None) -> int:
     """How many CDX pages the domain query spans (showNumPages=true)."""
-    index = f"https://index.commoncrawl.org/CC-MAIN-{crawl_id}-index" if crawl_id else _CDX_INDEX
+    index = _index_url(crawl_id)
     session = make_session()
     params = {"url": host, "matchType": "domain", "output": "json", "showNumPages": "true"}
     if page_size is not None:
