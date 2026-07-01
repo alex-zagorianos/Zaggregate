@@ -1,0 +1,35 @@
+[
+  {
+    "id": 12345,
+    "title": "Senior Backend Engineer",
+    "company_name": "Acme Corp",
+    "url": "https://www.workingnomads.com/jobs/12345-senior-backend-engineer",
+    "description": "<p>We need a <strong>Senior Backend Engineer</strong> comfortable with Python and PostgreSQL, working across a distributed team.</p>",
+    "category_name": "Development",
+    "tags": ["python", "postgresql", "backend"],
+    "location": "Worldwide",
+    "pub_date": "2026-06-29T14:32:00Z"
+  },
+  {
+    "id": 12346,
+    "title": "Product Designer",
+    "company_name": "Globex",
+    "url": "https://www.workingnomads.com/jobs/12346-product-designer",
+    "description": "<p>Design beautiful interfaces for our SaaS product. Figma experience required.</p>",
+    "category_name": "Design",
+    "tags": ["figma", "ui", "ux"],
+    "location": "",
+    "pub_date": "2026-06-30T09:10:00Z"
+  },
+  {
+    "id": 12347,
+    "title": "Customer Support Specialist",
+    "company_name": "Initech",
+    "url": "https://www.workingnomads.com/jobs/12347-customer-support-specialist",
+    "description": "<p>Answer tickets and help customers succeed. No coding required.</p>",
+    "category_name": "Customer Service",
+    "tags": ["support"],
+    "location": "Remote - US timezones",
+    "pub_date": "2026-07-01T08:00:00Z"
+  }
+]
