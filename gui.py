@@ -2039,8 +2039,10 @@ class SearchTab(ttk.Frame):
             # for eng IC titles. Opt out with "broaden_keywords": false in config.
             from search.keyword_strategy import broad_query_keywords
             if (self._user_cfg or {}).get("broaden_keywords", True):
-                query_keywords = broad_query_keywords(
-                    keywords, (self._user_cfg or {}).get("industry") or "")
+                import industry_profile
+                _ind = (self._user_cfg or {}).get("industry") or ""
+                _syn = industry_profile.resolve(_ind).query_synonyms
+                query_keywords = broad_query_keywords(keywords, _ind, synonyms=_syn)
             else:
                 query_keywords = keywords
             results = (

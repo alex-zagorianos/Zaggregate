@@ -403,7 +403,9 @@ def main():
     # titles, so Alex's flow is byte-identical. Opt out with "broaden_keywords": false.
     from search.keyword_strategy import broad_query_keywords
     if user_cfg.get("broaden_keywords", True):
-        query_keywords = broad_query_keywords(keywords, industry or "")
+        import industry_profile
+        _syn = industry_profile.resolve(industry or "").query_synonyms
+        query_keywords = broad_query_keywords(keywords, industry or "", synonyms=_syn)
     else:
         query_keywords = keywords
 

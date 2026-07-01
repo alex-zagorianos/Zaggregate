@@ -93,17 +93,26 @@ def _dedupe_ci(items: Iterable[str]) -> list[str]:
     return out
 
 
-def broad_query_keywords(roles: Iterable[str], industry: str = "") -> list[str]:
+# Cap on the AUTO-ADDED field synonyms only (protects free API tiers). The user's
+# own role-derived keywords + the industry term are NEVER truncated, so their
+# chosen blast radius is always retained; only extra synonyms are bounded.
+_MAX_SYNONYMS = 6
+
+
+def broad_query_keywords(roles: Iterable[str], industry: str = "",
+                         synonyms: Iterable[str] = ()) -> list[str]:
     """Broaden a target-role list into high-recall query keywords.
 
     - Each role is de-seniorized to its field stem; a role that is nothing but
       seniority falls back to itself (lowercased) so we still query something.
     - The (normalized) industry/field is appended as its own query term.
+    - `synonyms` are extra broad FIELD terms (from the industry profile) that WIDEN
+      recall; up to _MAX_SYNONYMS new ones are added. They never displace a user term.
     - Results are lowercased, de-duplicated case-insensitively (order preserved),
       and stems shorter than 3 chars are dropped.
 
-    A list of plain IC titles with no seniority tokens is returned unchanged
-    (lowercased), so an engineering search is byte-identical to before.
+    A list of plain IC titles with no seniority tokens and no synonyms is returned
+    unchanged (lowercased), so an engineering search is byte-identical to before.
     """
     candidates: list[str] = []
     for role in roles:
@@ -117,4 +126,17 @@ def broad_query_keywords(roles: Iterable[str], industry: str = "") -> list[str]:
     ind = normalize_industry(industry)
     if ind and len(ind) >= _MIN_KEYWORD_LEN:
         candidates.append(ind)
-    return [k for k in _dedupe_ci(candidates) if len(k) >= _MIN_KEYWORD_LEN]
+    base = [k for k in _dedupe_ci(candidates) if len(k) >= _MIN_KEYWORD_LEN]
+
+    # Add field synonyms that aren't already covered, bounded.
+    have = set(base)
+    added = 0
+    for s in synonyms:
+        s = (s or "").strip().lower()
+        if s and len(s) >= _MIN_KEYWORD_LEN and s not in have:
+            base.append(s)
+            have.add(s)
+            added += 1
+            if added >= _MAX_SYNONYMS:
+                break
+    return base

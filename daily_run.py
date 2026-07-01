@@ -83,7 +83,9 @@ def main():
     # in scoring/gate, not the query string. No-op for eng IC titles (Alex unchanged).
     from search.keyword_strategy import broad_query_keywords
     if cfg.get("broaden_keywords", True):
-        query_keywords = broad_query_keywords(keywords, cfg.get("industry") or "")
+        import industry_profile
+        _syn = industry_profile.resolve(cfg.get("industry") or "").query_synonyms
+        query_keywords = broad_query_keywords(keywords, cfg.get("industry") or "", synonyms=_syn)
     else:
         query_keywords = keywords
 

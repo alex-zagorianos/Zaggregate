@@ -32,9 +32,17 @@ _GENERIC = {
 
 def title_keywords_for(industry: str, keywords=None) -> set:
     """The lowercased tokens whose presence in a job title signals field relevance.
-    Drawn from the user's target keywords (primary) + the industry label."""
+    Drawn from the user's target keywords (primary) + the industry label + the
+    field's profile title-terms (so the relevance gate knows a genre's vocabulary
+    even when the user typed only a couple of keywords)."""
+    profile_terms = []
+    try:
+        import industry_profile
+        profile_terms = industry_profile.resolve(industry or "").title_terms
+    except Exception:
+        pass
     toks: set[str] = set()
-    for src in list(keywords or []) + [industry or ""]:
+    for src in list(keywords or []) + [industry or ""] + list(profile_terms):
         for t in re.split(r"[\s_\-/,()]+", str(src).lower()):
             t = t.strip()
             if len(t) >= 3 and t not in _GENERIC:
