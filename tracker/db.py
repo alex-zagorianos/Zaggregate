@@ -645,18 +645,25 @@ def urls_not_seen(norm_urls) -> set[str]:
     candidates = [u for u in dict.fromkeys(norm_urls) if u]
     if not candidates:
         return set()
-    values_sql = ",".join("(?)" for _ in candidates)
+    # Chunk the candidate batch: one bind parameter per URL, so an unbounded batch
+    # can exceed SQLite's compiled MAX_VARIABLE_NUMBER (999 on old builds) and raise.
+    # 500/batch stays well under even the legacy cap; results union across batches.
+    out: set[str] = set()
     with get_conn() as conn:
-        rows = conn.execute(
-            f"WITH candidates(norm_url) AS (VALUES {values_sql}) "
-            "SELECT c.norm_url FROM candidates c "
-            "WHERE NOT EXISTS "
-            "(SELECT 1 FROM applications a WHERE a.norm_url = c.norm_url) "
-            "AND NOT EXISTS "
-            "(SELECT 1 FROM dismissed d WHERE d.url = c.norm_url)",
-            candidates,
-        ).fetchall()
-    return {r[0] for r in rows}
+        for i in range(0, len(candidates), 500):
+            batch = candidates[i:i + 500]
+            values_sql = ",".join("(?)" for _ in batch)
+            rows = conn.execute(
+                f"WITH candidates(norm_url) AS (VALUES {values_sql}) "
+                "SELECT c.norm_url FROM candidates c "
+                "WHERE NOT EXISTS "
+                "(SELECT 1 FROM applications a WHERE a.norm_url = c.norm_url) "
+                "AND NOT EXISTS "
+                "(SELECT 1 FROM dismissed d WHERE d.url = c.norm_url)",
+                batch,
+            ).fetchall()
+            out.update(r[0] for r in rows)
+    return out
 
 
 # ── Inbox (daily-run results awaiting triage) ─────────────────────────────────
@@ -712,6 +719,11 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
                 extra = dict(getattr(j, "_extras", None) or {})
                 if new_batch and getattr(j, "is_new", False):
                     extra["new_batch"] = new_batch
+                # schema.org validThrough (publisher-attested expiry) rides the
+                # extras JSON so match.ghost's strongest stale signal fires in the
+                # live GUI (which reads inbox rows, not JobResults). Schema-free.
+                if getattr(j, "valid_through", ""):
+                    extra["valid_through"] = j.valid_through
                 if extra:
                     conn.execute("UPDATE inbox SET extras=? WHERE id=?",
                                  (json.dumps(extra), cur.lastrowid))

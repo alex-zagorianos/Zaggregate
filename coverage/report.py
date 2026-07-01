@@ -48,7 +48,8 @@ def scope_hash(area: str, window: str, soc_grouping: str, source_ids: list) -> s
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
 
 def human_summary(report: CoverageReport) -> str:
-    ci = f" CI{tuple(round(x, 1) for x in report.cov_cr_ci)}" if report.cov_cr_ci else ""
+    ci = (f" CI{tuple(round(x, 1) for x in report.cov_cr_ci)}"
+          if report.cov_cr_ci and all(x is not None for x in report.cov_cr_ci) else "")
     def fmt(v, nd):
         return v if v is None else round(v, nd)
     return "\n".join([

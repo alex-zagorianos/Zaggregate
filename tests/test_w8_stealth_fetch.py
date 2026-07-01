@@ -465,3 +465,22 @@ def test_fetch_html_does_not_rate_limit_when_url_is_rejected(monkeypatch):
     assert result is None
     assert sf._host_limiters == {}
     fake_fetcher.fetch.assert_not_called()
+
+
+def test_fetch_html_rejects_post_redirect_to_unvetted_host(monkeypatch):
+    """A registry company page that render-time redirects to a NON-registry host
+    must be dropped -- the pre-navigation allowlist couldn't have seen it."""
+    monkeypatch.setattr(sf, "_host_limiters", {})
+    fake_fetcher = _fake_scrapling(monkeypatch)
+    fake_fetcher.fetch.return_value.url = "https://evil.example.com/harvested"
+    result = sf.fetch_html("https://careers.example.com", company=_company())
+    assert result is None
+
+
+def test_fetch_html_allows_post_redirect_within_same_host(monkeypatch):
+    """A redirect that stays on the vetted company host is fine."""
+    monkeypatch.setattr(sf, "_host_limiters", {})
+    fake_fetcher = _fake_scrapling(monkeypatch)
+    fake_fetcher.fetch.return_value.url = "https://careers.example.com/jobs/final"
+    result = sf.fetch_html("https://careers.example.com", company=_company())
+    assert result == _GOOD_HTML

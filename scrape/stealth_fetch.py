@@ -186,6 +186,22 @@ def fetch_html(url: str, *, company=None) -> "str | None":
         page = StealthyFetcher.fetch(url, headless=True, network_idle=True)
         html = getattr(page, "html_content", None) or getattr(page, "body", None)
         status = getattr(page, "status", 200)
+        # Re-vet the FINAL navigated URL: a registry company's page can 301/302/JS-
+        # redirect to an un-vetted host, and the pre-navigation allowlist check
+        # wouldn't have seen it. If the browser ended up somewhere not allowed (or
+        # robots-disallowed), drop the HTML rather than scrape an unapproved host.
+        final_url = getattr(page, "url", None)
+        if not isinstance(final_url, str) or not final_url:
+            final_url = url          # no usable final URL -> nothing to re-vet
+        if final_url != url:
+            if _host_allowed(final_url, company) is None:
+                return None
+            try:
+                from discover.career_link import is_disallowed
+                if is_disallowed(final_url):
+                    return None
+            except Exception:
+                pass  # robots check is fail-open
         if html and (status is None or status == 200):
             return html
     except Exception:

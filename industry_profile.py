@@ -349,7 +349,14 @@ def resolve_soc(industry: str) -> Optional[dict]:
     """Best-effort, STABLE O*NET-SOC identity for free-text `industry` — for
     callers that want to persist a code once (item 25: workspace.create_project)
     rather than re-resolve it on every resolve() call. None when it doesn't
-    match a real occupation (see _onet_table_lookup)."""
+    match a real occupation (see _onet_table_lookup), or is eng-like — an
+    eng/tech field must NOT get a SOC persisted (it keeps the eng seed profile +
+    the eng facts-cache path byte-identical; "software engineer"/"controls
+    engineer" would otherwise mis-resolve to a chemical/other SOC)."""
+    if not industry or not industry.strip():
+        return None
+    if resolve(industry).eng_like:
+        return None
     nt = _match_onet(industry)
     if nt is None:
         return None

@@ -190,3 +190,16 @@ def test_related_occupation_titles_from_same_soc(monkeypatch):
     assert "phlebotomy technician" in out
     assert "lab assistant" not in out          # different SOC code
     assert "phlebotomist" not in out           # excludes the query itself
+
+
+def test_resolve_soc_skips_eng_industries():
+    # An eng/tech field must NOT get a persisted SOC (byte-identical guard);
+    # "controls engineer" previously mis-resolved to a chemical-engineer SOC.
+    for q in ("software engineer", "mechanical engineer", "controls engineer",
+              "robotics", "", "software"):
+        assert ip.resolve_soc(q) is None
+
+
+def test_resolve_soc_returns_code_for_nontech():
+    soc = ip.resolve_soc("registered nurse")
+    assert soc is not None and soc.get("code") and soc.get("title")

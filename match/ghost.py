@@ -132,12 +132,29 @@ def _missing_salary_signal(job, reasons):
     return 0, False
 
 
+def _extras_get(job, key):
+    """Read a key from an inbox-row dict's `extras` JSON blob (where schema-free
+    fields like valid_through are stored). None for JobResults / no extras."""
+    if not isinstance(job, dict):
+        return None
+    raw = job.get("extras")
+    if not raw:
+        return None
+    try:
+        import json
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except (ValueError, TypeError):
+        return None
+    return data.get(key) if isinstance(data, dict) else None
+
+
 def _expired_signal(job, reasons):
     """Strong bump when the posting's publisher-declared expiry (schema.org
-    validThrough, carried on JobResult / inbox extras) is in the PAST. This is a
-    publisher-attested signal, not an inference, so it's the most reliable ghost
-    marker. Abstains when validThrough is missing/unparseable or still in future."""
-    vt = _get(job, "valid_through") or _get(job, "validThrough")
+    validThrough, carried on JobResult.valid_through or inbox-row extras) is in the
+    PAST. Publisher-attested, not inferred -> the most reliable ghost marker.
+    Abstains when validThrough is missing/unparseable or still in the future."""
+    vt = (_get(job, "valid_through") or _get(job, "validThrough")
+          or _extras_get(job, "valid_through"))
     dt = _parse_created(vt)
     if dt == _EPOCH:
         return 0, False

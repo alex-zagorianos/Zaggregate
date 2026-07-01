@@ -70,7 +70,11 @@ class ReachEstimate:
                     f"{self.n_raw} raw -> {self.n_distinct} distinct from "
                     f"{self.n_families} independent source famil"
                     f"{'y' if self.n_families == 1 else 'ies'}{comp}.")
-        lo, hi = self.coverage_ci or (self.coverage_pct, self.coverage_pct)
+        ci = self.coverage_ci
+        if not ci or ci[0] is None or ci[1] is None:
+            lo, hi = self.coverage_pct, self.coverage_pct
+        else:
+            lo, hi = ci
         return (f"Reach [{scope}]: seeing ~{self.coverage_pct:.0f}% "
                 f"(95% CI {lo:.0f}-{hi:.0f}%) of the reachable universe — "
                 f"~{self.unseen} of ~{round(self.n_hat)} estimated postings still "
@@ -111,6 +115,11 @@ def estimate_reach(raw_results, *, area: str = "", industry: str = "") -> ReachE
     t = len(families)
     f1 = sum(1 for ms in membership if len(ms) == 1)
     f2 = sum(1 for ms in membership if len(ms) == 2)
+    # Jobs seen by >=2 families = actual recaptures. With ZERO recaptures the
+    # capture-recapture estimate is meaningless (loglinear's naive fallback then
+    # returns exactly n_distinct -> a false 100%), so certification requires
+    # overlap for EVERY branch, mirroring the t==2 m>0 check.
+    n_overlap = sum(1 for ms in membership if len(ms) >= 2)
 
     completeness = good_turing(f1, n_raw) if n_raw else None
     ceiling = chao2(f1, f2, n_distinct, t) if n_distinct else None
@@ -124,7 +133,9 @@ def estimate_reach(raw_results, *, area: str = "", industry: str = "") -> ReachE
         n_hat = point
         n_hat_ci = (lo, hi)
         method = "loglinear+bootstrap"
-        certifiable = point > 0
+        # Require real overlap: 3 disjoint families (n_overlap==0) make loglinear
+        # degenerate to n_distinct -> a bogus 100%. Route those to "cannot certify".
+        certifiable = point > 0 and n_overlap > 0
     elif t == 2:
         a, b = families[0], families[1]
         m = sum(1 for ms in membership if a in ms and b in ms)
@@ -140,8 +151,14 @@ def estimate_reach(raw_results, *, area: str = "", industry: str = "") -> ReachE
         coverage_pct = _cap_cov(n_distinct, n_hat)
         if n_hat_ci:
             lo_n, hi_n = n_hat_ci
-            # bigger N̂ -> lower coverage, so the CI flips.
-            coverage_ci = (_cap_cov(n_distinct, hi_n), _cap_cov(n_distinct, lo_n))
+            # bigger N̂ -> lower coverage, so the CI flips. A non-positive N̂ bound
+            # (the analytic Chapman Wald CI often has a negative lower bound when m
+            # is small) means N̂ <= observed on that end -> ~100% coverage; NEVER
+            # leave a None in the CI (it crashed summary_line's %-formatting).
+            ci_low = _cap_cov(n_distinct, hi_n)     # big N̂ -> low coverage bound
+            ci_high = _cap_cov(n_distinct, lo_n)    # small/neg N̂ -> high coverage bound
+            coverage_ci = (ci_low if ci_low is not None else coverage_pct,
+                           ci_high if ci_high is not None else 100.0)
         unseen = max(0, round(n_hat) - n_distinct)
         message = f"log-linear over {t} independent source families" if t >= 3 \
             else "Chapman capture-recapture over 2 independent source families"

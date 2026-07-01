@@ -35,10 +35,13 @@ def chao2(q1: int, q2: int, s_obs: int, t: int) -> float:
 
     This is the correct estimator when the "captures" are presence/absence across
     sources (our case), where the abundance-based chao1 is a mislabel. The
-    correction factor collapses to chao1's form as t -> inf; with t < 2 it is
-    undefined, so we fall back to the uncorrected bias-corrected form.
+    correction factor collapses to chao1's form as t -> inf; with t < 2 there is
+    no unseen-class information, so it degenerates to s_obs (honest "no ceiling
+    estimate") like jackknife1/2 — NOT the exploded uncorrected form.
     """
-    corr = (t - 1) / t if t and t >= 2 else 1.0
+    if not t or t < 2:
+        return float(s_obs)
+    corr = (t - 1) / t
     return s_obs + corr * (q1 * (q1 - 1)) / (2 * (q2 + 1))
 
 

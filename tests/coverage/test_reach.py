@@ -80,6 +80,42 @@ def test_empty_run():
     assert est.summary_line()  # doesn't raise
 
 
+def test_three_disjoint_families_cannot_certify():
+    # 3 independent families with ZERO cross-source overlap: loglinear degenerates
+    # to n_distinct, which used to be reported as a false 100%. Must NOT certify.
+    jobs = []
+    for i in range(50):
+        jobs.append(mk("controls engineer", f"Aco{i}", "adzuna"))
+    for i in range(50):
+        jobs.append(mk("controls engineer", f"Bco{i}", "usajobs"))
+    for i in range(50):
+        jobs.append(mk("controls engineer", f"Cco{i}", "themuse"))
+    est = reach.estimate_reach(jobs, industry="controls")
+    assert est.n_families == 3
+    assert est.certifiable is False
+    assert est.coverage_pct is None
+    assert "no cross-source overlap" in est.message
+    assert est.summary_line()  # doesn't raise
+
+
+def test_small_overlap_chapman_ci_has_no_none():
+    # n1=n2 large with a single recapture (m=1) gives a Chapman Wald CI whose lower
+    # bound on N is NEGATIVE -> the coverage CI upper bound must clamp to 100, never
+    # leave a None (which crashed summary_line's %-formatting).
+    jobs = []
+    for i in range(199):
+        jobs.append(mk("nurse", f"Aco{i}", "adzuna"))
+    for i in range(199):
+        jobs.append(mk("nurse", f"Bco{i}", "usajobs"))
+    jobs.append(mk("nurse", "Shared", "adzuna"))
+    jobs.append(mk("nurse", "Shared", "usajobs"))   # the single overlap (m=1)
+    est = reach.estimate_reach(jobs, industry="nursing")
+    assert est.method == "chapman" and est.certifiable is True
+    assert est.coverage_ci is not None
+    assert est.coverage_ci[0] is not None and est.coverage_ci[1] is not None
+    assert est.summary_line()  # must not raise TypeError on a None CI bound
+
+
 def test_summary_line_certifiable_shape():
     est = reach.estimate_reach(_two_family_run(), area="Cincinnati", industry="controls")
     line = est.summary_line()

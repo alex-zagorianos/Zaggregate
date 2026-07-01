@@ -36,8 +36,10 @@ def test_chao2_finite_sample_correction():
 
 
 def test_chao2_degenerate_single_sample():
-    # t<2 -> correction falls back to 1.0 (== chao1's bias-corrected form).
-    assert chao2(10, 5, 50, 1) == chao1(10, 5, 50)
+    # t<2 -> no unseen-class info -> degenerate to s_obs (honest "no ceiling"),
+    # like jackknife, NOT the exploded uncorrected chao1 form.
+    assert chao2(10, 5, 50, 1) == 50.0
+    assert chao2(10, 5, 50, 0) == 50.0
 
 
 def test_chao2_q2_zero_no_div_error():

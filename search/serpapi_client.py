@@ -2,6 +2,7 @@
 (mirrors jsearch_client.py). Key from SERPAPI_KEY env or secrets/serpapi_key.
 Covers Indeed/LinkedIn/Glassdoor/ZipRecruiter via Google Jobs aggregation."""
 import sys
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +48,9 @@ class SerpApiClient(JobAPIClient):
         self.quota = MonthlyQuota((cache_dir or CACHE_DIR) / "serpapi_usage.json", SERPAPI_MONTHLY_LIMIT)
         self._quota_warned = False
         self._indeed_engine_warned = False
+        # One SerpApiClient is shared across concurrent keyword fetches
+        # (parallel_keywords=True), so the warn-once flag needs a lock.
+        self._warn_lock = threading.Lock()
 
     def search(self, keyword: str, location: str = "Cincinnati, OH",
                salary_min: Optional[int] = None, page: int = 1) -> dict:
@@ -100,6 +104,10 @@ class SerpApiClient(JobAPIClient):
         items = data.get("jobs_results") if isinstance(data, dict) else None
         if isinstance(items, list) and items:
             return
+        with self._warn_lock:
+            if self._indeed_engine_warned:   # re-check under the lock (double-check)
+                return
+            self._indeed_engine_warned = True
         print(
             "  [serpapi] WARNING: SERPAPI_ENGINE=\"indeed\" returned no jobs_results. "
             "SerpApi's public engine catalog no longer clearly documents a standalone "
@@ -108,7 +116,6 @@ class SerpApiClient(JobAPIClient):
             "the default \"google_jobs\".",
             file=sys.stderr,
         )
-        self._indeed_engine_warned = True
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         # google_jobs -> "jobs_results"; indeed engine -> "jobs_results" too but a
