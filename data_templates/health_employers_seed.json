@@ -1,0 +1,254 @@
+[
+  {
+    "name": "Lyra Health",
+    "ats_type": "lever",
+    "slug": "lyrahealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Oscar Health",
+    "ats_type": "greenhouse",
+    "slug": "oscar",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Included Health",
+    "ats_type": "lever",
+    "slug": "includedhealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Headway",
+    "ats_type": "ashby",
+    "slug": "headway",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Commure",
+    "ats_type": "ashby",
+    "slug": "commure",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Cohere Health",
+    "ats_type": "greenhouse",
+    "slug": "coherehealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Aledade",
+    "ats_type": "lever",
+    "slug": "aledade",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Ro",
+    "ats_type": "lever",
+    "slug": "ro",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Abridge",
+    "ats_type": "ashby",
+    "slug": "abridge",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Garner Health",
+    "ats_type": "greenhouse",
+    "slug": "garnerhealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Komodo Health",
+    "ats_type": "greenhouse",
+    "slug": "komodohealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Sword Health",
+    "ats_type": "lever",
+    "slug": "swordhealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Truveta",
+    "ats_type": "greenhouse",
+    "slug": "truveta",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Maven Clinic",
+    "ats_type": "greenhouse",
+    "slug": "mavenclinic",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Qventus",
+    "ats_type": "greenhouse",
+    "slug": "qventus",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Rad AI",
+    "ats_type": "ashby",
+    "slug": "radai",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Notable Health",
+    "ats_type": "ashby",
+    "slug": "notable",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Arcadia",
+    "ats_type": "lever",
+    "slug": "arcadia",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Nabla",
+    "ats_type": "ashby",
+    "slug": "nabla",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Transcarent",
+    "ats_type": "greenhouse",
+    "slug": "transcarent",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Suki AI",
+    "ats_type": "greenhouse",
+    "slug": "suki",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Zus Health",
+    "ats_type": "lever",
+    "slug": "zushealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Verana Health",
+    "ats_type": "greenhouse",
+    "slug": "veranahealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Cedar",
+    "ats_type": "ashby",
+    "slug": "cedar",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Devoted Health",
+    "ats_type": "smartrecruiters",
+    "slug": "devotedhealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Clarify Health",
+    "ats_type": "lever",
+    "slug": "clarifyhealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Vim",
+    "ats_type": "greenhouse",
+    "slug": "vim",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  },
+  {
+    "name": "Clipboard Health",
+    "ats_type": "smartrecruiters",
+    "slug": "clipboardhealth",
+    "industries": [
+      "health_informatics",
+      "health"
+    ]
+  }
+]
