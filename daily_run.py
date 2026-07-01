@@ -106,9 +106,23 @@ def _run_api_prompt(prompt: str) -> str:
 
 
 def log(msg: str):
+    """Emit one daily-run line. Routes through the applog framework (rotating
+    <data>/logs/app.log + console) AND keeps the legacy per-project
+    output/daily_run.log append so existing tooling/readers of that file are
+    unaffected. The console text is byte-identical to before (the bracketed
+    timestamp line), because we print it ourselves and suppress applog's own
+    console echo for this message via a stdout-quiet path."""
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{stamp}] {msg}"
     print(line)
+    # Persist to the framework's rotating file (support / "Report a problem").
+    # file_only: applog already mirrors to console; we printed the legacy line
+    # above, so ask applog to skip its console echo to avoid a doubled line.
+    try:
+        import applog
+        applog.get_logger("daily_run").info(msg, extra={"_console": False})
+    except Exception:
+        pass  # framework logging must never kill the run
     try:
         with open(workspace.output_dir() / "daily_run.log", "a", encoding="utf-8") as f:
             f.write(line + "\n")
@@ -428,6 +442,18 @@ def main():
     except Exception as e:  # best-effort; coverage math must never kill a run
         log(f"WARN: reach estimate skipped: {type(e).__name__}: {e}")
 
+    # Due follow-ups: surface how many tracked applications need attention today,
+    # right in the daily log, so the nudge reaches a user who only ever reads the
+    # scheduled run's output. Read-only COUNT; best-effort (never fail a run).
+    followups_due = 0
+    try:
+        from tracker.db import count_followups_due
+        followups_due = count_followups_due()
+        if followups_due:
+            log(f"{followups_due} follow-up(s) due — open the Job Tracker to act on them")
+    except Exception as e:
+        log(f"WARN: follow-up due count skipped: {type(e).__name__}: {e}")
+
     # Health beacon: 'zero' when nothing new landed, else 'ok', with per-source
     # counts of what the search returned this run.
     from collections import Counter
@@ -438,6 +464,47 @@ def main():
         source_counts["__capped__"] = cap_overflow
     status = "zero" if added == 0 else "ok"
     record_run_finish(run_id, status, source_counts=source_counts)
+
+    # Last-run status: a machine-readable snapshot the GUI renders as
+    # "Last updated: <when> - N new jobs" in the Inbox header and "Report a
+    # problem" attaches. Errors (transient source failures + a sync-folder
+    # warning) are captured so the 429-erosion class is finally visible.
+    try:
+        import applog
+        errors = [f"{src}: {msg}" for src, msg in sorted(engine.source_errors().items())] \
+            if hasattr(engine, "source_errors") else []
+        try:
+            import userdata
+            _sync_warn = userdata.sync_folder_warning()
+            if _sync_warn:
+                errors.append(_sync_warn)
+        except Exception:
+            pass
+        applog.write_last_run({
+            "project": run_project,
+            "added": added,
+            "found": len(results),
+            "qualified": len(qualified),
+            "per_source_counts": {k: v for k, v in source_counts.items()
+                                  if k != "__capped__"},
+            "capped": cap_overflow,
+            "followups_due": followups_due,
+            "errors": errors,
+        }, project_slug=run_project or None)
+    except Exception as e:  # status reporting must never kill a run
+        log(f"WARN: last_run.json write skipped: {type(e).__name__}: {e}")
+
+    # Auto-backup: after a successful run, snapshot the data folder (keep the last
+    # 7, dated) so a friend's data survives corruption even if they never open the
+    # Help menu. Reuses ui.help's backup helper. Guarded — a backup hiccup (e.g.
+    # a locked file) must NEVER fail the run.
+    try:
+        from ui import help as _uihelp
+        bpath = _uihelp.auto_backup(keep=7)
+        if bpath:
+            log(f"auto-backup | data snapshot saved (keeping last 7)")
+    except Exception as e:
+        log(f"WARN: auto-backup skipped: {type(e).__name__}: {e}")
 
     # Cache GC: the cache/ tree (ATS payload blobs + per-source FileCaches) was
     # write-mostly and never evicted -> hundreds of MB. Evict entries older than
