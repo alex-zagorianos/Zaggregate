@@ -25,23 +25,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import config
 from discover import dataset_seed
-
-
-def _resolve_industry(arg_industry: str | None) -> str:
-    """CLI > active-project config `industry` > config.DEFAULT_INDUSTRY."""
-    if arg_industry:
-        return arg_industry
-    try:
-        import workspace
-        cfg = workspace.load_config()
-        ind = (cfg.get("industry") or "").strip()
-        if ind:
-            return ind
-    except Exception:
-        pass
-    return getattr(config, "DEFAULT_INDUSTRY", "")
+from enumerate_companies import _resolve_industry
 
 
 def main(argv=None):

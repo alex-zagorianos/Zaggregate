@@ -18,6 +18,7 @@ The resolve + verify + save pipeline lives in enumerate_companies.py.
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlsplit
 
 import config
@@ -32,6 +33,71 @@ DEFAULT_ANGLES = [
     "Focus on automation, robotics, controls, and systems-integration shops.",
     "Focus on software, AI/ML, data, and product companies.",
 ]
+
+# Industry tags that the eng-flavored DEFAULT_ANGLES already cover well. When the
+# resolved industry is one of these (or empty), angles_for_industry returns
+# DEFAULT_ANGLES *byte-identically* — so Alex's controls flow is unchanged.
+_ENG_INDUSTRY_TOKENS = {
+    "controls", "control", "engineering", "engineer", "software", "robotics",
+    "robot", "embedded", "mechanical", "mechatronics", "automation", "hardware",
+    "electrical", "manufacturing", "industrial", "aerospace", "systems",
+    "ai", "ml", "applied",
+}
+
+
+def _industry_tokens(industry: str):
+    return [t for t in re.split(r"[\s_\-/,]+", (industry or "").lower()) if t]
+
+
+def is_eng_like(industry: str) -> bool:
+    """True when the eng-flavored DEFAULT_ANGLES fit this industry (or it's empty)."""
+    return any(t in _ENG_INDUSTRY_TOKENS for t in _industry_tokens(industry))
+
+
+def humanize_industry(industry: str, keywords=None) -> str:
+    """A readable field label for prompts ('health_informatics' -> 'health
+    informatics'); falls back to the first keyword, then a neutral phrase."""
+    label = (industry or "").replace("_", " ").replace("-", " ").strip()
+    if label:
+        return label
+    for k in keywords or []:
+        if (k or "").strip():
+            return k.strip()
+    return "engineering and software"
+
+
+def _national_angles(industry: str, keywords=None):
+    field = ("engineering and software" if (not (industry or "").strip()
+             or is_eng_like(industry)) else humanize_industry(industry, keywords))
+    return [
+        "",
+        f"Focus on large national employers and enterprises hiring for {field} roles anywhere in the US.",
+        f"Focus on remote-first and fully-distributed companies hiring {field} roles.",
+        f"Focus on well-known, market-leading {field} employers that hire nationwide.",
+        f"Focus on {field} companies likely to run an online applicant tracking system.",
+    ]
+
+
+def angles_for_industry(industry: str = "", keywords=None, *, scope: str = "metro"):
+    """Enumeration angles tuned to a field.
+
+    - scope='national' -> nationwide/remote-first angle set (plan P5).
+    - empty or eng-like industry -> DEFAULT_ANGLES byte-identically (Alex unchanged).
+    - any other field -> neutral size/type-spread angles NAMING that field, so a
+      health-informatics (or nursing, legal, finance…) seeker gets the same breadth.
+    """
+    if scope == "national":
+        return _national_angles(industry, keywords)
+    if not (industry or "").strip() or is_eng_like(industry):
+        return list(DEFAULT_ANGLES)
+    field = humanize_industry(industry, keywords)
+    return [
+        "",
+        f"Focus on large employers, enterprises, and market leaders in {field}.",
+        f"Focus on startups and small-to-mid-size {field} companies.",
+        f"Focus on the most specialized and niche {field} employers.",
+        f"Focus on {field} companies likely to run an online applicant tracking system.",
+    ]
 
 
 def normalize_domain(value: str) -> str:

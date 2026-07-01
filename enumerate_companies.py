@@ -116,11 +116,40 @@ def _resolve_metro(arg_metro):
     return DEFAULT_LOCATION
 
 
+def _resolve_industry(arg_industry):
+    """Single field/industry for enumeration-angle selection (mirrors
+    _resolve_metro): CLI > active-project config `industry` > DEFAULT_INDUSTRY.
+    Empty/eng-like -> DEFAULT_ANGLES (Alex's controls flow unchanged)."""
+    if arg_industry:
+        return arg_industry
+    try:
+        import workspace
+        ind = (workspace.load_config().get("industry") or "").strip()
+        if ind:
+            return ind
+    except Exception:
+        pass
+    import config
+    return getattr(config, "DEFAULT_INDUSTRY", "")
+
+
+def _remote_ok():
+    """True when the active project's hard preferences allow remote (plan P5)."""
+    try:
+        import preferences
+        return bool(preferences.load().get("remote_ok"))
+    except Exception:
+        return False
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Enumerate + verify local companies into companies.json")
     ap.add_argument("--metro", default=None, help="Metro area (default: active project location)")
     ap.add_argument("--industries", default=",".join(DEFAULT_INDUSTRIES),
-                    help="Comma-separated industry tags")
+                    help="Comma-separated industry tags (for the prompt's role list)")
+    ap.add_argument("--industry", default=None,
+                    help="Single field for enumeration-angle selection "
+                         "(default: active project industry / DEFAULT_INDUSTRY)")
     ap.add_argument("--metro-tag", default=DEFAULT_METRO_TAG, help="Extra tag stamped on adds")
     ap.add_argument("--limit", type=int, default=40, help="Max companies per enumeration angle")
     ap.add_argument("--json", default=None, help="companies.json path (default: COMPANIES_JSON)")
@@ -134,6 +163,8 @@ def main(argv=None):
 
     metro = _resolve_metro(args.metro)
     industries = [s.strip() for s in args.industries.split(",") if s.strip()]
+    industry = _resolve_industry(args.industry)
+    angles = enum.angles_for_industry(industry)
     json_path = Path(args.json) if args.json else None
     names = _existing_names(json_path)
 
@@ -156,11 +187,12 @@ def main(argv=None):
     else:
         try:
             candidates = enum.enumerate_via_api(metro, industries, exclude_names=names,
-                                                limit=args.limit)
+                                                angles=angles, limit=args.limit)
         except RuntimeError as e:
             print(f"{e}\nRe-run with --print-prompt (bridge) or set an API key.")
             return 2
-        print(f"Enumerated {len(candidates)} candidate(s) via API for '{metro}'.")
+        print(f"Enumerated {len(candidates)} candidate(s) via API for '{metro}'"
+              + (f" [{industry}]" if industry else "") + ".")
 
     candidates = enum.dedupe_candidates(candidates)
     if not candidates:
