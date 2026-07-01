@@ -10,6 +10,17 @@ WORKINGNOMADS_URL = "https://www.workingnomads.com/api/exposed_jobs/"
 WORKINGNOMADS_RATE_LIMIT = 5
 
 
+def _remote_location(loc: str) -> str:
+    """This is a remote-only board, so make every posting recognizable as remote
+    to geo/filter (which keys off the literal word 'remote'). Region values like
+    'Worldwide'/'USA Only' would otherwise be classed 'elsewhere' and hidden from
+    the default 'Local + remote' Inbox view. Preserves the region text."""
+    loc = (loc or "").strip()
+    if not loc:
+        return "Remote"
+    return loc if "remote" in loc.lower() else f"{loc} (Remote)"
+
+
 class WorkingNomadsClient(SingleFeedClient):
     cache_subdir = "workingnomads"
     rate_limit = WORKINGNOMADS_RATE_LIMIT
@@ -43,7 +54,11 @@ class WorkingNomadsClient(SingleFeedClient):
             title = item.get("title", "") or ""
             category = item.get("category_name", "") or ""
             tags = item.get("tags")
-            tags_blob = " ".join(tags) if isinstance(tags, list) else (tags or "")
+            # str() each element: a public feed can carry a null/number in the
+            # tags array, and " ".join over a non-str would raise (killing the
+            # whole source for the run, not just this one job).
+            tags_blob = (" ".join(str(t) for t in tags if t)
+                         if isinstance(tags, list) else (tags or ""))
             blob = f"{title} {category} {tags_blob}"
             if not keyword_matches(source_keyword, blob):
                 continue
@@ -51,7 +66,7 @@ class WorkingNomadsClient(SingleFeedClient):
             results.append(JobResult(
                 title=title,
                 company=item.get("company_name", "Unknown") or "Unknown",
-                location=item.get("location") or "Remote",
+                location=_remote_location(item.get("location")),
                 salary_min=None,
                 salary_max=None,
                 description=desc[:3000],

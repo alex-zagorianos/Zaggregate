@@ -38,9 +38,30 @@ def test_search_and_parse_maps_fields(tmp_path):
     assert job.title == "Senior Backend Engineer"
     assert job.company == "Acme Corp"
     assert job.source_api == "workingnomads"
-    assert job.location == "Worldwide"
+    assert job.location == "Worldwide (Remote)"   # remote-only board -> tagged remote
     assert "Senior Backend Engineer" in job.description
     assert "<strong>" not in job.description
+
+
+# ── review r2 F1: a non-string element in `tags` must not crash the source. ──
+def test_non_string_tag_element_does_not_crash(tmp_path):
+    client = _client(tmp_path)
+    raw = {"jobs": [{"title": "Backend Engineer", "company_name": "X",
+                     "url": "u", "tags": ["python", None, 7], "location": "Worldwide"}]}
+    jobs = client.parse_results(raw, "backend")   # must not raise
+    assert len(jobs) == 1
+
+
+# ── review r2 F2: a remote-only board's postings must read as remote so geo/filter
+#    doesn't hide them from the default 'Local + remote' view. ──
+def test_global_location_marked_remote(tmp_path):
+    client = _client(tmp_path)
+    raw = {"jobs": [{"title": "Backend Engineer", "company_name": "X",
+                     "url": "u", "location": "Worldwide"}]}
+    job = client.parse_results(raw, "backend")[0]
+    assert "remote" in job.location.lower()          # "Worldwide (Remote)"
+    from geo.filter import classify
+    assert classify(job.location, job.title, "Cincinnati, OH") == "remote"
 
 
 def test_location_defaults_to_remote_when_blank(tmp_path):

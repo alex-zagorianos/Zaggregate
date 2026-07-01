@@ -17,6 +17,17 @@ WEWORKREMOTELY_URL = "https://weworkremotely.com/remote-jobs.rss"
 WEWORKREMOTELY_RATE_LIMIT = 5
 
 
+def _remote_location(loc: str) -> str:
+    """This is a remote-only board, so make every posting recognizable as remote
+    to geo/filter (which keys off the literal word 'remote'). Region values like
+    'Anywhere in the World'/'USA Only' would otherwise be classed 'elsewhere' and
+    hidden from the default 'Local + remote' Inbox view. Preserves the region."""
+    loc = (loc or "").strip()
+    if not loc:
+        return "Remote"
+    return loc if "remote" in loc.lower() else f"{loc} (Remote)"
+
+
 def _text(el, tag: str) -> str:
     """Defensive child-text lookup: missing tag or empty text -> ''."""
     child = el.find(tag)
@@ -92,7 +103,7 @@ class WeWorkRemotelyClient(SingleFeedClient):
             results.append(JobResult(
                 title=title,
                 company=company,
-                location=region or "Remote",
+                location=_remote_location(region),
                 salary_min=None,
                 salary_max=None,
                 description=desc[:3000],

@@ -53,6 +53,21 @@ def test_fetch_real_shape_location():
     assert jobs[1].location == "Remote"
 
 
+# ── review r2 F3: a country-only `location` dict must NOT shadow a real city that
+#    lives in atsLocation or the flat locationCity/locationState fields. ──
+def test_country_only_does_not_shadow_specific_city():
+    payload = {"result": [
+        {"id": 1, "jobOpeningName": "A", "location": {"country": "United States"},
+         "atsLocation": {}, "locationCity": "Austin", "locationState": "TX"},
+        {"id": 2, "jobOpeningName": "B", "location": {"country": "United States"},
+         "atsLocation": {"city": "Austin", "state": "TX"}},
+        {"id": 3, "jobOpeningName": "C", "location": {"country": "Canada"},
+         "atsLocation": {}},   # only a country anywhere -> country is the fallback
+    ]}
+    jobs = B.fetch("acme", fetcher=_stub_fetcher(payload))
+    assert [j.location for j in jobs] == ["Austin, TX", "Austin, TX", "Canada"]
+
+
 def test_fetch_maps_remote_atslocation():
     jobs = B.fetch("acme", fetcher=_stub_fetcher())
     remote = next(j for j in jobs if j.job_id == "bamboohr_1001")

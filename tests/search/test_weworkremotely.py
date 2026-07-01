@@ -25,6 +25,19 @@ def _stub_fetch(client, content: bytes):
     client.session.get = lambda *a, **k: _FakeResponse(content)
 
 
+# ── review r2 F2: a region like "Anywhere in the World" must read as remote so
+#    geo/filter doesn't hide these remote-only postings from the default view. ──
+def test_region_marked_remote(tmp_path):
+    client = _client(tmp_path)
+    raw = {"items": [{"title": "Acme: Backend Engineer",
+                      "link": "u", "description": "d",
+                      "region": "Anywhere in the World", "pubDate": ""}]}
+    job = client.parse_results(raw, "backend")[0]
+    assert "remote" in job.location.lower()          # "Anywhere in the World (Remote)"
+    from geo.filter import classify
+    assert classify(job.location, job.title, "Cincinnati, OH") == "remote"
+
+
 def test_title_splits_on_first_colon(tmp_path):
     client = _client(tmp_path)
     _stub_fetch(client, _fixture_bytes())
@@ -34,7 +47,7 @@ def test_title_splits_on_first_colon(tmp_path):
     assert job.company == "Acme Corp"
     assert job.title == "Senior Backend Engineer"
     assert job.source_api == "weworkremotely"
-    assert job.location == "Anywhere in the World"
+    assert job.location == "Anywhere in the World (Remote)"   # remote-only board
     assert "Senior Backend Engineer" in job.description
     assert "<strong>" not in job.description
 
