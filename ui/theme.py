@@ -330,6 +330,14 @@ def apply_theme(root, mode=None) -> ttk.Style:
     root.option_add("*TCombobox*Listbox.selectForeground", ACCENT_FG)
     root.option_add("*TCombobox*Listbox.font", FONT_SM)
 
+    # Rounded button chrome (Pillow 9-slice). Fully guarded — if Pillow is missing
+    # or anything fails, buttons stay flat and the theme is otherwise unaffected.
+    try:
+        from ui import chrome
+        chrome.install_rounded_buttons(style, root)
+    except Exception:
+        pass
+
     return style
 
 
