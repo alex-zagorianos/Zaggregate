@@ -43,6 +43,68 @@ def _tiered_default(cfg: dict, industry) -> bool:
     return registry_size > TIERED_DEFAULT_THRESHOLD
 
 
+def _maybe_auto_rank(cfg: dict) -> None:
+    """Opt-in: after new jobs are inboxed, rank the top-K still-unscored ones via
+    the direct API / local model so the user wakes up to a ranked inbox (P4).
+
+    Gated three ways so Alex's run stays byte-identical:
+      * config.auto_rank_enabled(cfg) — AUTO_RANK env or user_config 'auto_rank'.
+      * a configured backend — an API key OR a base_url (local Ollama etc).
+    Uses the SAME compact prompt + shared parser as the GUI's 'Ask AI to rank',
+    applying with source='api' under one batch (fully undo-able). Wrapped so a
+    backend hiccup NEVER kills the daily run."""
+    import config
+    if not config.auto_rank_enabled(cfg):
+        return
+    import ranker
+    has_backend = ranker.has_api_key() or (config.anthropic_base_url() is not None)
+    if not has_backend:
+        log("auto-rank: enabled but no API key / base_url configured — skipped")
+        return
+    try:
+        from tracker import db, service
+        top_k = int(cfg.get("auto_rank_top_k", config.AUTO_RANK_TOP_K) or 0) \
+            or config.AUTO_RANK_TOP_K
+        # Highest-local-score unscored rows first, capped at top_k.
+        unscored = [r for r in db.inbox_all() if (r.get("fit", -1) or -1) < 0]
+        unscored.sort(key=lambda r: -(r.get("score", 0) or 0))
+        rows = unscored[:top_k]
+        if not rows:
+            log("auto-rank: no unscored inbox rows to rank")
+            return
+        prompt, jobs, dropped = service.compact_fit_prompt_for_rows(rows, cfg=cfg)
+        if dropped:
+            try:
+                service.mark_inbox_gated(dropped)
+            except Exception:
+                pass
+        if not jobs:
+            log(f"auto-rank: all {len(rows)} candidates auto-filtered")
+            return
+        reply = _run_api_prompt(prompt)
+        applied, missed = service.score_inbox_from_reply(jobs, reply, source="api")
+        log(f"auto-rank: scored {applied}/{len(jobs)} new job(s) via API"
+            + (f" ({len(missed)} not scored)" if missed else ""))
+    except Exception as e:  # a backend hiccup must never fail the run
+        log(f"WARN: auto-rank skipped: {type(e).__name__}: {e}")
+
+
+def _run_api_prompt(prompt: str) -> str:
+    """Send a pre-built prompt to the configured Anthropic-compatible backend and
+    return the raw text reply. Mirrors gui._call_prompt_via_api (key + base_url)
+    without importing tkinter into the headless run."""
+    import config
+    import ranker
+    key = ranker.api_key()
+    import anthropic
+    client = anthropic.Anthropic(api_key=key, base_url=config.anthropic_base_url())
+    msg = client.messages.create(
+        model=config.ANTHROPIC_MODEL, max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}])
+    return "".join(getattr(b, "text", "") for b in msg.content
+                   if getattr(b, "type", None) == "text")
+
+
 def log(msg: str):
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{stamp}] {msg}"
@@ -308,6 +370,11 @@ def main():
         log(f"re-scored {rs['n']} inbox rows with current config")
     except Exception as e:  # re-score is best-effort; never fail the run for it
         log(f"WARN: inbox re-score skipped: {type(e).__name__}: {e}")
+
+    # Opt-in auto-rank: rank the top-K still-unscored inbox jobs via the direct
+    # API / local model so the user wakes up to a ranked inbox. OFF by default
+    # (byte-identical for Alex); wrapped so a backend hiccup never kills the run.
+    _maybe_auto_rank(cfg)
 
     # Optionally remove dead (404) inbox links each run. OFF by default: it
     # re-probes every career link (~1 network call/row), which materially slows a

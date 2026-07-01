@@ -8,8 +8,24 @@ import mcp_server
 def test_server_and_tools_exist():
     assert mcp_server.mcp is not None
     for name in ("get_preferences", "search_jobs", "list_inbox",
-                 "set_fit_scores", "track_job", "dismiss_job"):
+                 "set_fit_scores", "track_job", "dismiss_job",
+                 "list_applications", "get_application", "set_status",
+                 "set_follow_up", "followups_due", "funnel",
+                 "draft_followup_context", "get_resume_prompt", "save_resume",
+                 "skill_gap", "export_inbox", "import_scores"):
         assert callable(getattr(mcp_server, name))
+
+
+def test_list_inbox_compact_returns_facts(monkeypatch):
+    rows = [{"id": 1, "title": "Controls Engineer", "company": "Acme",
+             "location": "Cincinnati, OH", "fit": -1, "score": 70,
+             "description": "PLC SCADA motion control, C++ required. " * 20,
+             "url": "https://x/1", "source": "adzuna"}]
+    monkeypatch.setattr(mcp_server.db, "inbox_all", lambda: rows)
+    out = mcp_server.list_inbox(compact=True, unscored_only=False)
+    assert "facts" in out[0] and "description" not in out[0]
+    # facts summary is materially shorter than the raw description.
+    assert len(out[0]["facts"]) < len(rows[0]["description"])
 
 
 def test_get_preferences_shape(monkeypatch):
@@ -23,16 +39,41 @@ def test_get_preferences_shape(monkeypatch):
 
 def test_set_fit_scores_applies_and_clamps(monkeypatch):
     applied = []
-    monkeypatch.setattr(mcp_server.db, "inbox_set_fit",
-                        lambda i, f, r: applied.append((i, f, r)))
+
+    def fake_set_fit(i, f, r, source="manual", batch=""):
+        applied.append((i, f, r, source, batch))
+        return True   # row landed
+
+    monkeypatch.setattr(mcp_server.db, "inbox_set_fit", fake_set_fit)
     out = mcp_server.set_fit_scores([
         {"id": 1, "fit": 88, "rationale": "great"},
         {"id": 2, "fit": 150, "rationale": "clamp"},   # clamps to 100
         {"fit": 50},                                    # no id -> skipped
     ])
     assert out["applied"] == 2
-    assert applied[0] == (1, 88, "great")
+    assert out["missed"] == 0
+    assert applied[0][:3] == (1, 88, "great")
+    assert applied[0][3] == "mcp"                       # tagged source
+    assert applied[0][4] and applied[0][4] == applied[1][4]  # ONE shared batch
     assert applied[1][1] == 100
+
+
+def test_set_fit_scores_phantom_id_not_counted(monkeypatch):
+    """A nonexistent id must NOT count as applied (phantom-applied fix): the
+    real inbox_set_fit returns False for a missing row."""
+    def fake_set_fit(i, f, r, source="manual", batch=""):
+        return i == 1   # only id 1 exists
+
+    monkeypatch.setattr(mcp_server.db, "inbox_set_fit", fake_set_fit)
+    merged = []
+    monkeypatch.setattr(mcp_server.db, "inbox_merge_extras",
+                        lambda i, p: merged.append(i))
+    out = mcp_server.set_fit_scores([
+        {"id": 1, "fit": 80, "rationale": "real", "rank": 1},
+        {"id": 999, "fit": 70, "rationale": "phantom", "rank": 2},
+    ])
+    assert out["applied"] == 1 and out["missed"] == 1
+    assert merged == [1]                                # no rank write for phantom
 
 
 def test_list_inbox_filters_unscored(monkeypatch):
@@ -60,7 +101,8 @@ def test_list_inbox_limit_zero_returns_all_with_rank(monkeypatch):
 def test_set_fit_scores_persists_rank(monkeypatch):
     fits, patches = [], []
     monkeypatch.setattr(mcp_server.db, "inbox_set_fit",
-                        lambda i, f, r: fits.append((i, f, r)))
+                        lambda i, f, r, source="manual", batch="": (
+                            fits.append((i, f, r)) or True))
     monkeypatch.setattr(mcp_server.db, "inbox_merge_extras",
                         lambda i, p: patches.append((i, p)))
     out = mcp_server.set_fit_scores([

@@ -77,18 +77,23 @@ def row_from_inbox(r: dict) -> dict:
     }
 
 
-def build_prompt(profile_md: str) -> str:
+def build_prompt(profile_md: str, fit_preference: str = "") -> str:
     """The versioned re-rank prompt: the same scoring guide the bridge/API use,
     plus the user's preferences profile, plus explicit round-trip instructions
-    (fill new_fit/new_rank/fit_rationale; leave job_key untouched)."""
+    (fill new_fit/new_rank/fit_rationale; leave job_key untouched).
+
+    `fit_preference` is the per-profile bias sentence ('' = neutral). It replaces
+    the old baked-in 'prefers smaller companies' text so the file route matches
+    the bridge/API de-Alex'd default: an empty preference adds NO bias sentence."""
     # Only the scoring SCALE - NOT the bridge's "respond with a JSON array
     # {i,token,fit}" contract, which contradicts this route's CSV/job_key answer.
     guide = ("Scoring guide: 90+ apply today; 70-89 strong; 50-69 plausible "
              "stretch; <50 skip. Judge against the candidate's real experience "
              "level - do not inflate. A role requiring 10+ years or an active "
-             "clearance the candidate lacks caps at 40. The candidate prefers "
-             "smaller companies: when fit is otherwise comparable, rank the "
-             "smaller firm higher.")
+             "clearance the candidate lacks caps at 40.")
+    pref = (fit_preference or "").strip()
+    if pref:
+        guide += " " + pref
     cols = ", ".join(RERANK_CSV_COLUMNS)
     return "\n".join([
         f"# Job re-rank request (prompt version {PROMPT_VERSION})",
@@ -96,6 +101,12 @@ def build_prompt(profile_md: str) -> str:
         "You are re-ranking the candidate's job inbox. Read the candidate "
         "profile below, then score EVERY row in the attached CSV "
         "(`ranking_export.csv`).",
+        "",
+        "If the export was split into several files (`ranking_export_01.csv`, "
+        "`ranking_export_02.csv`, ...) because it was too large for one chat, "
+        "answer EACH file separately and return each file's rows on their own. "
+        "The `job_key` column joins every file's answers back together on import, "
+        "so you never need all files in one reply.",
         "",
         "## How to return your answer",
         f"Return the SAME CSV with these columns filled in: {', '.join(IN_COLUMNS)}.",
@@ -128,10 +139,12 @@ class _LazyPromptTemplate(str):
 def _render_default_prompt() -> str:
     try:
         import preferences
-        profile = (preferences.load() or {}).get("profile_md", "") or ""
+        p = preferences.load() or {}
+        profile = p.get("profile_md", "") or ""
+        fit_pref = p.get("fit_preference", "") or ""
     except Exception:
-        profile = ""
-    return build_prompt(profile)
+        profile, fit_pref = "", ""
+    return build_prompt(profile, fit_pref)
 
 
 PROMPT_TEMPLATE = _render_default_prompt()

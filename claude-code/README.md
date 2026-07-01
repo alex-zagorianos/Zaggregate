@@ -24,5 +24,43 @@ postings against your preferences itself → `set_fit_scores` → `track_job`. N
 leaves your machine except your own Claude Code session; everything is stored in
 your `data/` folder.
 
-Tools: `get_preferences`, `search_jobs`, `list_inbox`, `set_fit_scores`,
-`track_job`, `dismiss_job`.
+**Ranking tools:** `get_preferences`, `search_jobs`,
+`list_inbox` (pass `compact=true` + a `limit` <= ~150 to page a big inbox),
+`set_fit_scores`, `track_job`, `dismiss_job`, `export_inbox`, `import_scores`.
+
+**Application-cycle tools** (your help continues after a job is tracked):
+`list_applications`, `get_application`, `set_status`, `set_follow_up`,
+`followups_due`, `funnel`, `draft_followup_context`, and resume tailoring —
+`skill_gap`, `get_resume_prompt`, `save_resume`.
+
+## Using other MCP clients
+
+The same `mcp_server.py` is a standard **stdio** MCP server — nothing is
+Claude-Code-specific. Any MCP client (Claude Desktop, Cursor, or your own SDK
+client) can launch it with the `.mcp.json` command (`py mcp_server.py`, or
+`python3` on macOS/Linux) and call the tools above. It's a pure local data layer
+over your `data/` folder; the client's model does the ranking and drafting.
+
+## Bring your own AI (any provider)
+
+The app is provider-agnostic. Beyond the copy-paste bridge (works with any
+chatbot) and Claude Code (this channel), the direct-API route can point at ANY
+Anthropic-compatible endpoint:
+
+- Leave the base URL blank (default) to use Anthropic's own API with your key.
+- Set a **Base URL** in the desktop app under **Tools -> Connect your AI**, or
+  the `ANTHROPIC_BASE_URL` env var, to route the SAME calls to a local or
+  third-party model:
+  - **Ollama** (v0.14+) exposes a native Anthropic endpoint — e.g.
+    `http://localhost:11434`. Fully offline, no key needed by Anthropic.
+  - **GLM (Z.ai)**, **DeepSeek**, and **Kimi** all ship Anthropic-compatible
+    endpoints — set the base URL to theirs and your key in the key box.
+
+This one setting covers the ranker, the GUI auto-rank, resume/cover generation,
+company enumeration, and industry-profile enrichment (all five AI call sites).
+
+> Note: OpenAI/Gemini/LM-Studio use the OpenAI chat-completions shape, not the
+> Anthropic message shape, so a full OpenAI-compat adapter (provider enum +
+> request translation) is **future work** — not yet wired here. Use Ollama's
+> native Anthropic endpoint, or one of the Anthropic-compatible providers above,
+> in the meantime.

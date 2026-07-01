@@ -197,6 +197,51 @@ def adzuna_country_for(location=None, country=None):
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+# The fast/cheap model for light one-shot calls (industry-profile enrichment).
+# Resolvable so a BYO-AI backend that lacks the haiku id can point it elsewhere;
+# defaults to the current hardcoded value so behavior is byte-identical.
+ANTHROPIC_FAST_MODEL = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5-20251001")
+
+
+def anthropic_base_url():
+    """Provider-agnostic API base URL for ALL five AI call sites (ranker /
+    gui / resume-generator / company-enumeration / industry-profile). Resolves
+    env-then-secret ('base_url'): the ANTHROPIC_BASE_URL env var wins, else the
+    plaintext file the in-app 'Connect your AI' box writes to secrets/base_url,
+    else None (the SDK's default = Anthropic's own endpoint, byte-identical for
+    Alex). Any Anthropic-compatible endpoint works: Ollama v0.14+ native, GLM,
+    DeepSeek, Kimi. Read as a function (not frozen at import) so a URL pasted
+    into the box after startup takes effect without a restart, mirroring
+    resolve_secret's laziness.
+
+    None is returned for an empty/whitespace value so `anthropic.Anthropic(
+    base_url=None)` falls through to the SDK default rather than a broken URL."""
+    v = resolve_secret("ANTHROPIC_BASE_URL", "base_url")
+    v = (v or "").strip()
+    return v or None
+
+
+# Frozen snapshot for back-compat / import-time readers; the callers prefer the
+# function above so a mid-session paste is honored.
+ANTHROPIC_BASE_URL = anthropic_base_url()
+
+# Opt-in auto-rank: after a daily run scores + inboxes new jobs, optionally rank
+# the top-K new qualified jobs via the direct API/local model so the user "wakes
+# up to a ranked inbox". OFF by default (env AUTO_RANK / user_config 'auto_rank')
+# so Alex's run stays byte-identical. Requires a configured key OR base_url.
+AUTO_RANK = os.getenv("AUTO_RANK", "0") not in ("", "0", "false", "False", "no")
+# How many of the top new qualified jobs to auto-rank per run (a compact prompt,
+# so ~trivial cost); overridable via user_config 'auto_rank_top_k'.
+AUTO_RANK_TOP_K = int(os.getenv("AUTO_RANK_TOP_K", "25") or "25")
+
+
+def auto_rank_enabled(cfg: dict | None = None) -> bool:
+    """True when opt-in auto-rank should run this daily pass: the AUTO_RANK env
+    flag OR user_config 'auto_rank' is truthy. Gating on a configured backend
+    (key or base_url) is the caller's job. Default OFF."""
+    if AUTO_RANK:
+        return True
+    return bool((cfg or {}).get("auto_rank"))
 
 # JSearch (RapidAPI) — aggregates Indeed, LinkedIn, Glassdoor
 JSEARCH_RAPIDAPI_KEY = os.getenv("JSEARCH_RAPIDAPI_KEY")

@@ -83,7 +83,7 @@ def _call_prompt_via_api(prompt):
             "No Anthropic API key -- set ANTHROPIC_API_KEY or save one in "
             "Tools > Connect your AI.")
     import anthropic
-    client = anthropic.Anthropic(api_key=key)
+    client = anthropic.Anthropic(api_key=key, base_url=_cfg.anthropic_base_url())
     msg = client.messages.create(
         model=_cfg.ANTHROPIC_MODEL,
         max_tokens=4096,
@@ -93,6 +93,16 @@ def _call_prompt_via_api(prompt):
         getattr(b, "text", "") for b in msg.content
         if getattr(b, "type", None) == "text"
     )
+
+
+def _scored_status(applied, asked, missed) -> str:
+    """Status line for a fit-scoring round, surfacing partial coverage:
+    'Scored 17/20 - 3 not scored' (bridge partial-coverage, C2 P4). No missed
+    -> 'Scored 20/20.'"""
+    n_missed = len(missed) if missed else 0
+    if n_missed:
+        return f"Scored {applied}/{asked} - {n_missed} not scored"
+    return f"Scored {applied}/{asked}."
 
 
 class _LineSink(io.TextIOBase):
@@ -1062,6 +1072,23 @@ class InboxTab(ttk.Frame):
                        "relevance and pick your top matches), or just the rows "
                        "currently shown by your filters.")
         esc.pack(side="left", padx=(8, 0))
+        # Chunk size: split a big export so each file fits a free chatbot's window
+        # (the AI answers each file separately; job_key joins them on import).
+        self._export_chunk = tk.StringVar(value="All in one file")
+        ccb = ttk.Combobox(abar, textvariable=self._export_chunk, state="readonly",
+                           width=15, values=["All in one file",
+                                             "Split by 100", "Split by 50"])
+        theme.tip(ccb, "For a large inbox: split the export into smaller files so "
+                       "each fits a free AI chat. The AI ranks each file "
+                       "separately; results join back automatically on import.")
+        ccb.pack(side="left", padx=(6, 0))
+        # Compact: swap long descriptions for one-line facts (~15x fewer tokens).
+        self._export_compact = tk.BooleanVar(value=False)
+        cchk = ttk.Checkbutton(abar, text="Compact", variable=self._export_compact)
+        theme.tip(cchk, "Shrink the export by replacing each job's long "
+                        "description with a one-line facts summary (~15x fewer "
+                        "tokens) so a much bigger inbox fits a free AI chat.")
+        cchk.pack(side="left", padx=(6, 0))
         theme.tip(theme.btn(abar, "Export for AI", self._export_for_ai, "ghost"),
                   "Save the inbox as a spreadsheet you can hand to any AI tool.").pack(side="left", padx=(8, 2))
         theme.tip(theme.btn(abar, "Load AI results", self._import_scores, "ghost"),
@@ -1083,7 +1110,8 @@ class InboxTab(ttk.Frame):
                        "already have a Fit grade.")
         mcb.pack(side="left", padx=2)
         theme.tip(theme.btn(abar, "Undo AI ranking", self._undo_rerank, "ghost"),
-                  "Revert the last imported AI ranking.").pack(side="left", padx=2)
+                  "Revert the last AI ranking - whether it came from a file "
+                  "import, a pasted reply, the API, or Claude Code.").pack(side="left", padx=2)
         self._status = tk.Label(abar, text="", bg=theme.WINDOW, fg=theme.MUTED,
                                 font=theme.FONT_SM)
         self._status.pack(side="left", padx=10)
@@ -1705,18 +1733,37 @@ class InboxTab(ttk.Frame):
             self.after(0, lambda: set_status(self._status, f"API error: {exc}", "err"))
             return
         try:
-            applied = tracker_service.score_inbox_from_reply(jobs, reply)
+            applied, missed = tracker_service.score_inbox_from_reply(
+                jobs, reply, source="api")
         except Exception as exc:
             self.after(0, lambda: set_status(
                 self._status, f"Parse error: {exc}", "err"))
             return
-        self.after(0, self._api_rank_done, applied)
+        self.after(0, self._api_rank_done, applied, len(jobs), missed)
 
-    def _api_rank_done(self, applied):
+    def _api_rank_done(self, applied, asked, missed):
         if not self.winfo_exists():
             return
-        set_status(self._status, f"Ranked {applied} job(s) via API.", "ok")
+        set_status(self._status, _scored_status(applied, asked, missed),
+                   "ok" if not missed else "work")
+        if missed:
+            self._show_not_scored(missed)
         self.refresh()
+
+    def _show_not_scored(self, missed):
+        """Detail popup listing the jobs the AI was asked to score but didn't —
+        parity with the file-import unmatched report."""
+        if not missed:
+            return
+        titles = "\n".join(
+            f"- {(m.get('title') or '(untitled)')} - {(m.get('company') or '')}".rstrip(" -")
+            for m in missed[:40])
+        more = f"\n...and {len(missed) - 40} more" if len(missed) > 40 else ""
+        messagebox.showinfo(
+            "Some jobs weren't scored",
+            f"{len(missed)} job(s) were sent to the AI but came back without a "
+            f"score, so their Fit grade is unchanged:\n\n{titles}{more}",
+            parent=self)
 
     def _paste_fit(self):
         if not self._fit_jobs:
@@ -1728,11 +1775,12 @@ class InboxTab(ttk.Frame):
         # Token-verified mapping (SCORE-5): the service uses the bridge's
         # match_fit_to_jobs so scores land on the right row even if the reply
         # reordered or skipped jobs — not positional trust.
+        asked = len(self._fit_jobs)
         try:
-            ok, applied = db_guard(
+            ok, res = db_guard(
                 self,
                 lambda: tracker_service.score_inbox_from_reply(
-                    self._fit_jobs, dlg.result),
+                    self._fit_jobs, dlg.result, source="bridge"),
                 status_cb=lambda m: set_status(self._status, m, "err"),
                 action="apply fit scores")
         except BridgeParseError as e:
@@ -1740,7 +1788,11 @@ class InboxTab(ttk.Frame):
             return
         if not ok:
             return
-        set_status(self._status, f"Applied {applied} fit score(s).", "ok")
+        applied, missed = res
+        set_status(self._status, _scored_status(applied, asked, missed),
+                   "ok" if not missed else "work")
+        if missed:
+            self._show_not_scored(missed)
         self.refresh()
 
     def _export_rows(self) -> list[dict]:
@@ -1766,13 +1818,20 @@ class InboxTab(ttk.Frame):
             return
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         out_dir = Path(OUTPUT_DIR) / "rerank" / stamp
+        chunk_map = {"All in one file": None, "Split by 100": 100, "Split by 50": 50}
+        chunk_size = chunk_map.get(self._export_chunk.get())
+        compact = bool(self._export_compact.get())
         try:
-            paths = export_inbox(rows, out_dir, fmt="both")
+            paths = export_inbox(rows, out_dir, fmt="both",
+                                 chunk_size=chunk_size, compact=compact)
         except Exception as e:
             messagebox.showerror("Export failed", str(e))
             return
+        n_files = len(paths.get("csvs", [paths.get("csv")]))
+        extra = (f" ({n_files} files)" if n_files > 1 else "") + \
+                (" [compact]" if compact else "")
         set_status(self._status,
-                   f"Exported {len(rows)} rows -> {out_dir}", "info")
+                   f"Exported {len(rows)} rows -> {out_dir}{extra}", "info")
         try:
             subprocess.Popen(["explorer", str(out_dir)])
         except Exception:
@@ -1806,11 +1865,14 @@ class InboxTab(ttk.Frame):
         self.refresh()
 
     def _undo_rerank(self):
-        """Revert the most recent file-import re-rank batch via score_history."""
-        n = tracker_service.undo_last_rerank("file_import")
+        """Revert the most recent AI re-rank batch on ANY route (file import,
+        clipboard bridge, API auto-rank, or MCP) via score_history. scope='any'
+        makes Undo work after a paste/MCP rank, not just a file import — the
+        biggest BYO-AI trust hazard (arbitrary AIs writing scores)."""
+        n = tracker_service.undo_last_rerank("any")
         set_status(self._status,
-                   f"Undid last re-rank: restored {n} row(s)." if n else
-                   "No re-rank to undo.", "muted" if n else "info")
+                   f"Undid last AI ranking: restored {n} job(s)." if n else
+                   "No AI ranking to undo.", "muted" if n else "info")
         self.refresh()
 
 
@@ -3452,6 +3514,22 @@ class App(tk.Tk):
                  font=theme.FONT_SM, width=16, anchor="w").pack(side="left")
         akey = tk.StringVar(value=uisettings.get_api_key("anthropic"))
         ttk.Entry(row, textvariable=akey, width=44, show="*").pack(side="left")
+        # Base URL: point the SAME key box at any Anthropic-compatible endpoint
+        # (Ollama v0.14+ native, GLM, DeepSeek, Kimi) instead of Anthropic's own.
+        # Stored to secrets/base_url via config.write_secret; blank = Anthropic.
+        import config as _cfg
+        row2 = tk.Frame(dlg, bg=theme.WINDOW)
+        row2.pack(fill="x", padx=14, pady=(4, 2))
+        tk.Label(row2, text="Base URL (optional):", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM, width=16, anchor="w").pack(side="left")
+        aurl = tk.StringVar(value=(_cfg.read_secret("base_url") or ""))
+        ttk.Entry(row2, textvariable=aurl, width=44).pack(side="left")
+        tk.Label(dlg, justify='left', bg=theme.WINDOW, fg=theme.MUTED,
+                 font=theme.FONT_SM,
+                 text='Leave Base URL blank to use Claude. Or point it at any\n'
+                      'Anthropic-compatible endpoint -- a local Ollama\n'
+                      '(http://localhost:11434), GLM, DeepSeek, or Kimi -- to\n'
+                      'run BYO-AI ranking through your own model.').pack(anchor='w', padx=14, pady=(2, 0))
         status = tk.Label(dlg, text="", bg=theme.WINDOW, fg=theme.MUTED,
                           font=theme.FONT_SM)
         status.pack(anchor="w", padx=14, pady=(4, 0))
@@ -3459,6 +3537,7 @@ class App(tk.Tk):
         def save():
             v = akey.get().strip()
             uisettings.set_api_key("anthropic", v)
+            _cfg.write_secret("base_url", aurl.get().strip())
             ok = (not v) or uisettings.looks_like_key("anthropic", v)
             status.config(text="Saved." if ok else
                           "Saved — but that doesn't look like an Anthropic key (sk-ant-…).",

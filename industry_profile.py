@@ -541,14 +541,15 @@ def enrich_via_ai(industry: str) -> Optional[dict]:
     Returns the profile dict, or None if no API key / call failed (caller falls back
     to seed/generic — reach is never lost)."""
     import os
+    import config
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         return None
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=key)
+        client = anthropic.Anthropic(api_key=key, base_url=config.anthropic_base_url())
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=500,
+            model=config.ANTHROPIC_FAST_MODEL, max_tokens=500,
             messages=[{"role": "user", "content": build_ai_prompt(industry)}])
         text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
         text = text[text.find("{"): text.rfind("}") + 1]

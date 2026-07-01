@@ -18,8 +18,11 @@ def test_export_both_writes_trio(tmp_path, monkeypatch):
     import preferences
     monkeypatch.setattr(preferences, "load", lambda: {"profile_md": "controls roles", "hard": {}})
     paths = export_inbox(_rows(), tmp_path, fmt="both")
-    assert set(paths) == {"csv", "md", "prompt"}
-    for p in paths.values():
+    assert set(paths) == {"csv", "csvs", "md", "prompt"}
+    for k, p in paths.items():
+        if k == "csvs":
+            assert p == [paths["csv"]]  # single-file export: one chunk
+            continue
         assert p.exists() and p.read_text(encoding="utf-8").strip()
 
 

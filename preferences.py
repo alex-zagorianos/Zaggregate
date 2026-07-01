@@ -29,9 +29,15 @@ _DEFAULT_HARD = {
 
 def load(prefs_md=None, prefs_json=None) -> dict:
     """Load the preferences contract. prefs_md/prefs_json override the resolved
-    paths (for tests). Returns {"profile_md": str, "hard": dict}; absent or
-    malformed files fall back to defaults. Paths are resolved per active project
-    (root pre-migration) so preferences live beside that project's config/resume."""
+    paths (for tests). Returns {"profile_md": str, "hard": dict,
+    "fit_preference": str}; absent or malformed files fall back to defaults.
+    Paths are resolved per active project (root pre-migration) so preferences
+    live beside that project's config/resume.
+
+    `fit_preference` is a per-profile free-text bias woven into every AI-ranking
+    route (bridge/API/MCP/file). Default '' = NEUTRAL (no bias sentence at all),
+    replacing the app-wide 'prefers smaller companies' text that used to be baked
+    into everyone's ranking. Read from preferences.json's 'fit_preference' key."""
     json_default, md_default = workspace.preferences_paths()
     md_path = Path(prefs_md or md_default)
     json_path = Path(prefs_json or json_default)
@@ -42,14 +48,19 @@ def load(prefs_md=None, prefs_json=None) -> dict:
         profile_md = ""
 
     hard = dict(_DEFAULT_HARD)
+    fit_preference = ""
     try:
         data = json.loads(json_path.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             hard.update({k: data[k] for k in _DEFAULT_HARD if k in data})
+            fp = data.get("fit_preference")
+            if isinstance(fp, str):
+                fit_preference = fp.strip()
     except (OSError, json.JSONDecodeError):
         pass
 
-    return {"profile_md": profile_md, "hard": hard}
+    return {"profile_md": profile_md, "hard": hard,
+            "fit_preference": fit_preference}
 
 
 def _location_variants(locations) -> set:

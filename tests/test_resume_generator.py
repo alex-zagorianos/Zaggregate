@@ -95,7 +95,8 @@ def test_returns_tool_input(monkeypatch):
     )
     fake = _FakeClient(msg)
     monkeypatch.setattr(gen, "ANTHROPIC_API_KEY", "sk-test")
-    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda api_key: fake)
+    monkeypatch.setattr(gen.anthropic, "Anthropic",
+                        lambda api_key, base_url=None: fake)
 
     out = generate_resume_and_cover_letter("Controls Engineer at Acme")
     assert out == payload
@@ -107,6 +108,7 @@ def test_returns_tool_input(monkeypatch):
 def test_max_tokens_raises(monkeypatch):
     msg = types.SimpleNamespace(stop_reason="max_tokens", content=[])
     monkeypatch.setattr(gen, "ANTHROPIC_API_KEY", "sk-test")
-    monkeypatch.setattr(gen.anthropic, "Anthropic", lambda api_key: _FakeClient(msg))
+    monkeypatch.setattr(gen.anthropic, "Anthropic",
+                        lambda api_key, base_url=None: _FakeClient(msg))
     with pytest.raises(ResumeGenerationError, match="token limit"):
         generate_resume_and_cover_letter("posting")

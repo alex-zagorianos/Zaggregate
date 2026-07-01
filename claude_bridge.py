@@ -127,14 +127,13 @@ def _extract_json(text: str, prefer: str = "object") -> str:
 
 # ── Batch fit-scoring ─────────────────────────────────────────────────────────
 
-# Default candidate preference woven into the fit prompt. Per-project wiring
-# (reading a user_config "fit_preference") is the follow-up; for now callers can
-# override via build_fit_prompt(preference=...).
-DEFAULT_FIT_PREFERENCE = (
-    "The candidate prefers smaller companies: when fit is otherwise comparable, "
-    "score the smaller firm higher. \"Board openings\" is a size proxy — under "
-    "~30 openings is a small shop, 300+ is a mega-corp."
-)
+# Candidate preference woven into the fit prompt. NEUTRAL by default ('') so no
+# bias sentence is baked into everyone's ranking; a per-profile fit_preference
+# (preferences.load()['fit_preference'], from preferences.json) is passed through
+# by ranker.build_request/build_compact_request. The old app-wide "prefers smaller
+# companies" text is no longer the default — a user who wants it sets it in their
+# preferences. Callers may still override via build_fit_prompt(preference=...).
+DEFAULT_FIT_PREFERENCE = ""
 
 _FIT_INSTRUCTIONS = """\
 You are screening job postings for the candidate profiled below. For EACH \
@@ -167,13 +166,23 @@ def fit_token(job: JobResult) -> str:
     return hashlib.md5(basis.encode("utf-8")).hexdigest()[:8]
 
 
+def _apply_preference(preference: str) -> str:
+    """Fill the __PREFERENCE__ slot in the fit instructions. Empty/whitespace
+    preference => the placeholder (and its trailing blank line) is dropped
+    entirely, so a neutral profile carries NO bias sentence."""
+    # .replace (not .format): the template carries literal JSON braces.
+    pref = (preference or "").strip()
+    if not pref:
+        return _FIT_INSTRUCTIONS.replace("__PREFERENCE__\n", "").replace("__PREFERENCE__", "")
+    return _FIT_INSTRUCTIONS.replace("__PREFERENCE__", pref)
+
+
 def build_fit_prompt(jobs: list[JobResult], profile_md: str,
                      preference: str = DEFAULT_FIT_PREFERENCE) -> str:
     """One prompt scoring up to ~20 jobs in a single Claude reply. ``preference``
-    is the candidate's bias text (default = smaller-companies persona); pass a
-    per-project string to override."""
-    # .replace (not .format): the template carries literal JSON braces.
-    instructions = _FIT_INSTRUCTIONS.replace("__PREFERENCE__", preference.strip())
+    is the candidate's per-profile bias text (default '' = neutral, no bias
+    sentence); pass a per-project string to override."""
+    instructions = _apply_preference(preference)
     lines = [instructions, "\n## CANDIDATE PROFILE\n", profile_md.strip(),
              "\n## JOBS\n"]
     for n, j in enumerate(jobs, 1):
@@ -197,7 +206,7 @@ def build_fit_prompt_compact(jobs: list[JobResult], facts_list: list[dict],
     per job. ``facts_list[i]`` is the JobFacts dict for ``jobs[i]``. Output
     contract is identical, so parse_fit_response/match_fit_to_jobs are unchanged."""
     from match.facts import facts_summary
-    instructions = _FIT_INSTRUCTIONS.replace("__PREFERENCE__", preference.strip())
+    instructions = _apply_preference(preference)
     lines = [instructions, "\n## CANDIDATE PROFILE\n", profile_md.strip(), "\n## JOBS\n"]
     for n, (j, facts) in enumerate(zip(jobs, facts_list), 1):
         bc = getattr(j, "board_count", -1)
@@ -357,9 +366,21 @@ def _experience_corpus(experience: dict) -> str:
     return experience_corpus(experience)
 
 
-def build_resume_prompt(job_posting: str, experience: dict) -> str:
+def build_resume_prompt(job_posting: str, experience: dict,
+                        missing_skills=None) -> str:
+    """Resume prompt for one posting. `missing_skills` (from match.skillgap's
+    'missing' list, threaded in by resume/service) names the concrete terms the
+    JD asks for that the candidate can't yet claim, so tailoring targets the
+    posting's ACTUAL asks (feature computed but previously never consumed).
+    Empty/None => no gap block (unchanged prompt)."""
+    gap = ""
+    terms = [str(t).strip() for t in (missing_skills or []) if str(t).strip()]
+    if terms:
+        gap = ("\n\n## SKILLS THE POSTING EMPHASIZES\n\n"
+               "Surface any of the candidate's real experience that speaks to "
+               "these (do NOT fabricate any they lack): " + ", ".join(terms))
     return (f"{_RESUME_INSTRUCTIONS}\n{_experience_corpus(experience)}\n\n"
-            f"## JOB POSTING\n\n{job_posting.strip()}")
+            f"## JOB POSTING\n\n{job_posting.strip()}{gap}")
 
 
 def parse_resume_response(text: str) -> dict:

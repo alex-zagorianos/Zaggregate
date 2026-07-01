@@ -163,10 +163,27 @@ def assemble() -> None:
         shutil.copytree(ext_src, app / "browser_ext")
         ext_bundled = True
 
+    # Bundle the Claude Code / MCP channel so a friend who wants to drive the
+    # search (or any application-cycle help) from Claude Code or another MCP
+    # client has the server config, skill, README, and its pip requirements next
+    # to the exe. This is the bring-your-own-AI path; it needs a Python + `mcp`
+    # SDK the exe user may not have, so it ships as source alongside, not baked in.
+    cc_src = ROOT / "claude-code"
+    cc_bundled = False
+    if cc_src.exists():
+        shutil.copytree(cc_src, app / "claude-code")
+        cc_bundled = True
+    req_mcp = ROOT / "requirements-mcp.txt"
+    req_bundled = False
+    if req_mcp.exists():
+        shutil.copyfile(req_mcp, app / "requirements-mcp.txt")
+        req_bundled = True
+
     (PKG / "README.txt").write_text(README, encoding="utf-8")
     print(f"      data/ seeded: {', '.join(created)}")
     print(f"      first-run kit: {', '.join(kit)}")
     print(f"      browser_ext bundled: {ext_bundled}")
+    print(f"      claude-code bundled: {cc_bundled}; requirements-mcp: {req_bundled}")
 
 
 def zip_package() -> None:
