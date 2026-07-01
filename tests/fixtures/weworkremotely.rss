@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>We Work Remotely</title>
+<link>https://weworkremotely.com</link>
+<description>The best remote jobs for engineers, designers, marketers, and more.</description>
+<item>
+<title>Acme Corp: Senior Backend Engineer</title>
+<link>https://weworkremotely.com/remote-jobs/acme-corp-senior-backend-engineer</link>
+<description><![CDATA[<p>We are looking for a Senior Backend Engineer to join our <strong>distributed</strong> team. Experience with Python and PostgreSQL required.</p>]]></description>
+<pubDate>Mon, 29 Jun 2026 14:32:00 +0000</pubDate>
+<region>Anywhere in the World</region>
+</item>
+<item>
+<title>Globex: Product Designer</title>
+<link>https://weworkremotely.com/remote-jobs/globex-product-designer</link>
+<description><![CDATA[<p>Design beautiful interfaces for our SaaS product. Figma experience a must.</p>]]></description>
+<pubDate>Tue, 30 Jun 2026 09:10:00 +0000</pubDate>
+<region>USA Only</region>
+</item>
+<item>
+<title>Full Stack Developer Wanted</title>
+<link>https://weworkremotely.com/remote-jobs/full-stack-developer-wanted</link>
+<description><![CDATA[<p>No agencies please. Must know React and Node.js.</p>]]></description>
+<pubDate>Wed, 01 Jul 2026 08:00:00 +0000</pubDate>
+<type>Anywhere in the World</type>
+</item>
+</channel>
+</rss>
