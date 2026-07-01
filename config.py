@@ -184,7 +184,14 @@ JOBICY_INDUSTRY = "engineering"   # server-side category filter
 HIMALAYAS_URL = "https://himalayas.app/jobs/api"
 HIMALAYAS_RATE_LIMIT = 5
 HIMALAYAS_PAGE_SIZE = 20          # server's hard per-response cap
-HIMALAYAS_MAX_JOBS = 200          # total feed depth fetched per cache cycle
+# 200-deep = 10 sequential requests, but the 5/min limiter forces a ~59s sleep
+# after page 5 — a measured 61s cold fetch that matched only ~4 postings. Capping
+# at 100 (5 pages) fits inside the rate window (no sleep, ~2-3s) and stays within
+# the self-imposed politeness limit (no risk of the free feed IP-blocking us).
+# The dropped tail (jobs 101-200 of one keyword-filtered remote feed) contributes
+# ~0 matches in practice. To restore full depth without the wall instead, raise
+# HIMALAYAS_RATE_LIMIT to 10 (a once-per-cache-cycle burst) and set this to 200.
+HIMALAYAS_MAX_JOBS = 100          # total feed depth fetched per cache cycle
 
 # Hacker News "Who is hiring?" via Algolia — free, no key. Monthly thread,
 # searched per-keyword against its comments.
