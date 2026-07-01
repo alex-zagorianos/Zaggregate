@@ -1,0 +1,38 @@
+{
+  "result": [
+    {
+      "id": 1001,
+      "jobOpeningName": "Automation Test Engineer",
+      "departmentLabel": "Engineering",
+      "employmentStatusLabel": "Full-Time",
+      "atsLocation": { "city": null, "state": null, "isRemote": true },
+      "datePosted": "2026-06-15"
+    },
+    {
+      "id": 1002,
+      "jobOpeningName": "Controls Engineer",
+      "departmentLabel": "Engineering",
+      "employmentStatusLabel": "Full-Time",
+      "atsLocation": { "city": "Cincinnati", "state": "OH", "isRemote": false },
+      "postingDate": "2026-06-20"
+    },
+    {
+      "id": 1003,
+      "jobOpeningName": "Manufacturing Technician",
+      "departmentLabel": "Operations",
+      "employmentStatusLabel": "Full-Time",
+      "locationCity": "Dayton",
+      "locationState": "OH",
+      "datePosted": "2026-06-22"
+    },
+    {
+      "id": 1004,
+      "jobOpeningName": "Marketing Coordinator",
+      "departmentLabel": "Marketing",
+      "employmentStatusLabel": "Full-Time",
+      "atsLocation": { "city": "Columbus", "state": "OH", "isRemote": false },
+      "datePosted": "2026-06-10"
+    }
+  ],
+  "meta": { "total": 4 }
+}
