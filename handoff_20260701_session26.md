@@ -61,10 +61,32 @@ Read-me-first: `brain/plan-2026-07-01-session26-scale-onboarding.md` (plan) +
    Google-Jobs proxies (serpapi/jsearch) enabled. Live `eng2` snapshot: 8 families, f2=0 → honest
    "cannot certify %".
 
-## In progress (Session-26 round 2, free-only)
+## Round 2 (free-only) — DONE (through `b9e5a18`, 1187 tests, 17 ahead, push held)
 
-WeWorkRemotely + WorkingNomads free feeds, Socrata city expansion, Reach GUI badge, BambooHR
-live-slug validation. (See the round-2 review report when it lands.)
+- **WeWorkRemotely + WorkingNomads** keyless remote feeds — in `cli.ALL_SOURCES` +
+  **`config.DAILY_SOURCES`** (this widens the daily run — the intended scale win) +
+  `TECH_SKEWED_SOURCES` (auto-gate off for non-knowledge-work fields).
+- **Reach GUI badge** — `coverage.reach.badge_line()` in the Inbox header (honest verdict or blank).
+- **BambooHR LIVE-VALIDATED** against a real board (`trafilea`, 17 jobs) — shape confirmed
+  end-to-end; fixed a real-data location bug (live boards fill the top-level `location` dict, leave
+  `atsLocation` null).
+- **Socrata** — builder live-verified 12+ candidate city datasets; **none** is a valid fresh
+  open-postings source (all stale/rosters/vacancy reports). NYC stays the only one + a guard test.
+  Municipal postings live on NEOGOV/governmentjobs, NOT Socrata (a future lever).
+- **Round-2 review** (`brain/REVIEW-REPORT-2026-07-01-session26-round2.md`) → 3 defects fixed:
+  workingnomads non-string-tag crash; a bamboohr country-shadows-city regression (from the round-2
+  location fix); WWR/WorkingNomads remote postings hidden from the default view (now tagged
+  "{region} (Remote)").
+
+## Still un-built (free, next levers — none started)
+
+- **NEOGOV / governmentjobs.com** municipal+state postings (the real municipal channel; Socrata is
+  a dead end) — needs a scrape/parse approach + ToS check.
+- **ETag / If-Modified-Since** conditional GET for Greenhouse/Lever/Ashby (free efficiency — cheap
+  daily runs on a big registry).
+- **Bulk registry seed** from a free open ATS-slug dataset (jobhive/OpenJobs) — biggest raw-reach
+  lever; `seed_companies.py` path exists, needs the dataset fetched.
+- **BM25** skill/title scoring (deferred — changes existing scores; wants a flag/your call).
 
 ## Env
 
