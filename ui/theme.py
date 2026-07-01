@@ -399,11 +399,15 @@ def header_bar(parent, title, subtitle=None):
 
 def tip_strip(parent, text):
     """A one-line plain-English helper strip under a header. Self-packs."""
+    from ui import icons
     bar = tk.Frame(parent, bg=ALT)
     bar.pack(side="top", fill="x")
-    tk.Label(bar, text="\N{INFORMATION SOURCE}  " + text, bg=ALT, fg=MUTED,
-             font=FONT_SM, anchor="w", justify="left", padx=14, pady=7,
-             wraplength=1180).pack(fill="x")
+    row = tk.Frame(bar, bg=ALT)
+    row.pack(fill="x")
+    tk.Label(row, text=icons.glyph("info"), bg=ALT, fg=ACCENT,
+             font=icons.font(11), pady=7).pack(side="left", padx=(14, 6))
+    tk.Label(row, text=text, bg=ALT, fg=MUTED, font=FONT_SM, anchor="w",
+             justify="left", pady=7, wraplength=1140).pack(side="left", fill="x")
     tk.Frame(parent, bg=BORDER, height=1).pack(side="top", fill="x")
     return bar
 
@@ -509,17 +513,23 @@ def band_color(n) -> str:
     return {"good": SUCCESS, "mid": WARN, "low": DANGER, "none": FAINT}[key]
 
 
-def empty_state(parent, text, button_text=None, command=None,
-                icon="\N{INBOX TRAY}"):
+def empty_state(parent, text, button_text=None, command=None, icon=None):
     """A centered empty-state panel: faint icon + message + optional CTA button.
     Self-contained (the caller does .pack(fill='both', expand=True) and
     .pack_forget()/destroy when data arrives) — mirrors TopPicksTab's empty label
-    but generalized with a call-to-action. Returns the frame."""
+    but generalized with a call-to-action. Returns the frame.
+
+    `icon=None` uses a native MDL2 line glyph; a caller may still pass a raw string
+    (e.g. an emoji), which renders in the normal UI font."""
+    from ui import icons
     frame = tk.Frame(parent, bg=SURFACE)
     inner = tk.Frame(frame, bg=SURFACE)
     inner.place(relx=0.5, rely=0.42, anchor="center")
-    tk.Label(inner, text=icon, bg=SURFACE, fg=FAINT,
-             font=("Segoe UI", 30)).pack()
+    if icon is None:
+        icon_text, icon_font = icons.glyph("empty"), icons.font(30)
+    else:
+        icon_text, icon_font = icon, ("Segoe UI", 30)
+    tk.Label(inner, text=icon_text, bg=SURFACE, fg=FAINT, font=icon_font).pack()
     tk.Label(inner, text=text, bg=SURFACE, fg=MUTED, font=FONT, justify="center",
              wraplength=460).pack(pady=(8, 12))
     if button_text and command:
