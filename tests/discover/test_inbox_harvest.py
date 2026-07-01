@@ -132,3 +132,31 @@ def test_industries_tag_correct(monkeypatch, tmp_path):
     monkeypatch.setattr(H, "inbox_company_counts", lambda: {"Default Co": 5})
     default = H.harvest_inbox_companies(None, companies_json=tmp_path / "companies.json")
     assert default.entries[0].industries == ["harvested"]
+
+
+# ── review s26 F4: inbox_company_counts() keys are LOWERCASED; the saved entry
+#    name must recover the original display casing, not persist it lowercased. ──
+def test_display_casing_preserved(monkeypatch, tmp_path):
+    # Real contract: counts is keyed by a lowercased/stripped name...
+    monkeypatch.setattr(H, "inbox_company_counts", lambda: {"acme robotics, inc.": 3})
+    # ...and inbox_company_display_names() recovers the cased spelling.
+    monkeypatch.setattr(H, "inbox_company_display_names",
+                        lambda: {"acme robotics, inc.": "Acme Robotics, Inc."})
+    monkeypatch.setattr(H, "find_career_url", lambda domain: f"https://{domain}/careers")
+    monkeypatch.setattr(H, "detect_ats", lambda url: ("greenhouse", "acmerobotics"))
+    monkeypatch.setattr(H, "probe_count", lambda entry: 5)
+    monkeypatch.setattr(H, "save_companies", _no_save)
+
+    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json")
+
+    assert [e.name for e in result.entries] == ["Acme Robotics, Inc."]  # NOT lowercased
+
+
+# ── review s26 F5: a multi-word name must NOT be shortened to its bare first
+#    word (that domain can belong to an unrelated live company). ──
+def test_domain_guesses_no_bare_first_word():
+    guesses = H._domain_guesses("Apex Controls")
+    assert "apexcontrols.com" in guesses          # specific full-token guess kept
+    assert "apex.com" not in guesses              # collision-prone shortcut dropped
+    # a genuinely single-word name still guesses its own domain
+    assert "apex.com" in H._domain_guesses("Apex")

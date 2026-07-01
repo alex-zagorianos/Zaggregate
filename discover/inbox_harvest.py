@@ -36,7 +36,7 @@ from discover.career_link import find_career_url
 from discover.detect import detect_ats
 from scrape.ats_detect import probe_count
 from scrape.company_registry import CompanyEntry, get_registry, save_companies
-from tracker.db import inbox_company_counts
+from tracker.db import inbox_company_counts, inbox_company_display_names
 
 # Placeholder/junk employer names that show up verbatim in scraped postings —
 # never worth a network round-trip. Anything <= 1 char is junk too.
@@ -56,19 +56,20 @@ def _domain_guesses(name: str) -> list[str]:
     Built on coverage.entity.canonicalize_company, which already strips legal
     suffixes/punctuation and lowercases (and resolves known aliases) — so
     "Acme Robotics, Inc." and "ACME ROBOTICS" collapse to the same guesses.
-    Wrong guesses are harmless: find_career_url/detect_ats/probe_count is the
-    verification gate that drops anything that doesn't resolve to a live
-    board, so this is a best-effort net, not an authority.
+
+    We deliberately do NOT shorten a multi-word name to its bare first word
+    (e.g. "Apex Controls" -> "apex.com"): the probe gate only verifies a board
+    is LIVE, not that it belongs to THIS employer, so a bare common-word domain
+    owned by an unrelated real company with open jobs would be saved under the
+    wrong name. The full-token guesses ("apexcontrols.*") are specific enough to
+    be safe; anything they miss is left for the LLM-enumerate path.
     """
     canon = canonicalize_company(name)
     words = canon.split()
     if not words:
         return []
     token = "".join(words)   # "acme robotics" -> "acmerobotics"
-    first = words[0]         # "acme"
     guesses = [f"{token}.com", f"{token}.io", f"{token}.co"]
-    if first != token:
-        guesses.append(f"{first}.com")
     seen: set[str] = set()
     out: list[str] = []
     for g in guesses:
@@ -125,6 +126,14 @@ def harvest_inbox_companies(industry: str | None = None, *, min_count: int = 1,
 
     tags = [industry] if industry else ["harvested"]
 
+    # inbox_company_counts() keys are lowercased; recover the real display casing
+    # so the saved CompanyEntry.name isn't permanently lowercased (which would also
+    # block a later correctly-cased add via save_companies' name-based dedup).
+    try:
+        display = inbox_company_display_names()
+    except Exception:
+        display = {}
+
     def _one(name: str):
         """name -> (resolved: bool, entry_or_None). `resolved` is True as soon
         as ANY domain guess reaches a detected ATS board, even if that guess
@@ -145,7 +154,7 @@ def harvest_inbox_companies(industry: str | None = None, *, min_count: int = 1,
                 continue
             resolved_flag = True
             ats_type, slug = det
-            entry = CompanyEntry(name, ats_type, slug, list(tags))
+            entry = CompanyEntry(display.get(name, name), ats_type, slug, list(tags))
             try:
                 n = probe_count(entry)
             except Exception:

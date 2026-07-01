@@ -970,6 +970,21 @@ def inbox_company_counts() -> dict[str, int]:
     return counts
 
 
+def inbox_company_display_names() -> dict[str, str]:
+    """Map a lowercased/stripped company key -> a representative ORIGINAL-CASED
+    company name from the inbox (first non-empty spelling seen). Lets callers
+    recover a proper display name for a key returned by inbox_company_counts(),
+    which lowercases its keys."""
+    names: dict[str, str] = {}
+    with get_conn() as conn:
+        for r in conn.execute("SELECT company FROM inbox"):
+            raw = (r["company"] or "").strip()
+            key = raw.lower()
+            if key and key not in names:
+                names[key] = raw
+    return names
+
+
 def inbox_delete(inbox_id: int):
     with get_conn() as conn:
         conn.execute("DELETE FROM inbox WHERE id=?", (inbox_id,))

@@ -18,9 +18,13 @@ _ATS_SITES = {
     "ashby":           "jobs.ashbyhq.com",
     "smartrecruiters": "jobs.smartrecruiters.com",
     "workday":         "myworkdayjobs.com",
-    "bamboohr":        "bamboohr.com",
-    "rippling":        "ats.rippling.com",
 }
+# NOTE: bamboohr/rippling are intentionally NOT auto-discovered here. Adding them
+# would make an existing BRAVE_SEARCH_API_KEY user's daily 'careers' run start
+# finding+scraping+persisting new boards with no companies.json entry — i.e. a
+# behavior change against the "inert until a registry entry exists" / byte-identical
+# invariant. They ARE still detected for pasted URLs + inbox-harvest (ats_detect.py,
+# discover/detect.py), which is the intended reach path.
 
 
 def discover_companies(

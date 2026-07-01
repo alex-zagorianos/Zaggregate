@@ -23,6 +23,19 @@ def test_fetch_maps_all_jobs():
     assert all(j.description == "" for j in jobs)
 
 
+# ── review s26 F2: a null/soft-deleted entry in the result array must be
+#    skipped, not crash the whole board. ──
+def test_fetch_skips_malformed_entries():
+    payload = {"result": [
+        {"jobOpeningName": "A", "id": 1},
+        None,                                   # soft-deleted row
+        {"jobOpeningName": "B", "id": 2},
+        "not-a-dict",                           # junk row
+    ]}
+    jobs = B.fetch("acme", fetcher=_stub_fetcher(payload))
+    assert [j.title for j in jobs] == ["A", "B"]   # 2 valid, no raise
+
+
 def test_fetch_maps_remote_atslocation():
     jobs = B.fetch("acme", fetcher=_stub_fetcher())
     remote = next(j for j in jobs if j.job_id == "bamboohr_1001")

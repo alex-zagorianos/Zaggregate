@@ -1917,26 +1917,20 @@ class BuildCompanyListDialog(tk.Toplevel):
         self._log.see("end")
 
     def _run_orchestrator(self, **kwargs):
-        """Worker body shared by Build/Load: capture the orchestrator's stdout
-        into the log, then report via _build_done on the UI thread."""
-        import contextlib
-        import io
+        """Worker body shared by Build/Load: run the orchestrator with a
+        thread-safe log sink and report via _build_done on the UI thread. We
+        pass a `log` callback rather than redirecting sys.stdout — a global
+        redirect would race with any other thread's print() (e.g. an in-flight
+        Search) and funnel its output into this dialog."""
         from build_company_list import build_company_list
 
-        class _Sink(io.TextIOBase):
-            def __init__(self, cb):
-                self._cb = cb
+        def sink(*args, **kw):  # print()-compatible line sink -> UI thread
+            text = " ".join(str(a) for a in args) + kw.get("end", "\n")
+            self.after(0, self._append, text)
 
-            def write(self, s):
-                if s:
-                    self._cb(s)
-                return len(s)
-
-        sink = _Sink(lambda s: self.after(0, self._append, s))
         summary = err = None
         try:
-            with contextlib.redirect_stdout(sink):
-                summary = build_company_list(**kwargs)
+            summary = build_company_list(log=sink, **kwargs)
         except Exception as e:  # surface, never crash the GUI thread
             err = f"{type(e).__name__}: {e}"
         self.after(0, self._build_done, summary, err)

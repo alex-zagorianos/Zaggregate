@@ -109,7 +109,8 @@ def _detect_api_key(explicit: str | None = None) -> str | None:
 
 
 # ── stage 1: inbox harvest ──────────────────────────────────────────────────────
-def _harvest_inbox(industry: str, dry_run: bool) -> dict:
+def _harvest_inbox(industry: str, dry_run: bool, log=print) -> dict:
+    print = log  # route this stage's narration through the caller's sink
     try:
         from discover.inbox_harvest import harvest_inbox_companies
     except ImportError:
@@ -136,7 +137,8 @@ def _harvest_inbox(industry: str, dry_run: bool) -> dict:
 
 # ── stage 2: LLM enumerate (API auto / clipboard bridge) ───────────────────────
 def _enumerate_stage(*, metro: str, industry: str, national: bool, print_prompt: bool,
-                     in_file: str | None, dry_run: bool, key: str | None) -> dict:
+                     in_file: str | None, dry_run: bool, key: str | None, log=print) -> dict:
+    print = log  # route this stage's narration through the caller's sink
     industries = [industry] if industry else []
     existing = _existing_names()
     tag = _metro_tag(metro)
@@ -218,7 +220,8 @@ def _enumerate_stage(*, metro: str, industry: str, national: bool, print_prompt:
 
 
 # ── stage 3/4: dataset seed + relevance classify ────────────────────────────────
-def _dataset_stage(dataset: str, industry: str, classify: bool, dry_run: bool) -> dict:
+def _dataset_stage(dataset: str, industry: str, classify: bool, dry_run: bool, log=print) -> dict:
+    print = log  # route this stage's narration through the caller's sink
     classifier = make_classifier(industry) if classify else None
     result = seed_from_dataset(dataset, industry=industry or "", classify=classifier,
                                dry_run=dry_run)
@@ -242,7 +245,7 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
                        dataset: str | None = None, use_inbox: bool = True,
                        print_prompt: bool = False, in_file: str | None = None,
                        classify: bool = False, dry_run: bool = False,
-                       api_key: str | None = None) -> dict:
+                       api_key: str | None = None, log=print) -> dict:
     """Build (or grow) a target-company list for the active/named project's field
     + location. Orchestrates the existing inbox-harvest / LLM-enumerate /
     dataset-seed / classify / coverage-report pipeline; never invents a field or
@@ -252,8 +255,11 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
          "registry_stats", "loop_signal"}
 
     Raises ValueError when neither `industry` nor `metro` can be resolved from
-    the arguments or the active project's config.
+    the arguments or the active project's config. `log` (default: print) is a
+    line sink; a GUI passes a thread-safe callback so no global sys.stdout
+    redirect is needed.
     """
+    print = log  # route all narration below through the caller's sink
     resolved_industry = _resolve_field(industry, project, "industry")
     resolved_metro = _resolve_field(metro, project, "location")
     if not resolved_industry and not resolved_metro:
@@ -275,7 +281,7 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
     # 1 ── inbox harvest ─────────────────────────────────────────────────────────
     if use_inbox:
         print("== Inbox harvest ==")
-        summary["stages"]["inbox"] = _harvest_inbox(resolved_industry, dry_run)
+        summary["stages"]["inbox"] = _harvest_inbox(resolved_industry, dry_run, log=log)
     else:
         print("== Inbox harvest (skipped, --no-inbox) ==")
         summary["stages"]["inbox"] = None
@@ -286,7 +292,7 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
     try:
         summary["stages"]["enumerate"] = _enumerate_stage(
             metro=prompt_metro, industry=resolved_industry, national=national,
-            print_prompt=print_prompt, in_file=in_file, dry_run=dry_run, key=key)
+            print_prompt=print_prompt, in_file=in_file, dry_run=dry_run, key=key, log=log)
     except Exception as e:
         print(f"[enumerate] unexpected failure ({type(e).__name__}: {e}) -- skipping.")
         summary["stages"]["enumerate"] = {"error": str(e)}
@@ -296,7 +302,7 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
         print("== Dataset seed ==")
         try:
             summary["stages"]["dataset"] = _dataset_stage(dataset, resolved_industry,
-                                                           classify, dry_run)
+                                                           classify, dry_run, log=log)
         except Exception as e:
             print(f"[dataset] unexpected failure ({type(e).__name__}: {e}) -- skipping.")
             summary["stages"]["dataset"] = {"error": str(e)}

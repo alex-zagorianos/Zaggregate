@@ -68,6 +68,9 @@ def fetch(slug: str, *, keyword: str = "", fetcher=None) -> list[JobResult]:
 
     out: list[JobResult] = []
     for job in jobs:
+        if not isinstance(job, dict):
+            continue  # skip null/soft-deleted entries — one bad row must not
+                      # drop the whole board (docstring: never raise -> [])
         title = job.get("jobOpeningName", "") or ""
         dept = job.get("departmentLabel", "") or ""
         if keyword:

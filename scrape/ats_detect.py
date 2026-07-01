@@ -192,10 +192,14 @@ def probe_count(entry: CompanyEntry) -> int | None:
             if r.ok:
                 return r.json().get("total")
         elif t == "bamboohr":
-            # Embedded careers-list JSON. BambooHR 403s some subdomains headless,
-            # so a failed probe returns None (fail-soft) rather than a false zero.
+            # Embedded careers-list JSON. Use the SAME headers the production
+            # scraper (bamboohr_scraper) sends, so the verify-gate and the daily
+            # scrape agree on reachability (a UA mismatch here would let a board
+            # verify at onboarding then silently 403 on every real run, or the
+            # reverse). A failed probe returns None (fail-soft), never a false 0.
+            from scrape.bamboohr_scraper import _HEADERS as _BAMBOO_HEADERS
             r = requests.get(f"https://{slug}.bamboohr.com/careers/list", timeout=TO,
-                             headers={"User-Agent": "Mozilla/5.0"})
+                             headers=_BAMBOO_HEADERS)
             if r.ok:
                 return len(r.json().get("result", []))
         elif t == "rippling":
