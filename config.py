@@ -238,6 +238,13 @@ SEARCH_MAX_WORKERS = 12
 # SCRAPLING_FALLBACK=0 to disable.
 SCRAPLING_FALLBACK = os.getenv("SCRAPLING_FALLBACK", "1") != "0"
 
+# Per-domain cooldown for the stealth-fetch escalation (scrape/stealth_fetch.py).
+# A real browser render is the most detectable, most server-costly request this
+# app makes, and it previously had NO rate limiting at all. Conservative and
+# per-HOST (not global), matching the "low volume, non-abusive" fact pattern
+# the legal analysis relies on (research-2026-07-01-reach-stealth-legal.md).
+STEALTH_FETCH_RATE_LIMIT = 3
+
 # Arbeitnow — free public job-board API, no key. Remote + EU/US listings.
 ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
 ARBEITNOW_RATE_LIMIT = 5
@@ -262,8 +269,14 @@ LINKEDIN_GUEST_PAGE_SIZE = 25      # guest endpoint pages by 25
 SERPAPI_URL = "https://serpapi.com/search"
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 SERPAPI_RATE_LIMIT = 5
-SERPAPI_MONTHLY_LIMIT = 100        # free tier; tracked in cache/serpapi_usage.json
+SERPAPI_MONTHLY_LIMIT = 250        # verified real free-tier cap (serpapi.com/pricing,
+                                    # 2026-07-01: 250 searches/mo, 50/hr); tracked in
+                                    # cache/serpapi_usage.json
 # SerpApi engine: "google_jobs" (default, surfaces Indeed via Google-for-Jobs) or
 # "indeed" (a direct Indeed pull — paid; different JSON shape, parsed defensively).
 # ToS-clean routes to Indeed; there is deliberately NO standalone Indeed scraper.
+# NOTE (2026-07-01 research): SerpApi's current public engine catalog no longer
+# clearly documents a standalone "indeed" engine (only google_jobs/google_jobs_
+# listing) — it may be legacy/deprecated. serpapi_client.py warns once (stderr)
+# if this engine yields no jobs_results rather than silently returning zero.
 SERPAPI_ENGINE = os.getenv("SERPAPI_ENGINE", "google_jobs")

@@ -69,3 +69,45 @@ def test_parse_handles_indeed_shape_and_unknown(tmp_path, monkeypatch):
     assert jobs[0].url.endswith("jk=abc123") and jobs[0].job_id == "serpapi_abc123"
     # unrecognized top-level shape -> [] (defensive, no raise)
     assert c.parse_results({"error": "Invalid engine"}, "cnc") == []
+
+
+def test_indeed_engine_empty_results_warns_once_on_stderr(tmp_path, monkeypatch, capsys):
+    """engine='indeed' + no usable jobs_results -> a one-time stderr warning, never
+    a silent zero (SerpApi's 2026 public catalog no longer documents a standalone
+    Indeed engine — see brain/research-2026-07-01-reach-indeed-access.md)."""
+    monkeypatch.setattr(SC, "SERPAPI_KEY", "k")
+    monkeypatch.setattr(SC.config, "SERPAPI_ENGINE", "indeed")
+    c = SerpApiClient(cache_dir=tmp_path, cache_enabled=False)
+    monkeypatch.setattr(c.session, "get", lambda *a, **k: _Resp({"jobs_results": []}))
+
+    result1 = c.search("welder", "Cincinnati, OH")
+    result2 = c.search("machinist", "Cincinnati, OH")  # distinct keyword -> not cached
+
+    assert result1 == {"jobs_results": []}
+    assert result2 == {"jobs_results": []}
+    err = capsys.readouterr().err
+    assert "indeed" in err.lower()
+    lines = [ln for ln in err.splitlines() if ln.strip()]
+    assert len(lines) == 1, f"warning must fire exactly ONCE (across 2 calls), got: {lines}"
+
+
+def test_google_jobs_engine_never_warns_on_empty(tmp_path, monkeypatch, capsys):
+    """Default google_jobs engine returning empty is normal (no results found) —
+    must NOT trigger the indeed-engine-unavailable warning."""
+    monkeypatch.setattr(SC, "SERPAPI_KEY", "k")
+    c = SerpApiClient(cache_dir=tmp_path, cache_enabled=False)
+    monkeypatch.setattr(c.session, "get", lambda *a, **k: _Resp({"jobs_results": []}))
+
+    c.search("welder", "Cincinnati, OH")
+    assert capsys.readouterr().err == ""
+
+
+def test_indeed_engine_with_results_does_not_warn(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(SC, "SERPAPI_KEY", "k")
+    monkeypatch.setattr(SC.config, "SERPAPI_ENGINE", "indeed")
+    c = SerpApiClient(cache_dir=tmp_path, cache_enabled=False)
+    payload = {"jobs_results": [{"title": "Welder", "company": "Acme", "link": "https://x/1"}]}
+    monkeypatch.setattr(c.session, "get", lambda *a, **k: _Resp(payload))
+
+    c.search("welder", "Cincinnati, OH")
+    assert capsys.readouterr().err == ""
