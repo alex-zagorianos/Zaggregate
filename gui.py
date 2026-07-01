@@ -2034,10 +2034,19 @@ class SearchTab(ttk.Frame):
             _cfg_sources = (self._user_cfg or {}).get("sources", {}) or {}
             _sources = [s for s in ALL_SOURCES if _cfg_sources.get(s, True)]
             clients = build_clients(_sources, cache_enabled=True)
+            # Broaden the QUERY keywords for API recall (search broad, score
+            # narrow); the original `keywords` stay the scoring set below. No-op
+            # for eng IC titles. Opt out with "broaden_keywords": false in config.
+            from search.keyword_strategy import broad_query_keywords
+            if (self._user_cfg or {}).get("broaden_keywords", True):
+                query_keywords = broad_query_keywords(
+                    keywords, (self._user_cfg or {}).get("industry") or "")
+            else:
+                query_keywords = keywords
             results = (
                 SearchEngine(clients).run_full_search(
-                    keywords=keywords, location=location,
-                    salary_min=salary_min, max_pages_per_keyword=1)
+                    keywords=query_keywords, location=location,
+                    salary_min=salary_min, max_pages_per_keyword=2)
                 if clients else []
             )
             if hide_tracked and results:

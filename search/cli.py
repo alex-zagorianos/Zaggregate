@@ -397,6 +397,16 @@ def main():
 
     industry = args.industry or user_cfg.get("industry") or None
 
+    # Broaden the QUERY keywords for API recall (search broad, score narrow). Job
+    # APIs phrase-match, so narrow seniority-laden titles return ~0; the field term
+    # returns far more. Original `keywords` stay the scoring set. No-op for eng IC
+    # titles, so Alex's flow is byte-identical. Opt out with "broaden_keywords": false.
+    from search.keyword_strategy import broad_query_keywords
+    if user_cfg.get("broaden_keywords", True):
+        query_keywords = broad_query_keywords(keywords, industry or "")
+    else:
+        query_keywords = keywords
+
     default_sources_str = ",".join(ALL_SOURCES)
     cfg_sources = user_cfg.get("sources", {})
     if args.sources != default_sources_str:
@@ -443,7 +453,7 @@ def main():
 
     engine = SearchEngine(clients)
     results = engine.run_full_search(
-        keywords=keywords,
+        keywords=query_keywords,
         location=location,
         salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,

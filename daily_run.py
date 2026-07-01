@@ -76,7 +76,19 @@ def main():
     sources = [s for s in DAILY_SOURCES if cfg_sources.get(s, True)]
     industry = cfg.get("industry") or None  # filters the careers registry
 
-    log(f"daily_run start | sources={sources} | {len(keywords)} keywords | "
+    # Broaden the QUERY keywords for API recall — job APIs phrase-match, so narrow
+    # seniority-laden titles ("VP Clinical Informatics") return ~0 while the field
+    # term ("clinical informatics") returns 20x more (measured 2026-07-01). The
+    # ORIGINAL keywords stay the scoring/title-match set below; seniority is handled
+    # in scoring/gate, not the query string. No-op for eng IC titles (Alex unchanged).
+    from search.keyword_strategy import broad_query_keywords
+    if cfg.get("broaden_keywords", True):
+        query_keywords = broad_query_keywords(keywords, cfg.get("industry") or "")
+    else:
+        query_keywords = keywords
+
+    log(f"daily_run start | sources={sources} | {len(keywords)} keywords "
+        f"({len(query_keywords)} broadened for query) | "
         f"location={location} | min_score={min_score} | industry={industry}")
 
     # Opt-in tiered scraping: as the registry grows, scrape only the boards "due"
@@ -93,7 +105,7 @@ def main():
         sys.exit(1)
 
     results = SearchEngine(clients).run_full_search(
-        keywords=keywords, location=location, salary_min=salary_min,
+        keywords=query_keywords, location=location, salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,
     )
     if tiered:
