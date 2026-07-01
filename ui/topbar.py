@@ -1,22 +1,22 @@
-"""Branded top bar: a serif wordmark + an accent 'star' mark + a hairline rule.
+"""Branded top bar: the "Zaggregate" wordmark + a bold "Z" zag mark + a hairline.
 
 Gives the app a visual identity (it previously had no hero/branding). Pure
 classic-tk chrome colored from ui.theme, so the host destroys + rebuilds it on a
 light/dark switch to pick up the new palette."""
-import math
 import tkinter as tk
 
 from ui import theme
 
 
-def _draw_star(canvas, cx, cy, r, color, points=6):
-    """A simple hand-drawn-style asterisk/star mark (N crossing strokes)."""
+def _draw_zmark(canvas, x, y, s, color):
+    """A bold zig-zag 'Z' (the 'zag' of Zaggregate) inside the s×s box at (x, y)."""
     canvas.delete("all")
-    for i in range(points):
-        a = math.pi * i / points
-        canvas.create_line(cx - r * math.cos(a), cy - r * math.sin(a),
-                            cx + r * math.cos(a), cy + r * math.sin(a),
-                            fill=color, width=2, capstyle="round")
+    pad = s * 0.18
+    x0, y0, x1, y1 = x + pad, y + pad, x + s - pad, y + s - pad
+    w = max(2, int(round(s * 0.12)))
+    canvas.create_line(x0, y0, x1, y0, fill=color, width=w, capstyle="round")   # top bar
+    canvas.create_line(x1, y0, x0, y1, fill=color, width=w, capstyle="round")   # diagonal
+    canvas.create_line(x0, y1, x1, y1, fill=color, width=w, capstyle="round")   # bottom bar
 
 
 def build_top_bar(parent, before=None):
@@ -34,13 +34,16 @@ def build_top_bar(parent, before=None):
     bar.pack(fill="x", side="top")
 
     sz = 32
-    star = tk.Canvas(bar, width=sz, height=sz, bg=theme.SURFACE,
+    mark = tk.Canvas(bar, width=sz, height=sz, bg=theme.SURFACE,
                      highlightthickness=0, bd=0)
-    star.pack(side="left", padx=(14, 8), pady=(8, 8))
-    _draw_star(star, sz / 2, sz / 2, sz / 2 - 5, theme.ACCENT)
+    mark.pack(side="left", padx=(14, 8), pady=(8, 8))
+    _draw_zmark(mark, 0, 0, sz, theme.ACCENT)
 
-    tk.Label(bar, text="JobScout", bg=theme.SURFACE, fg=theme.INK,
-             font=theme.FONT_DISPLAY).pack(side="left", pady=(4, 8))
+    # Wordmark: "Zag" (accent) + "gregate" (ink) — the personal-brand root, emphasized.
+    tk.Label(bar, text="Zag", bg=theme.SURFACE, fg=theme.ACCENT,
+             font=theme.FONT_DISPLAY, padx=0, bd=0).pack(side="left", padx=0, pady=(4, 8))
+    tk.Label(bar, text="gregate", bg=theme.SURFACE, fg=theme.INK,
+             font=theme.FONT_DISPLAY, padx=0, bd=0).pack(side="left", padx=0, pady=(4, 8))
     tk.Label(bar, text="   find · rank · apply", bg=theme.SURFACE,
              fg=theme.MUTED, font=theme.FONT_SM).pack(side="left", pady=(4, 8))
 

@@ -219,7 +219,7 @@ def restore_data(parent=None) -> None:
     try:
         restore_backup(path)
         messagebox.showinfo("Restore complete",
-                            "Your data was restored. Please restart JobScout.",
+                            "Your data was restored. Please restart Zaggregate.",
                             parent=parent)
     except Exception as e:
         messagebox.showerror("Restore failed", str(e), parent=parent)
@@ -286,9 +286,9 @@ def show_privacy(parent=None) -> None:
     this computer. The strongest differentiator, shown not just asserted."""
     messagebox.showinfo(
         "Privacy — what leaves this computer",
-        "JobScout runs on your machine. The only things ever sent out are:\n\n"
+        "Zaggregate runs on your machine. The only things ever sent out are:\n\n"
         "JOB SEARCHES\n"
-        "   When you Search (or the daily update runs), JobScout queries public\n"
+        "   When you Search (or the daily update runs), Zaggregate queries public\n"
         "   job boards and company career pages — Greenhouse, Lever, Ashby,\n"
         "   Workday, Adzuna, USAJobs, The Muse, RemoteOK, Hacker News and the\n"
         "   like. It sends only your search KEYWORDS and LOCATION to look up\n"
@@ -303,7 +303,7 @@ def show_privacy(parent=None) -> None:
         "WHAT NEVER LEAVES\n"
         "   Your resume, experience, preferences, scores, notes, and application\n"
         "   tracker stay in your local data folder. No account, no cloud, no\n"
-        "   analytics or telemetry. JobScout never applies for you.",
+        "   analytics or telemetry. Zaggregate never applies for you.",
         parent=parent)
 
 

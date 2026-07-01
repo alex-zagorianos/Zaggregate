@@ -3509,7 +3509,7 @@ def main() -> int:
         _log_fatal(e)
         try:
             messagebox.showerror(
-                "JobScout could not start",
+                "Zaggregate could not start",
                 "An unexpected error occurred at startup. Details were saved to "
                 "output/gui_error.log.")
         except Exception:
