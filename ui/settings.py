@@ -69,14 +69,38 @@ def set_location_mode(mode: str) -> None:
 # exactly where the read-side resolvers already look (ranker.api_key reads
 # secrets/anthropic_key; serpapi reads secrets/serpapi_key). The clipboard bridge
 # stays the default — a key only powers the optional auto-rank + AI resume/cover.
+#
+# The job-source credentials (the "Connect job sources" box, ui/source_keys.py)
+# use the SAME secrets/ mechanism; their on-disk names come from
+# config.SOURCE_SECRET_FILES so the filenames live in one place. Provider keys
+# here are provider->filename; a source provider whose value is looked up by
+# env-then-secret is handled by get/set_api_key below via SOURCE_KEY_ENV.
 _KEY_FILES = {"anthropic": "anthropic_key", "serpapi": "serpapi_key"}
+_KEY_FILES.update(config.SOURCE_SECRET_FILES)
+
+# The env var that wins over the secret file, per provider key (mirrors the
+# resolver precedence in config.resolve_secret). Used by get_api_key so a power
+# user's .env still overrides the in-app box for source credentials too.
+SOURCE_KEY_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "serpapi": "SERPAPI_KEY",
+    "adzuna_app_id": "ADZUNA_APP_ID",
+    "adzuna_app_key": "ADZUNA_APP_KEY",
+    "usajobs_api_key": "USAJOBS_API_KEY",
+    "usajobs_email": "USAJOBS_EMAIL",
+    "jooble_api_key": "JOOBLE_API_KEY",
+    "careerjet_affid": "CAREERJET_AFFID",
+    "careeronestop_user_id": "CAREERONESTOP_USER_ID",
+    "careeronestop_token": "CAREERONESTOP_TOKEN",
+}
 
 
 def get_api_key(provider: str) -> str:
-    """The stored key for a provider ('anthropic'|'serpapi'), or '' if unset.
-    Prefers the matching env var (so a power user's .env still wins)."""
+    """The stored key for a provider (an AI provider like 'anthropic'/'serpapi',
+    or a job-source credential like 'adzuna_app_id'/'careeronestop_token'), or ''
+    if unset. Prefers the matching env var (so a power user's .env still wins)."""
     import os
-    env = {"anthropic": "ANTHROPIC_API_KEY", "serpapi": "SERPAPI_KEY"}.get(provider)
+    env = SOURCE_KEY_ENV.get(provider)
     if env and os.getenv(env):
         return os.getenv(env)
     name = _KEY_FILES.get(provider)
