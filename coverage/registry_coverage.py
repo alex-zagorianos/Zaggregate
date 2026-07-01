@@ -82,6 +82,48 @@ class CoverageEstimate:
         return "\n".join(lines)
 
 
+def estimate_coverage_industry(industry, list_b, *, user_json=None,
+                               key=name_identity) -> CoverageEstimate:
+    """Capture-recapture with list A scoped to one industry's registry slice.
+
+    list A = get_registry(industry=industry); list B = an INDEPENDENT list (a
+    dataset/host harvest — never the LLM enumerator). Empty/None industry = the
+    whole registry (same as estimate_coverage over get_registry())."""
+    from scrape.company_registry import get_registry
+    registry = get_registry(industry=industry or None, user_json=user_json)
+    return estimate_coverage(registry, list_b, key=key)
+
+
+def loop_signal(history, *, plateau_growth: float = 0.02,
+                plateau_cov: float = 85.0) -> str:
+    """Convergence verdict for a loop-until-dry acquisition run, from an ordered
+    coverage history (oldest→newest; each entry has 'observed' + 'coverage_pct').
+
+    - 'dry'      the last round added NO new companies (union flat) → exhausted.
+    - 'plateau'  union grew <plateau_growth for the last TWO rounds AND estimated
+                 coverage ≥ plateau_cov% → good enough, stop.
+    - 'rising'   still climbing (or not enough data yet) → keep going.
+    """
+    hist = [h for h in (history or []) if h.get("observed") is not None]
+    if len(hist) < 2:
+        return "rising"
+    last, prev = hist[-1], hist[-2]
+    if last["observed"] <= prev["observed"]:
+        return "dry"
+
+    def _growth(a, b):
+        return (a["observed"] - b["observed"]) / b["observed"] if b["observed"] else 0.0
+
+    g1 = _growth(last, prev)
+    cov = last.get("coverage_pct")
+    if len(hist) >= 3:
+        g2 = _growth(prev, hist[-3])
+        if (g1 < plateau_growth and g2 < plateau_growth
+                and cov is not None and cov >= plateau_cov):
+            return "plateau"
+    return "rising"
+
+
 def estimate_coverage(list_a, list_b, *, key=name_identity) -> CoverageEstimate:
     """Capture-recapture estimate of the true company universe from two lists.
 

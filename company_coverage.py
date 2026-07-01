@@ -38,6 +38,10 @@ def main(argv=None):
     ap.add_argument("--industry", default=None,
                     help="Restrict the registry to one industry tag before measuring")
     ap.add_argument("--json", default=None, help="companies.json path (default: COMPANIES_JSON)")
+    ap.add_argument("--record", action="store_true",
+                    help="Append this estimate to the industry's coverage history jsonl")
+    ap.add_argument("--loop-signal", action="store_true",
+                    help="Print the loop-until-dry verdict (rising/plateau/dry) from history")
     args = ap.parse_args(argv)
 
     key = domain_identity if args.key == "domain" else name_identity
@@ -47,6 +51,20 @@ def main(argv=None):
 
     est = estimate_coverage(registry, other, key=key)
     print(est.summary(label_a="registry (companies.json)", label_b=Path(args.against).name))
+
+    if args.record:
+        from coverage.registry_history import record
+        path = record(est, args.industry or "", extra={"list_b": Path(args.against).name})
+        print(f"\nRecorded to {path}")
+    if args.loop_signal:
+        from coverage.registry_coverage import loop_signal
+        from coverage.registry_history import load_history
+        sig = loop_signal(load_history(args.industry or ""))
+        print(f"Loop signal: {sig.upper()}  "
+              + {"rising": "(keep acquiring companies)",
+                 "plateau": "(coverage high + growth <2% — good enough)",
+                 "dry": "(last round added nothing new — stop)"}.get(sig, ""))
+
     if not est.defined:
         print("\nTip: ensure both lists use the same identity space (--key) and that the "
               "second list is independent of the registry.")
