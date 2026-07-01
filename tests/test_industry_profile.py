@@ -66,3 +66,20 @@ def test_ai_prompt_lists_only_real_categories():
     prompt = ip.build_ai_prompt("culinary arts")
     assert "Food and Hospitality Services" in prompt
     assert "culinary arts" in prompt
+
+
+# ── SOC major-group source map (item 23) ────────────────────────────────────
+def test_soc_major_groups_has_23_entries():
+    assert len(ip.SOC_MAJOR_GROUPS) == 23
+
+
+def test_soc_major_groups_codes_are_two_digit_even():
+    # BLS/O*NET-SOC major groups are the odd 2-digit prefixes 11..55.
+    expected = {f"{n:02d}" for n in range(11, 56, 2)}
+    assert set(ip.SOC_MAJOR_GROUPS.keys()) == expected
+
+
+def test_soc_major_groups_only_emit_valid_muse_categories():
+    for code, knobs in ip.SOC_MAJOR_GROUPS.items():
+        for cat in knobs["muse"]:
+            assert cat in ip.MUSE_CATEGORIES_ALL, f"group {code} -> invalid Muse category {cat!r}"

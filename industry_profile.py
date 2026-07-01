@@ -162,6 +162,41 @@ _RULES: list[tuple[set[str], dict]] = [
 ]
 
 
+# ── SOC major-group (2-digit) -> source knobs (item 23) ────────────────────────
+# The 23 BLS/O*NET-SOC major groups, mapped to Muse categories + a Jobicy slug so
+# The Muse / Jobicy category selection works for ANY occupation the O*NET tier
+# resolves (below), not just the ~20 hand-listed fields in _RULES above. _RULES
+# still wins whenever it matches (byte-identical for every field already
+# covered) — this table only BACKS the O*NET-SOC tier for everything else.
+# muse: [] where no Muse category cleanly covers the group (keeps full reach —
+# the client still fetches unfiltered + keyword-matches, rather than mis-route).
+SOC_MAJOR_GROUPS: dict[str, dict] = {
+    "11": {"muse": ["Management", "Business Operations"], "jobicy": "management"},
+    "13": {"muse": ["Accounting and Finance", "Business Operations"], "jobicy": "business"},
+    "15": {"muse": ["Software Engineering", "Data and Analytics"], "jobicy": "engineering"},
+    "17": {"muse": ["Science and Engineering"], "jobicy": "engineering"},
+    "19": {"muse": ["Science and Engineering"], "jobicy": None},
+    "21": {"muse": [], "jobicy": None},
+    "23": {"muse": ["Legal Services"], "jobicy": "legal"},
+    "25": {"muse": ["Education"], "jobicy": None},
+    "27": {"muse": [], "jobicy": "design"},
+    "29": {"muse": ["Healthcare"], "jobicy": None},
+    "31": {"muse": ["Healthcare"], "jobicy": None},
+    "33": {"muse": [], "jobicy": None},
+    "35": {"muse": ["Food and Hospitality Services"], "jobicy": None},
+    "37": {"muse": ["Cleaning and Facilities"], "jobicy": None},
+    "39": {"muse": ["Sports, Fitness, and Recreation"], "jobicy": None},
+    "41": {"muse": ["Sales", "Account Management"], "jobicy": "sales"},
+    "43": {"muse": ["Business Operations"], "jobicy": "admin"},
+    "45": {"muse": [], "jobicy": None},
+    "47": {"muse": ["Construction"], "jobicy": None},
+    "49": {"muse": ["Installation, Maintenance, and Repairs"], "jobicy": None},
+    "51": {"muse": [], "jobicy": None},
+    "53": {"muse": ["Business Operations", "Installation, Maintenance, and Repairs"], "jobicy": None},
+    "55": {"muse": [], "jobicy": None},
+}
+
+
 def _user_json_path() -> Path:
     import config
     return Path(config.USER_DATA_DIR) / "industry_profiles.json"
