@@ -15,6 +15,59 @@
 
 block_cipher = None
 
+# Single source of truth for the product version (config.APP_VERSION). Read it
+# here so the built exe's Windows version resource matches the app + the packaged
+# zip name + CHANGES.txt. Best-effort: if the version resource can't be built we
+# fall back to an unversioned exe rather than failing the build.
+import os as _os
+import sys as _sys
+_spec_root = _os.path.dirname(_os.path.abspath(SPEC))
+if _spec_root not in _sys.path:
+    _sys.path.insert(0, _spec_root)
+try:
+    import config as _cfg
+    APP_VERSION = _cfg.APP_VERSION
+except Exception:
+    APP_VERSION = "0.0.0"
+
+# Build a Windows VERSIONINFO resource from APP_VERSION so right-click ->
+# Properties -> Details shows the real version. Written next to the spec; only
+# used on Windows (PyInstaller ignores `version=` elsewhere).
+_version_file = None
+try:
+    _parts = (APP_VERSION.split("+")[0].split("-")[0].split("."))
+    _nums = tuple(int(x) for x in (_parts + ["0", "0", "0", "0"])[:4])
+    _vtext = (
+        "VSVersionInfo(\n"
+        "  ffi=FixedFileInfo(\n"
+        f"    filevers={_nums}, prodvers={_nums},\n"
+        "    mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0,\n"
+        "    date=(0, 0)),\n"
+        "  kids=[\n"
+        "    StringFileInfo([StringTable('040904B0', [\n"
+        "      StringStruct('CompanyName', 'JobScout'),\n"
+        "      StringStruct('FileDescription', 'JobScout - personal job search'),\n"
+        f"      StringStruct('FileVersion', '{APP_VERSION}'),\n"
+        "      StringStruct('InternalName', 'JobProgram'),\n"
+        "      StringStruct('OriginalFilename', 'JobProgram.exe'),\n"
+        "      StringStruct('ProductName', 'JobScout'),\n"
+        f"      StringStruct('ProductVersion', '{APP_VERSION}'),\n"
+        "    ])]),\n"
+        "    VarFileInfo([VarStruct('Translation', [1033, 1200])])\n"
+        "  ]\n"
+        ")\n"
+    )
+    # Write into build/ (gitignored) so the generated resource never litters the
+    # repo root or shows up as an untracked file.
+    _bdir = _os.path.join(_spec_root, "build")
+    _os.makedirs(_bdir, exist_ok=True)
+    _vpath = _os.path.join(_bdir, "version_info.txt")
+    with open(_vpath, "w", encoding="utf-8") as _vf:
+        _vf.write(_vtext)
+    _version_file = _vpath
+except Exception:
+    _version_file = None
+
 datas = [
     # NO personal data ships. data_templates/ holds neutral seeds that scaffold
     # the user's data folder (experience.md, preferences.md/json) on first run
@@ -99,6 +152,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version=_version_file,   # Windows version resource from config.APP_VERSION
 )
 
 coll = COLLECT(
