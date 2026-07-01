@@ -36,6 +36,53 @@ _STOPWORDS = {"engineer", "engineering", "senior", "junior", "lead", "staff",
 # Skill terms shorter than this are too ambiguous to substring-match ("c", "qt").
 _MIN_TERM_LEN = 3
 
+# ── seniority / target-level fit ──────────────────────────────────────────────
+# The deterministic score had NO seniority dimension, so it could not rank a
+# candidate's actual target level (a VP/Director/CMIO seeker) above an otherwise
+# keyword-matching but clearly-below role (a "Senior Manager"/IC title). This adds
+# a bounded target-level adjustment, but ONLY when the user is explicitly targeting
+# management/exec (target level >= manager) — an IC/senior search is unchanged
+# (Alex byte-identical). Levels reuse match.facts._detect_seniority's buckets
+# (director == director/VP/chief), mapped to an ordinal.
+_LEVEL_ORD = {"intern": 0, "entry": 1, "mid": 2, "senior": 3, "lead": 3,
+              "manager": 4, "director": 5}
+_MANAGEMENT_MIN = 4  # target must be manager+ for the adjustment to engage
+
+
+def _level_of(title: str, desc: str = "") -> int:
+    """Ordinal seniority of a title (0 intern … 5 director/VP/chief). Lazy import
+    avoids the scorer<->facts import cycle; only called when exec-targeting."""
+    from match.facts import _detect_seniority
+    return _LEVEL_ORD.get(_detect_seniority(title or "", desc or ""), 2)
+
+
+def _target_level(keywords) -> Optional[int]:
+    """Highest seniority the user's own target keywords imply (their target
+    ROLES). None when nothing management-level is targeted -> no adjustment."""
+    best = None
+    for kw in keywords:
+        if not kw:
+            continue
+        lvl = _level_of(kw, "")
+        if best is None or lvl > best:
+            best = lvl
+    return best
+
+
+def _seniority_fit_adj(job_title: str, target_level: Optional[int]) -> int:
+    """Bounded score nudge for how well a posting's level matches the target.
+    Neutral (0) unless the user targets management+ (>= _MANAGEMENT_MIN)."""
+    if target_level is None or target_level < _MANAGEMENT_MIN:
+        return 0
+    delta = _level_of(job_title, "") - target_level
+    if delta >= 0:
+        return 15          # at or above the target level
+    if delta == -1:
+        return 4           # one tier below (e.g. manager when seeking director)
+    if delta == -2:
+        return -8
+    return -16             # clearly junior for an exec seeker (mid/entry/intern)
+
 # ── Auto-strict relevance — downrank off-target titles, never hide ────────────
 # A title that satisfies none of the search queries (positive miss, or a NOT
 # term present) takes a heavy penalty so it sinks below the noise but stays
@@ -252,6 +299,7 @@ def score_job(
     seniority_exclude: Optional[Iterable[str]] = None,
     remote_ok: bool = True,
     queries: Optional[list] = None,
+    target_level: Optional[int] = None,
 ) -> tuple[int, str]:
     """Return (score 0-100, short breakdown string).
 
@@ -327,6 +375,13 @@ def score_job(
     score += size_adj
 
     notes_extra = []
+
+    # Target-level fit: nudge roles toward the user's target seniority when they
+    # are explicitly targeting management/exec. Neutral for IC/senior searches.
+    sen_adj = _seniority_fit_adj(job.title or "", target_level)
+    if sen_adj:
+        score += sen_adj
+        notes_extra.append(f"level {sen_adj:+d}")
 
     # Relevance gate: the title satisfies no search query (positive miss, or a
     # NOT term present). Penalty scales with the graded overlap t -- a true zero
@@ -449,13 +504,17 @@ def score_jobs(
     # Parse the queries once for the whole batch instead of re-parsing the same
     # keywords inside every score_job call (SCORE-8).
     queries = [query.parse(kw) for kw in kws if kw]
+    # Derive the target seniority once from the user's own target keywords; passed
+    # to every score_job so target-level roles can outrank clearly-below ones.
+    # None / below-manager => no adjustment (IC + engineering searches unchanged).
+    target_level = _target_level(kws)
     for job in jobs:
         job.score, job.score_notes = score_job(
             job, keywords=kws, location=location,
             salary_floor=salary_floor, skill_terms=terms,
             exclude_keywords=exclude_keywords, exclude_titles=exclude_titles,
             title_miss_penalty=title_miss_penalty, seniority_exclude=seniority_exclude,
-            remote_ok=remote_ok, queries=queries,
+            remote_ok=remote_ok, queries=queries, target_level=target_level,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs
