@@ -172,3 +172,19 @@ def test_app_token_read_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("SOCRATA_APP_TOKEN", "env-tok")
     c = SocrataClient(cities=["nyc"], cache_dir=tmp_path, cache_enabled=False)
     assert c.app_token == "env-tok"
+
+
+def test_every_registered_dataset_spec_is_well_formed():
+    """Guard against a hollow/guessed DatasetSpec ever landing in
+    SOCRATA_DATASETS: every entry must have a real domain + dataset_id +
+    title column, and url_template must be either "" (documented fallback —
+    see DatasetSpec docstring / ``_dataset_url``) or contain the ``{id}``
+    placeholder it's formatted with."""
+    assert SOC.SOCRATA_DATASETS  # never let the registry go empty by accident
+    for key, spec in SOC.SOCRATA_DATASETS.items():
+        assert spec.domain, f"{key}: empty domain"
+        assert spec.dataset_id, f"{key}: empty dataset_id"
+        assert spec.col_title, f"{key}: empty col_title"
+        assert spec.url_template == "" or "{id}" in spec.url_template, (
+            f"{key}: url_template set but missing {{id}} placeholder"
+        )
