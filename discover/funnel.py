@@ -31,6 +31,18 @@ _DEFAULT_ATS_HOSTS = [
     "apply.workable.com",
 ]
 
+# Enterprise ATS registered-domains — one host-level (matchType=domain) query
+# reaches every tenant under them. This is where the big health systems /
+# industrials live (Workday/iCIMS/Taleo/SuccessFactors); detect_ats already tags
+# them (slug = the URL) and probe_count counts their JSON-LD. Only used on the
+# host-level path (plan P6) — a per-URL CDX prefix can't span subdomains.
+_ENTERPRISE_ATS_HOSTS = [
+    "myworkdayjobs.com",
+    "icims.com",
+    "taleo.net",
+    "successfactors.com",
+]
+
 
 def harvest_from_domains(domains) -> dict:
     """{ats_type: {slug,...}} from resolving each company domain to its careers
@@ -69,7 +81,8 @@ def _apply_classify(boards: dict, classify) -> dict:
 
 
 def run_funnel(*, ats_hosts=None, domains=None, companies_json_path=None,
-               crawl_id=None, limit=None, classify=None) -> dict:
+               crawl_id=None, limit=None, classify=None, host_level=False,
+               enterprise=False, max_pages=None) -> dict:
     """Run the funnel and merge what it finds into companies.json.
 
     ats_hosts: ATS apex hosts to CDX-harvest (None = the common ATS hosts; pass
@@ -77,12 +90,24 @@ def run_funnel(*, ats_hosts=None, domains=None, companies_json_path=None,
     domains:   company domains to resolve careers-URL -> ATS board (optional).
     classify:  optional P3 relevance gate (callable(entries) -> kept set); only
                filters when an industry is being seeded, keep-all otherwise.
+    host_level: use the registered-domain host-level harvest (plan P6 — spans all
+               subdomains/tenants, paginated to max_pages) instead of per-host CDX.
+    enterprise: also harvest the enterprise ATS domains (Workday/iCIMS/Taleo/SF).
+               Implies the host-level path (a per-URL prefix can't span tenants).
     Returns {"harvested": {ats_type: count}, "added": n_added}.
     """
     boards: dict[str, set] = {}
-    hosts = _DEFAULT_ATS_HOSTS if ats_hosts is None else ats_hosts
+    hosts = list(_DEFAULT_ATS_HOSTS if ats_hosts is None else ats_hosts)
+    if enterprise:
+        host_level = True
+        hosts += [h for h in _ENTERPRISE_ATS_HOSTS if h not in hosts]
     if hosts:
-        _merge_boards(boards, cc_harvest.harvest_slugs(hosts, crawl_id=crawl_id, limit=limit))
+        if host_level:
+            _merge_boards(boards, cc_harvest.harvest_host_index(
+                hosts, crawl_id=crawl_id, limit=limit, max_pages=max_pages))
+        else:
+            _merge_boards(boards, cc_harvest.harvest_slugs(
+                hosts, crawl_id=crawl_id, limit=limit))
     if domains:
         _merge_boards(boards, harvest_from_domains(domains))
     boards = _apply_classify(boards, classify)

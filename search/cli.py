@@ -254,6 +254,24 @@ def main():
         help="Max CDX records per ATS host in the discovery funnel (default: 200)",
     )
     parser.add_argument(
+        "--discover-host-level",
+        action="store_true",
+        help="Use the host-level (registered-domain) CDX harvest — spans all "
+             "subdomains/tenants under each ATS host, paginated (plan P6).",
+    )
+    parser.add_argument(
+        "--discover-enterprise",
+        action="store_true",
+        help="Also harvest enterprise ATS domains (Workday/iCIMS/Taleo/SF) where "
+             "big health systems & industrials live. Implies --discover-host-level.",
+    )
+    parser.add_argument(
+        "--discover-max-pages",
+        type=int,
+        default=None,
+        help="Max CDX pages per host on the host-level path (default: 1).",
+    )
+    parser.add_argument(
         "--companies-file",
         type=str,
         default=None,
@@ -348,7 +366,10 @@ def main():
         cf = Path(args.companies_file) if args.companies_file else None
         domains = [d.strip() for d in (args.discover_domains or "").split(",") if d.strip()]
         summary = run_funnel(domains=domains or None, companies_json_path=cf,
-                             limit=args.discover_limit)
+                             limit=args.discover_limit,
+                             host_level=args.discover_host_level,
+                             enterprise=args.discover_enterprise,
+                             max_pages=args.discover_max_pages)
         print(f"Discovery funnel: harvested {summary['harvested']} -> "
               f"added {summary['added']} new board(s) to companies.json.")
         sys.exit(0)
