@@ -5,8 +5,37 @@ blocked (403/anti-bot) or returns a JS-only shell, render the page locally with
 Scrapling. Scrapling + its browser binaries are heavy and optional, so the import
 is lazy and a missing package degrades to None (the caller then gives up as
 before). No network/browser work happens unless this is actually called.
+
+Stealth engine relied on: Scrapling's `StealthyFetcher` (see requirements.txt —
+pinned version). As of Scrapling >=0.3.13 its default engine is **Patchright**
+(a CDP-level-patched Playwright/Chromium fork); **Camoufox** (a fingerprint-
+spoofing Firefox fork) remains available as an opt-in alternate engine. Both are
+lower-overhead than a plain Chromium+playwright-stealth stack but still cost a
+one-time ~150-300MB browser download (`install()` below) and ~250-900MB RAM per
+page while rendering — hence lazy import + opt-in (`config.SCRAPLING_FALLBACK`).
+
+Legal-boundary guards (research-2026-07-01-reach-stealth-legal.md #3.4):
+1. Same-host / registry-domain ALLOWLIST — `fetch_html()` only ever renders a
+   URL whose host belongs to a company already in the curated scrape registry
+   (`scrape/company_registry.py`), never an arbitrary URL. Never LinkedIn/Indeed
+   or any authenticated surface — those go through the user-gated browser
+   extension instead.
+2. Per-domain RATE LIMIT — a small per-host cooldown before every stealth
+   escalation so a single low-volume, non-abusive fetch pattern holds in
+   practice, not just as policy (mirrors `search.http_util.RateLimiter`, used
+   by the API clients but previously absent from this path entirely).
 """
 from __future__ import annotations
+
+import threading
+from urllib.parse import urlsplit
+
+from search.http_util import RateLimiter
+
+# Per-host RateLimiter instances (module-level, process-lifetime). Kept small
+# and dependency-light — reuses the same limiter class the API clients use.
+_host_limiters: dict[str, RateLimiter] = {}
+_host_limiters_lock = threading.Lock()
 
 
 def available() -> bool:
@@ -71,18 +100,88 @@ def install(timeout: int = 900) -> "tuple[bool, str]":
                    f"Run this once in a terminal:  scrapling install\n{last}".strip())
 
 
-def fetch_html(url: str) -> "str | None":
+def _registry_hosts() -> set[str]:
+    """Hostnames of every company in the curated scrape registry (hardcoded
+    industries + companies.json), lowercased. Only entries whose slug is a full
+    URL (ats_type='direct', or any future type) contribute a host — ATS-slug
+    entries (greenhouse/lever/ashby/smartrecruiters) don't route through this
+    fetcher at all. Best-effort: any per-entry parse error is skipped, never
+    raised (registry data may come from user-editable companies.json)."""
+    try:
+        from scrape.company_registry import get_registry
+        entries = get_registry()
+    except Exception:
+        return set()
+    hosts: set[str] = set()
+    for entry in entries:
+        try:
+            host = urlsplit(entry.slug).hostname
+        except Exception:
+            host = None
+        if host:
+            hosts.add(host.lower())
+    return hosts
+
+
+def _host_allowed(url: str, company=None) -> "str | None":
+    """Same-host/registry-domain allowlist guard. Returns the lowercased host if
+    `url` is allowed to be stealth-fetched, else None.
+
+    - When `company` (a CompanyEntry) is supplied, `url`'s host must match the
+      host of `company.slug` exactly — i.e. this fetch must be for the SAME
+      company that triggered it, not some other URL routed through by mistake.
+    - When no `company` is supplied, `url`'s host must belong to the curated
+      scrape registry (a company we're already scraping) — never an arbitrary
+      URL (e.g. an aggregator page, LinkedIn, Indeed).
+    """
+    try:
+        host = urlsplit(url).hostname
+    except Exception:
+        host = None
+    if not host:
+        return None
+    host = host.lower()
+    if company is not None:
+        try:
+            company_host = urlsplit(getattr(company, "slug", "") or "").hostname
+        except Exception:
+            company_host = None
+        if company_host and host == company_host.lower():
+            return host
+        return None
+    if host in _registry_hosts():
+        return host
+    return None
+
+
+def _limiter_for(host: str) -> RateLimiter:
+    with _host_limiters_lock:
+        limiter = _host_limiters.get(host)
+        if limiter is None:
+            import config
+            limiter = RateLimiter(config.STEALTH_FETCH_RATE_LIMIT, quiet=True)
+            _host_limiters[host] = limiter
+        return limiter
+
+
+def fetch_html(url: str, *, company=None) -> "str | None":
     """Return rendered HTML for `url` using Scrapling, or None if Scrapling is
-    absent or the fetch fails. Tries the lightweight Fetcher first, then escalates
+    absent, the fetch fails, or `url` fails the same-host/registry-domain
+    allowlist guard (see module docstring). Rate-limited per host before every
+    browser escalation. Tries the lightweight Fetcher first, then escalates
     to the stealth browser fetcher on a block. Confirm exact method/param names
     against the installed scrapling version; guard everything so an API shift
     degrades to None rather than raising."""
     if not url:
         return None
+    host = _host_allowed(url, company)
+    if host is None:
+        return None
     try:
         from scrapling.fetchers import StealthyFetcher
     except Exception:
         return None
+    _limiter_for(host).acquire()
     try:
         page = StealthyFetcher.fetch(url, headless=True, network_idle=True)
         html = getattr(page, "html_content", None) or getattr(page, "body", None)
