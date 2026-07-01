@@ -5,7 +5,9 @@ import requests
 
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
+from scrape.cache_helpers import (
+    conditional_get_json, http_cache_body, is_failed, mark_failed, read_cache, slug_safe,
+)
 from scrape.company_registry import CompanyEntry
 
 _BASE_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
@@ -18,32 +20,38 @@ def scrape_lever(
     cache_enabled: bool,
 ) -> list[JobResult]:
     cache_file = cache_dir / f"lever_{slug_safe(company.slug)}.json"
+    url = _BASE_URL.format(slug=company.slug)
 
     if cache_enabled:
+        # TTL-fresh fast path: unchanged from before this migration, so a
+        # second keyword hitting the same company within one run still costs
+        # zero network calls. A 304 revalidation below also refreshes this
+        # entry's timestamp, keeping that same-run dedup intact.
         cached = read_cache(cache_file)
         if is_failed(cached):
             return []  # known-dead this TTL window
         if cached is not None:
-            return _filter_and_map(cached, company, keyword)
+            return _filter_and_map(http_cache_body(cached), company, keyword)
+
+        # TTL-stale (or first-ever) — conditional GET so an unchanged board
+        # costs a cheap 304 instead of a full re-download.
+        data, _from_cache = conditional_get_json(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT)
+        if data is None:
+            print(f"  [lever] {company.name}: unreachable — skipping")
+            mark_failed(cache_file)
+            return []
+        return _filter_and_map(data, company, keyword)
 
     try:
-        url = _BASE_URL.format(slug=company.slug)
         resp = requests.get(url, timeout=CAREERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()  # returns a list, not a dict
     except requests.HTTPError as e:
         print(f"  [lever] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
-        if cache_enabled:
-            mark_failed(cache_file)
         return []
     except Exception as e:
         print(f"  [lever] {company.name}: error — {e}")
-        if cache_enabled:
-            mark_failed(cache_file)
         return []
-
-    if cache_enabled:
-        write_cache(cache_file, data)
 
     return _filter_and_map(data, company, keyword)
 
