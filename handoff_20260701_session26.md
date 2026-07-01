@@ -81,7 +81,10 @@ Read-me-first: `brain/plan-2026-07-01-session26-scale-onboarding.md` (plan) +
 ## Still un-built (free, next levers — none started)
 
 - **NEOGOV / governmentjobs.com** municipal+state postings (the real municipal channel; Socrata is
-  a dead end) — needs a scrape/parse approach + ToS check.
+  a dead end). CHECKED 2026-07-01: **no free/legal public API** (like Indeed) — reachable only by
+  scraping, which is ToS-sensitive, so NOT auto-built (same line we drew on Indeed). Options for
+  Alex: (a) the already-wired Google-Jobs proxies surface some gov postings; (b) a compliant,
+  user-gated capture; (c) accept it as out of scope. Needs your call — no autonomous scraper.
 - **ETag / If-Modified-Since** conditional GET for Greenhouse/Lever/Ashby (free efficiency — cheap
   daily runs on a big registry).
 - **Bulk registry seed** from a free open ATS-slug dataset (jobhive/OpenJobs) — biggest raw-reach
