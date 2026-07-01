@@ -87,6 +87,38 @@ def write_secret(name, value):
         return False
 
 
+def resolve_secret(env_name, secret_name):
+    """Resolve a job-source credential the same way serpapi already does: the
+    matching env var wins (a power user's .env still overrides), else the
+    plaintext file under SECRETS_DIR (the in-app 'Connect job sources' box writes
+    there), else None. This is the single accessor every source-key resolver uses
+    so env-over-secret-over-absent precedence is defined in exactly one place.
+
+    Resolved lazily (not frozen at import) so the source clients see a secret
+    written after startup and tests that monkeypatch SECRETS_DIR work without a
+    reimport."""
+    v = os.getenv(env_name)
+    if v:
+        return v
+    return read_secret(secret_name)
+
+
+# Canonical secrets/ filenames for every job-source credential. The in-app
+# 'Connect job sources' dialog (ui/source_keys.py) and ui/settings._KEY_FILES
+# both read this so the on-disk names stay defined in exactly one place. Mirrors
+# the anthropic_key / serpapi_key convention already in secrets/.
+SOURCE_SECRET_FILES = {
+    "adzuna_app_id":        "adzuna_app_id",
+    "adzuna_app_key":       "adzuna_app_key",
+    "usajobs_api_key":      "usajobs_api_key",
+    "usajobs_email":        "usajobs_email",
+    "jooble_api_key":       "jooble_api_key",
+    "careerjet_affid":      "careerjet_affid",
+    "careeronestop_user_id": "careeronestop_user_id",
+    "careeronestop_token":  "careeronestop_token",
+}
+
+
 # Writable runtime state (under the data folder).
 CACHE_DIR = USER_DATA_DIR / "cache"
 OUTPUT_DIR = USER_DATA_DIR / "output"
@@ -104,12 +136,63 @@ def ensure_writable_dirs() -> None:
 # Best-effort at import (don't crash on a read-only bundle dir).
 ensure_writable_dirs()
 
-# Adzuna
-ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")
-ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY")
+# Adzuna. Credentials resolve env-then-secret (see resolve_secret); frozen at
+# import for back-compat, but the clients re-resolve at construction so a key
+# pasted into the in-app 'Connect job sources' box takes effect without restart.
+ADZUNA_APP_ID = resolve_secret("ADZUNA_APP_ID", "adzuna_app_id")
+ADZUNA_APP_KEY = resolve_secret("ADZUNA_APP_KEY", "adzuna_app_key")
+# Adzuna serves ~19 countries off ONE free key; the two-letter country code is
+# interpolated into the endpoint (adzuna_country_url). Default 'us' = today's
+# behavior byte-for-byte. Env ADZUNA_COUNTRY or a project's location/country
+# field (adzuna_country_for) can widen it. Non-'us' also arms the language guard
+# (see LANGUAGE_GUARD) so foreign-language postings aren't confidently mis-scored.
+ADZUNA_COUNTRY = (os.getenv("ADZUNA_COUNTRY") or "us").strip().lower() or "us"
 ADZUNA_BASE_URL = "https://api.adzuna.com/v1/api/jobs/us/search"
 ADZUNA_RATE_LIMIT = 25
 ADZUNA_RESULTS_PER_PAGE = 50
+
+
+def adzuna_country_url(country=None):
+    """The Adzuna search endpoint for a two-letter country code (default
+    ADZUNA_COUNTRY). One free key covers ~19 countries; only the /{cc}/ path
+    segment changes."""
+    cc = (country or ADZUNA_COUNTRY or "us").strip().lower() or "us"
+    return f"https://api.adzuna.com/v1/api/jobs/{cc}/search"
+
+
+# Adzuna's ~19 supported country codes (adzuna.com/products). Anything outside
+# this set falls back to 'us' so a typo can't 404 the whole source.
+ADZUNA_COUNTRIES = frozenset({
+    "us", "gb", "at", "au", "be", "br", "ca", "ch", "de", "es", "fr", "in",
+    "it", "mx", "nl", "nz", "pl", "sg", "za",
+})
+
+
+def adzuna_country_for(location=None, country=None):
+    """Derive the Adzuna country code for a project. An explicit `country`
+    (config's 'adzuna_country'/'country' field) wins; else a light location-tail
+    heuristic ('Toronto, Canada' -> 'ca'); else ADZUNA_COUNTRY. Always returns a
+    supported code (unsupported -> the module default)."""
+    if country:
+        cc = str(country).strip().lower()
+        if cc in ADZUNA_COUNTRIES:
+            return cc
+    loc = (location or "").strip().lower()
+    if loc:
+        tail = loc.rsplit(",", 1)[-1].strip()
+        _NAME_TO_CC = {
+            "usa": "us", "united states": "us", "us": "us",
+            "uk": "gb", "united kingdom": "gb", "england": "gb", "gb": "gb",
+            "canada": "ca", "australia": "au", "germany": "de", "france": "fr",
+            "spain": "es", "italy": "it", "netherlands": "nl", "poland": "pl",
+            "brazil": "br", "mexico": "mx", "india": "in", "singapore": "sg",
+            "new zealand": "nz", "austria": "at", "belgium": "be",
+            "switzerland": "ch", "south africa": "za",
+        }
+        cc = _NAME_TO_CC.get(tail)
+        if cc in ADZUNA_COUNTRIES:
+            return cc
+    return ADZUNA_COUNTRY
 
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -123,9 +206,12 @@ JSEARCH_RATE_LIMIT = 5       # per minute (free tier: 200 req/month total)
 JSEARCH_MONTHLY_LIMIT = 200  # free-tier hard cap; tracked in cache/jsearch_usage.json
 JSEARCH_RESULTS_PER_PAGE = 10
 
-# USAJobs — federal job board (requires registration at usajobs.gov)
-USAJOBS_API_KEY = os.getenv("USAJOBS_API_KEY")
-USAJOBS_USER_AGENT = os.getenv("USAJOBS_USER_AGENT")  # must be your email
+# USAJobs — federal job board (requires registration at usajobs.gov). The
+# User-Agent MUST be your registered email; the in-app box stores it under the
+# secret name 'usajobs_email' (env USAJOBS_EMAIL, or the legacy USAJOBS_USER_AGENT).
+USAJOBS_API_KEY = resolve_secret("USAJOBS_API_KEY", "usajobs_api_key")
+USAJOBS_USER_AGENT = (os.getenv("USAJOBS_EMAIL") or os.getenv("USAJOBS_USER_AGENT")
+                      or read_secret("usajobs_email"))
 USAJOBS_BASE_URL = "https://data.usajobs.gov/api/search"
 USAJOBS_RATE_LIMIT = 50
 USAJOBS_RESULTS_PER_PAGE = 25
@@ -233,13 +319,17 @@ SEMANTIC_RANKING = os.getenv("SEMANTIC_RANKING", "0") not in ("", "0", "false", 
 # as generic-token noise and its title component is capped (see SEMANTIC_TITLE_CAP).
 SEMANTIC_TITLE_VETO_SIM = 0.35
 SEMANTIC_TITLE_CAP = 0.6
-DAILY_SOURCES = ["adzuna", "usajobs", "careers", "themuse", "remoteok",
-                 "remotive", "jobicy", "himalayas", "hn",
-                 "weworkremotely", "workingnomads"]
+DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
+                 "remoteok", "remotive", "jobicy", "himalayas", "hn",
+                 "weworkremotely", "workingnomads", "jooble", "careerjet"]
 # weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
 # risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
 # OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
 # 10 keywords/day would blow the 200/month free tier in ~3 weeks (manual only).
+# jooble + careerjet (aggregators) and careeronestop (US DOL, ~3.5M jobs/day) are
+# now in the daily net but ALL THREE self-skip cleanly when their free key is
+# unset (build_clients logs a one-line skip), so a keyless user's daily run is
+# unchanged — they light up the moment a key is pasted into 'Connect job sources'.
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.
@@ -290,15 +380,52 @@ STEALTH_FETCH_RATE_LIMIT = 3
 ARBEITNOW_URL = "https://www.arbeitnow.com/api/job-board-api"
 ARBEITNOW_RATE_LIMIT = 5
 
-# Jooble — aggregator; free API key (env JOOBLE_API_KEY) unlocks POST search.
+# Jooble — aggregator; free API key (env JOOBLE_API_KEY / secrets/jooble_api_key)
+# unlocks POST search.
 JOOBLE_URL = "https://jooble.org/api/"
-JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
+JOOBLE_API_KEY = resolve_secret("JOOBLE_API_KEY", "jooble_api_key")
 JOOBLE_RATE_LIMIT = 10
 
-# Careerjet — aggregator; free affiliate key (env CAREERJET_AFFID) for the public search API.
+# Careerjet — aggregator; free affiliate key (env CAREERJET_AFFID /
+# secrets/careerjet_affid) for the public search API.
 CAREERJET_URL = "https://public.api.careerjet.net/search"
-CAREERJET_AFFID = os.getenv("CAREERJET_AFFID")
+CAREERJET_AFFID = resolve_secret("CAREERJET_AFFID", "careerjet_affid")
 CAREERJET_RATE_LIMIT = 10
+
+# CareerOneStop (US DOL / NLx) — free-key REST API; ~3.5M active US jobs/day from
+# all 50 state job banks + ~300k employers (nurses, teachers, trades, retail,
+# state/local gov). The single biggest free reach win for non-tech users. Register
+# at careeronestop.org/Developers/WebAPI/registration.aspx for a userId + API
+# token; both resolve env-then-secret. Key-gated skip like adzuna.
+CAREERONESTOP_USER_ID = resolve_secret("CAREERONESTOP_USER_ID", "careeronestop_user_id")
+CAREERONESTOP_TOKEN = resolve_secret("CAREERONESTOP_TOKEN", "careeronestop_token")
+CAREERONESTOP_BASE_URL = "https://api.careeronestop.org/v1/jobsearch"
+CAREERONESTOP_RATE_LIMIT = 20
+CAREERONESTOP_RESULTS_PER_PAGE = 50
+CAREERONESTOP_RADIUS = 25    # miles around the location
+CAREERONESTOP_DAYS = 30      # postings from the last N days
+# Required attribution string (US DOL terms of use); surfaced later in the UI.
+CAREERONESTOP_ATTRIBUTION = (
+    "This data is provided by CareerOneStop, sponsored by the "
+    "U.S. Department of Labor, Employment and Training Administration."
+)
+
+# Language guard (match/language.py): when armed, a posting whose title+description
+# does not read as English is marked score=None ('not scored (language)') instead
+# of letting keyword scoring confidently mis-rank a foreign-language listing. OFF
+# by default -> byte-identical for Alex; auto-arms when ADZUNA_COUNTRY != 'us', or
+# force it with LANGUAGE_GUARD=1.
+LANGUAGE_GUARD = os.getenv("LANGUAGE_GUARD", "0") not in ("", "0", "false", "False", "no")
+
+
+def language_guard_active():
+    """True when the English-language guard should run this session: an explicit
+    LANGUAGE_GUARD flag, or a non-US Adzuna country where foreign-language
+    postings are expected. Read as a function so a test/CLI that flips either
+    input mid-process sees the change."""
+    if LANGUAGE_GUARD:
+        return True
+    return (ADZUNA_COUNTRY or "us").strip().lower() != "us"
 
 # LinkedIn — logged-out GUEST endpoint only (public; no auth/cookies/accounts).
 # Off by default; the user opts in by adding 'linkedin_guest' to --sources.

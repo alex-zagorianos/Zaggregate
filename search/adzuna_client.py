@@ -1,10 +1,8 @@
 from pathlib import Path
 from typing import Optional
 
+import config
 from config import (
-    ADZUNA_APP_ID,
-    ADZUNA_APP_KEY,
-    ADZUNA_BASE_URL,
     ADZUNA_RATE_LIMIT,
     ADZUNA_RESULTS_PER_PAGE,
 )
@@ -24,13 +22,20 @@ class AdzunaClient(JobAPIClient):
         app_key: Optional[str] = None,
         cache_dir: Optional[Path] = None,
         cache_enabled: bool = True,
+        country: Optional[str] = None,
     ):
-        self.app_id = app_id or ADZUNA_APP_ID
-        self.app_key = app_key or ADZUNA_APP_KEY
+        # Re-resolve env-then-secret at construction so a key pasted into the
+        # in-app box after import is honored (config's module constant froze at
+        # import). An explicit arg still wins for tests.
+        self.app_id = app_id or config.resolve_secret("ADZUNA_APP_ID", "adzuna_app_id")
+        self.app_key = app_key or config.resolve_secret("ADZUNA_APP_KEY", "adzuna_app_key")
         if not self.app_id or not self.app_key:
             raise ValueError(
                 "Adzuna API credentials missing. Set ADZUNA_APP_ID and ADZUNA_APP_KEY in .env"
             )
+        # One free key serves ~19 countries; only the /{cc}/ path segment changes.
+        self.country = (country or config.ADZUNA_COUNTRY or "us").strip().lower() or "us"
+        self.base_url = config.adzuna_country_url(self.country)
         self.cache = FileCache("adzuna", cache_dir)
         self.cache_enabled = cache_enabled
         self.session = make_session()
@@ -43,7 +48,7 @@ class AdzunaClient(JobAPIClient):
         salary_min: Optional[int] = None,
         page: int = 1,
     ) -> dict:
-        key = cache_key("adzuna", keyword, location, salary_min, page)
+        key = cache_key("adzuna", self.country, keyword, location, salary_min, page)
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
@@ -51,7 +56,7 @@ class AdzunaClient(JobAPIClient):
 
         self.limiter.acquire()
 
-        url = f"{ADZUNA_BASE_URL}/{page}"
+        url = f"{self.base_url}/{page}"
         params = {
             "app_id": self.app_id,
             "app_key": self.app_key,

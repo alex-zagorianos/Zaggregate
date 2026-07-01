@@ -61,7 +61,12 @@ def main():
                         help="Run against this project workspace (default: active).")
     parser.add_argument("--min-score", type=int, default=None,
                         help=f"Inbox threshold (default: user_config or {DAILY_MIN_SCORE})")
-    parser.add_argument("--max-pages", type=int, default=1)
+    # Default lifted 1 -> 2: the paginated keyword clients (adzuna/usajobs/
+    # careeronestop/jsearch...) fetch a 2nd page for free recall, and the engine
+    # parallelizes per-keyword so wall-clock barely moves. Page-1-only feeds
+    # (RemoteOK/The Muse/careers) are unaffected — they stop at their raw end
+    # regardless of this cap. The page-2 contribution is logged below.
+    parser.add_argument("--max-pages", type=int, default=2)
     args = parser.parse_args()
 
     if args.project and not args.user_config:
@@ -158,10 +163,30 @@ def main():
         sys.exit(1)
 
     engine = SearchEngine(clients)
+    # Page-2 recall measurement: when paging beyond 1, do a cache-priming page-1
+    # pass first, then the full pass. With caching ON, page-1 fetches are shared
+    # (the full pass reads them from cache), so the ONLY extra network is page 2 —
+    # and the raw-count delta is an honest "page 2: +N" attributable to the paged
+    # keyword clients (page-1-only feeds contribute 0 to the delta by definition).
+    page1_raw = None
+    if args.max_pages >= 2:
+        try:
+            engine.run_full_search(
+                keywords=query_keywords, location=location, salary_min=salary_min,
+                max_pages_per_keyword=1,
+            )
+            page1_raw = len(engine.last_raw_results)
+        except Exception as e:  # never let the measurement pass kill the run
+            log(f"WARN: page-1 baseline pass skipped: {type(e).__name__}: {e}")
+            page1_raw = None
     results = engine.run_full_search(
         keywords=query_keywords, location=location, salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,
     )
+    if page1_raw is not None:
+        delta = len(engine.last_raw_results) - page1_raw
+        if delta > 0:
+            log(f"page 2: +{delta} raw postings beyond page 1")
     if tiered:
         for c in clients:
             if hasattr(c, "finalize_tiering"):
@@ -177,6 +202,29 @@ def main():
         _dropped = ", ".join(f"{k} {v}" for k, v in _gate_counts.items() if v)
         log(f"preferences hard-gate | {_pre_gate} -> {len(results)}"
             + (f" (dropped: {_dropped})" if _dropped else ""))
+    # Language guard: when armed (a non-US Adzuna country, or LANGUAGE_GUARD=1),
+    # a posting that doesn't read as English is marked 'not scored (language)' and
+    # held out of scoring, so the keyword matcher can't confidently mis-rank a
+    # foreign-language listing. OFF by default -> byte-identical for Alex's US run
+    # (the branch is skipped entirely and `results` is scored intact).
+    import config as _cfg
+    _lang_scored = results
+    _lang_skipped = []
+    if _cfg.language_guard_active():
+        from match.language import is_probably_english
+        _lang_scored, _lang_skipped = [], []
+        for r in results:
+            probe = f"{r.title or ''} {r.description or ''}"
+            if is_probably_english(probe):
+                _lang_scored.append(r)
+            else:
+                r.score = -1  # model's 'not scored' sentinel (kept < min_score)
+                r.score_notes = "not scored (language)"
+                _lang_skipped.append(r)
+        if _lang_skipped:
+            log(f"language guard | {len(_lang_skipped)} non-English posting(s) "
+                f"held out of scoring ('not scored (language)')")
+
     # Remote-acceptable jobs get full location credit (not 0) so they rank fairly
     # when the user is open to remote — honors preferences.json remote_ok.
     try:
@@ -184,7 +232,7 @@ def main():
         _remote_ok = bool(preferences.load().get("hard", {}).get("remote_ok", True))
     except Exception:
         _remote_ok = True
-    score_jobs(results, keywords=keywords, location=location,
+    score_jobs(_lang_scored, keywords=keywords, location=location,
                salary_floor=salary_min,
                exclude_keywords=cfg.get("exclude_keywords", []),
                exclude_titles=cfg.get("exclude_titles"),

@@ -3,7 +3,8 @@ Key-optional: without a key the client logs loudly and degrades to empty,
 never raising (spec §7)."""
 from typing import Optional
 
-from config import JOOBLE_API_KEY, JOOBLE_RATE_LIMIT, JOOBLE_URL
+import config
+from config import JOOBLE_RATE_LIMIT, JOOBLE_URL
 from models import JobResult
 from search.http_util import cache_key
 from search.single_feed_client import SingleFeedClient
@@ -13,11 +14,18 @@ class JoobleClient(SingleFeedClient):
     cache_subdir = "jooble"
     rate_limit = JOOBLE_RATE_LIMIT
 
+    @staticmethod
+    def _api_key():
+        # Re-resolve env-then-secret at call time (config constant froze at
+        # import) so a key pasted into the in-app box is honored without restart.
+        return config.resolve_secret("JOOBLE_API_KEY", "jooble_api_key")
+
     def search(self, keyword: str, location: str = "", salary_min: Optional[int] = None,
                page: int = 1) -> dict:
         if page > 1:
             return {"jobs": []}
-        if not JOOBLE_API_KEY:
+        api_key = self._api_key()
+        if not api_key:
             print("  [jooble] WARNING: JOOBLE_API_KEY unset — Jooble skipped "
                   "(free key at jooble.org/api/about).")
             return {"jobs": []}
@@ -26,7 +34,7 @@ class JoobleClient(SingleFeedClient):
         def fetch():
             self.limiter.acquire()
             resp = self.session.post(
-                f"{JOOBLE_URL}{JOOBLE_API_KEY}",
+                f"{JOOBLE_URL}{api_key}",
                 json={"keywords": keyword, "location": location},
                 timeout=30)
             resp.raise_for_status()

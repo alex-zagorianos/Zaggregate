@@ -17,10 +17,18 @@ from search.report_csv import generate_csv_report
 from search.report_html import generate_html_report
 from search.search_engine import SearchEngine
 
-ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers", "themuse", "remoteok",
-               "remotive", "jobicy", "himalayas", "hn",
+ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careeronestop", "careers",
+               "themuse", "remoteok", "remotive", "jobicy", "himalayas", "hn",
                "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi",
                "socrata", "weworkremotely", "workingnomads"]
+
+# Sources that must NOT run unless the user EXPLICITLY opts in (a truthy
+# cfg_sources[<name>]), i.e. the on-by-default fallback `cfg_sources.get(s, True)`
+# is flipped to `.get(s, False)` for exactly these. linkedin_guest is a logged-out
+# scrape of a ToS-sensitive surface, so shipping it on-by-default inside friends'
+# exes makes a legal judgment call for them; the documented contract is informed
+# opt-in (review "legal posture"). Note --sources still honors an explicit list.
+OPT_IN_SOURCES = frozenset({"linkedin_guest"})
 
 
 def load_user_config(path=None) -> dict:
@@ -69,6 +77,13 @@ def build_clients(
                 clients.append(USAJobsClient(cache_enabled=cache_enabled))
             except ValueError as e:
                 print(f"  [usajobs] Skipping — {e}")
+
+        elif source == "careeronestop":
+            from search.careeronestop_client import CareerOneStopClient
+            try:
+                clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
+            except ValueError as e:
+                print(f"  [careeronestop] Skipping — {e}")
 
         elif source == "themuse":
             from search.themuse_client import TheMuseClient
@@ -439,7 +454,10 @@ def main():
         # honor it exactly as requested.
         sources = [s.strip().lower() for s in args.sources.split(",")]
     else:
-        sources = [s for s in ALL_SOURCES if cfg_sources.get(s, True)]
+        # OPT_IN_SOURCES default OFF (must be explicitly enabled); everything
+        # else defaults ON. linkedin_guest is the only opt-in source today.
+        sources = [s for s in ALL_SOURCES
+                   if cfg_sources.get(s, s not in OPT_IN_SOURCES)]
         # Drop tech/remote-skewed boards for a non-knowledge-work field (no-op
         # for eng/knowledge-work fields; an explicit cfg_sources override wins).
         from search.keyword_strategy import gate_tech_sources

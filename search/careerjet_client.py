@@ -3,7 +3,8 @@ Key-optional: without an affid the client logs loudly and degrades to empty."""
 import hashlib
 from typing import Optional
 
-from config import CAREERJET_AFFID, CAREERJET_RATE_LIMIT, CAREERJET_URL
+import config
+from config import CAREERJET_RATE_LIMIT, CAREERJET_URL
 from models import JobResult
 from search.http_util import cache_key, to_float
 from search.single_feed_client import SingleFeedClient
@@ -13,11 +14,18 @@ class CareerjetClient(SingleFeedClient):
     cache_subdir = "careerjet"
     rate_limit = CAREERJET_RATE_LIMIT
 
+    @staticmethod
+    def _affid():
+        # Re-resolve env-then-secret at call time (config constant froze at
+        # import) so an affid pasted into the in-app box is honored.
+        return config.resolve_secret("CAREERJET_AFFID", "careerjet_affid")
+
     def search(self, keyword: str, location: str = "", salary_min: Optional[int] = None,
                page: int = 1) -> dict:
         if page > 1:
             return {"jobs": []}
-        if not CAREERJET_AFFID:
+        affid = self._affid()
+        if not affid:
             print("  [careerjet] WARNING: CAREERJET_AFFID unset — Careerjet skipped "
                   "(free affiliate id at careerjet.com/partners/).")
             return {"jobs": []}
@@ -26,7 +34,7 @@ class CareerjetClient(SingleFeedClient):
         def fetch():
             self.limiter.acquire()
             resp = self.session.get(CAREERJET_URL, params={
-                "keywords": keyword, "location": location, "affid": CAREERJET_AFFID,
+                "keywords": keyword, "location": location, "affid": affid,
                 "pagesize": 50, "user_ip": "11.22.33.44", "user_agent": self.user_agent,
             }, timeout=30)
             resp.raise_for_status()
