@@ -111,7 +111,36 @@ EXCLUDE_TITLE_PENALTY = 30
 DEFAULT_SENIORITY_EXCLUDE = ()   # per profile, e.g. ["director", "manager", "intern"]
 SENIORITY_PENALTY = 20
 
+# Semantic-similarity component weight (match/semantic.py, Model2Vec). Only ever
+# ACTIVE when semantic ranking is enabled AND the model loaded AND both profile &
+# job text exist — otherwise it's not a present component and the score is
+# byte-identical to the keyword-only scorer. Capped low (mirrors Huntr's <20% of
+# score keyword-cap discipline) so it nudges ranking without dominating it.
+SEM_WEIGHT = 12
+
 _cache: dict[tuple[str, float], frozenset[str]] = {}
+_profile_cache: dict[tuple[str, float], str] = {}
+
+
+def profile_text(experience_path=None) -> str:
+    """Compact candidate-profile text for semantic comparison: the concatenated
+    experience.md sections (skills + prose), memoized on mtime, capped. '' when
+    there's no experience file (semantic then abstains -> keyword-only score)."""
+    from resume.experience_parser import load_experience
+    import workspace
+    target = Path(experience_path) if experience_path else workspace.experience_file()
+    if not target.exists():
+        return ""
+    key = (str(target), target.stat().st_mtime)
+    if key in _profile_cache:
+        return _profile_cache[key]
+    try:
+        data = load_experience(target)
+        text = " ".join(str(v) for v in data.values() if v)[:4000]
+    except Exception:
+        text = ""
+    _profile_cache[key] = text
+    return text
 
 
 def extract_skill_terms(experience_path=None) -> frozenset[str]:
@@ -325,6 +354,7 @@ def score_job(
     remote_ok: bool = True,
     queries: Optional[list] = None,
     target_level: Optional[int] = None,
+    semantic_profile: Optional[str] = None,
 ) -> tuple[int, str]:
     """Return (score 0-100, short breakdown string).
 
@@ -362,6 +392,20 @@ def score_job(
     l = min(loc_raw / 3.0, 1.0)  # 3+ token hits = full marks
     r = _recency_score(job.created)
 
+    # Optional local semantic-similarity component (match/semantic.py). Compares
+    # the candidate profile to the job's title+description via a small local
+    # embedding. m is None (abstains) unless semantic ranking is enabled, the
+    # model loaded, and both texts exist -> then it's a present component; else
+    # the score is byte-identical to the keyword-only scorer.
+    m = None
+    if semantic_profile:
+        try:
+            from match import semantic
+            job_text = f"{job.title or ''} {job.description or ''}".strip()
+            m = semantic.similarity(semantic_profile, job_text)
+        except Exception:
+            m = None
+
     # Weight-renormalization over data-PRESENT components. Title + location are
     # always present; skill/salary/recency emit a neutral 0.5 when their data is
     # missing, which used to inflate data-poor jobs. Drop the missing components'
@@ -370,11 +414,12 @@ def score_job(
     skill_present = bool(skill_terms) and bool((job.description or "").strip())
     salary_present = bool(salary_floor) and (job.salary_max or job.salary_min) is not None
     recency_present = _parse_created(job.created) != _EPOCH
+    sem_present = m is not None
     present = 2 + skill_present + salary_present + recency_present  # title+loc always
 
-    base_w = {"t": 35, "k": 25, "s": 15, "l": 15, "r": 10}
+    base_w = {"t": 35, "k": 25, "s": 15, "l": 15, "r": 10, "m": SEM_WEIGHT}
     active = {"t": True, "l": True, "k": skill_present,
-              "s": salary_present, "r": recency_present}
+              "s": salary_present, "r": recency_present, "m": sem_present}
     live_total = sum(base_w[c] for c, on in active.items() if on)
     scale = 100.0 / live_total
     score = (
@@ -383,6 +428,7 @@ def score_job(
         + (base_w["s"] * scale * s if salary_present else 0.0)
         + base_w["l"] * scale * l
         + (base_w["r"] * scale * r if recency_present else 0.0)
+        + (base_w["m"] * scale * m if sem_present else 0.0)
     )
 
     # Company-size modifier from the careers boards' total-postings proxy.
@@ -439,6 +485,8 @@ def score_job(
 
     score = int(max(0, min(100, round(score))))
     notes = f"title {t:.0%} | skills {k:.0%} | salary {s:.0%} | loc {l:.0%} | new {r:.0%}"
+    if sem_present:
+        notes += f" | sem {m:.0%}"
     notes += f" | conf {present}/5"
     if size_adj:
         notes += f" | size {size_adj:+d} ({bc} on board)"
@@ -456,9 +504,9 @@ def score_job(
 # are skipped, so it never throws on an old or partial notes string.
 _COMPONENT_META = [
     ("title", "Title", 35), ("skills", "Skills", 25), ("salary", "Salary", 15),
-    ("loc", "Location", 15), ("new", "Recency", 10),
+    ("loc", "Location", 15), ("new", "Recency", 10), ("sem", "Semantic", SEM_WEIGHT),
 ]
-_BD_PCT_RE = re.compile(r"^(title|skills|salary|loc|new)\s+(-?\d+)%$")
+_BD_PCT_RE = re.compile(r"^(title|skills|salary|loc|new|sem)\s+(-?\d+)%$")
 _BD_CONF_RE = re.compile(r"^conf\s+(\d+)/(\d+)$")
 _BD_SIZE_RE = re.compile(r"^size\s+([+-]\d+)\s+\((-?\d+) on board\)$")
 _BD_PEN_RE = re.compile(r"^(.*?)\s+(-\d+)$")
@@ -533,6 +581,16 @@ def score_jobs(
     # to every score_job so target-level roles can outrank clearly-below ones.
     # None / below-manager => no adjustment (IC + engineering searches unchanged).
     target_level = _target_level(kws)
+    # Resolve the candidate profile text ONCE (only when semantic ranking is
+    # actually available), so the model is warmed once and the profile embedding
+    # is cached across the batch. None -> the semantic component abstains.
+    semantic_profile = None
+    try:
+        from match import semantic
+        if semantic.available():
+            semantic_profile = profile_text() or None
+    except Exception:
+        semantic_profile = None
     for job in jobs:
         job.score, job.score_notes = score_job(
             job, keywords=kws, location=location,
@@ -540,6 +598,7 @@ def score_jobs(
             exclude_keywords=exclude_keywords, exclude_titles=exclude_titles,
             title_miss_penalty=title_miss_penalty, seniority_exclude=seniority_exclude,
             remote_ok=remote_ok, queries=queries, target_level=target_level,
+            semantic_profile=semantic_profile,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs
