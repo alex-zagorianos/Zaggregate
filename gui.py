@@ -2844,6 +2844,7 @@ class App(tk.Tk):
         self._build_menu()
 
         self._proj_var = None
+        self._build_topbar()           # branded hero, above the project bar
         self._build_projectbar()       # shown only when projects exist
 
         self._nb = ttk.Notebook(self)
@@ -3234,8 +3235,24 @@ class App(tk.Tk):
         except (tk.TclError, AttributeError):
             sel = None
         self._build_menu()                     # tk menus ignore ttk; re-color them
+        self._rebuild_topbar()
         self._rebuild_projectbar()
         self._rebuild_tabs(select_index=sel)
+
+    # ── branded top bar (app identity) ──────────────────────────────────────────
+    def _build_topbar(self):
+        """Branded hero bar (serif wordmark + accent star + hairline) at the very
+        top, above the project bar. Classic-tk chrome, so it's rebuilt on a theme
+        switch to pick up the new palette (see _rebuild_topbar / _set_theme)."""
+        from ui import topbar
+        anchor = getattr(self, "_projbar", None) or getattr(self, "_nb", None)
+        self._topbar = topbar.build_top_bar(self, before=anchor)
+
+    def _rebuild_topbar(self):
+        if getattr(self, "_topbar", None) is not None:
+            self._topbar.destroy()
+            self._topbar = None
+        self._build_topbar()
 
     # ── project bar (switch campaigns without restarting) ──────────────────────
     def _build_projectbar(self):
