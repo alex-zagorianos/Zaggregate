@@ -5,6 +5,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── Product version (single source of truth) ──────────────────────────────────
+# Every user-facing version string (packaged zip name, CHANGES.txt, the About
+# dialog, last_run.json, the "Report a problem" bundle, app.spec metadata) reads
+# THIS constant so a release bumps one line. Semantic versioning; see
+# brain/review-2026-07-01-deep-product-review.md (P7 product lifecycle).
+APP_VERSION = "1.0.0"
+
+# ── Logging framework (applog.py) ─────────────────────────────────────────────
+# A rotating file log lives under the user data folder so source failures,
+# 429-erosion, and daily-run errors finally persist somewhere a friend can zip
+# up and send ("Report a problem"). Console output is unchanged; the file is an
+# additive mirror. See applog.get_logger().
+LOG_DIR_NAME = "logs"            # <USER_DATA_DIR>/logs/
+LOG_FILE_NAME = "app.log"        # rotating primary log
+LOG_MAX_BYTES = 1_048_576        # 1 MB per file
+LOG_BACKUP_COUNT = 5             # app.log + app.log.1 .. app.log.5
+
 
 def _is_frozen() -> bool:
     return getattr(sys, "frozen", False)
@@ -122,11 +139,26 @@ SOURCE_SECRET_FILES = {
 # Writable runtime state (under the data folder).
 CACHE_DIR = USER_DATA_DIR / "cache"
 OUTPUT_DIR = USER_DATA_DIR / "output"
+LOG_DIR = USER_DATA_DIR / LOG_DIR_NAME
+
+
+def log_dir() -> Path:
+    """The rotating-log directory (<USER_DATA_DIR>/logs), created on demand.
+    A function (not just the LOG_DIR constant) so a test that repoints
+    USER_DATA_DIR still lands its logs under the temp folder via applog, which
+    resolves this lazily."""
+    d = USER_DATA_DIR / LOG_DIR_NAME
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return d
 
 
 def ensure_writable_dirs() -> None:
-    """Create cache/ and output/ under WRITABLE_DIR. Safe to call repeatedly."""
-    for d in (CACHE_DIR, OUTPUT_DIR):
+    """Create cache/, output/ and logs/ under WRITABLE_DIR. Safe to call
+    repeatedly."""
+    for d in (CACHE_DIR, OUTPUT_DIR, LOG_DIR):
         try:
             d.mkdir(parents=True, exist_ok=True)
         except OSError:
