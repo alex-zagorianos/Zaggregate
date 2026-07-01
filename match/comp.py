@@ -30,7 +30,12 @@ Deterministic, no I/O, no network, stdlib + match.scorer only.
 """
 from typing import Optional
 
-from match.scorer import salary_from_text
+from match.scorer import parse_comp, salary_from_text
+
+# ISO currency -> display symbol (falls back to the code for anything else).
+_CUR_SYMBOL = {"USD": "$", "GBP": "£", "EUR": "€"}
+# Canonical pay period -> compact display suffix (annual = no suffix).
+_PERIOD_SUFFIX = {"hour": "/hr", "week": "/wk", "month": "/mo", "year": ""}
 
 
 def _get(job, key):
@@ -53,33 +58,52 @@ def _coerce(value) -> Optional[float]:
         return None
 
 
-def _recover(job) -> tuple[Optional[float], Optional[float]]:
-    """(min, max) from explicit fields, else salary_text, else description."""
+def _recover(job) -> dict:
+    """Normalized comp fields from explicit salary_min/max (annual USD), else the
+    raw salary_text, else the description. Returns a dict with annualized min/max
+    plus the disclosed currency + period + raw (native-period) figures used for
+    display. Explicit fields carry no currency/period metadata, so they are treated
+    as annual USD (unchanged behavior)."""
     lo = _coerce(_get(job, "salary_min"))
     hi = _coerce(_get(job, "salary_max"))
     if lo is not None or hi is not None:
-        return lo, hi
+        return {"min": lo, "max": hi, "raw_min": lo, "raw_max": hi,
+                "currency": "USD", "period": "year"}
     # Inbox rows carry the raw captured string; JobResults don't have the attr.
-    text = _get(job, "salary_text")
-    if text:
-        lo, hi = salary_from_text(text)
-        if lo is not None or hi is not None:
-            return lo, hi
-    description = _get(job, "description")
-    if description:
-        lo, hi = salary_from_text(description)
-        if lo is not None or hi is not None:
-            return lo, hi
-    return None, None
+    for src in (_get(job, "salary_text"), _get(job, "description")):
+        if not src:
+            continue
+        comp = parse_comp(src)
+        if comp is not None:
+            return comp
+    return {"min": None, "max": None, "raw_min": None, "raw_max": None,
+            "currency": "USD", "period": "year"}
 
 
-def _display(lo: Optional[float], hi: Optional[float]) -> str:
-    """Compact comp string for the GUI column."""
-    if lo is not None and hi is not None:
-        return f"${lo:,.0f}–${hi:,.0f}"
-    single = lo if lo is not None else hi
+def _fmt(amount: float, currency: str, period: str) -> str:
+    sym = _CUR_SYMBOL.get(currency, currency + " ")
+    suffix = _PERIOD_SUFFIX.get(period, "")
+    # Sub-annual (hourly/weekly/monthly) figures are small -> keep cents so a
+    # "$14.50/hr" reads right; annual figures round to whole units.
+    if period != "year" and amount < 1000:
+        return f"{sym}{amount:,.2f}{suffix}"
+    return f"{sym}{amount:,.0f}{suffix}"
+
+
+def _display(lo, hi, currency: str, period: str, raw_lo, raw_hi) -> str:
+    """Compact comp string for the GUI column, in the DISCLOSED currency + period
+    (e.g. "$14.50/hr", "£90,000+", "$120,000–$140,000")."""
+    a = raw_lo if raw_lo is not None else lo
+    b = raw_hi if raw_hi is not None else hi
+    if a is not None and b is not None:
+        return f"{_fmt(a, currency, period)}–{_fmt(b, currency, period)}"
+    single = a if a is not None else b
     if single is not None:
-        return f"${single:,.0f}+"
+        # A period-suffixed single figure ("$14.50/hr") reads as a rate, not a
+        # floor, so no trailing "+"; annual single figures keep the "$120,000+".
+        if period != "year":
+            return _fmt(single, currency, period)
+        return f"{_fmt(single, currency, period)}+"
     return "Not listed"
 
 
@@ -88,18 +112,24 @@ def normalize_comp(job) -> dict:
 
     Accepts a JobResult or an inbox-row dict. Returns::
 
-        {"min": float|None, "max": float|None, "disclosed": bool, "display": str}
+        {"min": float|None, "max": float|None, "disclosed": bool, "display": str,
+         "currency": str, "period": str}
 
-    ``disclosed`` is True iff any min or max was found; ``display`` is one of
-    "$120,000–$140,000" / "$120,000+" / "Not listed".
+    ``min``/``max`` are ANNUALIZED (for the floor filter); ``display`` shows the
+    disclosed currency + period ("$14.50/hr", "£90,000+", "$120,000–$140,000" /
+    "Not listed"). ``disclosed`` is True iff any annualized min or max was found.
     """
-    lo, hi = _recover(job)
+    rec = _recover(job)
+    lo, hi = rec["min"], rec["max"]
     disclosed = lo is not None or hi is not None
     return {
         "min": lo,
         "max": hi,
         "disclosed": disclosed,
-        "display": _display(lo, hi),
+        "display": _display(lo, hi, rec["currency"], rec["period"],
+                            rec["raw_min"], rec["raw_max"]),
+        "currency": rec["currency"],
+        "period": rec["period"],
     }
 
 

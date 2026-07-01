@@ -280,74 +280,147 @@ def _skill_score(description: str, skill_terms: frozenset[str]) -> float:
 
 
 # Pay ranges printed in descriptions (CA/CO/NY disclosure laws make these
-# common on exactly the boards that never fill the salary API fields).
+# common on exactly the boards that never fill the salary API fields). A leading
+# currency symbol ($, GBP, EUR) is captured so non-USD postings display the right
+# symbol instead of being silently read as dollars.
+_CUR_SYM = "$£€"  # $ GBP EUR
+_MONEY = r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?[kK]|\d+(?:\.\d+)?)"
 _SALARY_RE = re.compile(
-    r"\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?[kK]|\d+(?:\.\d+)?)"
-    r"(?:\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?[kK]|\d+(?:\.\d+)?))?"
+    r"([" + _CUR_SYM + r"])\s?" + _MONEY +
+    r"(?:\s*(?:-|–|—|to)\s*[" + _CUR_SYM + r"]?\s?" + _MONEY + r")?"
 )
 
+# Currency symbol -> ISO code used for display/storage.
+_CUR_CODE = {"$": "USD", "£": "GBP", "€": "EUR"}
 
-def _parse_money(tok: Optional[str], hourly: bool = False) -> Optional[float]:
-    """'$165,000' / '95k' / '45.50' -> annual dollars, or None if it fails sanity
-    bounds (30k-500k). A bare small value is annualized ONLY when `hourly` is set
-    (an explicit /hr context), so a '$75 stipend' is no longer read as $156k."""
+# Period markers near a figure: annualization multiplier + a canonical label.
+# Hourly 2080 = 40h*52w; weekly 52; monthly 12; annual 1. The FIRST matching
+# marker in the surrounding context wins (checked most-specific-first).
+_PERIOD_CTX = [
+    ("hour",  2080.0, re.compile(r"/\s?hr\b|/\s?hour\b|\bper\s?hour\b|\bhourly\b|\ban\s?hour\b", re.I)),
+    ("week",    52.0, re.compile(r"/\s?wk\b|/\s?week\b|\bper\s?week\b|\bweekly\b|\ba\s?week\b", re.I)),
+    ("month",   12.0, re.compile(r"/\s?mo\b|/\s?month\b|\bper\s?month\b|\bmonthly\b|\ba\s?month\b", re.I)),
+    ("year",     1.0, re.compile(r"/\s?yr\b|/\s?year\b|\bper\s?year\b|\bannual(?:ly)?\b|\ba\s?year\b|\bp\.?a\.?\b", re.I)),
+]
+
+
+def _period_of(ctx: str) -> tuple[str, float]:
+    """(label, annualize_multiplier) for the pay period named near a figure.
+    Defaults to ('year', 1.0) when no marker is present (a bare 5-6 digit figure
+    is almost always an annual salary)."""
+    for label, mult, pat in _PERIOD_CTX:
+        if pat.search(ctx):
+            return label, mult
+    return "year", 1.0
+
+
+def _raw_money(tok: Optional[str]) -> Optional[float]:
+    """'$165,000' / '95k' / '45.50' -> a raw float in its OWN period (no
+    annualization, no bounds), or None if non-numeric."""
     if not tok:
         return None
     t = tok.lower().replace(",", "").strip()
     mult = 1000.0 if t.endswith("k") else 1.0
     t = t.rstrip("k").strip()
     try:
-        val = float(t) * mult
+        return float(t) * mult
     except ValueError:
         return None
-    if hourly and val < 200:  # annualize an explicit hourly rate
-        val *= 2080
-    return val if 30_000 <= val <= 500_000 else None
 
 
-# Fallback for pay ranges printed WITHOUT a leading '$' (CA/CO/NY disclosure
-# text: "Pay range: 120,000 - 150,000"). Both endpoints must be comma-grouped
-# 5-6 digit numbers so a lone figure or a "401(k)" can't trigger it; the
-# 30k-500k bound in _parse_money is the final guard.
+def _annualize(raw: Optional[float], mult: float) -> Optional[float]:
+    """Annualize a raw figure and sanity-bound it. The floor is context-aware: a
+    sub-annual period (hourly/weekly/monthly) annualizes to a lower legitimate
+    floor (~15k, min-wage tier) than a stated annual salary (30k), so retail /
+    food-service / PRN wages stop being invisible. Upper bound 500k."""
+    if raw is None:
+        return None
+    val = raw * mult
+    floor = 15_000 if mult > 1.0 else 30_000
+    return val if floor <= val <= 500_000 else None
+
+
+def _parse_money(tok: Optional[str], hourly: bool = False) -> Optional[float]:
+    """Back-compat shim (used by tests / callers): '$165,000' / '95k' / '45.50' ->
+    annual dollars or None, with the original 30k-500k bound. A bare small value is
+    annualized ONLY under an explicit hourly context."""
+    raw = _raw_money(tok)
+    if raw is None:
+        return None
+    if hourly and raw < 200:
+        val = raw * 2080
+        return val if 15_000 <= val <= 500_000 else None
+    return raw if 30_000 <= raw <= 500_000 else None
+
+
+# Fallback for pay ranges printed WITHOUT a leading currency symbol: either
+# comma-grouped 5-6 digit numbers ("Pay range: 120,000 - 150,000") or a bare
+# k-range ("80k-100k"). Both endpoints required so a lone figure / "401(k)" can't
+# trigger it; the annualization bound is the final guard.
 _SALARY_RE_BARE = re.compile(
-    r"(\d{2,3},\d{3})\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})"
+    r"(\d{2,3},\d{3}|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*(\d{2,3},\d{3}|\d{2,3}\s?[kK])"
 )
 
-
-# Context guards for salary_from_text: an explicit hourly marker (annualize) and
-# clearly-non-salary dollar mentions (skip).
-_HOURLY_CTX = re.compile(r"/\s?hr\b|/\s?hour\b|\bper hour\b|\bhourly\b|\ban hour\b", re.I)
+# Kept for external callers that imported these context regexes.
+_HOURLY_CTX = _PERIOD_CTX[0][2]
 _NON_SALARY_CTX = re.compile(
     r"\bstipend\b|\bgift\s?card\b|\binsurance\b|401\s?\(?k\)?|\breimburs\w*|"
     r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b", re.I)
 
 
-def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
-    """Best-effort (min, max) annual salary parsed from free text. A lone value is
-    only annualized under an explicit hourly context, and dollar amounts in a
-    clearly non-salary context (stipend/401k/gift card/insurance/...) are skipped."""
+def parse_comp(text: str) -> Optional[dict]:
+    """Rich compensation parse of free text. Returns::
+
+        {"min": float|None, "max": float|None,          # ANNUALIZED
+         "raw_min": float|None, "raw_max": float|None,   # in the native period
+         "currency": "USD"|"GBP"|"EUR", "period": "year"|"hour"|"week"|"month"}
+
+    or None when nothing usable is found. Conservative: a figure in a clearly
+    non-salary context (stipend/401k/insurance/...) is skipped; ambiguous input
+    yields None. min/max are annualized (USD-or-native amount * period multiplier)
+    for scoring; raw_min/raw_max keep the disclosed period figure for display."""
     text = text or ""
     for m in _SALARY_RE.finditer(text):
         ctx = text[max(0, m.start() - 30): m.end() + 30]
         if _NON_SALARY_CTX.search(ctx):
             continue
-        hourly = bool(_HOURLY_CTX.search(ctx))
-        lo = _parse_money(m.group(1), hourly)
-        hi = _parse_money(m.group(2), hourly)
-        if lo and hi:
-            return (min(lo, hi), max(lo, hi))
-        if lo:
-            return (lo, None)
-    # No usable '$'-anchored hit -> try a bare comma-grouped range (both ends required).
+        currency = _CUR_CODE.get(m.group(1), "USD")
+        period, mult = _period_of(ctx)
+        rlo, rhi = _raw_money(m.group(2)), _raw_money(m.group(3))
+        alo, ahi = _annualize(rlo, mult), _annualize(rhi, mult)
+        if alo and ahi:
+            lo_pair, hi_pair = sorted([(alo, rlo), (ahi, rhi)])
+            return {"min": lo_pair[0], "max": hi_pair[0],
+                    "raw_min": lo_pair[1], "raw_max": hi_pair[1],
+                    "currency": currency, "period": period}
+        if alo:
+            return {"min": alo, "max": None, "raw_min": rlo, "raw_max": None,
+                    "currency": currency, "period": period}
+    # No currency-anchored hit -> bare comma/k range (USD, annual assumed).
     for m in _SALARY_RE_BARE.finditer(text):
         ctx = text[max(0, m.start() - 30): m.end() + 30]
         if _NON_SALARY_CTX.search(ctx):
             continue
-        lo = _parse_money(m.group(1))
-        hi = _parse_money(m.group(2))
-        if lo and hi:
-            return (min(lo, hi), max(lo, hi))
-    return (None, None)
+        period, mult = _period_of(ctx)
+        rlo, rhi = _raw_money(m.group(1)), _raw_money(m.group(2))
+        alo, ahi = _annualize(rlo, mult), _annualize(rhi, mult)
+        if alo and ahi:
+            lo_pair, hi_pair = sorted([(alo, rlo), (ahi, rhi)])
+            return {"min": lo_pair[0], "max": hi_pair[0],
+                    "raw_min": lo_pair[1], "raw_max": hi_pair[1],
+                    "currency": "USD", "period": period}
+    return None
+
+
+def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
+    """Best-effort (min, max) ANNUAL salary parsed from free text (back-compat
+    contract). Delegates to parse_comp and returns just the annualized pair, so
+    every existing caller keeps working while gaining hourly/weekly/monthly and
+    bare-k parsing. Currency/period detail is available via parse_comp."""
+    comp = parse_comp(text)
+    if comp is None:
+        return (None, None)
+    return (comp["min"], comp["max"])
 
 
 def _salary_score(job: JobResult, floor: Optional[int]) -> float:
