@@ -173,7 +173,15 @@ def extract_skill_terms(experience_path=None) -> frozenset[str]:
     if key in _cache:
         return _cache[key]
 
-    skills_md = load_experience(target).get("skills", "")
+    # Defense-in-depth: a malformed experience.md (e.g. a wizard plain-text paste
+    # with no '## ' headings) makes load_experience raise ValueError. Degrade to a
+    # neutral EMPTY skill set instead of crashing the whole scoring/daily run --
+    # the scorer treats no-profile as neutral. The parser itself is fixed
+    # elsewhere; this just guarantees a bad file never kills a run.
+    try:
+        skills_md = load_experience(target).get("skills", "")
+    except Exception:
+        skills_md = ""
     terms: set[str] = set()
     for line in skills_md.splitlines():
         line = line.strip().lstrip("-*").strip()
