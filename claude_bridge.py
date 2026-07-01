@@ -366,9 +366,21 @@ def _experience_corpus(experience: dict) -> str:
     return experience_corpus(experience)
 
 
-def build_resume_prompt(job_posting: str, experience: dict) -> str:
+def build_resume_prompt(job_posting: str, experience: dict,
+                        missing_skills=None) -> str:
+    """Resume prompt for one posting. `missing_skills` (from match.skillgap's
+    'missing' list, threaded in by resume/service) names the concrete terms the
+    JD asks for that the candidate can't yet claim, so tailoring targets the
+    posting's ACTUAL asks (feature computed but previously never consumed).
+    Empty/None => no gap block (unchanged prompt)."""
+    gap = ""
+    terms = [str(t).strip() for t in (missing_skills or []) if str(t).strip()]
+    if terms:
+        gap = ("\n\n## SKILLS THE POSTING EMPHASIZES\n\n"
+               "Surface any of the candidate's real experience that speaks to "
+               "these (do NOT fabricate any they lack): " + ", ".join(terms))
     return (f"{_RESUME_INSTRUCTIONS}\n{_experience_corpus(experience)}\n\n"
-            f"## JOB POSTING\n\n{job_posting.strip()}")
+            f"## JOB POSTING\n\n{job_posting.strip()}{gap}")
 
 
 def parse_resume_response(text: str) -> dict:

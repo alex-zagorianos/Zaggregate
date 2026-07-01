@@ -24,8 +24,22 @@ postings against your preferences itself → `set_fit_scores` → `track_job`. N
 leaves your machine except your own Claude Code session; everything is stored in
 your `data/` folder.
 
-Tools: `get_preferences`, `search_jobs`, `list_inbox`, `set_fit_scores`,
-`track_job`, `dismiss_job`.
+**Ranking tools:** `get_preferences`, `search_jobs`,
+`list_inbox` (pass `compact=true` + a `limit` <= ~150 to page a big inbox),
+`set_fit_scores`, `track_job`, `dismiss_job`, `export_inbox`, `import_scores`.
+
+**Application-cycle tools** (your help continues after a job is tracked):
+`list_applications`, `get_application`, `set_status`, `set_follow_up`,
+`followups_due`, `funnel`, `draft_followup_context`, and resume tailoring —
+`skill_gap`, `get_resume_prompt`, `save_resume`.
+
+## Using other MCP clients
+
+The same `mcp_server.py` is a standard **stdio** MCP server — nothing is
+Claude-Code-specific. Any MCP client (Claude Desktop, Cursor, or your own SDK
+client) can launch it with the `.mcp.json` command (`py mcp_server.py`, or
+`python3` on macOS/Linux) and call the tools above. It's a pure local data layer
+over your `data/` folder; the client's model does the ranking and drafting.
 
 ## Bring your own AI (any provider)
 

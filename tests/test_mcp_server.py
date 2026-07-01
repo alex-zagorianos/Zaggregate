@@ -8,8 +8,24 @@ import mcp_server
 def test_server_and_tools_exist():
     assert mcp_server.mcp is not None
     for name in ("get_preferences", "search_jobs", "list_inbox",
-                 "set_fit_scores", "track_job", "dismiss_job"):
+                 "set_fit_scores", "track_job", "dismiss_job",
+                 "list_applications", "get_application", "set_status",
+                 "set_follow_up", "followups_due", "funnel",
+                 "draft_followup_context", "get_resume_prompt", "save_resume",
+                 "skill_gap", "export_inbox", "import_scores"):
         assert callable(getattr(mcp_server, name))
+
+
+def test_list_inbox_compact_returns_facts(monkeypatch):
+    rows = [{"id": 1, "title": "Controls Engineer", "company": "Acme",
+             "location": "Cincinnati, OH", "fit": -1, "score": 70,
+             "description": "PLC SCADA motion control, C++ required. " * 20,
+             "url": "https://x/1", "source": "adzuna"}]
+    monkeypatch.setattr(mcp_server.db, "inbox_all", lambda: rows)
+    out = mcp_server.list_inbox(compact=True, unscored_only=False)
+    assert "facts" in out[0] and "description" not in out[0]
+    # facts summary is materially shorter than the raw description.
+    assert len(out[0]["facts"]) < len(rows[0]["description"])
 
 
 def test_get_preferences_shape(monkeypatch):
