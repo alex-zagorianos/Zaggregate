@@ -85,19 +85,23 @@ def test_soc_major_groups_only_emit_valid_muse_categories():
             assert cat in ip.MUSE_CATEGORIES_ALL, f"group {code} -> invalid Muse category {cat!r}"
 
 
-# ── O*NET-SOC fuzzy-match tier (item 22) ────────────────────────────────────
-class _FakeNT:
-    def __init__(self, soc_code, soc_title, confidence):
-        self.soc_code = soc_code
-        self.soc_title = soc_title
-        self.confidence = confidence
-        self.seniority = None
+# ── O*NET-SOC exact-match tier (item 22) ────────────────────────────────────
+# NOTE: this tier deliberately does a DETERMINISTIC lookup against
+# coverage.entity._onet()'s table (+ title_core normalization), NOT
+# coverage.entity.normalize_title()'s fuzzy path -- verified 2026-07-01 against
+# the full ~62k-row real O*NET dataset that its rapidfuzz token_set_ratio
+# scorer hands out misleadingly high/exact-looking scores to UNRELATED
+# occupations (permutation/subset leniency), which is fine for that module's
+# own dedup use case but not safe for ROUTING which job sources get queried.
+# Tests below mock coverage.entity._onet (the table), the real seam used.
+def _fake_table(entries: dict) -> dict:
+    return dict(entries)
 
 
 def test_onet_tier_fires_for_unseeded_occupation(monkeypatch):
     # "phlebotomist" has no seed rule and isn't tech/eng.
-    monkeypatch.setattr("coverage.entity.normalize_title",
-                        lambda t: _FakeNT("31-9097.00", "Phlebotomists", 0.9))
+    monkeypatch.setattr("coverage.entity._onet",
+                        lambda: _fake_table({"phlebotomist": ("31-9097.00", "Phlebotomists")}))
     p = ip.resolve("phlebotomist")
     assert p.source == "onet"
     assert p.muse_categories == ["Healthcare"]          # SOC 31 -> Healthcare Support
@@ -106,33 +110,42 @@ def test_onet_tier_fires_for_unseeded_occupation(monkeypatch):
     assert "phlebotomists" in p.title_terms
 
 
-def test_onet_tier_low_confidence_falls_through_to_generic(monkeypatch):
-    monkeypatch.setattr("coverage.entity.normalize_title",
-                        lambda t: _FakeNT("31-9097.00", "Phlebotomists", 0.5))
+def test_onet_tier_no_exact_match_falls_through_to_generic(monkeypatch):
+    monkeypatch.setattr("coverage.entity._onet",
+                        lambda: _fake_table({"phlebotomist": ("31-9097.00", "Phlebotomists")}))
     p = ip.resolve("some obscure field xyz")
     assert p.source == "generic"
 
 
+def test_onet_tier_singular_plural_fallback(monkeypatch):
+    # O*NET canonical titles are almost always plural; a user's free-text field
+    # is often singular -- the simple +/-"s" fallback must bridge that.
+    monkeypatch.setattr("coverage.entity._onet",
+                        lambda: _fake_table({"phlebotomists": ("31-9097.00", "Phlebotomists")}))
+    p = ip.resolve("phlebotomist")
+    assert p.source == "onet"
+
+
 def test_onet_tier_unmapped_major_group_falls_through_to_generic(monkeypatch):
-    monkeypatch.setattr("coverage.entity.normalize_title",
-                        lambda t: _FakeNT("99-9999.00", "Made Up Occupation", 0.95))
+    monkeypatch.setattr("coverage.entity._onet",
+                        lambda: _fake_table({"some obscure field xyz": ("99-9999.00", "Made Up Occupation")}))
     p = ip.resolve("some obscure field xyz")
     assert p.source == "generic"
 
 
 def test_seed_rules_win_over_onet_tier(monkeypatch):
-    # Even a confident O*NET match must never override an existing seed rule.
-    def _boom(t):
+    # Even an exact O*NET match must never override an existing seed rule.
+    def _boom():
         raise AssertionError("O*NET tier must not be consulted when a seed rule matches")
-    monkeypatch.setattr("coverage.entity.normalize_title", _boom)
+    monkeypatch.setattr("coverage.entity._onet", _boom)
     p = ip.resolve("nursing")
     assert p.source == "seed"
 
 
 def test_onet_tier_exception_safety(monkeypatch):
-    def _boom(t):
+    def _boom():
         raise RuntimeError("data file missing")
-    monkeypatch.setattr("coverage.entity.normalize_title", _boom)
+    monkeypatch.setattr("coverage.entity._onet", _boom)
     p = ip.resolve("some unseeded field")
     assert p.source == "generic"          # never crashes; falls back to full reach
 
@@ -168,8 +181,6 @@ def test_related_occupation_titles_noop_for_eng(monkeypatch):
 
 
 def test_related_occupation_titles_from_same_soc(monkeypatch):
-    monkeypatch.setattr("coverage.entity.normalize_title",
-                        lambda t: _FakeNT("31-9097.00", "Phlebotomists", 0.9))
     monkeypatch.setattr("coverage.entity._onet", lambda: {
         "phlebotomist": ("31-9097.00", "Phlebotomists"),
         "phlebotomy technician": ("31-9097.00", "Phlebotomists"),

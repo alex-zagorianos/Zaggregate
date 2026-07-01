@@ -220,23 +220,19 @@ def _sanitize_muse(cats) -> list[str]:
 
 _cache: dict[str, IndustryProfile] = {}
 
-# Confidence floor for the O*NET-SOC fuzzy-match tier — deliberately HIGHER than
-# coverage/entity's own internal 0.6 floor (which just gates whether a match is
-# reported at all). This tier ROUTES which job sources get queried, so a shaky
-# match must fall through to the reach-preserving generic tier rather than
-# mis-route (e.g. "underwater basket weaving" must stay generic, not silently
-# adopt some vaguely-similar occupation's Muse category and lose reach). Verified
-# 2026-07-01 against the curated stub: real matches (registered nurse, mechanical
-# engineer, health informatics specialist) score 1.0; near-miss false positives
-# (dental hygienist -> Data Scientists, hotel manager -> Production Managers)
-# score 0.67-0.71 — this floor excludes them.
-_ONET_CONF_FLOOR = 0.72
-
 # Generic words to drop from an O*NET occupation title before using it as
 # title_terms (relevance-classification vocabulary).
 _ONET_TITLE_STOPWORDS = frozenset({
     "and", "of", "the", "all", "other", "except", "including", "for", "a", "an",
 })
+
+
+class _OnetMatch:
+    __slots__ = ("soc_code", "soc_title")
+
+    def __init__(self, soc_code: str, soc_title: str):
+        self.soc_code = soc_code
+        self.soc_title = soc_title
 
 
 def _normalize_for_onet(industry: str) -> str:
@@ -274,20 +270,54 @@ def _alt_titles_for_soc(soc_code: str, exclude: set[str], limit: int = 6) -> lis
     return out
 
 
-def _match_onet(industry: str):
-    """Best-effort O*NET-SOC match for free-text `industry`, gated by
-    _ONET_CONF_FLOOR. Returns the coverage.entity.NormalizedTitle, or None when
-    it doesn't confidently resolve to a real occupation."""
+def _onet_table_lookup(core: str, table: dict) -> Optional[tuple]:
+    """Deterministic dict lookup for `core` (already casefolded/whitespace-
+    collapsed) against the bundled alt-titles table, with a simple singular/
+    plural fallback (O*NET's canonical titles are almost always plural; a
+    user's free-text field is often singular). Returns (soc_code, soc_title)
+    or None.
+
+    Deliberately NOT a fuzzy/similarity match: verified 2026-07-01 against the
+    full ~62k-row real O*NET dataset that rapidfuzz's token_set_ratio — lenient
+    to word reordering and subset/superset token differences by design — hands
+    out misleadingly high (even literal 1.0) scores to UNRELATED occupations
+    ("registered nurse" -> "Health Education Specialists", "database
+    administrator" -> "Administrative Services Managers", "underwater basket
+    weaving" -> "Fishing and Hunting Workers" at 0.74). This tier ROUTES job
+    sources, so a wrong-but-confident match is worse than no match (it would
+    silently narrow reach) — an exact/near-exact literal match is the only
+    signal precise enough to trust for routing. coverage/entity.normalize_title
+    (fuzzy, tolerant) remains appropriate for its own use (dedup/coverage
+    estimation, where an occasional miss is just statistical noise)."""
+    if not core:
+        return None
+    if core in table:
+        return table[core]
+    if core.endswith("s") and core[:-1] in table:
+        return table[core[:-1]]
+    if not core.endswith("s") and (core + "s") in table:
+        return table[core + "s"]
+    return None
+
+
+def _match_onet(industry: str) -> Optional[_OnetMatch]:
+    """Deterministic O*NET-SOC match for free-text `industry` (see
+    _onet_table_lookup). None when it doesn't resolve to a real occupation."""
     if not industry or not industry.strip():
         return None
     try:
-        from coverage.entity import normalize_title
-        nt = normalize_title(_normalize_for_onet(industry))
+        from coverage.entity import _onet as _onet_table, title_core
+        core = title_core(_normalize_for_onet(industry))
+        table = _onet_table()
     except Exception:
         return None
-    if nt.confidence < _ONET_CONF_FLOOR or not nt.soc_code or nt.soc_code == "00-0000":
+    hit = _onet_table_lookup(core, table)
+    if hit is None:
         return None
-    return nt
+    soc, soc_title = hit
+    if not soc or soc == "00-0000":
+        return None
+    return _OnetMatch(soc, soc_title)
 
 
 def _resolve_via_onet(industry: str, key: str) -> Optional[IndustryProfile]:
@@ -318,12 +348,12 @@ def _resolve_via_onet(industry: str, key: str) -> Optional[IndustryProfile]:
 def resolve_soc(industry: str) -> Optional[dict]:
     """Best-effort, STABLE O*NET-SOC identity for free-text `industry` — for
     callers that want to persist a code once (item 25: workspace.create_project)
-    rather than re-run fuzzy matching on every resolve() call. None when it
-    doesn't confidently resolve."""
+    rather than re-resolve it on every resolve() call. None when it doesn't
+    match a real occupation (see _onet_table_lookup)."""
     nt = _match_onet(industry)
     if nt is None:
         return None
-    return {"code": nt.soc_code, "title": nt.soc_title, "confidence": round(nt.confidence, 3)}
+    return {"code": nt.soc_code, "title": nt.soc_title}
 
 
 def related_occupation_titles(industry: str, *, exclude=(), limit: int = 6) -> list[str]:
