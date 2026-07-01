@@ -34,7 +34,11 @@ def evaluate(facts: dict, rubric: dict, *, title: str = "") -> dict:
     if facts.get("clearance_required") and not rubric.get("has_clearance"):
         drops.append("security clearance required")
 
-    if facts.get("seniority") in ("manager", "director") and facts.get("role_type") == "manage":
+    if (facts.get("seniority") in ("manager", "director") and facts.get("role_type") == "manage"
+            and not rubric.get("allow_management")):
+        # A management/exec seeker (rubric.allow_management, inferred from roles
+        # like "VP"/"Director") WANTS these — dropping them here would empty the
+        # whole result set before the AI ever ranked anything.
         drops.append("people-management role")
 
     restriction = facts.get("restriction") or ""
@@ -54,7 +58,9 @@ def evaluate(facts: dict, rubric: dict, *, title: str = "") -> dict:
     # ── soft downranks (still scored by the AI, just flagged) ─────────────────
     if facts.get("role_type") in rubric.get("penalty_roles", []) and "people-management role" not in drops:
         downs.append(f"role type: {facts['role_type']}")
-    if facts.get("seniority") in ("senior", "lead") and not drops:
+    if (facts.get("seniority") in ("senior", "lead") and not drops
+            and not rubric.get("allow_management")):
+        # For an exec/management seeker a senior title isn't a stretch, it's the target.
         downs.append(f"{facts['seniority']}-level (stretch)")
 
     if drops:
