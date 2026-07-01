@@ -121,7 +121,11 @@ def test_confidence_marker_data_poor():
 def test_confidence_marker_data_rich():
     job = _job("Controls Engineer", description="plc solidworks python automation",
                salary_min=120000, salary_max=140000, created="2026-06-15")
-    _, notes = scorer.score_job(job, keywords=KW, location=LOC, salary_floor=100000)
+    # Pass skill_terms explicitly so the marker is hermetic — otherwise it depends
+    # on the ambient active project's experience.md having parseable skills (a
+    # health-informatics project with no skills would read as conf 4/5, correctly).
+    _, notes = scorer.score_job(job, keywords=KW, location=LOC, salary_floor=100000,
+                                skill_terms=frozenset({"plc", "solidworks", "python", "automation"}))
     assert "conf 5/5" in notes
 
 
