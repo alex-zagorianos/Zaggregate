@@ -50,9 +50,13 @@ def is_relevant_deterministic(name, sample_titles, kw):
     kw = {k for k in (kw or ()) if k}
     if not kw:
         return None
+    # _term_pattern handles symbol-suffixed terms (c++, .net, c#) that a bare \b
+    # boundary silently fails to match — reuse the scorer's canonical matcher.
+    from match.scorer import _term_pattern
+    pats = [_term_pattern(k) for k in kw]
     for title in sample_titles:
         low = (title or "").lower()
-        if any(re.search(r"\b" + re.escape(k) + r"\b", low) for k in kw):
+        if any(p.search(low) for p in pats):
             return True
     return False
 

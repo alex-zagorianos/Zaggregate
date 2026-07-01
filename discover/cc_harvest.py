@@ -117,21 +117,30 @@ def harvest_host_index(hosts: list, *, crawl_id: str | None = None,
     out: dict[str, set] = {}
     reachable = 0
     for host in hosts:
+        pages = 1
+        if max_pages is not None and max_pages > 1:
+            try:
+                pages = min(max_pages, max(1, count_pages(host, crawl_id, page_size)))
+            except Exception:
+                pages = 1
+        # First page decides reachability; a LATER page failing must NOT discard
+        # the pages already harvested (or mislabel a reachable host as unreachable).
         try:
-            pages = 1
-            if max_pages is not None and max_pages > 1:
-                try:
-                    pages = min(max_pages, max(1, count_pages(host, crawl_id, page_size)))
-                except Exception:
-                    pages = 1
-            for pg in range(pages):
-                lines = fetch(host, crawl_id, limit,
-                              page=(pg if pages > 1 else None), page_size=page_size)
-                _boards_from_lines(lines, out)
+            lines = fetch(host, crawl_id, limit,
+                          page=(0 if pages > 1 else None), page_size=page_size)
+            _boards_from_lines(lines, out)
             reachable += 1
         except Exception as e:
             print(f"  [cc_harvest] WARNING: {host} unreachable — {e}")
             continue
+        for pg in range(1, pages):
+            try:
+                lines = fetch(host, crawl_id, limit, page=pg, page_size=page_size)
+                _boards_from_lines(lines, out)
+            except Exception as e:
+                print(f"  [cc_harvest] WARNING: {host} page {pg} failed — {e}; "
+                      "keeping earlier pages")
+                break
     if reachable == 0:
         print("  [cc_harvest] WARNING: no ATS hosts reachable (host-level) — "
               "discovery degraded; falling back to existing registry (spec §7).")

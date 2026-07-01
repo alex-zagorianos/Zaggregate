@@ -1,5 +1,6 @@
 import functools
 import hashlib
+import re
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlsplit, parse_qsl, urlencode
@@ -11,6 +12,16 @@ _TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
 _IDENTITY_PARAMS = {"gh_jid", "jobid", "id", "lever"}
 # Query params that carry a WRAPPED destination URL on redirect/click endpoints.
 _REDIRECT_PARAMS = ("url", "target", "destination", "redirect", "redirect_url", "r_url")
+# Only treat a generic ?url=/?target= as a redirect wrapper when the URL itself
+# LOOKS like a click/redirect endpoint — otherwise a direct ATS/apply URL that
+# happens to carry a `target=`/`redirect=` marketing param (e.g. a ZipRecruiter
+# apply link) would be wrongly replaced by that unrelated destination and collapse
+# two distinct postings in dedup.
+_REDIRECT_HOST_RE = re.compile(
+    r"^(l|lnk|link|links|click|clicks|clk|track|tracking|redirect|redir|r|rd|out|go|away)\.",
+    re.I)
+_REDIRECT_PATH_RE = re.compile(
+    r"/(click|clk|redirect|redir|out|go|away|track|rd)(/|$)", re.I)
 
 
 def _unwrap_redirect(url: str, _depth: int = 0) -> str:
@@ -29,11 +40,13 @@ def _unwrap_redirect(url: str, _depth: int = 0) -> str:
             val = q.get(pname, "")
             if val.startswith(("http://", "https://")):
                 return _unwrap_redirect(val, _depth + 1)
-    # Generic redirect params carrying an http(s) destination.
-    for pname in _REDIRECT_PARAMS:
-        val = q.get(pname, "")
-        if val.startswith(("http://", "https://")):
-            return _unwrap_redirect(val, _depth + 1)
+    # Generic redirect params — ONLY on hosts/paths that look like a click/redirect
+    # endpoint, so a direct posting URL carrying such a param is left alone.
+    if _REDIRECT_HOST_RE.match(host) or _REDIRECT_PATH_RE.search(parts.path):
+        for pname in _REDIRECT_PARAMS:
+            val = q.get(pname, "")
+            if val.startswith(("http://", "https://")):
+                return _unwrap_redirect(val, _depth + 1)
     return url
 
 

@@ -3054,6 +3054,11 @@ class App(tk.Tk):
         self._build_projectbar()
 
     @staticmethod
+    def _slug_taken(name):
+        slug = workspace.slugify(name)
+        return any(p.get("slug") == slug for p in workspace.list_projects())
+
+    @staticmethod
     def _proj_label(p):
         # Show "Person — Campaign" once a project is tagged with a person (GOAL 2),
         # else just the campaign name (unchanged for single-person installs).
@@ -3064,16 +3069,24 @@ class App(tk.Tk):
         if not self._proj_var:
             return
         projs = workspace.list_projects()
-        self._name_to_slug = {self._proj_label(p): p["slug"] for p in projs}
+        # Resolve the selection by combobox INDEX, not by label — two projects can
+        # render an identical "Person — Campaign" label, and a label→slug map would
+        # make one of them unreachable (last-writer-wins).
+        self._proj_slugs = [p["slug"] for p in projs]
+        self._name_to_slug = {self._proj_label(p): p["slug"] for p in projs}  # legacy
         self._proj_cb["values"] = [self._proj_label(p) for p in projs]
         active = workspace.active_slug()
-        for p in projs:
+        for i, p in enumerate(projs):
             if p["slug"] == active:
-                self._proj_var.set(self._proj_label(p))
+                self._proj_cb.current(i)
                 break
 
     def _on_project_change(self, _event=None):
-        slug = self._name_to_slug.get(self._proj_var.get())
+        idx = self._proj_cb.current()
+        slugs = getattr(self, "_proj_slugs", [])
+        if not (0 <= idx < len(slugs)):
+            return
+        slug = slugs[idx]
         if slug and slug != workspace.active_slug():
             workspace.set_active(slug)
             self._rebuild_tabs()
@@ -3083,6 +3096,12 @@ class App(tk.Tk):
         name = simpledialog.askstring(
             "New Project", "Name for the new campaign:", parent=self)
         if not name or not name.strip():
+            return
+        if self._slug_taken(name):
+            messagebox.showwarning(
+                "New Project",
+                f"A project that maps to '{name.strip()}' already exists — pick it "
+                "from the Project dropdown, or choose a different name.", parent=self)
             return
         # C1 guard: resume copy is OPT-IN. Auto-copying the active project's
         # experience.md silently shipped the wrong person's resume into a new
@@ -3119,6 +3138,14 @@ class App(tk.Tk):
             "New Person", f"Name {person}'s search campaign:",
             initialvalue=f"{person} — search", parent=self)
         if not name or not name.strip():
+            return
+        if self._slug_taken(name):
+            # Without this guard create_project would silently re-activate the
+            # existing project and the wizard would OVERWRITE its profile.
+            messagebox.showwarning(
+                "New Person",
+                f"A project that maps to '{name.strip()}' already exists — pick it "
+                "from the Project dropdown, or choose a different name.", parent=self)
             return
         try:
             workspace.create_project(name.strip(), person=person, make_active=True)

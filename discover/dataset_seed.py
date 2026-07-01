@@ -121,10 +121,14 @@ def _iter_rows(path: Path):
             yield row
 
 
-def _row_to_board(row: dict, cols: dict) -> tuple[str, str] | None:
-    """One dataset row -> (ats_type, slug) in our vocab, or None if unusable."""
+def _row_to_board(row: dict, cols: dict):
+    """One dataset row -> (ats_type, slug, name) in our vocab, or None if unusable.
+    `name` is the dataset's real company name ('' when the dataset has no name
+    column) — carried so distinct boards that share a slug across ATS platforms
+    don't collapse under an identical slug-derived name in save_companies."""
     ats_raw = (row.get(cols["ats"]) if cols["ats"] else "") or ""
     slug = (row.get(cols["slug"]) if cols["slug"] else "") or ""
+    name = (row.get(cols["name"]) if cols["name"] else "") or ""
     ats = normalize_ats(str(ats_raw))
     slug = str(slug).strip()
 
@@ -139,15 +143,18 @@ def _row_to_board(row: dict, cols: dict) -> tuple[str, str] | None:
         return None
     if ats not in _ATS_VOCAB.values():
         return None
-    return (ats, slug)
+    return (ats, slug, str(name).strip())
 
 
-def load_ats_dataset(path, *, ats_filter=None, column_map=None, limit=None) -> dict:
+def load_ats_dataset(path, *, ats_filter=None, column_map=None, limit=None,
+                     names_out=None) -> dict:
     """Parse an ATS-slug dataset into ``{ats_type: {slug, ...}}``.
 
     - `ats_filter`: keep only these ats_types (iterable, our vocab).
     - `column_map`: override column detection, e.g. {"ats": "platform", "slug": "token"}.
     - `limit`: stop after this many *rows* read (for --dry-run sampling).
+    - `names_out`: optional dict; when supplied, populated with {(ats,slug): name}
+      from the dataset's real name column (first non-empty wins).
     Bad/unmapped rows are silently skipped; the return value is dedup-by-set.
     """
     path = Path(path)
@@ -164,10 +171,12 @@ def load_ats_dataset(path, *, ats_filter=None, column_map=None, limit=None) -> d
         board = _row_to_board(row, cols)
         if not board:
             continue
-        ats, slug = board
+        ats, slug, name = board
         if keep is not None and ats not in keep:
             continue
         boards.setdefault(ats, set()).add(slug)
+        if names_out is not None and name and (ats, slug) not in names_out:
+            names_out[(ats, slug)] = name
     return boards
 
 
@@ -181,15 +190,17 @@ def _existing_keys(companies_json_path=None) -> set:
 
 
 def verify_boards(boards: dict, industry="", *, probe=_probe_count, max_workers=12,
-                  existing=None, classify=None):
+                  existing=None, classify=None, names=None):
     """Probe-verify {ats:{slug}} boards → (verified, dropped).
 
     verified = [(CompanyEntry, open_job_count)] best-first; dropped = [(ats,slug,reason)].
-    `existing` (a set of (ats,slug)) is skipped without probing. `classify`, when
-    given, is a callable(list[CompanyEntry]) -> set of kept (ats,slug) applied AFTER
-    verification (the P3 relevance gate seam); None = keep all verified boards.
+    `existing` (a set of (ats,slug)) is skipped without probing. `names` maps
+    (ats,slug)->the dataset's real company name (falls back to a slug-derived name).
+    `classify`, when given, is a callable(list[CompanyEntry]) -> set of kept
+    (ats,slug) applied AFTER verification (the P3 relevance gate seam).
     """
     existing = existing or set()
+    names = names or {}
     tag = (industry or "").strip().lower().replace(" ", "_")
     industries = [tag] if tag else ["discovered"]
 
@@ -209,7 +220,8 @@ def verify_boards(boards: dict, industry="", *, probe=_probe_count, max_workers=
 
     def _one(pair):
         ats, slug = pair
-        entry = CompanyEntry(_name_from_slug(ats, slug), ats, slug, list(industries))
+        name = names.get((ats, slug)) or _name_from_slug(ats, slug)
+        entry = CompanyEntry(name, ats, slug, list(industries))
         try:
             n = probe(entry)
         except Exception as e:  # network/parse — treat as unverifiable, don't crash
@@ -253,14 +265,15 @@ def seed_from_dataset(path, industry="", *, probe=_probe_count, max_workers=12,
     Returns a summary dict {loaded, candidates, skipped_known, verified, dropped,
     added}. Idempotent: `save_companies` dedups, so re-running only adds new lives.
     """
+    names: dict = {}
     boards = load_ats_dataset(path, ats_filter=ats_filter, column_map=column_map,
-                              limit=limit)
+                              limit=limit, names_out=names)
     loaded = sum(len(s) for s in boards.values())
     if existing is None:
         existing = _existing_keys(companies_json_path)
     verified, dropped = verify_boards(boards, industry, probe=probe,
                                       max_workers=max_workers, existing=existing,
-                                      classify=classify)
+                                      classify=classify, names=names)
     skipped_known = sum(1 for _, _, r in dropped if r == "already known")
     added = 0
     if not dry_run and verified:

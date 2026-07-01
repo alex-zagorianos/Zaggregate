@@ -162,12 +162,9 @@ def main(argv=None):
                     help="Print the enumeration prompt for claude.ai and exit (bridge)")
     ap.add_argument("--in", dest="infile", default=None,
                     help="Read a pasted JSON reply (bridge) instead of calling the API")
-    grp = ap.add_mutually_exclusive_group()
-    grp.add_argument("--national", dest="national", action="store_true", default=None,
-                     help="Also enumerate nationwide/remote-first employers "
-                          "(default: on when the project's preferences allow remote)")
-    grp.add_argument("--no-national", dest="national", action="store_false",
-                     help="Metro-only, even if remote is allowed")
+    ap.add_argument("--national", action="store_true",
+                    help="ALSO enumerate nationwide/remote-first employers (a 2nd LLM "
+                         "pass; opt-in — off by default so a metro run's cost is unchanged)")
     ap.add_argument("--dry-run", action="store_true", help="Resolve + verify but do NOT save")
     args = ap.parse_args(argv)
 
@@ -189,7 +186,14 @@ def main(argv=None):
               + (f" --metro {metro}" if args.metro else ""))
         return 0
 
-    run_national = args.national if args.national is not None else _remote_ok()
+    # National is EXPLICIT opt-in (--national): a bare metro run must not silently
+    # fire a second LLM pass just because remote is allowed (remote_ok defaults True
+    # for any project without a preferences.json, and it's a job-FILTER flag, not a
+    # registry-growth signal). Surface it as a hint instead.
+    run_national = bool(args.national)
+    if not run_national and not args.infile and _remote_ok():
+        print("(remote is allowed for this project — add --national to also "
+              "enumerate nationwide/remote-first employers.)")
 
     # ── Build the pass list: metro always; a nationwide/remote-first pass too when
     #    remote is allowed. Each pass = (candidates, industries, metro_tag). ───────

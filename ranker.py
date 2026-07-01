@@ -58,8 +58,19 @@ def _facts_profile(cfg: dict | None):
     """(industry, skill_terms) for facts extraction from the active search config.
     A tech/empty field keeps the engineering-tuned map + vocab (byte-identical for
     Alex); any other field merges universal role buckets and falls back to
-    profile-derived skills (the eng vocab is useless there). Plan 1E."""
+    profile-derived skills (the eng vocab is useless there). Plan 1E.
+
+    Falls back to the active project's config when cfg is None — the live GUI
+    "Ask AI to rank" buttons call through with no cfg, and without this fallback a
+    non-tech project's industry would be dropped (1E never activates + the profile
+    signature collapses to the shared job_key-only facts cache)."""
     from match import facts as _facts
+    if cfg is None:
+        import workspace
+        try:
+            cfg = workspace.load_config()
+        except Exception:
+            cfg = {}
     industry = (cfg or {}).get("industry") or ""
     skill_terms = None
     if industry and not _facts.is_tech_industry(industry):

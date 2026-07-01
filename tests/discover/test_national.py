@@ -44,8 +44,8 @@ def _run(monkeypatch, tmp_path, extra_args, remote_ok=True):
     return rc, calls
 
 
-def test_national_pass_runs_when_remote_ok(monkeypatch, tmp_path):
-    rc, calls = _run(monkeypatch, tmp_path, [], remote_ok=True)
+def test_national_flag_runs_second_pass(monkeypatch, tmp_path):
+    rc, calls = _run(monkeypatch, tmp_path, ["--national"], remote_ok=True)
     assert rc == 0
     assert len(calls) == 2                                  # metro + national
     metro, natl = calls
@@ -59,8 +59,10 @@ def test_national_pass_runs_when_remote_ok(monkeypatch, tmp_path):
     assert "MetroCo" in natl["existing"]
 
 
-def test_no_national_flag_suppresses_second_pass(monkeypatch, tmp_path):
-    rc, calls = _run(monkeypatch, tmp_path, ["--no-national"], remote_ok=True)
+def test_default_is_metro_only_even_when_remote_ok(monkeypatch, tmp_path):
+    # National is opt-in: a bare run must NOT silently fire a 2nd LLM pass just
+    # because remote is allowed (the review finding).
+    rc, calls = _run(monkeypatch, tmp_path, [], remote_ok=True)
     assert rc == 0
     assert len(calls) == 1                                  # metro only
     assert calls[0]["names"] == ["MetroCo"]
