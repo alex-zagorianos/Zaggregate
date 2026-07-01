@@ -1,3 +1,4 @@
+import atexit
 import sqlite3
 import sys
 from pathlib import Path
@@ -52,6 +53,13 @@ _EDITABLE = {
 }
 
 
+# Bounded mmap window for read-heavy GUI queries (phiresky's SQLite tuning
+# benchmark - see brain/research-2026-07-01-reach-storage.md). 256 MiB is well
+# above any realistic per-project tracker.db size, so this is a ceiling, not a
+# working assumption; SQLite falls back to normal I/O beyond it.
+_MMAP_SIZE = 256 * 1024 * 1024
+
+
 def get_conn():
     # The headless daily_run and the GUI write the same project DB. WAL lets
     # reads proceed during a write, and busy_timeout waits out brief lock
@@ -60,7 +68,50 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
+    # synchronous=NORMAL is the documented-safe pairing with WAL (sqlite.org/
+    # wal.html): durable against an app crash, only the last transaction is at
+    # risk on an OS crash/power loss - a worthwhile write-throughput win for
+    # inbox_add_many's per-run batch inserts.
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute(f"PRAGMA mmap_size={_MMAP_SIZE}")
     return conn
+
+
+def checkpoint() -> None:
+    """Best-effort WAL checkpoint (TRUNCATE) so the -wal sidecar doesn't grow
+    unbounded, plus PRAGMA optimize (SQLite's own recommended pre-close
+    housekeeping). Guarded to NEVER raise - safe to call from atexit, the GUI's
+    window-close handler, or anywhere else on a clean-shutdown path. No-ops
+    (and never creates a db file) when there's nothing to checkpoint."""
+    try:
+        path = current_db_path()
+        if not Path(path).exists():
+            return
+        conn = sqlite3.connect(str(path), timeout=2)
+        try:
+            conn.execute("PRAGMA busy_timeout=2000")
+            # optimize can itself write (refreshed planner stats) - run it
+            # BEFORE the truncate checkpoint, else its write would regrow the
+            # -wal file we just shrank.
+            conn.execute("PRAGMA optimize")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def close_db() -> None:
+    """Explicit clean-shutdown hook (GUI window close, CLI exit) - alias for
+    checkpoint(). Safe to call multiple times."""
+    checkpoint()
+
+
+# Run on clean process exit so a normal quit doesn't leave a growing -wal
+# sidecar behind. checkpoint() is fully guarded (never raises), so this can't
+# turn a clean exit into a crash.
+atexit.register(checkpoint)
 
 
 def _existing_columns(conn) -> set[str]:
