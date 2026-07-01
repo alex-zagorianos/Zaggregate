@@ -11,6 +11,23 @@ from resume.generator import (
 from resume.experience_parser import load_experience
 
 
+@pytest.fixture(autouse=True)
+def _experience_fixture(tmp_path, monkeypatch):
+    """These tests exercise the generator, not the user's personal experience.md
+    (gitignored — absent in fresh clones and worktrees). Point the default
+    experience file at a minimal valid fixture so the suite never depends on
+    personal data being present on disk."""
+    exp = tmp_path / "experience.md"
+    exp.write_text(
+        "## CONTACT\nAlex Example - a@b.c\n\n"
+        "## TECHNICAL SKILLS\nPython\n\n"
+        "## WORK EXPERIENCE\nEngineer at Acme (2020-2025)\n",
+        encoding="utf-8",
+    )
+    import resume.experience_parser as ep
+    monkeypatch.setattr(ep.workspace, "experience_file", lambda: exp)
+
+
 # ── prompt assembly ───────────────────────────────────────────────────────────
 
 def test_system_blocks_have_cached_corpus():

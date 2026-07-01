@@ -130,11 +130,12 @@ def parse_response(text: str, jobs) -> list:
     return bridge.match_fit_to_jobs(jobs, parsed)
 
 
-def gate(jobs, prefs: dict | None = None) -> list:
+def gate(jobs, prefs: dict | None = None, *, counts: dict | None = None) -> list:
     """Apply the cheap preferences hard-gate before any ranking, so no AI call is
-    spent on a job that fails a hard constraint (salary/location/dealbreaker)."""
+    spent on a job that fails a hard constraint (salary/location/dealbreaker).
+    `counts` passes through to hard_gate for per-reason drop tallies."""
     prefs = prefs if prefs is not None else preferences.load()
-    return preferences.hard_gate(jobs, prefs.get("hard", {}))
+    return preferences.hard_gate(jobs, prefs.get("hard", {}), counts=counts)
 
 
 # ── API auto-route ────────────────────────────────────────────────────────────

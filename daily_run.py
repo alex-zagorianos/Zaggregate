@@ -171,9 +171,12 @@ def main():
     # preferences.json is absent or permissive (a fresh data folder).
     import ranker
     _pre_gate = len(results)
-    results = ranker.gate(results)
+    _gate_counts: dict = {}
+    results = ranker.gate(results, counts=_gate_counts)
     if len(results) != _pre_gate:
-        log(f"preferences hard-gate | {_pre_gate} -> {len(results)}")
+        _dropped = ", ".join(f"{k} {v}" for k, v in _gate_counts.items() if v)
+        log(f"preferences hard-gate | {_pre_gate} -> {len(results)}"
+            + (f" (dropped: {_dropped})" if _dropped else ""))
     # Remote-acceptable jobs get full location credit (not 0) so they rank fairly
     # when the user is open to remote — honors preferences.json remote_ok.
     try:

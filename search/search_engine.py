@@ -80,7 +80,7 @@ class SearchEngine:
     def run_full_search(
         self,
         keywords: list[str],
-        location: str = "Cincinnati",
+        location: str = "",
         salary_min: Optional[int] = None,
         max_pages_per_keyword: int = 2,
         sort_by: str = "date",
