@@ -158,7 +158,9 @@ def broad_query_keywords(roles: Iterable[str], industry: str = "",
         candidates.append(ind)
     base = [k for k in _dedupe_ci(candidates) if len(k) >= _MIN_KEYWORD_LEN]
 
-    # Add field synonyms that aren't already covered, bounded.
+    # Tier 1: field synonyms the caller passed in (typically the industry
+    # profile's own curated `query_synonyms` — seed-authored or O*NET-tier),
+    # bounded, never displacing a user term.
     have = set(base)
     added = 0
     for s in synonyms:
@@ -169,4 +171,24 @@ def broad_query_keywords(roles: Iterable[str], industry: str = "",
             added += 1
             if added >= _MAX_SYNONYMS:
                 break
+
+    # Tier 2 (item 26): O*NET related-occupation / alt-title synonyms for the
+    # resolved field, LOWER priority than tier 1 — only fills whatever slots
+    # tier 1 left under the SAME _MAX_SYNONYMS cap, and never displaces a user
+    # term. No-op for eng IC titles / empty industry (industry_profile gates it),
+    # so Alex's engineering flow is byte-identical.
+    if industry and added < _MAX_SYNONYMS:
+        try:
+            import industry_profile
+            related = industry_profile.related_occupation_titles(industry, exclude=have)
+        except Exception:
+            related = []
+        for s in related:
+            s = (s or "").strip().lower()
+            if s and len(s) >= _MIN_KEYWORD_LEN and s not in have:
+                base.append(s)
+                have.add(s)
+                added += 1
+                if added >= _MAX_SYNONYMS:
+                    break
     return base

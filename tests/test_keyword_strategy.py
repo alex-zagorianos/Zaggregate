@@ -104,3 +104,57 @@ def test_effective_keywords_eng_or_empty_falls_back_to_default():
     import config
     assert ks.effective_keywords({}) == list(config.DEFAULT_KEYWORDS)
     assert ks.effective_keywords({"industry": "controls_engineering"}) == list(config.DEFAULT_KEYWORDS)
+
+
+# ── Tier 2: related-occupation synonyms (item 26) ────────────────────────────
+def test_related_tier_adds_onet_titles_after_tier1(monkeypatch):
+    import industry_profile
+    monkeypatch.setattr(industry_profile, "related_occupation_titles",
+                        lambda industry, exclude=(), limit=6: ["phlebotomy technician"])
+    out = ks.broad_query_keywords(["Nurse"], "health_informatics", synonyms=["clinical informatics"])
+    assert "clinical informatics" in out       # tier 1 present
+    assert "phlebotomy technician" in out      # tier 2 present
+
+
+def test_related_tier_never_displaces_user_terms(monkeypatch):
+    import industry_profile
+    monkeypatch.setattr(industry_profile, "related_occupation_titles",
+                        lambda industry, exclude=(), limit=6: ["nurse"])  # would dupe a user term
+    out = ks.broad_query_keywords(["Nurse"], "health_informatics")
+    assert out.count("nurse") == 1
+
+
+def test_related_tier_respects_combined_synonym_cap(monkeypatch):
+    import industry_profile
+    monkeypatch.setattr(industry_profile, "related_occupation_titles",
+                        lambda industry, exclude=(), limit=6: [f"related term {i}" for i in range(10)])
+    tier1 = [f"tier1 term {i}" for i in range(4)]
+    out = ks.broad_query_keywords(["Analyst"], "health_informatics", synonyms=tier1)
+    added = [k for k in out if k not in ("analyst", "health informatics")]
+    assert len(added) <= ks._MAX_SYNONYMS
+    # tier 1 fully present (priority), tier 2 only fills the remaining 2 slots
+    for t in tier1:
+        assert t in out
+    assert sum(1 for k in out if k.startswith("related term")) == ks._MAX_SYNONYMS - len(tier1)
+
+
+def test_related_tier_noop_for_eng_industry():
+    # No mocking: industry_profile.related_occupation_titles's own eng_like gate
+    # must suppress tier 2 for an explicit eng industry string, same as tier 1's
+    # synonyms=[] for the eng seed profile — output is exactly the deseniorized
+    # roles + the industry term, nothing more.
+    out = ks.broad_query_keywords(["Controls Engineer"], "controls_engineering")
+    assert out == ["controls engineer", "controls engineering"]
+
+
+def test_related_tier_noop_for_empty_industry():
+    out = ks.broad_query_keywords(list(config.DEFAULT_KEYWORDS), "")
+    assert out == [k.lower() for k in config.DEFAULT_KEYWORDS]
+
+
+def test_related_tier_end_to_end_real_data():
+    # No mocking — exercises the real bundled O*NET data through both modules.
+    import industry_profile
+    industry_profile.clear_cache()
+    out = ks.broad_query_keywords(["Analyst"], "database administrator")
+    assert "database administrator" in out
