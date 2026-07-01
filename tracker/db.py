@@ -1,3 +1,4 @@
+import atexit
 import sqlite3
 import sys
 from pathlib import Path
@@ -13,7 +14,10 @@ DB_PATH = None
 # Bump whenever the schema (tables/columns/indexes below) changes. init_db()
 # stores this in PRAGMA user_version after a successful setup; if the db already
 # matches, init_db skips the whole probe + ALTER scan (cheap, concurrency-safe).
-SCHEMA_VERSION = 4
+# v5 (2026-07-01 storage research): applications.norm_url (+ index) and the
+# inbox_fts FTS5 search index are new schema objects, so DBs already at v4 must
+# re-run the migration to pick them up.
+SCHEMA_VERSION = 5
 
 
 def current_db_path() -> Path:
@@ -52,6 +56,13 @@ _EDITABLE = {
 }
 
 
+# Bounded mmap window for read-heavy GUI queries (phiresky's SQLite tuning
+# benchmark - see brain/research-2026-07-01-reach-storage.md). 256 MiB is well
+# above any realistic per-project tracker.db size, so this is a ceiling, not a
+# working assumption; SQLite falls back to normal I/O beyond it.
+_MMAP_SIZE = 256 * 1024 * 1024
+
+
 def get_conn():
     # The headless daily_run and the GUI write the same project DB. WAL lets
     # reads proceed during a write, and busy_timeout waits out brief lock
@@ -60,7 +71,50 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
+    # synchronous=NORMAL is the documented-safe pairing with WAL (sqlite.org/
+    # wal.html): durable against an app crash, only the last transaction is at
+    # risk on an OS crash/power loss - a worthwhile write-throughput win for
+    # inbox_add_many's per-run batch inserts.
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute(f"PRAGMA mmap_size={_MMAP_SIZE}")
     return conn
+
+
+def checkpoint() -> None:
+    """Best-effort WAL checkpoint (TRUNCATE) so the -wal sidecar doesn't grow
+    unbounded, plus PRAGMA optimize (SQLite's own recommended pre-close
+    housekeeping). Guarded to NEVER raise - safe to call from atexit, the GUI's
+    window-close handler, or anywhere else on a clean-shutdown path. No-ops
+    (and never creates a db file) when there's nothing to checkpoint."""
+    try:
+        path = current_db_path()
+        if not Path(path).exists():
+            return
+        conn = sqlite3.connect(str(path), timeout=2)
+        try:
+            conn.execute("PRAGMA busy_timeout=2000")
+            # optimize can itself write (refreshed planner stats) - run it
+            # BEFORE the truncate checkpoint, else its write would regrow the
+            # -wal file we just shrank.
+            conn.execute("PRAGMA optimize")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()
+    except Exception:
+        pass
+
+
+def close_db() -> None:
+    """Explicit clean-shutdown hook (GUI window close, CLI exit) - alias for
+    checkpoint(). Safe to call multiple times."""
+    checkpoint()
+
+
+# Run on clean process exit so a normal quit doesn't leave a growing -wal
+# sidecar behind. checkpoint() is fully guarded (never raises), so this can't
+# turn a clean exit into a crash.
+atexit.register(checkpoint)
 
 
 def _existing_columns(conn) -> set[str]:
@@ -120,6 +174,23 @@ def init_db() -> bool:
             if col not in existing:
                 _safe_add_column(conn, "applications", col, decl)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_status ON applications(status)")
+        # v5 (STORAGE item 3): norm_url mirrors inbox's dedup-key pattern so
+        # tracked-URL lookups can use an indexed exact match instead of
+        # normalizing every row in Python on every call (tracked_urls()).
+        # applications.url itself also gets an index - some callers still look
+        # it up by the raw URL.
+        if "norm_url" not in existing:
+            _safe_add_column(conn, "applications", "norm_url", "TEXT DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_applications_url ON applications(url)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_applications_norm_url ON applications(norm_url)")
+        # Backfill norm_url for rows that predate this column (normalize_url is
+        # a Python function, so this can't be a pure-SQL UPDATE).
+        for r in conn.execute(
+            "SELECT id, url FROM applications WHERE (norm_url IS NULL OR norm_url='') "
+            "AND url != ''"
+        ).fetchall():
+            conn.execute("UPDATE applications SET norm_url=? WHERE id=?",
+                         (normalize_url(r["url"]), r["id"]))
         # Jobs the user explicitly dismissed — filtered out of future searches.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS dismissed (
@@ -157,6 +228,9 @@ def init_db() -> bool:
         # Round-robin window orders by company; without this index every render
         # does a full partition sort over the whole inbox.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_company ON inbox(company)")
+        # inbox.url is looked up by exact match (inbox_delete_urls' prune path);
+        # norm_url already gets an implicit index from its UNIQUE constraint.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_url ON inbox(url)")
         # Health beacon: one row per daily_run so the GUI can show a last-run
         # OK/FAILED badge and the run can be diagnosed after the fact.
         conn.execute("""
@@ -218,6 +292,55 @@ def init_db() -> bool:
                 created        TEXT NOT NULL
             )
         """)
+        # v5 (STORAGE item 2): external-content FTS5 index over inbox so an
+        # already-triaged posting can be found again (title/company/location/
+        # description) - closes a real usability gap as the inbox grows.
+        # External-content ('content=inbox') keeps the JD text from being
+        # stored twice. Guarded: some SQLite builds omit FTS5 entirely -
+        # inbox_search() falls back to a LIKE scan when this vtable is absent,
+        # so a missing module here never crashes the app.
+        try:
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS inbox_fts USING fts5(
+                    title, company, location, description,
+                    content='inbox', content_rowid='id'
+                )
+            """)
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS inbox_fts_ai AFTER INSERT ON inbox BEGIN
+                    INSERT INTO inbox_fts(rowid, title, company, location, description)
+                    VALUES (new.id, new.title, new.company, new.location, new.description);
+                END
+            """)
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS inbox_fts_ad AFTER DELETE ON inbox BEGIN
+                    INSERT INTO inbox_fts(inbox_fts, rowid, title, company, location, description)
+                    VALUES ('delete', old.id, old.title, old.company, old.location, old.description);
+                END
+            """)
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS inbox_fts_au AFTER UPDATE ON inbox BEGIN
+                    INSERT INTO inbox_fts(inbox_fts, rowid, title, company, location, description)
+                    VALUES ('delete', old.id, old.title, old.company, old.location, old.description);
+                    INSERT INTO inbox_fts(rowid, title, company, location, description)
+                    VALUES (new.id, new.title, new.company, new.location, new.description);
+                END
+            """)
+            # Backfill rows that predate the index. Unconditional (not gated on
+            # an emptiness check): for an external-content table, a plain
+            # `SELECT COUNT(*) FROM inbox_fts` reads through to the *content*
+            # table (inbox) rather than the FTS b-tree, so it can't tell us
+            # whether rows are actually indexed - and re-inserting an
+            # already-indexed rowid is a verified no-op (SQLite dedupes on
+            # rowid), so running this every time the migration body executes
+            # is safe. In practice it only executes once per DB anyway (this
+            # whole block is gated by init_db's user_version fast path).
+            conn.execute("""
+                INSERT INTO inbox_fts(rowid, title, company, location, description)
+                SELECT id, title, company, location, description FROM inbox
+            """)
+        except sqlite3.OperationalError:
+            pass  # FTS5 not compiled into this SQLite build
         conn.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
         conn.commit()
         return True
@@ -243,8 +366,20 @@ def add_job(title, company, location="", url="", salary_text="",
             f"INSERT INTO applications ({','.join(cols)}) VALUES ({placeholders})",
             vals,
         )
+        job_id = cur.lastrowid
+        if url:
+            # Populate the indexed dedup key (STORAGE item 3) so tracked-URL
+            # lookups/anti-joins don't need to re-normalize every row in
+            # Python. Tolerant of a not-yet-migrated DB (pre-norm_url schema)
+            # so this never turns into a new failure mode for callers that
+            # insert before init_db() has run.
+            try:
+                conn.execute("UPDATE applications SET norm_url=? WHERE id=?",
+                             (normalize_url(url), job_id))
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
-        return cur.lastrowid
+        return job_id
 
 
 def get_all(status_filter=None):
@@ -375,6 +510,16 @@ def update_job(job_id, **fields):
             f"UPDATE applications SET {set_clause} WHERE id=?",
             (*updates.values(), job_id),
         )
+        if "url" in updates:
+            # Keep the indexed dedup key (STORAGE item 3) in sync whenever a
+            # user edits an application's URL, so it doesn't go stale and
+            # break urls_not_seen()'s anti-join. Tolerant of a not-yet-
+            # migrated DB, same as add_job().
+            try:
+                conn.execute("UPDATE applications SET norm_url=? WHERE id=?",
+                             (normalize_url(updates["url"]), job_id))
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
 
 
@@ -487,6 +632,33 @@ def seen_urls() -> set[str]:
     return tracked_urls() | dismissed_urls()
 
 
+def urls_not_seen(norm_urls) -> set[str]:
+    """STORAGE item 3: given a batch of already-normalized candidate URLs,
+    return the subset that is neither tracked (applications) nor dismissed -
+    via an indexed SQL anti-join (NOT EXISTS) instead of materializing the
+    full tracked+dismissed URL sets in Python the way seen_urls() does.
+    Equivalent to `{u for u in norm_urls if u not in seen_urls()}`, but scales
+    with the candidate batch (one search run's worth of results) rather than
+    with the applications/dismissed table size, so it stays cheap as those
+    tables grow past a few thousand rows. Uses applications.norm_url (indexed,
+    STORAGE item 3) and dismissed.url (already-normalized, PK-indexed)."""
+    candidates = [u for u in dict.fromkeys(norm_urls) if u]
+    if not candidates:
+        return set()
+    values_sql = ",".join("(?)" for _ in candidates)
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"WITH candidates(norm_url) AS (VALUES {values_sql}) "
+            "SELECT c.norm_url FROM candidates c "
+            "WHERE NOT EXISTS "
+            "(SELECT 1 FROM applications a WHERE a.norm_url = c.norm_url) "
+            "AND NOT EXISTS "
+            "(SELECT 1 FROM dismissed d WHERE d.url = c.norm_url)",
+            candidates,
+        ).fetchall()
+    return {r[0] for r in rows}
+
+
 # ── Inbox (daily-run results awaiting triage) ─────────────────────────────────
 
 def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
@@ -504,15 +676,19 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
     (rides the existing extras JSON, like Top Picks' rank)."""
     from datetime import date
     import json
-    seen = seen_urls()
+    # STORAGE item 3: bounded SQL anti-join over just this batch's candidate
+    # URLs, instead of materializing the full tracked+dismissed URL sets
+    # (seen_urls()) in Python - semantically identical skip decision, but
+    # scales with the batch, not with the applications/dismissed table size.
+    norm_by_job = [(j, normalize_url(j.url)) for j in jobs]
+    unseen = urls_not_seen([n for _, n in norm_by_job if n])
     today = date.today().isoformat()
     # Start the running tally from what's already persisted so the cap spans runs.
     per_company = inbox_company_counts() if per_company_cap > 0 else {}
     added = 0
     with get_conn() as conn:
-        for j in jobs:
-            norm = normalize_url(j.url)
-            if not norm or norm in seen:
+        for j, norm in norm_by_job:
+            if not norm or norm not in unseen:
                 continue
             if per_company_cap > 0:
                 key = (j.company or "").lower().strip()
@@ -542,6 +718,8 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
                 if per_company_cap > 0:
                     per_company[key] = per_company.get(key, 0) + 1
             added += cur.rowcount
+        if added:
+            _fts_optimize(conn)
         conn.commit()
     return added
 
@@ -572,6 +750,72 @@ def inbox_all(order: str = "roundrobin") -> list[dict]:
     for r in out:
         r.pop("rk", None)
     return out
+
+
+# ── Full-text search over the inbox (STORAGE item 2) ───────────────────────────
+
+def _inbox_fts_ready(conn) -> bool:
+    """True if THIS db has a working inbox_fts vtable: FTS5 compiled into the
+    SQLite build AND init_db() successfully created it. A cheap sqlite_master
+    lookup rather than a process-global cache, since it's correct per-db (a
+    fresh in-memory test db never shares state with another)."""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='inbox_fts'"
+    ).fetchone()
+    return row is not None
+
+
+def _fts5_match_query(text: str) -> str:
+    """Turn free-text user input into a safe FTS5 MATCH expression: each
+    whitespace-separated token becomes its own quoted phrase (AND'd together
+    implicitly), so characters FTS5 treats as query syntax (-, *, :, parens,
+    unterminated quotes, ...) can never raise a MATCH syntax error."""
+    return " ".join('"' + tok.replace('"', '""') + '"' for tok in text.split())
+
+
+def _fts_optimize(conn) -> None:
+    """Merge FTS5 b-tree segments after a bulk inbox write (import/prune) -
+    batched housekeeping done once per call, not per row. No-op if the FTS5
+    vtable isn't present (unsupported SQLite build, or not yet created)."""
+    try:
+        conn.execute("INSERT INTO inbox_fts(inbox_fts) VALUES('optimize')")
+    except sqlite3.OperationalError:
+        pass
+
+
+def inbox_search(query: str) -> list[dict]:
+    """Full-text search over inbox(title, company, location, description),
+    ranked by relevance - so an already-triaged posting can be found again as
+    the inbox grows (there's otherwise no local search over what's already
+    been saved). Uses FTS5 MATCH when the SQLite build/db supports it;
+    degrades to a LIKE substring scan otherwise - or if the MATCH query itself
+    errors - so the app never crashes on an FTS5-less build. Returns full
+    inbox rows (not just the indexed columns), most-relevant first."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    with get_conn() as conn:
+        if _inbox_fts_ready(conn):
+            try:
+                rows = conn.execute(
+                    "SELECT inbox.* FROM inbox_fts "
+                    "JOIN inbox ON inbox.id = inbox_fts.rowid "
+                    "WHERE inbox_fts MATCH ? ORDER BY inbox_fts.rank "
+                    "LIMIT 200",
+                    (_fts5_match_query(query),),
+                ).fetchall()
+                return [dict(r) for r in rows]
+            except sqlite3.OperationalError:
+                pass  # bad MATCH expression or a stale/broken vtable - fall through
+        like = f"%{query}%"
+        rows = conn.execute(
+            "SELECT * FROM inbox WHERE title LIKE ? OR company LIKE ? "
+            "OR location LIKE ? OR description LIKE ? "
+            "ORDER BY COALESCE(NULLIF(created,''), date_added) DESC "
+            "LIMIT 200",
+            (like, like, like, like),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual", batch: str = ""):
@@ -729,6 +973,8 @@ def inbox_delete_urls(urls) -> int:
         for u in urls:
             if u:
                 n += conn.execute("DELETE FROM inbox WHERE url=?", (u,)).rowcount
+        if n:
+            _fts_optimize(conn)
         conn.commit()
     return n
 
