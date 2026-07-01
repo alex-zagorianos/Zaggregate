@@ -18,8 +18,10 @@ def test_ats_detect_rippling():
     assert detect_ats("https://ats.rippling.com/acme/jobs") == ("rippling", "acme")
 
 def _capture_stub(captured, name):
-    """Stub scraper that records the slug + keyword it was forwarded and returns []."""
-    def _stub(slug, *, keyword=""):
+    """Stub scraper that records the slug + keyword it was forwarded and returns [].
+    Accepts (and ignores) the cache_dir/cache_enabled the dispatcher now threads
+    through so caching can be wired into these five scrapers."""
+    def _stub(slug, *, keyword="", cache_dir=None, cache_enabled=False):
         captured[name] = {"slug": slug, "keyword": keyword}
         return []
     return _stub

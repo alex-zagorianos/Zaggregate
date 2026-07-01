@@ -123,19 +123,77 @@ class MonthlyQuota:
 
 def make_session(total_retries: int = 3, backoff: float = 0.5) -> requests.Session:
     """A ``requests.Session`` with automatic backoff retries on transient
-    failures (429 + 5xx) so a single network blip doesn't drop a whole page."""
+    failures (429 + 5xx) so a single network blip doesn't drop a whole page.
+
+    urllib3's ``Retry`` honors a server ``Retry-After`` header, so routing a GET
+    through this session (instead of a bare ``requests.get``) makes the app back
+    off for exactly as long as the ATS asks on a 429 -- the polite, un-poisoning
+    behavior the careers scrapers need.
+    """
     retry = Retry(
         total=total_retries,
         backoff_factor=backoff,
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET", "POST"]),
         raise_on_status=False,
+        respect_retry_after_header=True,
     )
     adapter = HTTPAdapter(max_retries=retry)
     session = requests.Session()
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     return session
+
+
+# ---------------------------------------------------------------------------
+# Careers-scrape shared transport: one retry/Retry-After-honoring session reused
+# by every ATS scraper, plus a per-ATS-host rate limiter so the 8-worker careers
+# pool can't burst a single host into a 429 (which then poisons live boards).
+# Both are process-lifetime and thread-safe.
+# ---------------------------------------------------------------------------
+_careers_session: Optional[requests.Session] = None
+_careers_session_lock = threading.Lock()
+
+_careers_host_limiters: dict = {}
+_careers_host_limiters_lock = threading.Lock()
+
+
+def careers_session() -> requests.Session:
+    """Shared, lazily-built retry session for the careers scrapers. Its urllib3
+    Retry honors 429 + Retry-After, so a throttled ATS is backed off politely
+    instead of hammered."""
+    global _careers_session
+    if _careers_session is None:
+        with _careers_session_lock:
+            if _careers_session is None:
+                _careers_session = make_session()
+    return _careers_session
+
+
+def host_of(url: str) -> str:
+    """Lowercased hostname of a URL, '' if unparseable. Used as the rate-limiter
+    key so every board on one ATS shares a single per-host window."""
+    from urllib.parse import urlsplit
+    try:
+        host = urlsplit(url).hostname
+    except Exception:
+        host = None
+    return (host or "").lower()
+
+
+def careers_host_limiter(host: str) -> "RateLimiter":
+    """Per-ATS-host RateLimiter (requests/min), created on first use. Rate comes
+    from config.CAREERS_HOST_RATE_LIMITS[host] if present, else the global
+    CAREERS_HOST_RATE_LIMIT default. Mirrors stealth_fetch._limiter_for."""
+    with _careers_host_limiters_lock:
+        limiter = _careers_host_limiters.get(host)
+        if limiter is None:
+            import config
+            rate = getattr(config, "CAREERS_HOST_RATE_LIMITS", {}).get(
+                host, config.CAREERS_HOST_RATE_LIMIT)
+            limiter = RateLimiter(rate, quiet=True)
+            _careers_host_limiters[host] = limiter
+        return limiter
 
 
 class FileCache:

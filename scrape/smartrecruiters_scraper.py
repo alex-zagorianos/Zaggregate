@@ -1,11 +1,13 @@
 from pathlib import Path
 
-import requests
-
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
+from scrape.cache_helpers import (
+    STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
+    read_cache, slug_safe, write_cache,
+)
 from scrape.company_registry import CompanyEntry
+from search.http_util import careers_host_limiter, careers_session, host_of
 
 # SmartRecruiters public postings API — no auth. Mid-market manufacturers
 # and industrials skew to SmartRecruiters. Quirk: the postings list has no
@@ -25,33 +27,37 @@ def scrape_smartrecruiters(
     cache_enabled: bool,
 ) -> list[JobResult]:
     cache_file = cache_dir / f"smartrecruiters_{slug_safe(company.slug)}.json"
+    url = _LIST_URL.format(slug=company.slug)
 
     if cache_enabled:
         cached = read_cache(cache_file)
         if is_failed(cached):
             return []  # known-dead this TTL window
         if cached is not None:
-            return _filter_and_map(cached, company, keyword, cache_dir, cache_enabled)
+            return _filter_and_map(http_cache_body(cached), company, keyword,
+                                   cache_dir, cache_enabled)
 
+        careers_host_limiter(host_of(url)).acquire()
+        result = conditional_get(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT,
+                                 session=careers_session())
+        if result.status == STATUS_PERMANENT:
+            print(f"  [smartrecruiters] {company.name}: gone — skipping")
+            mark_failed(cache_file)
+            return []
+        if result.body is None:
+            print(f"  [smartrecruiters] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            return []
+        return _filter_and_map(result.body, company, keyword, cache_dir, cache_enabled)
+
+    # --no-cache: plain fetch, nothing persisted.
+    careers_host_limiter(host_of(url)).acquire()
     try:
-        url = _LIST_URL.format(slug=company.slug)
-        resp = requests.get(url, timeout=CAREERS_REQUEST_TIMEOUT)
+        resp = careers_session().get(url, timeout=CAREERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
-    except requests.HTTPError as e:
-        print(f"  [smartrecruiters] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
-        if cache_enabled:
-            mark_failed(cache_file)
-        return []
     except Exception as e:
         print(f"  [smartrecruiters] {company.name}: error — {e}")
-        if cache_enabled:
-            mark_failed(cache_file)
         return []
-
-    if cache_enabled:
-        write_cache(cache_file, data)
-
     return _filter_and_map(data, company, keyword, cache_dir, cache_enabled)
 
 
@@ -66,7 +72,8 @@ def _fetch_description(company: CompanyEntry, posting_id: str,
             return _description_from_detail(cached)
     try:
         url = _DETAIL_URL.format(slug=company.slug, posting_id=posting_id)
-        resp = requests.get(url, timeout=CAREERS_REQUEST_TIMEOUT)
+        careers_host_limiter(host_of(url)).acquire()
+        resp = careers_session().get(url, timeout=CAREERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         detail = resp.json()
     except Exception:

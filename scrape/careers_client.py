@@ -172,15 +172,20 @@ class CareersClient(JobAPIClient):
         elif company.ats_type == "workday":
             return scrape_workday(company, keyword, self.cache_dir, self.cache_enabled)
         elif company.ats_type == "workable":
-            return scrape_workable(company.slug, keyword=keyword)
+            return scrape_workable(company.slug, keyword=keyword,
+                                   cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type == "recruitee":
-            return scrape_recruitee(company.slug, keyword=keyword)
+            return scrape_recruitee(company.slug, keyword=keyword,
+                                    cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type == "rippling":
-            return scrape_rippling(company.slug, keyword=keyword)
+            return scrape_rippling(company.slug, keyword=keyword,
+                                   cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type == "personio":
-            return scrape_personio(company.slug, keyword=keyword)
+            return scrape_personio(company.slug, keyword=keyword,
+                                   cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type == "bamboohr":
-            return scrape_bamboohr(company.slug, keyword=keyword)
+            return scrape_bamboohr(company.slug, keyword=keyword,
+                                   cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type in ("jsonld", "icims", "taleo", "successfactors"):
             # Enterprise/custom boards with no JSON API — extract schema.org/
             # JobPosting structured data from the career page.

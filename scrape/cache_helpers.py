@@ -1,13 +1,19 @@
 import json
 import os
 import re
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 import requests
 
-from config import CACHE_TTL_HOURS, FAILED_TTL_HOURS
+from config import (
+    CACHE_GC_MAX_AGE_HOURS,
+    CACHE_TTL_HOURS,
+    FAILED_TTL_HOURS,
+    FAILED_TTL_TRANSIENT_HOURS,
+)
 
 # Characters that are illegal in Windows filenames (": " breaks Workday slugs
 # like "cat:5:CaterpillarCareers" -> [Errno 22] Invalid argument).
@@ -41,8 +47,49 @@ def write_cache(cache_file: Path, data: Any) -> None:
         if isinstance(data, str):
             f.write(data)
         else:
-            json.dump(data, f, indent=2)
+            # No indent: these are machine-only cache blobs (some are multi-MB
+            # ATS payloads). Pretty-printing tripled the file size and the write
+            # cost for zero human benefit — cache/ is never read by a person.
+            json.dump(data, f, separators=(",", ":"))
     os.replace(tmp, cache_file)
+
+
+def touch_cache(cache_file: Path) -> bool:
+    """Refresh a cache file's mtime to now WITHOUT re-serializing its body — used
+    on a 304 revalidation, where the server confirmed the cached body is still
+    current, so the only thing that needs to change is the TTL clock. Cheaper
+    than rewriting a multi-MB ATS payload just to reset one timestamp. Returns
+    True if the file existed and was touched, False otherwise."""
+    if not cache_file.exists():
+        return False
+    now = time.time()
+    try:
+        os.utime(cache_file, (now, now))
+        return True
+    except OSError:
+        return False
+
+
+def gc_cache_dir(cache_dir: Path, *, max_age_hours: float = CACHE_GC_MAX_AGE_HOURS) -> int:
+    """Delete cache files older than ``max_age_hours``. The cache/ tree is
+    write-mostly and was never evicted (grew to hundreds of MB); a board that
+    hasn't been seen in a week is either dead (already negative-cached) or will
+    be re-fetched cheaply on next need. Best-effort, never raises: a file that
+    vanishes mid-scan or can't be removed is skipped. Returns the count deleted."""
+    if not cache_dir.exists():
+        return 0
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    for path in cache_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def slug_safe(text: str) -> str:
@@ -126,26 +173,57 @@ def http_cache_body(entry: Any) -> Any:
     return entry
 
 
-def conditional_get_json(
+# Status classes for a conditional GET, so a caller can tell a genuinely dead
+# board (mark_failed, back off a week) from a throttle/outage blip (serve stale,
+# NEVER poison). See scrape/review notes: self-inflicted 429s used to mark live
+# boards dead for 168h.
+STATUS_OK = "ok"                  # fresh 200 (or 304 with a cached body)
+STATUS_TRANSIENT = "transient"    # 429 / 5xx / network error — retry-worthy
+STATUS_PERMANENT = "permanent"    # 404 / 410 / other 4xx — board is gone
+
+
+class FetchResult(NamedTuple):
+    """Outcome of a conditional GET. ``body`` is the parsed JSON (or the stale
+    cached body on a transient error, or None). ``from_cache`` is True only when
+    the body came from a server-confirmed 304. ``status`` is one of STATUS_*."""
+    body: Any
+    from_cache: bool
+    status: str
+
+
+def _classify_status(code: int) -> str:
+    if code == 429 or code >= 500:
+        return STATUS_TRANSIENT
+    if code >= 400:
+        return STATUS_PERMANENT
+    return STATUS_OK
+
+
+def conditional_get(
     url: str,
     cache_path: Path,
     *,
     headers: Optional[dict] = None,
     timeout: Optional[float] = None,
     session: Optional[Any] = None,
-) -> tuple[Any, bool]:
-    """GET a JSON endpoint using HTTP conditional-GET validators (ETag /
-    Last-Modified) so an unchanged ATS board is answered with a cheap 304
-    instead of a full re-download. Returns (payload, from_cache):
-      - payload is the parsed JSON body (dict/list), or None if nothing is
-        available (no cache and the request failed).
-      - from_cache is True only for a 304 (server-confirmed unchanged; the
-        cached body is returned unparsed-from-network).
+    parse: Optional[Any] = None,
+) -> FetchResult:
+    """Status-aware conditional GET (ETag / Last-Modified). Returns a FetchResult
+    so the caller can distinguish failure classes:
 
-    Backward compatible: a server that sends no ETag/Last-Modified degrades to
-    a normal cached GET (body stored, no conditional header sent next time).
-    On a network error, the last-good cached body is returned if one exists
-    (stale-better-than-nothing). Never raises.
+      - 200: fresh body cached and returned, status=OK.
+      - 304: server confirmed unchanged -> the cached body is returned and its
+        TTL clock refreshed via os.utime (NO re-serialization), status=OK.
+      - 429 / 5xx: TRANSIENT (throttle/outage). The last-good cached body is
+        served if present (never a hard failure), status=TRANSIENT. The caller
+        must NOT mark_failed on this -> a live board is never poisoned by a blip.
+      - 404 / 410 / other 4xx: PERMANENT. body=None, status=PERMANENT -> the
+        caller marks the board failed and backs off, exactly as the pre-migration
+        behavior. CRITICAL: a genuinely dead board must never re-serve stale jobs.
+      - network exception (no HTTP response): TRANSIENT, stale body served if any.
+
+    Never raises. A server that sends no validators degrades to a plain cached
+    GET (body stored, no conditional header next time).
     """
     getter = session.get if session is not None else requests.get
     req_headers: dict = dict(headers or {})
@@ -161,37 +239,65 @@ def conditional_get_json(
     try:
         resp = getter(url, headers=req_headers or None, timeout=timeout)
     except Exception:
-        return (cached_body, False)
+        # No HTTP response at all -> transient. Serve stale if we have it.
+        return FetchResult(cached_body, False, STATUS_TRANSIENT)
 
-    status = getattr(resp, "status_code", 200)
-    if status == 304:
+    status_code = getattr(resp, "status_code", 200)
+    if status_code == 304:
         if cached_body is not None:
-            _write_conditional_entry(
-                cache_path,
-                entry.get("etag") if entry else None,
-                entry.get("last_modified") if entry else None,
-                cached_body,
-            )
-            return (cached_body, True)
-        return (None, False)
+            # Refresh only the TTL clock; the body on disk is already correct.
+            touch_cache(cache_path)
+            return FetchResult(cached_body, True, STATUS_OK)
+        # 304 with nothing cached shouldn't happen, but treat as transient (we
+        # sent no validator, so the server can't legitimately 304) rather than
+        # poisoning the board.
+        return FetchResult(None, False, STATUS_TRANSIENT)
 
+    status_class = _classify_status(status_code)
+    if status_class == STATUS_TRANSIENT:
+        # 429 / 5xx: the board is up but throttling/erroring right now. Serve the
+        # last-good snapshot and DO NOT signal a permanent failure.
+        return FetchResult(cached_body, False, STATUS_TRANSIENT)
+    if status_class == STATUS_PERMANENT:
+        # 404 / 410 / other hard 4xx: board removed/renamed. Never re-serve stale.
+        return FetchResult(None, False, STATUS_PERMANENT)
+
+    parser = parse if parse is not None else (lambda r: r.json())
     try:
-        resp.raise_for_status()
+        body = parser(resp)
     except Exception:
-        # The server ANSWERED with a 4xx/5xx (board removed/renamed/broken) — this
-        # is a real failure, not a transient network blip. Signal it (None) so the
-        # caller marks the board failed and backs off, exactly as before the
-        # conditional-GET migration; do NOT re-serve a stale snapshot as if live
-        # (that would resurrect a dead board's jobs forever).
-        return (None, False)
-    try:
-        body = resp.json()
-    except Exception:
-        return (None, False)
+        # A 200 that can't be parsed (invalid JSON/XML) is a broken/renamed
+        # board, not a blip.
+        return FetchResult(None, False, STATUS_PERMANENT)
 
     resp_headers = getattr(resp, "headers", None) or {}
     get_header = resp_headers.get if hasattr(resp_headers, "get") else (lambda *_a: None)
     new_etag = get_header("ETag")
     new_last_modified = get_header("Last-Modified")
     _write_conditional_entry(cache_path, new_etag, new_last_modified, body)
-    return (body, False)
+    return FetchResult(body, False, STATUS_OK)
+
+
+def conditional_get_json(
+    url: str,
+    cache_path: Path,
+    *,
+    headers: Optional[dict] = None,
+    timeout: Optional[float] = None,
+    session: Optional[Any] = None,
+) -> tuple[Any, bool]:
+    """Back-compat 2-tuple wrapper over conditional_get(). Returns (payload,
+    from_cache). Preserves the S26-r3 regression contract EXACTLY: a permanent
+    HTTP error (404/410) returns (None, False) so the caller marks the board
+    failed; a transient error (429/5xx/network) returns the stale cached body
+    (or None if none) with from_cache=False -- stale-better-than-nothing, and
+    the caller decides not to poison. Existing callers that only look at
+    ``payload is None`` keep working; new callers use conditional_get() to see
+    the status class.
+    """
+    result = conditional_get(
+        url, cache_path, headers=headers, timeout=timeout, session=session
+    )
+    if result.status == STATUS_PERMANENT:
+        return (None, result.from_cache)
+    return (result.body, result.from_cache)

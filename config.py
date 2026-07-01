@@ -157,6 +157,16 @@ CACHE_TTL_HOURS = 24
 # every known-dead board (~"150 doomed requests a day" per direct_scraper). A
 # 7-day marker TTL means a dead URL is retried ~weekly, not daily.
 FAILED_TTL_HOURS = 168
+# A TRANSIENT failure (HTTP 429 throttle, 5xx outage, or a network blip) is NOT
+# a dead board -- poisoning it for a week (FAILED_TTL_HOURS) is exactly the
+# self-inflicted-429 under-coverage bug. When a scraper opts to negative-cache a
+# transient at all, it uses this short window so the board is re-probed within
+# the hour instead of skipped for days.
+FAILED_TTL_TRANSIENT_HOURS = 1
+# cache/ (ATS payload blobs, per-source FileCaches) is write-mostly and was
+# never evicted -> grew to hundreds of MB. A GC pass at the end of a daily run
+# deletes entries older than this; anything still needed is re-fetched cheaply.
+CACHE_GC_MAX_AGE_HOURS = 168
 
 # Flask server ports
 PORT_RESUME   = 5000
@@ -228,6 +238,17 @@ CAREERS_MAX_WORKERS = 8
 # longer — so it uses CAREERS_SLOW_TIMEOUT.
 CAREERS_REQUEST_TIMEOUT = 12
 CAREERS_SLOW_TIMEOUT = 20
+
+# Per-ATS-host request ceiling (requests/min) for the parallel careers scrape.
+# CAREERS_MAX_WORKERS=8 threads can otherwise burst every request at one shared
+# ATS host (all greenhouse boards -> boards-api.greenhouse.io) simultaneously and
+# earn a 429 that then poisons live boards. A per-host sliding-window limiter (the
+# same class stealth_fetch uses) smooths the burst. Conservative default; a well-
+# behaved public ATS easily serves this. Tunable per host below.
+CAREERS_HOST_RATE_LIMIT = 30
+# Optional per-host overrides (host -> requests/min). Empty by default; add an
+# entry only if a specific ATS proves more/less tolerant.
+CAREERS_HOST_RATE_LIMITS: dict = {}
 
 # Search engine concurrency: how many (client[, keyword]) fetch units run at
 # once. The old engine capped at 4 clients, so 5+ sources queued behind the
