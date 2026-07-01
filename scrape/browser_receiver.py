@@ -125,9 +125,9 @@ def harvest():
     # and the Claude fit prompt is the better ranking signal for these.)
     inboxed = 0
     try:
-        from config import DEFAULT_KEYWORDS, DEFAULT_LOCATION
         from match.scorer import score_jobs
         from search.cli import load_user_config
+        from search.keyword_strategy import effective_keywords
         from tracker.db import inbox_add_many, init_db
         cfg = load_user_config()
         try:
@@ -137,8 +137,11 @@ def harvest():
             remote_ok = True
         scored = score_jobs(
             results,
-            keywords=cfg.get("keywords") or DEFAULT_KEYWORDS,
-            location=cfg.get("location") or DEFAULT_LOCATION,
+            # Use the project's EFFECTIVE keywords (industry-derived for a non-eng
+            # field), not the engineering DEFAULT_KEYWORDS -- a browser harvest for
+            # a nurse was being scored against controls-engineer terms. (P3)
+            keywords=effective_keywords(cfg),
+            location=cfg.get("location") or "",
             salary_floor=cfg.get("salary_min"),
             exclude_keywords=cfg.get("exclude_keywords", []),
             exclude_titles=cfg.get("exclude_titles"),
