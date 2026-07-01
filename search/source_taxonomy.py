@@ -84,8 +84,9 @@ def themuse_categories(industry: Optional[str] = None) -> list[str]:
 
 def jobicy_industry(industry: Optional[str] = None) -> Optional[str]:
     """Jobicy `industry` slug for this industry. Eng/empty → 'engineering'
-    (byte-identical). Mapped → its slug. Unmapped non-eng → None (omit the param =
-    all remote jobs, keyword-filtered) rather than a 0-yield slug."""
+    (byte-identical). Mapped → its slug. Unmapped non-eng → None, which the client
+    treats as 'skip Jobicy' (a tech-centric board with nothing for this field)
+    rather than pull the whole feed to keyword-filter it to ~0."""
     ind = active_industry(industry)
     if not ind or is_eng_like(ind):
         return "engineering"

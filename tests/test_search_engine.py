@@ -58,12 +58,22 @@ def test_dedup_keeps_distinct_reqs_at_different_urls():
     assert len(eng._deduplicate([a, b])) == 2
 
 
-def test_dedup_url_less_jobs_fall_back_to_title_company():
-    # No URL on either -> identity_key falls back to title|company (no location),
-    # so location-only variants of the same posting still collapse.
+def test_dedup_url_less_jobs_distinct_locations_kept():
+    # No URL on either -> identity_key is (company, title_core, location bucket).
+    # Cincinnati vs Remote are DISTINCT postings and must both survive (finding
+    # #14: the old location-free key silently dropped one of two genuinely
+    # different openings for the same title at the same company).
     eng = SearchEngine([])
     a = _job(title="Eng", company="Acme", location="Cincinnati", url="")
     b = _job(title="Eng", company="Acme", location="Remote", url="")
+    assert len(eng._deduplicate([a, b])) == 2
+
+
+def test_dedup_url_less_same_location_variants_collapse():
+    # Same location bucket (formatting variants) still collapses to one.
+    eng = SearchEngine([])
+    a = _job(title="Eng", company="Acme", location="Cincinnati, OH", url="")
+    b = _job(title="Eng", company="Acme", location="Cincinnati", url="")
     assert len(eng._deduplicate([a, b])) == 1
 
 

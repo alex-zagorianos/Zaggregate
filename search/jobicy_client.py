@@ -24,19 +24,24 @@ class JobicyClient(SingleFeedClient):
             return {"jobs": []}  # single-document feed; no further pages
 
         from search.source_taxonomy import jobicy_industry
-        industry = jobicy_industry()  # None → omit the param (all remote jobs)
+        industry = jobicy_industry()
+        # None = Jobicy (a tech-centric remote board) has no matching category for
+        # this field. Skip the fetch rather than pull the whole feed just to keyword
+        # -filter it to ~0 — the old 'fetch all' path cost ~2 min of rate-limited
+        # requests for zero non-tech results. Mapped/eng fields still fetch.
+        if industry is None:
+            return {"jobs": []}
 
         def fetch():
             self.limiter.acquire()
-            params = {"count": JOBICY_COUNT}
-            if industry:
-                params["industry"] = industry
-            response = self.session.get(JOBICY_URL, params=params, timeout=30)
+            response = self.session.get(
+                JOBICY_URL, params={"count": JOBICY_COUNT, "industry": industry},
+                timeout=30)
             response.raise_for_status()
             return {"jobs": response.json().get("jobs", [])}
 
         # Industry in the cache key so an eng and a health project don't collide.
-        return self._cached(f"feed:{industry or 'all'}", fetch)
+        return self._cached(f"feed:{industry}", fetch)
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches

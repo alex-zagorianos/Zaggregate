@@ -203,12 +203,18 @@ class SearchEngine:
 
 
 def _keyless_key(job: JobResult):
-    """Location-free canonical identity for a URL-less posting (company + title).
-    Falls back to the raw title-company string if the coverage entity module
-    isn't importable (e.g. a stripped frozen build)."""
+    """Canonical identity for a URL-less posting (company + title + location
+    bucket). Location IS included so the same title at the same company in two
+    different cities (e.g. 'Director of Clinical Informatics' open in Cincinnati
+    AND Remote) does not silently collapse to one row — the earlier location-free
+    key over-merged distinct postings. Falls back to a raw string if the coverage
+    entity module isn't importable (e.g. a stripped frozen build)."""
     try:
         from coverage import entity
         return (entity.canonicalize_company(job.company or ""),
-                entity.title_core(job.title or ""))
+                entity.title_core(job.title or ""),
+                entity.location_token(entity.normalize_location(job.location or "")))
     except ImportError:
-        return f"{(job.title or '').lower().strip()}|{(job.company or '').lower().strip()}"
+        return (f"{(job.title or '').lower().strip()}|"
+                f"{(job.company or '').lower().strip()}|"
+                f"{(job.location or '').lower().strip()}")
