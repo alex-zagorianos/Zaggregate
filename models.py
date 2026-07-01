@@ -9,19 +9,54 @@ _TRACKING_PARAMS = {"utm_source", "utm_medium", "utm_campaign", "utm_term",
                     "utm_content", "gh_src", "fbclid", "gclid", "ref", "se"}
 # Query params that DO identify a specific posting -> kept.
 _IDENTITY_PARAMS = {"gh_jid", "jobid", "id", "lever"}
+# Query params that carry a WRAPPED destination URL on redirect/click endpoints.
+_REDIRECT_PARAMS = ("url", "target", "destination", "redirect", "redirect_url", "r_url")
+
+
+def _unwrap_redirect(url: str, _depth: int = 0) -> str:
+    """Follow aggregator/redirect wrappers to the canonical destination so two
+    links to the SAME posting (a Google/Indeed click-redirect vs the direct ATS
+    URL) don't look distinct and inflate the inbox. Bounded recursion; returns the
+    input unchanged when there's nothing to unwrap."""
+    if not url or _depth > 3:
+        return url
+    parts = urlsplit(url.strip())
+    host = parts.netloc.lower()
+    q = dict(parse_qsl(parts.query, keep_blank_values=True))
+    # Google redirect wrappers: google.com/url?q=… or /aclk?…&url=…
+    if "google." in host and parts.path in ("/url", "/aclk"):
+        for pname in ("q", "url"):
+            val = q.get(pname, "")
+            if val.startswith(("http://", "https://")):
+                return _unwrap_redirect(val, _depth + 1)
+    # Generic redirect params carrying an http(s) destination.
+    for pname in _REDIRECT_PARAMS:
+        val = q.get(pname, "")
+        if val.startswith(("http://", "https://")):
+            return _unwrap_redirect(val, _depth + 1)
+    return url
 
 
 def normalize_url(url: str) -> str:
     """Canonicalize a posting URL for identity comparison.
 
-    Lowercases the host, drops scheme + fragment + trailing slash, and removes
-    tracking query params (utm_*, gh_src, fbclid, gclid, ref) while keeping
-    identity params (gh_jid, jobId, jobid, id, lever). Returns '' for falsy input.
+    Unwraps redirect/click wrappers (Google/aggregator), collapses any Indeed job
+    URL to its `jk` identity, lowercases the host, drops scheme + fragment +
+    trailing slash, and removes tracking query params (utm_*, gh_src, fbclid,
+    gclid, ref) while keeping identity params (gh_jid, jobId, jobid, id, lever).
+    Returns '' for falsy input.
     """
     if not url:
         return ""
+    url = _unwrap_redirect(url)
     parts = urlsplit(url.strip())
     host = parts.netloc.lower()
+    # Indeed: rc/clk, viewjob, m/viewjob and country subdomains all identify the
+    # same posting by its `jk` job key -> one canonical form.
+    if host.endswith("indeed.com"):
+        jk = dict(parse_qsl(parts.query, keep_blank_values=True)).get("jk")
+        if jk:
+            return f"indeed.com/viewjob?jk={jk}"
     path = parts.path.rstrip("/")
     kept = [
         (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)

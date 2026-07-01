@@ -263,3 +263,7 @@ SERPAPI_URL = "https://serpapi.com/search"
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 SERPAPI_RATE_LIMIT = 5
 SERPAPI_MONTHLY_LIMIT = 100        # free tier; tracked in cache/serpapi_usage.json
+# SerpApi engine: "google_jobs" (default, surfaces Indeed via Google-for-Jobs) or
+# "indeed" (a direct Indeed pull — paid; different JSON shape, parsed defensively).
+# ToS-clean routes to Indeed; there is deliberately NO standalone Indeed scraper.
+SERPAPI_ENGINE = os.getenv("SERPAPI_ENGINE", "google_jobs")

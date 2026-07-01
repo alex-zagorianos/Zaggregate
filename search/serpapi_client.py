@@ -52,7 +52,10 @@ class SerpApiClient(JobAPIClient):
         # page 1, spend another quota unit, and return duplicates. Short-circuit.
         if page > 1:
             return {"jobs_results": []}
-        key = cache_key("serpapi", keyword, location, page)
+        engine = config.SERPAPI_ENGINE or "google_jobs"
+        # Engine is part of the cache identity: the same query on google_jobs vs
+        # indeed returns different results, so they must not share a cache slot.
+        key = cache_key("serpapi", engine, keyword, location, page)
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
@@ -63,10 +66,13 @@ class SerpApiClient(JobAPIClient):
                 self._quota_warned = True
             return {"jobs_results": []}
         self.limiter.acquire()
-        params = {
-            "engine": "google_jobs", "q": f"{keyword} {location}".strip(),
-            "api_key": self.api_key,
-        }
+        if engine == "indeed":
+            # SerpApi's Indeed engine takes a separate location param (`l`).
+            params = {"engine": "indeed", "q": keyword, "l": location,
+                      "api_key": self.api_key}
+        else:
+            params = {"engine": engine, "q": f"{keyword} {location}".strip(),
+                      "api_key": self.api_key}
         try:
             resp = self.session.get(SERPAPI_URL, params=params, timeout=30)
             resp.raise_for_status()
@@ -79,22 +85,34 @@ class SerpApiClient(JobAPIClient):
         return data
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
+        # google_jobs -> "jobs_results"; indeed engine -> "jobs_results" too but a
+        # different item shape. Read both defensively; an unrecognized shape (no
+        # recognizable job list) yields [] rather than raising.
+        items = raw.get("jobs_results")
+        if not isinstance(items, list):
+            return []
         results = []
-        for item in raw.get("jobs_results", []):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
             opts = item.get("apply_options") or []
-            url = (opts[0].get("link") if opts else "") or item.get("share_link", "") or ""
-            posted = (item.get("detected_extensions") or {}).get("posted_at", "") or ""
+            url = ((opts[0].get("link") if opts else "")
+                   or item.get("link", "")           # indeed engine: direct link
+                   or item.get("share_link", "") or "")
+            posted = ((item.get("detected_extensions") or {}).get("posted_at", "")
+                      or item.get("date", "") or "")
+            job_id = item.get("job_id") or item.get("job_key") or ""
             results.append(JobResult(
                 title=item.get("title", "") or "",
-                company=item.get("company_name", "Unknown") or "Unknown",
+                company=(item.get("company_name") or item.get("company") or "Unknown"),
                 location=item.get("location", "") or "",
                 salary_min=None,
                 salary_max=None,
-                description=(item.get("description", "") or "")[:3000],
+                description=(item.get("description", "") or item.get("snippet", "") or "")[:3000],
                 url=url,
                 source_keyword=source_keyword,
                 created=posted,
-                job_id=f"serpapi_{item.get('job_id', '')}",
+                job_id=f"serpapi_{job_id}",
                 source_api="serpapi",
             ))
         return results
