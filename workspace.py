@@ -32,7 +32,8 @@ BASE_DIR = config.USER_DATA_DIR
 _EXPERIENCE_STUB = """# Experience
 
 > Fill this in for THIS project's candidate. Used for resume/cover generation
-> and skill-based job scoring. Keep the five `## ` headings below.
+> and skill-based job scoring. Keep the `## ` headings below; leave any you
+> don't need empty.
 
 ## CONTACT
 
@@ -41,9 +42,13 @@ _EXPERIENCE_STUB = """# Experience
 - Phone:
 - Location:
 
+## SUMMARY
+
 ## EDUCATION
 
 ## TECHNICAL SKILLS
+
+## LICENSES & CERTIFICATIONS
 
 ## WORK EXPERIENCE
 

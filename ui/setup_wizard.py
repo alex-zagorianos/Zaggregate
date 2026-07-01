@@ -8,6 +8,7 @@ writes that contract plus experience.md and seeds the search config; `maybe_run(
 shows the wizard only until the user finishes or skips (tracked by an .onboarded
 marker in the data folder)."""
 import json
+import re
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -17,6 +18,175 @@ import workspace
 from ui import theme
 
 _MARKER_NAME = ".onboarded"
+
+
+# -- resume auto-structuring (P0 #1) ---------------------------------------------
+# The wizard invites a PLAIN-TEXT resume paste, but resume/experience_parser
+# raises on any resume without '## ' markdown headings -- so a pasted nurse/welder/
+# teacher resume crashed every subsequent search. structure_resume_text() turns
+# a raw paste into a headed document the parser accepts, WITHOUT losing any text:
+#   - already has '## '/'# ' headings  -> returned unchanged.
+#   - has recognizable ALL-CAPS / alias heading lines (EXPERIENCE, EDUCATION,
+#     LICENSES, SKILLS, ...) -> those lines are promoted to '## ' headings.
+#   - otherwise -> leading contact-looking lines go under '## CONTACT' and the
+#     rest under '## WORK EXPERIENCE'.
+# Pure and side-effect-free so it is trivially unit-testable.
+
+# Lines that look like contact info (email / phone / a short name or address at
+# the very top), grouped under CONTACT when we have to wrap a bare paste.
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_PHONE_RE = re.compile(r"(?:\+?\d[\d\-\.\s()]{7,}\d)")
+
+
+# -- salary input parsing (P3 hourly-wage support) -------------------------------
+# Annual-equivalent of a full-time hourly wage (40 h/wk x 52 wk). Matches
+# match.scorer's 2080 annualization so a wizard-entered "18/hr" floor and a
+# description-parsed hourly rate line up.
+_FULLTIME_HOURS_PER_YEAR = 2080
+_HOURLY_INPUT_RE = re.compile(r"/\s*h|\bhr\b|\bhour", re.I)
+
+
+def _derive_industry(industry: str, roles: list) -> str:
+    """When the optional industry box is blank, resolve the user's roles to an
+    O*NET-SOC occupation and return a short field label IFF it lands on a
+    NON-engineering occupation. Returns '' (keep today's behavior byte-identical)
+    when the industry is already set, no role resolves, or the resolved role is
+    engineering/tech-like. The first role that confidently resolves wins."""
+    if (industry or "").strip():
+        return ""
+    try:
+        import industry_profile
+    except Exception:
+        return ""
+    for role in roles:
+        role = (role or "").strip()
+        if not role:
+            continue
+        try:
+            soc = industry_profile.resolve_soc(role)  # None for eng-like/unresolved
+        except Exception:
+            soc = None
+        if soc and soc.get("title"):
+            return str(soc["title"]).strip()
+    return ""
+
+
+def parse_salary_input(text: str) -> int | None:
+    """Parse a free-text salary floor into ANNUAL dollars, accepting both annual
+    ('90000', '$90,000', '90k') and hourly ('18/hr', '$18.50 per hour', '25 hr')
+    inputs. Hourly values are annualized at 2080 h/yr. Returns None for blank or
+    unparseable input (never raises)."""
+    s = (text or "").strip().lower()
+    if not s:
+        return None
+    hourly = bool(_HOURLY_INPUT_RE.search(s))
+    # Pull the first numeric token (allow a decimal point and 'k' suffix).
+    m = re.search(r"(\d[\d,]*\.?\d*)\s*(k)?", s)
+    if not m:
+        return None
+    num = m.group(1).replace(",", "")
+    try:
+        val = float(num)
+    except ValueError:
+        return None
+    if m.group(2):            # explicit 'k' suffix -> thousands
+        val *= 1000
+    if hourly:
+        val *= _FULLTIME_HOURS_PER_YEAR
+    # A small bare number with no 'k' and no hourly marker (e.g. "18") is almost
+    # certainly an hourly wage a user typed without the unit; annualize it so it
+    # isn't stored as an $18 floor. 1000 is the cutoff (nobody means $18/yr).
+    elif val < 1000:
+        val *= _FULLTIME_HOURS_PER_YEAR
+    val = int(round(val))
+    return val if val > 0 else None
+
+
+def _alias_table() -> dict:
+    """The parser's normalized-heading -> canonical-heading map, reused so the
+    wizard promotes exactly the headings the parser will recognize."""
+    from resume.experience_parser import _HEADING_ALIASES, EXPERIENCE_SECTIONS
+    table = dict(_HEADING_ALIASES)
+    # The canonical names themselves are valid headings too.
+    for canon in EXPERIENCE_SECTIONS.values():
+        table.setdefault(canon, canon)
+    return table
+
+
+def _normalize_heading_line(line: str) -> str:
+    return re.sub(r"\s+", " ", line.strip().upper()).rstrip(":").strip()
+
+
+def _looks_like_heading(line: str, table: dict) -> str | None:
+    """Return the canonical heading a bare line maps to, or None. A line is a
+    heading candidate only if it is short and has no sentence punctuation (so a
+    real experience sentence that happens to contain a keyword isn't promoted)."""
+    raw = line.strip()
+    if not raw or len(raw) > 40:
+        return None
+    if any(ch in raw for ch in ".!?,;:") and not raw.rstrip().endswith(":"):
+        return None
+    norm = _normalize_heading_line(raw)
+    return table.get(norm)
+
+
+def _looks_like_contact(line: str) -> bool:
+    return bool(_EMAIL_RE.search(line) or _PHONE_RE.search(line))
+
+
+def structure_resume_text(text: str) -> tuple[str, bool]:
+    """Return (structured_markdown, was_restructured).
+
+    was_restructured is True only when we actually inserted headings, so the
+    wizard can show a gentle notice. Never raises; never drops text."""
+    raw = (text or "").strip()
+    if not raw:
+        return raw, False
+    # Already structured (any markdown H1/H2) -> leave it be.
+    if re.search(r"(?m)^#{1,2}\s+\S", raw):
+        return raw, False
+
+    table = _alias_table()
+    lines = raw.splitlines()
+
+    # Path A: promote recognizable ALL-CAPS/alias heading lines in place.
+    promoted: list[str] = []
+    n_headings = 0
+    for line in lines:
+        canon = _looks_like_heading(line, table)
+        if canon is not None:
+            promoted.append(f"## {canon}")
+            n_headings += 1
+        else:
+            promoted.append(line)
+    if n_headings:
+        return "\n".join(promoted).strip(), True
+
+    # Path B: no recognizable headings at all -- wrap. Leading contact-looking
+    # lines (name/email/phone/address at the top) go under CONTACT; the body
+    # under WORK EXPERIENCE so the parser + scorer both have real content.
+    contact: list[str] = []
+    body_start = 0
+    for i, line in enumerate(lines[:6]):  # only scan the top of the document
+        if not line.strip():
+            body_start = i + 1
+            continue
+        if _looks_like_contact(line) or (i == 0 and len(line.strip()) <= 60):
+            contact.append(line.strip())
+            body_start = i + 1
+        else:
+            break
+    body = "\n".join(lines[body_start:]).strip()
+    out: list[str] = []
+    if contact:
+        out.append("## CONTACT")
+        out.append("")
+        out.extend(f"- {c}" for c in contact)
+        out.append("")
+    out.append("## WORK EXPERIENCE")
+    out.append("")
+    out.append(body if body else raw)
+    return "\n".join(out).strip(), True
 
 
 # ── onboarding marker ───────────────────────────────────────────────────────────
@@ -171,9 +341,14 @@ def _search_config(answers: dict, existing: dict | None = None) -> dict:
     return cfg
 
 
-def apply(answers: dict) -> None:
+def apply(answers: dict) -> dict:
     """Write the preferences contract, the search config, and (if the user
-    supplied resume text) experience.md, then mark onboarding complete."""
+    supplied resume text) experience.md, then mark onboarding complete.
+
+    Returns a small info dict {"resume_restructured": bool} so the caller can
+    show a gentle notice when a plain-text paste had to be auto-structured. A
+    pasted resume is ALWAYS run through structure_resume_text() first so it can
+    never crash later scoring/generation (P0 #1)."""
     prefs = build_preferences(answers)
     pj, pm = workspace.preferences_paths()   # beside this project's config/resume
     pj.parent.mkdir(parents=True, exist_ok=True)
@@ -182,13 +357,17 @@ def apply(answers: dict) -> None:
 
     workspace.save_config(_search_config(answers, workspace.load_config()))
 
+    info = {"resume_restructured": False}
     resume = (answers.get("resume_text") or "").strip()
     if resume:
+        structured, restructured = structure_resume_text(resume)
+        info["resume_restructured"] = restructured
         exp = workspace.experience_file()
         exp.parent.mkdir(parents=True, exist_ok=True)
-        exp.write_text(resume, encoding="utf-8")
+        exp.write_text(structured, encoding="utf-8")
 
     mark_onboarded()
+    return info
 
 
 # ── the wizard window ───────────────────────────────────────────────────────────
@@ -375,7 +554,9 @@ class SetupWizard(tk.Toplevel):
         row.pack(anchor="w", pady=(0, 4))
         ttk.Label(row, text="$").pack(side="left")
         ttk.Entry(row, textvariable=self._vars["salary_min"], width=14).pack(side="left")
-        ttk.Label(self._body, text="Example:  90000  (numbers only, no commas)",
+        ttk.Label(self._body,
+                  text="Examples:  90000  (per year)   or   18/hr  (per hour, "
+                       "we convert it for you)",
                   style="Muted.TLabel").pack(anchor="w")
 
     def _step_resume(self):
@@ -448,9 +629,8 @@ class SetupWizard(tk.Toplevel):
     def _collect(self) -> dict:
         roles = [r.strip() for r in self._vars["roles"].get().split(",")
                  if r.strip()]
-        raw_salary = "".join(ch for ch in self._vars["salary_min"].get()
-                             if ch.isdigit())
-        salary = int(raw_salary) if raw_salary else None
+        # Accept annual ('90000', '$90k') OR hourly ('18/hr') input; store annual.
+        salary = parse_salary_input(self._vars["salary_min"].get())
         return {
             "roles": roles,
             "location": self._vars["location"].get().strip(),
@@ -472,11 +652,29 @@ class SetupWizard(tk.Toplevel):
                 self._step = 1
                 self._render()
                 return
+        # Derive the field from the roles when the optional industry box is blank,
+        # so a non-engineering user isn't silently routed as an engineer.
+        detected = _derive_industry(answers.get("industry", ""), answers["roles"])
+        if detected:
+            answers["industry"] = detected
+            self._vars["industry"].set(detected)  # reflect it if the wizard reopens
         try:
-            apply(answers)
+            info = apply(answers)
         except Exception as e:  # never trap the user in a broken wizard
             messagebox.showerror("Setup error", str(e), parent=self)
             return
+        if detected:
+            messagebox.showinfo(
+                "Field detected",
+                f"Field detected: {detected} - edit if wrong (Help -> Run Setup "
+                "Wizard). This tunes company discovery and job ranking to your "
+                "field instead of engineering.", parent=self)
+        if info.get("resume_restructured"):
+            messagebox.showinfo(
+                "Resume saved",
+                "We tidied your pasted resume into sections (Contact, Work "
+                "Experience, and any headings we recognized) so the app can read "
+                "it. You can refine it any time.", parent=self)
         self._maybe_offer_discovery(answers.get("industry", ""))
         self._finished = True
         self._close(applied=True)
