@@ -43,9 +43,11 @@ def _job(**over) -> JobResult:
 # ── shape ─────────────────────────────────────────────────────────────────────
 def test_returns_expected_shape():
     out = normalize_comp(_job(salary_min=120000.0, salary_max=140000.0))
-    assert set(out) == {"min", "max", "disclosed", "display"}
+    # currency/period added (P2 item 7 comp parsing) alongside the original keys.
+    assert set(out) == {"min", "max", "disclosed", "display", "currency", "period"}
     assert isinstance(out["disclosed"], bool)
     assert isinstance(out["display"], str)
+    assert out["currency"] == "USD" and out["period"] == "year"
 
 
 # ── explicit min/max formatting ───────────────────────────────────────────────

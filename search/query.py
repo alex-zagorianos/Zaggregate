@@ -18,6 +18,32 @@ _TOKEN_RE = re.compile(r'"[^"]*"|[()]|[^\s()]+')
 _OPS = {"AND", "OR", "NOT"}
 
 
+# Word-START-boundary matching. Raw substring matching gave false hits where a
+# term appeared in the MIDDLE/END of a longer word ("rn" inside inteRNship, "ros"
+# inside "process", "pid" inside "rapid"). Anchoring at a word START (a preceding
+# non-word char) kills exactly those, while still allowing a term to be the PREFIX
+# of a longer word (keyword "robot" -> "Robotics", "develop" -> "Developer") so
+# keyword seeding recall is preserved. This is deliberately LOOSER than the
+# scorer's full \\b...\\b skill matcher: a positive title/keyword query wants
+# recall; a blocklist wants precision. Cached per (text, fold_s).
+_bound_cache: dict[tuple[str, bool], re.Pattern] = {}
+
+
+def _bound(text: str, fold_s: bool = False) -> re.Pattern:
+    """Word-START matcher for `text` (leading boundary, no trailing anchor). When
+    `fold_s`, a trailing 's' on the stem is optional so the legacy fold still works
+    BOTH ways: query 'controls' matches 'Control Systems' AND the exact 'Controls'.
+    Lookbehind on a non-word char (not \\b) so a term starting with a non-word
+    char ('.net', 'c++') still anchors."""
+    key = (text, fold_s)
+    pat = _bound_cache.get(key)
+    if pat is None:
+        body = re.escape(text) + ("s?" if fold_s else "")
+        pat = re.compile(r"(?<!\w)" + body)
+        _bound_cache[key] = pat
+    return pat
+
+
 # ── AST nodes ─────────────────────────────────────────────────────────────────
 class _Leaf:
     __slots__ = ("text", "phrase")
@@ -28,11 +54,17 @@ class _Leaf:
 
     def matches(self, hay: str) -> bool:
         if self.phrase:
-            return self.text in hay
+            # Phrases match contiguously, at word boundaries (an anchored phrase
+            # can't be a fragment of a larger word run).
+            return bool(_bound(self.text).search(hay))
         w = self.text
-        # mirror the legacy per-token rule: strip a trailing 's' on longer words
-        s = w[:-1] if len(w) > 3 and w.endswith("s") else w
-        return s in hay
+        # mirror the legacy per-token rule: strip a trailing 's' on longer words,
+        # then require a whole-word match with an optional trailing 's' so
+        # "controls engineer" still matches BOTH "Control Systems Engineer" and
+        # "Controls Engineer", while "rn" no longer matches "internship".
+        if len(w) > 3 and w.endswith("s"):
+            return bool(_bound(w[:-1], fold_s=True).search(hay))
+        return bool(_bound(w).search(hay))
 
     def positive_terms(self):
         return [self.text]

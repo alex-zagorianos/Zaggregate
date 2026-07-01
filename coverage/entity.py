@@ -37,6 +37,15 @@ def _onet() -> dict[str, tuple[str, str]]:
         out[alt.casefold()] = (soc, soc_title)
     return out
 
+
+@functools.lru_cache(maxsize=1)
+def _onet_keys() -> list[str]:
+    """The alt-title key list, materialized ONCE. normalize_title's fuzzy path
+    rebuilt this ~51k-element list on every call (the dominant CPU cost of a daily
+    run, since job_key -> normalize_title fires for every result); hoisting it here
+    makes each fuzzy call O(scan) instead of O(build + scan)."""
+    return list(_onet().keys())
+
 def canonicalize_company(name: str) -> str:
     if not name:
         return ""
@@ -61,6 +70,7 @@ def _seniority_of(title: str) -> str | None:
     m = _SENIORITY.search(title or "")
     return m.group(0).strip().casefold() if m else None
 
+@functools.lru_cache(maxsize=8192)
 def normalize_title(title: str) -> NormalizedTitle:
     core = title_core(title)
     seniority = _seniority_of(title)
@@ -69,7 +79,12 @@ def normalize_title(title: str) -> NormalizedTitle:
         soc, soc_title = table[core]
         return NormalizedTitle(soc, soc_title, seniority, 1.0)
     if _HAVE_RAPIDFUZZ and table:
-        match = _rf_process.extractOne(core, list(table.keys()), scorer=_rf_fuzz.token_set_ratio)
+        # Hoisted key list + score_cutoff: rapidfuzz can early-exit anything below
+        # the confidence floor (identical result -- the code already rejected
+        # conf < _CONF_FLOOR), and the ~51k-element key list is built once.
+        match = _rf_process.extractOne(
+            core, _onet_keys(), scorer=_rf_fuzz.token_set_ratio,
+            score_cutoff=_CONF_FLOOR * 100)
         if match:
             cand, score, _ = match
             conf = score / 100.0

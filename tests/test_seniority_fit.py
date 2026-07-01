@@ -22,10 +22,22 @@ def test_target_level_exec_for_dad_ic_for_alex():
     assert scorer._target_level(ALEX_KW) == 2     # mid (no seniority tokens)
 
 
-def test_adjustment_neutral_for_ic_search():
-    # target below manager -> zero adjustment regardless of the posting level.
+def test_adjustment_neutral_for_ic_target_same_or_lower_level():
+    # An IC target (below manager) leaves same/lower-level postings untouched, so an
+    # ordinary IC/senior search's non-management results are unchanged.
     assert scorer._seniority_fit_adj("Senior Controls Engineer", 2) == 0
-    assert scorer._seniority_fit_adj("Engineering Manager", 2) == 0
+    assert scorer._seniority_fit_adj("Controls Engineer", 2) == 0
+    assert scorer._seniority_fit_adj("Junior Controls Engineer", 2) == 0
+
+
+def test_adjustment_penalizes_management_for_ic_target():
+    # Symmetric branch (P2): an IC seeker's manager/director postings are off-target
+    # and take a mirror penalty (~-10/-14) so they stop tying true IC roles.
+    assert scorer._seniority_fit_adj("Engineering Manager", 2) == -10
+    assert scorer._seniority_fit_adj("Director of Engineering", 2) == -14
+    assert scorer._seniority_fit_adj("VP of Engineering", 2) == -14
+    # target None (no keywords) stays neutral regardless of the posting level.
+    assert scorer._seniority_fit_adj("Engineering Manager", None) == 0
 
 
 def test_adjustment_rewards_target_level_penalizes_junior_for_exec():

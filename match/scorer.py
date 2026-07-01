@@ -85,17 +85,34 @@ def _target_level(keywords) -> Optional[int]:
 
 def _seniority_fit_adj(job_title: str, target_level: Optional[int]) -> int:
     """Bounded score nudge for how well a posting's level matches the target.
-    Neutral (0) unless the user targets management+ (>= _MANAGEMENT_MIN)."""
-    if target_level is None or target_level < _MANAGEMENT_MIN:
+
+    Two symmetric branches:
+    - EXEC seeker (target >= _MANAGEMENT_MIN): reward at/above-target roles, sink
+      clearly-junior ones (byte-identical to the original behavior).
+    - IC seeker (target present but < _MANAGEMENT_MIN): mirror-penalize roles that
+      are clearly ABOVE the target into management -- a manager/director posting is
+      off-target for someone seeking an IC role. Manager -> -10, director+ -> -14.
+      An IC target of None (no keywords) stays neutral, and a same/lower-level
+      posting is untouched, so an ordinary IC/senior search's non-management
+      results are unchanged."""
+    if target_level is None:
         return 0
-    delta = _level_of(job_title, "") - target_level
-    if delta >= 0:
-        return 15          # at or above the target level
-    if delta == -1:
-        return 4           # one tier below (e.g. manager when seeking director)
-    if delta == -2:
-        return -8
-    return -16             # clearly junior for an exec seeker (mid/entry/intern)
+    job_level = _level_of(job_title, "")
+    if target_level >= _MANAGEMENT_MIN:
+        delta = job_level - target_level
+        if delta >= 0:
+            return 15          # at or above the target level
+        if delta == -1:
+            return 4           # one tier below (e.g. manager when seeking director)
+        if delta == -2:
+            return -8
+        return -16             # clearly junior for an exec seeker (mid/entry/intern)
+    # IC seeker: penalize a role that overshoots into management.
+    if job_level >= _LEVEL_ORD["director"]:
+        return -14             # director/VP/chief -- well above an IC target
+    if job_level >= _MANAGEMENT_MIN:
+        return -10             # manager -- above an IC target
+    return 0
 
 # ── Auto-strict relevance — downrank off-target titles, never hide ────────────
 # A title that satisfies none of the search queries (positive miss, or a NOT
@@ -156,7 +173,15 @@ def extract_skill_terms(experience_path=None) -> frozenset[str]:
     if key in _cache:
         return _cache[key]
 
-    skills_md = load_experience(target).get("skills", "")
+    # Defense-in-depth: a malformed experience.md (e.g. a wizard plain-text paste
+    # with no '## ' headings) makes load_experience raise ValueError. Degrade to a
+    # neutral EMPTY skill set instead of crashing the whole scoring/daily run --
+    # the scorer treats no-profile as neutral. The parser itself is fixed
+    # elsewhere; this just guarantees a bad file never kills a run.
+    try:
+        skills_md = load_experience(target).get("skills", "")
+    except Exception:
+        skills_md = ""
     terms: set[str] = set()
     for line in skills_md.splitlines():
         line = line.strip().lstrip("-*").strip()
@@ -178,12 +203,14 @@ def extract_skill_terms(experience_path=None) -> frozenset[str]:
 
 
 def _term_present(term: str, tl: str) -> bool:
-    """A positive query term in the (lowercased) title: phrases match contiguously,
-    single words match as a substring with a trailing 's' stripped from long words."""
-    if " " in term:
-        return term in tl
-    s = term[:-1] if len(term) > 3 and term.endswith("s") else term
-    return s in tl
+    """A positive query term in the (lowercased) title, matched at a WORD START
+    (mirrors query._Leaf) instead of raw substring, which killed false hits like
+    'rn' inside 'internship' while still letting a term prefix a longer word
+    ('robot' -> 'Robotics'). A long word's trailing 's' folds to optional so
+    'controls' still matches both 'Control Systems' and 'Controls'."""
+    stem = term[:-1] if (" " not in term and len(term) > 3 and term.endswith("s")) else term
+    fold = stem != term
+    return bool(_word_start_pattern(stem, fold).search(tl))
 
 
 def _title_score(queries, tl: str) -> float:
@@ -227,6 +254,25 @@ def _term_pattern(term: str) -> re.Pattern:
     return pat
 
 
+_word_start_pattern_cache: dict[tuple[str, bool], re.Pattern] = {}
+
+
+def _word_start_pattern(stem: str, fold_s: bool) -> re.Pattern:
+    """Word-START matcher for a POSITIVE title term (leading boundary, no trailing
+    anchor) so a term may prefix a longer word ('robot' -> 'Robotics') -- kills the
+    mid/end substring false hits ('rn' in 'internship') without cutting keyword
+    recall. Mirrors search.query._bound. `fold_s` makes a trailing 's' optional.
+    Deliberately looser than _term_pattern (full \\b, used for blocklists/skills,
+    where precision matters)."""
+    key = (stem, fold_s)
+    pat = _word_start_pattern_cache.get(key)
+    if pat is None:
+        body = re.escape(stem) + ("s?" if fold_s else "")
+        pat = re.compile(r"(?<!\w)" + body)
+        _word_start_pattern_cache[key] = pat
+    return pat
+
+
 def _skill_score(description: str, skill_terms: frozenset[str]) -> float:
     """Fraction of matched skill terms, saturating at 8 hits = 1.0."""
     if not skill_terms:
@@ -242,74 +288,147 @@ def _skill_score(description: str, skill_terms: frozenset[str]) -> float:
 
 
 # Pay ranges printed in descriptions (CA/CO/NY disclosure laws make these
-# common on exactly the boards that never fill the salary API fields).
+# common on exactly the boards that never fill the salary API fields). A leading
+# currency symbol ($, GBP, EUR) is captured so non-USD postings display the right
+# symbol instead of being silently read as dollars.
+_CUR_SYM = "$£€"  # $ GBP EUR
+_MONEY = r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?[kK]|\d+(?:\.\d+)?)"
 _SALARY_RE = re.compile(
-    r"\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?[kK]|\d+(?:\.\d+)?)"
-    r"(?:\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s?[kK]|\d+(?:\.\d+)?))?"
+    r"([" + _CUR_SYM + r"])\s?" + _MONEY +
+    r"(?:\s*(?:-|–|—|to)\s*[" + _CUR_SYM + r"]?\s?" + _MONEY + r")?"
 )
 
+# Currency symbol -> ISO code used for display/storage.
+_CUR_CODE = {"$": "USD", "£": "GBP", "€": "EUR"}
 
-def _parse_money(tok: Optional[str], hourly: bool = False) -> Optional[float]:
-    """'$165,000' / '95k' / '45.50' -> annual dollars, or None if it fails sanity
-    bounds (30k-500k). A bare small value is annualized ONLY when `hourly` is set
-    (an explicit /hr context), so a '$75 stipend' is no longer read as $156k."""
+# Period markers near a figure: annualization multiplier + a canonical label.
+# Hourly 2080 = 40h*52w; weekly 52; monthly 12; annual 1. The FIRST matching
+# marker in the surrounding context wins (checked most-specific-first).
+_PERIOD_CTX = [
+    ("hour",  2080.0, re.compile(r"/\s?hr\b|/\s?hour\b|\bper\s?hour\b|\bhourly\b|\ban\s?hour\b", re.I)),
+    ("week",    52.0, re.compile(r"/\s?wk\b|/\s?week\b|\bper\s?week\b|\bweekly\b|\ba\s?week\b", re.I)),
+    ("month",   12.0, re.compile(r"/\s?mo\b|/\s?month\b|\bper\s?month\b|\bmonthly\b|\ba\s?month\b", re.I)),
+    ("year",     1.0, re.compile(r"/\s?yr\b|/\s?year\b|\bper\s?year\b|\bannual(?:ly)?\b|\ba\s?year\b|\bp\.?a\.?\b", re.I)),
+]
+
+
+def _period_of(ctx: str) -> tuple[str, float]:
+    """(label, annualize_multiplier) for the pay period named near a figure.
+    Defaults to ('year', 1.0) when no marker is present (a bare 5-6 digit figure
+    is almost always an annual salary)."""
+    for label, mult, pat in _PERIOD_CTX:
+        if pat.search(ctx):
+            return label, mult
+    return "year", 1.0
+
+
+def _raw_money(tok: Optional[str]) -> Optional[float]:
+    """'$165,000' / '95k' / '45.50' -> a raw float in its OWN period (no
+    annualization, no bounds), or None if non-numeric."""
     if not tok:
         return None
     t = tok.lower().replace(",", "").strip()
     mult = 1000.0 if t.endswith("k") else 1.0
     t = t.rstrip("k").strip()
     try:
-        val = float(t) * mult
+        return float(t) * mult
     except ValueError:
         return None
-    if hourly and val < 200:  # annualize an explicit hourly rate
-        val *= 2080
-    return val if 30_000 <= val <= 500_000 else None
 
 
-# Fallback for pay ranges printed WITHOUT a leading '$' (CA/CO/NY disclosure
-# text: "Pay range: 120,000 - 150,000"). Both endpoints must be comma-grouped
-# 5-6 digit numbers so a lone figure or a "401(k)" can't trigger it; the
-# 30k-500k bound in _parse_money is the final guard.
+def _annualize(raw: Optional[float], mult: float) -> Optional[float]:
+    """Annualize a raw figure and sanity-bound it. The floor is context-aware: a
+    sub-annual period (hourly/weekly/monthly) annualizes to a lower legitimate
+    floor (~15k, min-wage tier) than a stated annual salary (30k), so retail /
+    food-service / PRN wages stop being invisible. Upper bound 500k."""
+    if raw is None:
+        return None
+    val = raw * mult
+    floor = 15_000 if mult > 1.0 else 30_000
+    return val if floor <= val <= 500_000 else None
+
+
+def _parse_money(tok: Optional[str], hourly: bool = False) -> Optional[float]:
+    """Back-compat shim (used by tests / callers): '$165,000' / '95k' / '45.50' ->
+    annual dollars or None, with the original 30k-500k bound. A bare small value is
+    annualized ONLY under an explicit hourly context."""
+    raw = _raw_money(tok)
+    if raw is None:
+        return None
+    if hourly and raw < 200:
+        val = raw * 2080
+        return val if 15_000 <= val <= 500_000 else None
+    return raw if 30_000 <= raw <= 500_000 else None
+
+
+# Fallback for pay ranges printed WITHOUT a leading currency symbol: either
+# comma-grouped 5-6 digit numbers ("Pay range: 120,000 - 150,000") or a bare
+# k-range ("80k-100k"). Both endpoints required so a lone figure / "401(k)" can't
+# trigger it; the annualization bound is the final guard.
 _SALARY_RE_BARE = re.compile(
-    r"(\d{2,3},\d{3})\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})"
+    r"(\d{2,3},\d{3}|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*(\d{2,3},\d{3}|\d{2,3}\s?[kK])"
 )
 
-
-# Context guards for salary_from_text: an explicit hourly marker (annualize) and
-# clearly-non-salary dollar mentions (skip).
-_HOURLY_CTX = re.compile(r"/\s?hr\b|/\s?hour\b|\bper hour\b|\bhourly\b|\ban hour\b", re.I)
+# Kept for external callers that imported these context regexes.
+_HOURLY_CTX = _PERIOD_CTX[0][2]
 _NON_SALARY_CTX = re.compile(
     r"\bstipend\b|\bgift\s?card\b|\binsurance\b|401\s?\(?k\)?|\breimburs\w*|"
     r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b", re.I)
 
 
-def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
-    """Best-effort (min, max) annual salary parsed from free text. A lone value is
-    only annualized under an explicit hourly context, and dollar amounts in a
-    clearly non-salary context (stipend/401k/gift card/insurance/...) are skipped."""
+def parse_comp(text: str) -> Optional[dict]:
+    """Rich compensation parse of free text. Returns::
+
+        {"min": float|None, "max": float|None,          # ANNUALIZED
+         "raw_min": float|None, "raw_max": float|None,   # in the native period
+         "currency": "USD"|"GBP"|"EUR", "period": "year"|"hour"|"week"|"month"}
+
+    or None when nothing usable is found. Conservative: a figure in a clearly
+    non-salary context (stipend/401k/insurance/...) is skipped; ambiguous input
+    yields None. min/max are annualized (USD-or-native amount * period multiplier)
+    for scoring; raw_min/raw_max keep the disclosed period figure for display."""
     text = text or ""
     for m in _SALARY_RE.finditer(text):
         ctx = text[max(0, m.start() - 30): m.end() + 30]
         if _NON_SALARY_CTX.search(ctx):
             continue
-        hourly = bool(_HOURLY_CTX.search(ctx))
-        lo = _parse_money(m.group(1), hourly)
-        hi = _parse_money(m.group(2), hourly)
-        if lo and hi:
-            return (min(lo, hi), max(lo, hi))
-        if lo:
-            return (lo, None)
-    # No usable '$'-anchored hit -> try a bare comma-grouped range (both ends required).
+        currency = _CUR_CODE.get(m.group(1), "USD")
+        period, mult = _period_of(ctx)
+        rlo, rhi = _raw_money(m.group(2)), _raw_money(m.group(3))
+        alo, ahi = _annualize(rlo, mult), _annualize(rhi, mult)
+        if alo and ahi:
+            lo_pair, hi_pair = sorted([(alo, rlo), (ahi, rhi)])
+            return {"min": lo_pair[0], "max": hi_pair[0],
+                    "raw_min": lo_pair[1], "raw_max": hi_pair[1],
+                    "currency": currency, "period": period}
+        if alo:
+            return {"min": alo, "max": None, "raw_min": rlo, "raw_max": None,
+                    "currency": currency, "period": period}
+    # No currency-anchored hit -> bare comma/k range (USD, annual assumed).
     for m in _SALARY_RE_BARE.finditer(text):
         ctx = text[max(0, m.start() - 30): m.end() + 30]
         if _NON_SALARY_CTX.search(ctx):
             continue
-        lo = _parse_money(m.group(1))
-        hi = _parse_money(m.group(2))
-        if lo and hi:
-            return (min(lo, hi), max(lo, hi))
-    return (None, None)
+        period, mult = _period_of(ctx)
+        rlo, rhi = _raw_money(m.group(1)), _raw_money(m.group(2))
+        alo, ahi = _annualize(rlo, mult), _annualize(rhi, mult)
+        if alo and ahi:
+            lo_pair, hi_pair = sorted([(alo, rlo), (ahi, rhi)])
+            return {"min": lo_pair[0], "max": hi_pair[0],
+                    "raw_min": lo_pair[1], "raw_max": hi_pair[1],
+                    "currency": "USD", "period": period}
+    return None
+
+
+def salary_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
+    """Best-effort (min, max) ANNUAL salary parsed from free text (back-compat
+    contract). Delegates to parse_comp and returns just the annualized pair, so
+    every existing caller keeps working while gaining hourly/weekly/monthly and
+    bare-k parsing. Currency/period detail is available via parse_comp."""
+    comp = parse_comp(text)
+    if comp is None:
+        return (None, None)
+    return (comp["min"], comp["max"])
 
 
 def _salary_score(job: JobResult, floor: Optional[int]) -> float:
@@ -406,6 +525,21 @@ def score_job(
         except Exception:
             m = None
 
+    # Semantic veto of generic-token full title matches: when semantic ranking is
+    # ACTIVE (m is not None) and the profile<->job similarity is very low, a full
+    # keyword title match (e.g. a QA role earning title-100% for "automation
+    # engineer") is treated as generic-token noise and the title component is
+    # capped. Abstain-safe: m is None whenever semantic is off / model absent /
+    # texts missing, so the keyword-only score stays byte-identical.
+    title_capped = False
+    if m is not None:
+        import config as _cfg
+        veto = getattr(_cfg, "SEMANTIC_TITLE_VETO_SIM", 0.35)
+        cap = getattr(_cfg, "SEMANTIC_TITLE_CAP", 0.6)
+        if m < veto and t > cap:
+            t = cap
+            title_capped = True
+
     # Weight-renormalization over data-PRESENT components. Title + location are
     # always present; skill/salary/recency emit a neutral 0.5 when their data is
     # missing, which used to inflate data-poor jobs. Drop the missing components'
@@ -431,6 +565,16 @@ def score_job(
         + (base_w["m"] * scale * m if sem_present else 0.0)
     )
 
+    # Confidence shrinkage (P2): renormalization can push a 2-of-5-component job to
+    # 100, so a title-only match outranks a data-rich 92. Damp the distance from 50
+    # by how much data we actually have (present/5): a full-data job is untouched
+    # (factor 1.0), a title+loc-only job's spread shrinks to 0.82. This keeps the
+    # composite HONEST -- data-poor extremes pull toward the neutral midpoint -- so
+    # title-only 100s no longer outrank data-rich 92s. The breakdown/notes stay
+    # truthful: components are reported as-computed; only the aggregate is damped.
+    conf_factor = 0.7 + 0.3 * (present / 5.0)
+    score = 50.0 + (score - 50.0) * conf_factor
+
     # Company-size modifier from the careers boards' total-postings proxy.
     size_adj = 0
     bc = getattr(job, "board_count", -1)
@@ -446,6 +590,8 @@ def score_job(
     score += size_adj
 
     notes_extra = []
+    if title_capped:
+        notes_extra.append("sem-title-cap")
 
     # Target-level fit: nudge roles toward the user's target seniority when they
     # are explicitly targeting management/exec. Neutral for IC/senior searches.

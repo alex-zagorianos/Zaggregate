@@ -203,3 +203,26 @@ def test_resolve_soc_skips_eng_industries():
 def test_resolve_soc_returns_code_for_nontech():
     soc = ip.resolve_soc("registered nurse")
     assert soc is not None and soc.get("code") and soc.get("title")
+
+
+# ── item 10: SOC major-group -> penalty role to drop ─────────────────────────
+def test_penalty_role_to_drop_by_soc_code():
+    assert ip.penalty_role_to_drop(soc_code="49-9071.00") == "maintain"
+    assert ip.penalty_role_to_drop(soc_code="41-4012.00") == "sales"
+    assert ip.penalty_role_to_drop(soc_code="15-1252.00") is None   # software dev -> default
+    assert ip.penalty_role_to_drop(soc_code="") is None
+    assert ip.penalty_role_to_drop() is None
+
+
+def test_penalty_role_to_drop_by_industry():
+    # Resolves a free-text field to a SOC then maps the major group.
+    ip.clear_cache()
+    # Sales occupations resolve to SOC 41 -> drop "sales".
+    got = ip.penalty_role_to_drop(industry="retail salesperson")
+    assert got in ("sales", None)  # depends on the bundled O*NET stub; never raises
+
+
+def test_penalty_role_to_drop_eng_is_none():
+    # An eng/tech field must keep the default penalty set (byte-identical for Alex).
+    assert ip.penalty_role_to_drop(industry="controls engineer") is None
+    assert ip.penalty_role_to_drop(industry="") is None

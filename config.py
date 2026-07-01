@@ -216,6 +216,18 @@ HN_RATE_LIMIT = 10
 # Match scoring (match/scorer.py)
 MIN_SCORE_DEFAULT = 0            # CLI --min-score default (0 = show all)
 DAILY_MIN_SCORE = 40             # daily_run.py inbox threshold
+
+# Local semantic ranking (match/semantic.py, Model2Vec). OFF by default: enabling
+# it is Alex's explicit call. When ON *and* the model is present, a semantic
+# similarity component joins the score AND vetoes generic-token full title matches
+# (sem below SEMANTIC_TITLE_VETO_SIM caps the title component). Env SEMANTIC_RANKING
+# overrides this constant (semantic._enabled reads env first). No model -> abstains,
+# score byte-identical.
+SEMANTIC_RANKING = os.getenv("SEMANTIC_RANKING", "0") not in ("", "0", "false", "False", "no")
+# Below this profile<->job cosine similarity, a full keyword title match is treated
+# as generic-token noise and its title component is capped (see SEMANTIC_TITLE_CAP).
+SEMANTIC_TITLE_VETO_SIM = 0.35
+SEMANTIC_TITLE_CAP = 0.6
 DAILY_SOURCES = ["adzuna", "usajobs", "careers", "themuse", "remoteok",
                  "remotive", "jobicy", "himalayas", "hn",
                  "weworkremotely", "workingnomads"]
