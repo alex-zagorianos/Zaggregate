@@ -225,6 +225,24 @@ def anthropic_base_url():
 # function above so a mid-session paste is honored.
 ANTHROPIC_BASE_URL = anthropic_base_url()
 
+# Opt-in auto-rank: after a daily run scores + inboxes new jobs, optionally rank
+# the top-K new qualified jobs via the direct API/local model so the user "wakes
+# up to a ranked inbox". OFF by default (env AUTO_RANK / user_config 'auto_rank')
+# so Alex's run stays byte-identical. Requires a configured key OR base_url.
+AUTO_RANK = os.getenv("AUTO_RANK", "0") not in ("", "0", "false", "False", "no")
+# How many of the top new qualified jobs to auto-rank per run (a compact prompt,
+# so ~trivial cost); overridable via user_config 'auto_rank_top_k'.
+AUTO_RANK_TOP_K = int(os.getenv("AUTO_RANK_TOP_K", "25") or "25")
+
+
+def auto_rank_enabled(cfg: dict | None = None) -> bool:
+    """True when opt-in auto-rank should run this daily pass: the AUTO_RANK env
+    flag OR user_config 'auto_rank' is truthy. Gating on a configured backend
+    (key or base_url) is the caller's job. Default OFF."""
+    if AUTO_RANK:
+        return True
+    return bool((cfg or {}).get("auto_rank"))
+
 # JSearch (RapidAPI) — aggregates Indeed, LinkedIn, Glassdoor
 JSEARCH_RAPIDAPI_KEY = os.getenv("JSEARCH_RAPIDAPI_KEY")
 JSEARCH_RAPIDAPI_HOST = "jsearch.p.rapidapi.com"
