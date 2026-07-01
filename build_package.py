@@ -1,9 +1,9 @@
-"""Build the JobScout distributable — a zip a friend unzips and runs.
+"""Build the Zaggregate distributable — a zip a friend unzips and runs.
 
   1. pyinstaller app.spec     -> dist/JobProgram/ (onedir, windowed GUI)
-  2. assemble  dist/JobScout/ -> the app folder + a seeded data/ (templates only)
+  2. assemble  dist/Zaggregate/ -> the app folder + a seeded data/ (templates only)
                                  + README.txt
-  3. zip                      -> dist/JobScout.zip
+  3. zip                      -> dist/Zaggregate.zip
 
 Run:
   py build_package.py              # full build
@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 APP_BUILD = DIST / "JobProgram"     # PyInstaller onedir output
-PKG = DIST / "JobScout"             # assembled package
+PKG = DIST / "Zaggregate"             # assembled package
 TEMPLATES = ROOT / "data_templates"
 
 # data_templates filename -> seeded name in the user's data folder
@@ -37,7 +37,7 @@ README = """\
 First time? Read FIRST-RUN.txt - it shows how to open the app past Windows'
 "unknown publisher" warning (the app is safe; it just isn't code-signed yet).
 
-JobScout - a personal job search that ranks roles to YOUR preferences using your
+Zaggregate - a personal job search that ranks roles to YOUR preferences using your
 own Claude.
 
 QUICK START
@@ -59,10 +59,10 @@ anywhere except the prompts you choose to paste into your own Claude.
 # Friendly walkthrough for getting past SmartScreen. A non-technical user reads
 # "unknown publisher" as "virus" - this spells out the two safe ways to open it.
 FIRST_RUN_TXT = """\
-HOW TO OPEN JOBSCOUT THE FIRST TIME
+HOW TO OPEN ZAGGREGATE THE FIRST TIME
 ===================================
 
-JobScout is safe, but it isn't "code-signed" yet, so Windows shows a warning
+Zaggregate is safe, but it isn't "code-signed" yet, so Windows shows a warning
 the first time you open it. This is normal for small apps. Here is how to get
 past it - it only happens once.
 
@@ -80,11 +80,11 @@ IF YOU STILL SEE A BLUE BOX - "Windows protected your PC"
   1. Do NOT click "Don't run".
   2. Click the small  "More info"  link in that blue box.
   3. A  "Run anyway"  button appears at the bottom. Click  "Run anyway".
-  4. JobScout starts. You won't be asked again.
+  4. Zaggregate starts. You won't be asked again.
 
 PREFER A SHORTCUT?
-  You can also double-click  launch.bat  - it starts JobScout for you and shows
-  a friendly "Starting JobScout..." message.
+  You can also double-click  launch.bat  - it starts Zaggregate for you and shows
+  a friendly "Starting Zaggregate..." message.
 
 That's it. Once it has opened the first time, just double-click it like any
 other program from then on.
@@ -95,7 +95,7 @@ other program from then on.
 # empty "" is the (required) window title for start, not part of the path.
 LAUNCH_BAT = """\
 @echo off
-echo Starting JobScout...
+echo Starting Zaggregate...
 start "" "JobProgram.exe"
 """
 
@@ -156,8 +156,8 @@ def assemble() -> None:
 
 def zip_package() -> None:
     print("[3/3] Zipping...")
-    out = shutil.make_archive(str(DIST / "JobScout"), "zip",
-                              root_dir=str(DIST), base_dir="JobScout")
+    out = shutil.make_archive(str(DIST / "Zaggregate"), "zip",
+                              root_dir=str(DIST), base_dir="Zaggregate")
     print(f"Done -> {out}")
 
 
@@ -189,7 +189,7 @@ def _sign_exe(exe_path) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build the JobScout distributable.")
+    ap = argparse.ArgumentParser(description="Build the Zaggregate distributable.")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip PyInstaller; reassemble from an existing dist/JobProgram.")
     args = ap.parse_args()

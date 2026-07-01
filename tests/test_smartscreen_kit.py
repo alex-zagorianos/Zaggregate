@@ -22,7 +22,7 @@ def test_first_run_txt_has_smartscreen_steps(tmp_path):
 def test_launch_bat_runs_the_exe(tmp_path):
     build_package.write_first_run_kit(tmp_path)
     bat = (tmp_path / "launch.bat").read_text(encoding="utf-8")
-    assert "Starting JobScout" in bat
+    assert "Starting Zaggregate" in bat
     assert "JobProgram.exe" in bat
 
 
