@@ -21,8 +21,9 @@ def test_parallel_client_splits_one_unit_per_keyword(monkeypatch):
 
     eng = SearchEngine([Par(), Blind()])
     seen = []
+    # _run_client returns (results, error_str); the fan-out unpacks that tuple.
     monkeypatch.setattr(eng, "_run_client",
-                        lambda client, kws, *a, **k: seen.append((type(client).__name__, tuple(kws))) or [])
+                        lambda client, kws, *a, **k: (seen.append((type(client).__name__, tuple(kws))), ([], ""))[1])
     eng.run_full_search(["x", "y"], max_pages_per_keyword=1)
 
     par_units = sorted(k for n, k in seen if n == "Par")
@@ -39,7 +40,7 @@ def test_single_keyword_is_not_split(monkeypatch):
     eng = SearchEngine([Par()])
     seen = []
     monkeypatch.setattr(eng, "_run_client",
-                        lambda client, kws, *a, **k: seen.append(tuple(kws)) or [])
+                        lambda client, kws, *a, **k: (seen.append(tuple(kws)), ([], ""))[1])
     eng.run_full_search(["only"], max_pages_per_keyword=1)
     assert seen == [("only",)]
 

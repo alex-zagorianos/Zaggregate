@@ -6,6 +6,12 @@
 # Writable runtime state (cache/, output/, user_config.json) is resolved at
 # runtime by config.WRITABLE_DIR to <exe>/JobProgram, so nothing is written
 # into _MEIPASS.
+#
+# SINGLE exe, FLAG-SWITCHED: gui.main() serves both the windowed app AND the
+# headless daily run — `JobProgram.exe --daily [--project <slug>]` runs the same
+# search->score->inbox ingest and exits with NO Tk window (used by the Task
+# Scheduler job registered from Tools -> "Turn on daily updates"). So there is
+# only one entry script (gui.py) and one built exe; no separate daily_run exe.
 
 block_cipher = None
 

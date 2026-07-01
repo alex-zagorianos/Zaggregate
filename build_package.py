@@ -47,8 +47,12 @@ QUICK START
      again from  Help -> Run Setup Wizard.)
   3. Search, then click "Ask AI to rank these", paste the prompt into your own
      Claude (claude.ai - any plan), and paste the reply back with "Paste AI
-     ranking". The app ranks your inbox to your preferences. (Optional: drop an
-     Anthropic API key in the secrets folder to rank automatically, no pasting.)
+     ranking". The app ranks your inbox to your preferences. (Optional: add an
+     Anthropic API key in Tools > "Connect your AI (API key)..." to rank
+     automatically, no pasting.)
+
+To keep your Inbox filling on its own, turn on daily updates from
+Tools > "Turn on daily updates".
 
 Everything you enter stays on this computer. To find or back up your files, use
 Help -> Open my data folder (the app picks the right location automatically; on a
@@ -149,9 +153,20 @@ def assemble() -> None:
     # relative `start "" "JobProgram.exe"` and the "Unblock" steps both line up.
     kit = write_first_run_kit(app)
 
+    # Bundle the unpacked browser extension so the in-app "Capture jobs from my
+    # browser" walkthrough (Help ▸ Guide) can point at a real browser_ext/ folder
+    # next to the exe. The receiver runs in-process (Tools ▸ Capture); the
+    # extension is what the user loads via chrome://extensions ▸ Load unpacked.
+    ext_src = ROOT / "browser_ext"
+    ext_bundled = False
+    if ext_src.exists():
+        shutil.copytree(ext_src, app / "browser_ext")
+        ext_bundled = True
+
     (PKG / "README.txt").write_text(README, encoding="utf-8")
     print(f"      data/ seeded: {', '.join(created)}")
     print(f"      first-run kit: {', '.join(kit)}")
+    print(f"      browser_ext bundled: {ext_bundled}")
 
 
 def zip_package() -> None:

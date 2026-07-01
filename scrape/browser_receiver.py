@@ -157,6 +157,7 @@ def harvest():
 
     webbrowser.open(html_path.as_uri())
 
+    _bump_capture(len(results))
     print(f"\n[receiver] {len(results)} jobs received -> {html_path.name} "
           f"({inboxed} new to inbox)")
 
@@ -408,6 +409,67 @@ def _created_from_age(days):
         return None
     from datetime import timedelta
     return (date.today() - timedelta(days=days)).isoformat()
+
+
+# ── in-process embedding (GUI Tools toggle) ────────────────────────────────────
+# The receiver was `py -m scrape.browser_receiver` only — dead in the frozen exe
+# and unpinned (a project switch could misroute its inbox writes, the S27 class).
+# start_in_thread() runs the SAME Flask app as a daemon thread inside the GUI
+# process, PINNED to one project so every harvested job lands in that project's
+# inbox regardless of a later GUI project switch. capture_count() surfaces how
+# many jobs have been received so the GUI can show a live count.
+import threading as _threading
+
+_SERVER_THREAD = None
+_CAPTURE_COUNT = 0
+_PINNED_SLUG = None
+
+
+def capture_count() -> int:
+    """Total jobs received since this process's receiver started."""
+    return _CAPTURE_COUNT
+
+
+def is_running() -> bool:
+    return _SERVER_THREAD is not None and _SERVER_THREAD.is_alive()
+
+
+def _bump_capture(n: int) -> None:
+    global _CAPTURE_COUNT
+    _CAPTURE_COUNT += int(n or 0)
+
+
+def start_in_thread(project_slug=None):
+    """Start the receiver as a daemon thread pinned to *project_slug* (the active
+    project when None). Idempotent: a second call while already running is a
+    no-op. Pinning happens in a before_request hook so EVERY harvest request
+    resolves the inbox/output path to this project, never the global 'active'
+    that a GUI switch may have moved. Returns the server thread."""
+    global _SERVER_THREAD, _PINNED_SLUG
+    if is_running():
+        return _SERVER_THREAD
+    _PINNED_SLUG = project_slug or workspace.active_slug()
+
+    def _serve():
+        # Pin on this thread so the harvest handler's workspace.output_dir() /
+        # inbox writes always resolve to the receiver's project. Pinning is
+        # process-wide (module global), so also pin per-request below as a guard.
+        workspace.pin_active(_PINNED_SLUG)
+        app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
+
+    t = _threading.Thread(target=_serve, name="browser-receiver", daemon=True)
+    t.start()
+    _SERVER_THREAD = t
+    return t
+
+
+@app.before_request
+def _pin_project():
+    # Re-assert the pin on every request thread: Flask may service requests on
+    # worker threads that never ran _serve()'s pin, and a concurrent GUI project
+    # switch must not redirect a harvest write.
+    if _PINNED_SLUG:
+        workspace.pin_active(_PINNED_SLUG)
 
 
 if __name__ == "__main__":
