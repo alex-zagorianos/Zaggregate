@@ -15,6 +15,12 @@ from ui import source_keys
 @pytest.fixture
 def secrets(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "SECRETS_DIR", tmp_path / "secrets")
+    # Env wins over secrets by design; a dev machine's .env (real keys loaded
+    # into the process env by config) must not shadow the seeded test secret.
+    for var in ("ADZUNA_APP_ID", "ADZUNA_APP_KEY", "USAJOBS_API_KEY",
+                "USAJOBS_EMAIL", "JOOBLE_API_KEY", "CAREERJET_AFFID",
+                "CAREERONESTOP_USER_ID", "CAREERONESTOP_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
     return tmp_path / "secrets"
 
 
