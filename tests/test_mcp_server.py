@@ -70,3 +70,40 @@ def test_set_fit_scores_persists_rank(monkeypatch):
     assert out["applied"] == 2
     assert len(patches) == 1 and patches[0][0] == 1
     assert patches[0][1]["rank"] == 1 and patches[0][1]["rec_batch"]
+
+
+# ── A3: startup project pin (S27 concurrency class) ───────────────────────────
+def test_main_pins_active_project_at_startup(monkeypatch):
+    """A long-lived MCP session must pin the active project ONCE at startup so a
+    later GUI switch can't redirect its writes to another project."""
+    pinned = {}
+    monkeypatch.setattr(mcp_server.userdata, "bootstrap", lambda: None)
+    monkeypatch.setattr(mcp_server.db, "init_db", lambda: None)
+    monkeypatch.setattr(mcp_server.mcp, "run", lambda: None)
+    monkeypatch.setattr(mcp_server.workspace, "active_slug", lambda: "controls")
+    monkeypatch.setattr(mcp_server.workspace, "pin_active",
+                        lambda s: pinned.setdefault("slug", s))
+    mcp_server.main([])                    # no --project -> pin whatever's active
+    assert pinned["slug"] == "controls"
+
+
+def test_main_pins_explicit_project(monkeypatch):
+    pinned = {}
+    monkeypatch.setattr(mcp_server.userdata, "bootstrap", lambda: None)
+    monkeypatch.setattr(mcp_server.db, "init_db", lambda: None)
+    monkeypatch.setattr(mcp_server.mcp, "run", lambda: None)
+    monkeypatch.setattr(mcp_server.workspace, "list_projects",
+                        lambda: [{"slug": "dad"}, {"slug": "controls"}])
+    monkeypatch.setattr(mcp_server.workspace, "pin_active",
+                        lambda s: pinned.setdefault("slug", s))
+    mcp_server.main(["--project", "dad"])
+    assert pinned["slug"] == "dad"
+
+
+def test_main_rejects_unknown_project(monkeypatch):
+    monkeypatch.setattr(mcp_server.userdata, "bootstrap", lambda: None)
+    monkeypatch.setattr(mcp_server.workspace, "list_projects",
+                        lambda: [{"slug": "controls"}])
+    monkeypatch.setattr(mcp_server.mcp, "run", lambda: pytest.fail("must not serve"))
+    with pytest.raises(SystemExit):
+        mcp_server.main(["--project", "nope"])

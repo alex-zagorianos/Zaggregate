@@ -1,8 +1,9 @@
 """One-time (idempotent) backfill: repair Workday inbox URLs that were stored
 without the site segment (host+externalPath -> 404). Inserts the site so links
 resolve, e.g. .../job/X -> .../CaterpillarCareers/job/X. Safe to re-run; only
-touches rows that are still site-less. Run: py -m scripts.fix_workday_urls [--dry-run]
+touches rows that are still site-less. Run: py -m scripts.fix_workday_urls [--dry-run] [--project SLUG]
 """
+import argparse
 import re
 import sqlite3
 import sys
@@ -63,7 +64,17 @@ def fix(db_path=None, dry_run=False) -> tuple[int, int, int]:
 
 
 if __name__ == "__main__":
-    dry = "--dry-run" in sys.argv
-    f, s, d = fix(dry_run=dry)
-    tag = "[dry-run] would fix" if dry else "fixed"
+    import workspace
+    ap = argparse.ArgumentParser(description="Repair Workday inbox URLs.")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--project", default=None,
+                    help="Operate on this project (default: active). Pinned "
+                         "once so a concurrent switch can't move our target DB.")
+    args = ap.parse_args()
+
+    # Resolve + pin the target project ONCE for the whole run so a concurrent
+    # GUI switch / daily_run can't redirect current_db_path() mid-run.
+    workspace.pin_active(args.project or workspace.active_slug())
+    f, s, d = fix(dry_run=args.dry_run)
+    tag = "[dry-run] would fix" if args.dry_run else "fixed"
     print(f"{tag} {f} | skipped {s} | dropped duplicates {d}")
