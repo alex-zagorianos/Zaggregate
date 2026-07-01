@@ -5,8 +5,9 @@ import preferences
 import workspace
 
 
-def _job(title="Engineer", location="", salary_min=None):
-    return SimpleNamespace(title=title, location=location, salary_min=salary_min)
+def _job(title="Engineer", location="", salary_min=None, salary_max=None):
+    return SimpleNamespace(title=title, location=location, salary_min=salary_min,
+                           salary_max=salary_max)
 
 
 # ── load ──────────────────────────────────────────────────────────────────────
@@ -58,6 +59,46 @@ def test_hard_gate_salary_floor_keeps_unknown():
     jobs = [_job(salary_min=70000), _job(salary_min=120000), _job(salary_min=None)]
     out = preferences.hard_gate(jobs, hard)
     assert len(out) == 2  # 70k dropped; 120k and unknown-salary kept
+
+
+def test_hard_gate_salary_uses_max_or_min():
+    # P0#8: a $70k-$120k job must NOT die against a $90k floor on its range FLOOR;
+    # the gate now tests the disclosed MAX-or-min (aligns with comp.meets_floor).
+    hard = {**preferences._DEFAULT_HARD, "salary_min": 90000}
+    keep = _job(salary_min=70000, salary_max=120000)   # max clears the floor -> kept
+    drop = _job(salary_min=60000, salary_max=80000)    # max below floor -> dropped
+    out = preferences.hard_gate([keep, drop], hard)
+    assert keep in out and drop not in out
+
+
+def test_hard_gate_location_metro_variant_accepts_greater_area():
+    # P0#8: prefs "Cincinnati, OH" must accept a job in "Greater Cincinnati Area"
+    # (bare-city expansion), not just an exact substring.
+    hard = {**preferences._DEFAULT_HARD, "locations": ["Cincinnati, OH"],
+            "remote_ok": False}
+    jobs = [_job(location="Greater Cincinnati Area"), _job(location="Austin, TX")]
+    out = preferences.hard_gate(jobs, hard)
+    locs = [j.location for j in out]
+    assert "Greater Cincinnati Area" in locs
+    assert "Austin, TX" not in locs
+
+
+def test_hard_gate_reports_per_reason_counts():
+    hard = {**preferences._DEFAULT_HARD, "salary_min": 90000,
+            "locations": ["Cincinnati"], "remote_ok": False,
+            "dealbreakers": ["clearance"]}
+    jobs = [
+        _job(title="SWE (clearance required)"),          # title drop
+        _job(salary_min=50000, salary_max=60000),        # salary drop
+        _job(location="Austin, TX"),                     # location drop
+        _job(title="Controls Engineer", location="Cincinnati, OH"),  # kept
+    ]
+    counts = {}
+    out = preferences.hard_gate(jobs, hard, counts=counts)
+    assert len(out) == 1
+    assert counts["title"] == 1
+    assert counts["salary"] == 1
+    assert counts["location"] == 1
 
 
 def test_hard_gate_dealbreaker_in_title():

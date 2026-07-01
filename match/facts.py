@@ -159,6 +159,36 @@ def _detect_required_years(text: str) -> Optional[int]:
     return max(yrs) if yrs else None
 
 
+# ── employment type ───────────────────────────────────────────────────────────
+# Checked in priority order against title first, then description. Ordered so a
+# more-specific marker (per-diem/PRN, seasonal, temporary, contract) wins over the
+# generic full-time/part-time. Returns a canonical label the hard-gate filters on.
+_EMPLOYMENT_TYPE = [
+    ("per-diem",  re.compile(r"\bper[- ]?diem\b|\bprn\b|\bpool\b(?=\s+(?:nurse|staff|position))", re.I)),
+    ("seasonal",  re.compile(r"\bseasonal\b", re.I)),
+    ("temporary", re.compile(r"\btemporary\b|\btemp\b(?!\w)|\btemp-to-hire\b|\bfixed[- ]term\b|\binterim\b", re.I)),
+    ("contract",  re.compile(r"\bcontract\b|\bcontractor\b|\bc2c\b|\b1099\b|\bcorp[- ]to[- ]corp\b|\bfreelance\b", re.I)),
+    ("part-time", re.compile(r"\bpart[- ]?time\b|\bpart time\b", re.I)),
+    ("full-time", re.compile(r"\bfull[- ]?time\b|\bfull time\b|\bpermanent\b|\bregular\b(?=\s+(?:full|position|employee))", re.I)),
+]
+# Shift markers (surfaced separately; not an employment TYPE but a fit dimension).
+_SHIFT = re.compile(r"\bnight shift\b|\bday shift\b|\bswing shift\b|\b1st shift\b|"
+                    r"\b2nd shift\b|\b3rd shift\b|\brotating shift\b|\bovernight\b", re.I)
+
+
+def detect_employment_type(title: str, desc: str = "") -> Optional[str]:
+    """Canonical employment type (full-time/part-time/contract/temporary/seasonal/
+    per-diem) from a posting's title, then description. None when no clear marker
+    is present (so the hard-gate treats it as 'any' rather than dropping it)."""
+    for label, pat in _EMPLOYMENT_TYPE:
+        if pat.search(title or ""):
+            return label
+    for label, pat in _EMPLOYMENT_TYPE:
+        if pat.search(desc or ""):
+            return label
+    return None
+
+
 def _detect_location_type(location: str, desc_head: str) -> str:
     blob = f"{location} {desc_head}".lower()
     if "hybrid" in blob:
@@ -240,6 +270,7 @@ def extract_facts(job, *, skill_terms=None, industry: str = "") -> dict:
         "comp_min": int(comp_min) if comp_min else None,
         "comp_max": int(comp_max) if comp_max else None,
         "top_skills": _detect_skills(desc, terms=skill_terms),
+        "employment_type": detect_employment_type(title, desc),
     }
 
 
