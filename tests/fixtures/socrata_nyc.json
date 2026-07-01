@@ -1,0 +1,29 @@
+[
+  {
+    "job_id": "123456",
+    "agency": "DEPT OF ENVIRONMENTAL PROTECTION",
+    "business_title": "Mechanical Engineer",
+    "work_location": "Queens, NY",
+    "salary_range_from": "75000",
+    "salary_range_to": "95000",
+    "job_description": "Design and maintain HVAC and mechanical systems for city facilities.",
+    "posting_date": "2026-06-01T00:00:00.000"
+  },
+  {
+    "job_id": "123457",
+    "agency": "DEPARTMENT OF BUILDINGS",
+    "business_title": "Controls Engineer",
+    "work_location": "Manhattan, NY",
+    "salary_range_from": "82000",
+    "salary_range_to": "104000",
+    "job_description": "Develop and maintain PLC-based building automation controls.",
+    "posting_date": "2026-06-05T00:00:00.000"
+  },
+  {
+    "job_id": "123458",
+    "agency": "NYC HEALTH + HOSPITALS",
+    "business_title": "Automation Engineer",
+    "work_location": "Bronx, NY",
+    "posting_date": "2026-06-10T00:00:00.000"
+  }
+]
