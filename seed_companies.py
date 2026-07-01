@@ -42,6 +42,12 @@ def main(argv=None):
     ap.add_argument("--json", default=None, help="companies.json path (default: COMPANIES_JSON)")
     ap.add_argument("--col-ats", default=None, help="Override the ATS column name")
     ap.add_argument("--col-slug", default=None, help="Override the slug column name")
+    ap.add_argument("--classify", action="store_true",
+                    help="P3 relevance gate: sample each verified board's job titles "
+                         "and keyword-match to the field ($0, extra fetch)")
+    ap.add_argument("--drop-offtopic", action="store_true",
+                    help="With --classify, DROP boards whose sampled titles don't "
+                         "match the field (default: keep — filtering is query-time)")
     ap.add_argument("--dry-run", action="store_true", help="Probe-verify but do NOT save")
     args = ap.parse_args(argv)
 
@@ -59,11 +65,24 @@ def main(argv=None):
         column_map["slug"] = args.col_slug
     json_path = Path(args.json) if args.json else None
 
+    classify = None
+    if args.classify:
+        from discover import classify as classify_mod
+        try:
+            import workspace
+            keywords = workspace.load_config().get("keywords") or []
+        except Exception:
+            keywords = []
+        classify = classify_mod.make_classifier(
+            industry, keywords, sample_fn=classify_mod.sample_titles_for,
+            drop_ambiguous=args.drop_offtopic)
+
     print(f"Loading {ds.name} (industry='{industry or 'discovered'}'"
-          + (f", ats={ats_filter}" if ats_filter else "") + ")…")
+          + (f", ats={ats_filter}" if ats_filter else "")
+          + (", classify" if classify else "") + ")…")
     result = dataset_seed.seed_from_dataset(
         ds, industry, max_workers=args.max_workers, limit=args.limit,
-        ats_filter=ats_filter, column_map=column_map or None,
+        ats_filter=ats_filter, column_map=column_map or None, classify=classify,
         companies_json_path=json_path, dry_run=args.dry_run)
 
     print(f"  loaded {result['loaded']} board(s) | "

@@ -53,13 +53,30 @@ def _merge_boards(into: dict, more: dict) -> None:
         into.setdefault(ats_type, set()).update(slugs)
 
 
+def _apply_classify(boards: dict, classify) -> dict:
+    """Filter a {ats:{slug}} board dict through a relevance classifier (plan P3).
+    `classify(list[CompanyEntry]) -> kept (ats,slug) set`. No-op-safe (a keep-all
+    classifier returns everything). Only used when an industry is being seeded."""
+    if classify is None or not any(boards.values()):
+        return boards
+    from discover.registry import _name_from_slug
+    from scrape.company_registry import CompanyEntry
+    stubs = [CompanyEntry(_name_from_slug(a, s), a, s, [])
+             for a, slugs in boards.items() for s in slugs]
+    kept = classify(stubs) or set()
+    out = {a: {s for s in slugs if (a, s) in kept} for a, slugs in boards.items()}
+    return {a: s for a, s in out.items() if s}
+
+
 def run_funnel(*, ats_hosts=None, domains=None, companies_json_path=None,
-               crawl_id=None, limit=None) -> dict:
+               crawl_id=None, limit=None, classify=None) -> dict:
     """Run the funnel and merge what it finds into companies.json.
 
     ats_hosts: ATS apex hosts to CDX-harvest (None = the common ATS hosts; pass
                [] to skip the CDX leg entirely).
     domains:   company domains to resolve careers-URL -> ATS board (optional).
+    classify:  optional P3 relevance gate (callable(entries) -> kept set); only
+               filters when an industry is being seeded, keep-all otherwise.
     Returns {"harvested": {ats_type: count}, "added": n_added}.
     """
     boards: dict[str, set] = {}
@@ -68,5 +85,6 @@ def run_funnel(*, ats_hosts=None, domains=None, companies_json_path=None,
         _merge_boards(boards, cc_harvest.harvest_slugs(hosts, crawl_id=crawl_id, limit=limit))
     if domains:
         _merge_boards(boards, harvest_from_domains(domains))
+    boards = _apply_classify(boards, classify)
     added = merge_discovered(boards, companies_json_path)
     return {"harvested": {k: len(v) for k, v in boards.items()}, "added": added}
