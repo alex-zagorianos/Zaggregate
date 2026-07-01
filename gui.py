@@ -2854,6 +2854,7 @@ class App(tk.Tk):
         # Tracker/queue contents change from other tabs; refresh on focus.
         self._nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._update_title()
+        self.bind_all("<Control-k>", self._open_palette)   # command palette
 
         # Open where the work is: inbox if the daily run found anything.
         if inbox_count() == 0:
@@ -2922,6 +2923,10 @@ class App(tk.Tk):
     def _open_guide(self):
         if getattr(self, "_guide", None) is not None:
             self._nb.select(self._guide)
+
+    def _open_palette(self, _event=None):
+        from ui import palette
+        palette.open_palette(self)
 
     def _after_setup(self, applied: bool):
         """Called when the Setup wizard closes. On apply, refresh tabs so the
