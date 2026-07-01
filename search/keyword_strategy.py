@@ -16,7 +16,7 @@ Design guarantees:
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from typing import Iterable, Optional
 
 # Whole-word tokens that denote SENIORITY/level or org-scope rather than the field
 # of work. Stripped anywhere in a title so "Clinical Informatics Manager" and
@@ -39,6 +39,20 @@ SENIORITY_TOKENS = frozenset({
 # Connective/filler tokens that are only meaningful between real words; dropped
 # when stripping seniority leaves them leading, trailing, or doubled.
 _CONNECTIVES = frozenset({"of", "the", "and", "for", "to", "a", "an", "&", "-", "–", "—", ","})
+
+# Tokens that describe a SCHEDULE/scope but are NOT a field of work on their own.
+# When de-seniorizing leaves ONLY one of these (e.g. "Shift Supervisor" -> "shift",
+# "Night Manager" -> "night", "Team Lead" -> "team"), the stem is a junk query that
+# matches everything; the guard (item P3 deseniorize) keeps the original title
+# instead. These are only ever a problem as a LONE leftover -- "night shift nurse"
+# still keeps "nurse", so multi-token stems are unaffected.
+_WEAK_STANDALONE = frozenset({
+    "shift", "shifts", "team", "night", "nights", "day", "days", "evening",
+    "evenings", "weekend", "weekends", "overnight", "floater", "float", "prn",
+    "seasonal", "temporary", "temp", "relief", "on-call", "oncall", "line",
+    "area", "unit", "crew", "field", "site", "store", "branch", "office",
+    "floor", "zone", "region", "department", "dept", "location", "route",
+})
 
 _MIN_KEYWORD_LEN = 3
 
@@ -73,6 +87,16 @@ def deseniorize(title: str) -> str:
         if tok in _CONNECTIVES and cleaned and cleaned[-1] in _CONNECTIVES:
             continue
         cleaned.append(tok)
+    # Guard: if stripping seniority left fewer than one MEANINGFUL noun -- i.e. the
+    # only survivor is a schedule/scope modifier ("shift"/"night"/"team"/"line") --
+    # the stem is a junk broad query. Return '' so the caller keeps the original
+    # title ("Shift Supervisor") as the query instead of "shift". Multi-token
+    # stems and real single-word fields ("nurse", "controls engineer") are
+    # unaffected. (P3 deseniorize guard)
+    meaningful = [t for t in cleaned if t not in _WEAK_STANDALONE
+                  and t not in _CONNECTIVES]
+    if not meaningful:
+        return ""
     return " ".join(cleaned).strip()
 
 
@@ -204,17 +228,101 @@ TECH_SKEWED_SOURCES = frozenset({"remoteok", "remotive", "himalayas", "arbeitnow
                                  "weworkremotely", "workingnomads"})
 
 
+# SOC major groups (2-digit) that are desk/knowledge work -- remote-audience
+# boards (RemoteOK/Remotive/Himalayas/...) carry real postings for these:
+#   11 management, 13 business/finance ops, 15 computer/math, 17 arch/eng,
+#   19 life/physical/social science, 23 legal, 25 education, 27 arts/design/media.
+# Deliberately EXCLUDES the hands-on major groups (29 healthcare practitioners,
+# 31 healthcare support, 33 protective, 35 food, 37 grounds, 41 sales-floor,
+# 43 admin-support, 45 farming, 47 construction, 49 install/repair, 51 production,
+# 53 transport) so nursing-clinical / trades / retail keep the remote boards
+# gated OFF. Group 29 is handled specially below (it mixes clinical practitioners
+# with health-informatics/analytics knowledge roles).
+_KNOWLEDGE_SOC_MAJORS = frozenset({"11", "13", "15", "17", "19", "23", "25", "27"})
+
+# Text signals that a field is the KNOWLEDGE side of an otherwise hands-on sector
+# (e.g. "health informatics" / "clinical analytics" sit in healthcare but are desk
+# jobs a remote board actually posts). Used to (a) rescue the 29-partial case and
+# (b) classify fields that don't resolve to a clean SOC code at all.
+_KNOWLEDGE_TEXT_SIGNALS = frozenset({
+    "informatics", "analytics", "analyst", "data", "science", "administration",
+    "administrator", "management", "manager", "coordinator", "consultant",
+    "compliance", "quality", "education", "educator", "instructor", "teacher",
+    "teaching", "training", "curriculum", "finance", "financial", "accounting",
+    "billing", "coding", "revenue", "software", "developer", "engineer",
+    "engineering", "it", "technology", "technologist", "systems", "design",
+    "marketing", "communications", "policy", "research", "director",
+    "information", "informatician",
+})
+
+# Hands-on text signals that OVERRIDE a knowledge match when both are present
+# (e.g. "clinical nurse educator" is still bedside-adjacent clinical work). Kept
+# small and specific so it only fires for clearly hands-on fields.
+_HANDSON_TEXT_SIGNALS = frozenset({
+    "nurse", "nursing", "rn", "lpn", "cna", "aide", "caregiver", "bedside",
+    "phlebotom", "surgical", "therapist", "technician", "welder", "welding",
+    "plumber", "plumbing", "electrician", "hvac", "carpenter", "mechanic",
+    "driver", "trucking", "warehouse", "custodian", "janitor", "cook", "chef",
+    "server", "cashier", "retail", "barista", "housekeep", "landscap",
+})
+
+
+def _text_knowledge_signal(industry: str) -> Optional[bool]:
+    """True/False from the industry TEXT alone, or None when it says nothing.
+    A hands-on signal wins over a knowledge signal when both appear."""
+    toks = set(re.split(r"[\s_\-/,]+", (industry or "").lower()))
+    if not toks:
+        return None
+    if toks & _HANDSON_TEXT_SIGNALS:
+        return False
+    if toks & _KNOWLEDGE_TEXT_SIGNALS:
+        return True
+    return None
+
+
 def is_knowledge_work(industry: str) -> bool:
-    """True when the tech/remote-audience boards fit this field: the SAME
-    eng_like / mapped-Jobicy signal Muse and Jobicy already use to route (an
-    unmapped Jobicy industry means 'this tech-centric remote board has nothing
-    for this field' — jobicy_client already skips itself on that signal; the
-    generic (unmapped) fallback also already skips Jobicy for the same reason).
-    Empty industry (Alex/default) -> True, so nothing changes when unconfigured.
+    """True when the tech/remote-audience boards fit this field.
+
+    Layered signal (first decisive wins), so a field is judged on the strongest
+    thing we know about it:
+      1. eng_like / mapped-Jobicy -- the original signal Muse/Jobicy already route
+         on (empty industry -> eng_like True -> Alex byte-identical).
+      2. SOC major group -- a resolved O*NET occupation in a desk/knowledge major
+         group (11/13/15/17/19/23/25/27) is knowledge work; a hands-on major group
+         (29 clinical, 31 support, 47 construction, 49 repair, 51 production, ...)
+         is not. Group 29 is split by the TEXT signal below (informatics/analytics
+         = knowledge; bedside nursing = not).
+      3. Field TEXT -- informatics/analytics/education/finance/... => knowledge;
+         nursing/welding/hvac/driver/... => not. This rescues health-informatics
+         and education, which don't resolve to a clean SOC code, while keeping
+         nursing-clinical and the trades gated OFF.
+      4. Default False for an otherwise-unknown non-eng field (unchanged from the
+         previous behavior for fields that gave no signal).
     """
     import industry_profile
     p = industry_profile.resolve(industry)
-    return p.eng_like or p.jobicy_industry is not None
+    if p.eng_like or p.jobicy_industry is not None:
+        return True
+
+    soc = None
+    try:
+        soc = industry_profile.resolve_soc(industry)
+    except Exception:
+        soc = None
+    text_sig = _text_knowledge_signal(industry)
+    if soc and soc.get("code"):
+        major = soc["code"].split("-")[0]
+        if major == "29":
+            # Healthcare practitioners: clinical unless the text says informatics/
+            # analytics/administration (a desk health role).
+            return text_sig is True
+        if major in _KNOWLEDGE_SOC_MAJORS:
+            return True
+        # Resolved to a hands-on major group -> not knowledge work.
+        return False
+
+    # No clean SOC match -> fall back to the field text signal.
+    return bool(text_sig)
 
 
 def gate_tech_sources(sources: Iterable[str], industry: str,

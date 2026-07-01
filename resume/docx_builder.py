@@ -48,6 +48,11 @@ def build_resume_docx(data: dict) -> BytesIO:
     _add_section_heading(doc, "TECHNICAL SKILLS")
     _add_skills(doc, data.get("skills", []))
 
+    certifications = data.get("certifications", [])
+    if certifications:
+        _add_section_heading(doc, "LICENSES & CERTIFICATIONS")
+        _add_certifications(doc, certifications)
+
     _add_section_heading(doc, "EXPERIENCE")
     for job in data.get("experience", []):
         _add_job_entry(doc, job)
@@ -186,6 +191,19 @@ def _add_skills(doc, skills: list):
         else:
             r = p.add_run(s)
             r.font.size = Pt(_BODY_PT)
+
+
+def _add_certifications(doc, certs: list):
+    """Licenses & certifications as plain bulleted lines -- one credential per
+    line so each extracts as its own entity (a comma-run would blur them). The
+    load-bearing screen for nurses/trades/teachers/drivers/accountants."""
+    for cert in certs:
+        c = (cert or "").strip()
+        if not c:
+            continue
+        bp = doc.add_paragraph(c, style="List Bullet")
+        if bp.runs:
+            bp.runs[0].font.size = Pt(_BODY_PT)
 
 
 def _add_job_entry(doc, job: dict):

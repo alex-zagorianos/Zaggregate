@@ -10,8 +10,10 @@ import workspace
 # the corpus builders stay in lockstep with the parser. (RESUME-6)
 EXPERIENCE_SECTIONS: dict[str, str] = {
     "contact":         "CONTACT",
+    "summary":         "SUMMARY",
     "education":       "EDUCATION",
     "skills":          "TECHNICAL SKILLS",
+    "certifications":  "LICENSES & CERTIFICATIONS",
     "work_experience": "WORK EXPERIENCE",
     "projects":        "PROJECTS",
     "notes":           "NOTES FOR RESUME GENERATION",
@@ -48,6 +50,32 @@ _HEADING_ALIASES: dict[str, str] = {
     "NOTES":                   "NOTES FOR RESUME GENERATION",
     "RESUME NOTES":            "NOTES FOR RESUME GENERATION",
     "NOTES FOR RESUME":        "NOTES FOR RESUME GENERATION",
+    # Licenses/certifications: the load-bearing section for nurses, welders,
+    # teachers, drivers, accountants, PMs. Previously silently dropped (no
+    # canonical key), so a nurse's "RN, BLS, ACLS" never reached the scorer's
+    # skill-term extraction. (P3)
+    "CERTIFICATIONS":          "LICENSES & CERTIFICATIONS",
+    "CERTIFICATES":            "LICENSES & CERTIFICATIONS",
+    "CERTIFICATION":           "LICENSES & CERTIFICATIONS",
+    "LICENSES":                "LICENSES & CERTIFICATIONS",
+    "LICENSURE":               "LICENSES & CERTIFICATIONS",
+    "LICENSE":                 "LICENSES & CERTIFICATIONS",
+    "CREDENTIALS":             "LICENSES & CERTIFICATIONS",
+    "LICENSES AND CERTIFICATIONS":     "LICENSES & CERTIFICATIONS",
+    "LICENSES & CERTIFICATES":          "LICENSES & CERTIFICATIONS",
+    "CERTIFICATIONS & LICENSES":        "LICENSES & CERTIFICATIONS",
+    "CERTIFICATIONS AND LICENSES":      "LICENSES & CERTIFICATIONS",
+    "LICENSES CERTIFICATIONS":          "LICENSES & CERTIFICATIONS",
+    # Summary / objective / profile -- the top-of-resume prose block. Feeds the
+    # resume-generation corpus so a candidate's own positioning isn't dropped.
+    "SUMMARY":                 "SUMMARY",
+    "PROFESSIONAL SUMMARY":    "SUMMARY",
+    "SUMMARY OF QUALIFICATIONS": "SUMMARY",
+    "CAREER SUMMARY":          "SUMMARY",
+    "OBJECTIVE":               "SUMMARY",
+    "CAREER OBJECTIVE":        "SUMMARY",
+    "PROFILE":                 "SUMMARY",
+    "PROFESSIONAL PROFILE":    "SUMMARY",
 }
 
 # Cache parsed sections keyed by (path, mtime) so repeated generations in one
@@ -62,31 +90,68 @@ def _normalize_heading(heading: str) -> str:
     return _HEADING_ALIASES.get(norm, norm)
 
 
-def load_experience(path=None) -> dict:
+def load_experience(path=None, *, lenient=False) -> dict:
     """Parse experience.md into sections by heading (memoized on mtime).
 
-    Tolerates case/colon/space drift and H1-vs-H2 headings via an alias map. If
-    ZERO known sections are found, raises ValueError naming the expected
-    headings rather than returning an all-empty dict (which would yield a blank
-    or hallucinated resume). (RESUME-1)"""
+    Tolerates case/colon/space drift and H1-vs-H2 headings via an alias map.
+
+    Strict mode (default): if ZERO known sections are found, raises ValueError
+    naming the expected headings rather than returning an all-empty dict (which
+    would yield a blank or hallucinated resume). (RESUME-1)
+
+    Lenient mode (`lenient=True`): NEVER raises. When no known section is found
+    (a plain-text paste with no '## ' headings -- the wizard's most common input),
+    the whole document is returned under 'work_experience' so scoring/generation
+    still have the candidate's text to work with instead of crashing. This is the
+    P0 guard that keeps a pasted nurse/welder/teacher resume from erroring every
+    subsequent search. (P0 #1)
+
+    Certifications reach the scorer: LICENSES & CERTIFICATIONS terms (RN, BLS,
+    ACLS, CDL, PE, CPA, ...) are folded into the 'skills' value the scorer's
+    match.scorer.extract_skill_terms already reads (`.get("skills")`) so they
+    count toward skill overlap WITHOUT any change in match/. They also render as
+    their own labeled corpus block via CORPUS_LABELS. (P3)"""
     target = Path(path) if path else workspace.experience_file()
-    key = (str(target), target.stat().st_mtime)
-    if key not in _cache:
+    ck = (str(target), target.stat().st_mtime, lenient)
+    if ck not in _cache:
         sections = _split_by_heading(target.read_text(encoding="utf-8"))
         # A known section counts as "found" if its canonical heading is present,
         # even with an empty body (the seed ships empty sections on purpose).
         found = [canon for canon in EXPERIENCE_SECTIONS.values()
                  if canon in sections]
         if not found:
+            if lenient:
+                # Structure-free paste: keep the whole body as work experience so
+                # downstream never sees an all-empty dict (nor a crash).
+                raw = target.read_text(encoding="utf-8").strip()
+                parsed = {dk: "" for dk in EXPERIENCE_SECTIONS}
+                parsed["work_experience"] = raw
+                _cache[ck] = _fold_certs_into_skills(parsed)
+                return _cache[ck]
             expected = ", ".join(f"## {h}" for h in EXPERIENCE_SECTIONS.values())
             raise ValueError(
                 "experience.md has no recognizable sections. Expected one or "
                 f"more '## ' headings from: {expected}. Found headings: "
                 f"{sorted(sections) or 'none'}."
             )
-        _cache[key] = {dk: sections.get(canon, "")
-                       for dk, canon in EXPERIENCE_SECTIONS.items()}
-    return _cache[key]
+        parsed = {dk: sections.get(canon, "")
+                  for dk, canon in EXPERIENCE_SECTIONS.items()}
+        _cache[ck] = _fold_certs_into_skills(parsed)
+    return _cache[ck]
+
+
+def _fold_certs_into_skills(parsed: dict) -> dict:
+    """Append the certifications text to the 'skills' value so the scorer's
+    skill-term extraction (which reads only the 'skills' key) also picks up
+    licenses/certifications. Non-destructive: the standalone 'certifications'
+    key is kept intact for the labeled corpus block. No-op when either section
+    is empty, so an engineering profile with no certs is byte-identical."""
+    certs = (parsed.get("certifications") or "").strip()
+    if not certs:
+        return parsed
+    skills = (parsed.get("skills") or "").strip()
+    parsed["skills"] = f"{skills}\n{certs}".strip() if skills else certs
+    return parsed
 
 
 # Corpus section labels (display headings used in the prompt corpus). Keyed by
@@ -94,8 +159,10 @@ def load_experience(path=None) -> dict:
 # render an identical corpus from one definition. (RESUME-6)
 CORPUS_LABELS: dict[str, str] = {
     "contact":         "Contact",
+    "summary":         "Summary",
     "education":       "Education",
-    "skills":          "Technical Skills",
+    "skills":          "Skills",
+    "certifications":  "Licenses & Certifications",
     "work_experience": "Work Experience",
     "projects":        "Projects",
     "notes":           "Guidance Notes",

@@ -131,7 +131,12 @@ USAJOBS_RATE_LIMIT = 50
 USAJOBS_RESULTS_PER_PAGE = 25
 
 # Search defaults
-DEFAULT_LOCATION = "Cincinnati"
+# Empty by default: a hardcoded "Cincinnati" leaked Alex's home metro into every
+# skip-wizard user's Search prefill, Inbox home area, and keyless fallbacks (P3).
+# Empty means "no location filter" -- non-GUI consumers treat "" as unset (search
+# without a location bias rather than everyone's default being Cincinnati). GUI
+# consumers that need a display placeholder are handled in a later wave.
+DEFAULT_LOCATION = ""
 # Field/industry the app is tuned for. Empty = today's behavior (eng-flavored
 # enumeration angles, no industry scoping). A user onboarding into another field
 # sets this (via the wizard / project config) so company enumeration, registry

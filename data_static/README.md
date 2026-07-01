@@ -45,14 +45,26 @@ writes go under `config.USER_DATA_DIR`.
   a REPORTED confidence of 1.0). A field-routing tier can't tolerate that, so
   it only trusts a literal match.
 
-- **`cbsa_delineation.csv`** — `cbsa_code,cbsa_title,principal_city,state` for ~15
-  top U.S. metros incl. `Cincinnati, OH`. Source: U.S. Census Bureau **Core Based
-  Statistical Area delineation** (public domain). Curated subset.
+- **`cbsa_delineation.csv`** — `cbsa_code,cbsa_title,principal_city,state` for the
+  FULL set of ~935 U.S. Core Based Statistical Areas (metro + micro), incl.
+  `Cincinnati, OH`. Source: U.S. Census Bureau **Core Based Statistical Area
+  delineation** — the "List 1" file (public domain U.S. government work).
+
+  Regenerate with:
+  py -3.12 -m scripts.build_cbsa
+  Add `--dry-run` to download + parse + report counts without writing, or
+  `--out PATH` to write elsewhere for review. The script downloads the Census
+  List 1 `.xlsx`, parses it with the standard library only (no openpyxl/pandas
+  dependency), collapses the county-level rows to one row per CBSA, and derives a
+  principal city + 2-letter state anchor from each CBSA title. If the download
+  fails (no internet, or Census reorganizes their layout), it prints a clear
+  diagnostic and leaves the bundled csv untouched; `coverage/geography.py`
+  degrades gracefully to substring matching regardless.
+
 - **`company_aliases.json`** — editable `{"alias": "canonical"}` map merged into
   `canonicalize_company` (e.g. `optum → unitedhealth`).
 
 ## Follow-ups (not in WS-1 scope)
 
-- Replace the CBSA subset with the full OMB/Census delineation file.
 - The labeled-pair dedup gold set (`tests/fixtures/coverage/labeled_pairs.jsonl`)
   starts at ~40 pairs; expand toward ~200 as real cross-source examples are seen.

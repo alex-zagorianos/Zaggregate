@@ -35,6 +35,7 @@ RESUME_TOOL = {
             "headline": {"type": "string", "description": "Short target-track line under the name: role family + 3-4 core specialties, e.g. 'Software / Controls Engineer — Embedded · Real-Time Control · Applied AI'."},
             "summary": {"type": "string", "description": "2-3 line summary: level, core stack, and 1-2 quantified wins, tailored to the role"},
             "skills": {"type": "array", "items": {"type": "string"}, "description": "Grouped strings 'Category: item, item, item' (e.g. 'Languages: Python, C++17, C#, TypeScript')."},
+            "certifications": {"type": "array", "items": {"type": "string"}, "description": "Optional. Licenses & certifications relevant to the role, one per string (e.g. 'RN - Ohio Board of Nursing', 'BLS/ACLS (AHA)', 'PMP', 'CDL Class A', 'PE'). The load-bearing credential list for nurses/trades/teachers/drivers/accountants. Omit if none apply."},
             "experience": {
                 "type": "array",
                 "items": {
@@ -85,30 +86,40 @@ _INSTRUCTIONS = """You are a professional resume writer. Using the candidate's \
 full experience (provided below), produce a ONE-PAGE resume and cover letter \
 tailored to the job posting in the user's message, by calling the emit_resume tool.
 
-Optimize for AI/ATS screening AND a human 6-second skim:
-1. Relevance first: select the most relevant experience, skills, projects, and \
-achievements for THIS role; mirror the posting's language as natural prose — never \
-keyword-stuff or repeat terms unnaturally (modern semantic screeners penalize it).
-2. headline: a short target-track line — role family + 3-4 core specialties \
-(e.g. "Software / Controls Engineer — Embedded · Real-Time Control · Applied AI").
-3. summary: 2-3 lines — level, core stack, and 1-2 quantified wins.
-4. skills: return GROUPED strings "Category: a, b, c" (e.g. "Languages: Python, \
-C++17, C#, TypeScript"). Spell out a domain acronym once with its short form, \
-e.g. "Geometric Dimensioning & Tolerancing (GD&T)".
-5. Bullets (experience + projects): result-first XYZ form — "Accomplished [X] as \
-measured by [Y] by doing [Z]". Start each with a strong past-tense verb (Built, \
-Designed, Automated, Reduced, Shipped, Led); never "Responsible for". Put the \
-strongest, most-quantified bullet FIRST in each role. Aim for >=70% of bullets to \
-carry a hard number. 3-5 bullets for recent/relevant roles, 2-3 for older.
-6. projects: include when the candidate's projects strengthen fit for the role; \
+The candidate may be in ANY field -- nursing, teaching, a skilled trade, finance, \
+sales, engineering, software, hospitality. Derive the target track and its \
+vocabulary from the candidate's own experience and the posting; never assume a \
+tech/engineering framing. Optimize for AI/ATS screening AND a human 6-second skim:
+1. Relevance first: select the most relevant experience, skills, certifications, \
+projects, and achievements for THIS role; mirror the posting's language as natural \
+prose -- never keyword-stuff or repeat terms unnaturally (modern semantic screeners \
+penalize it).
+2. headline: a short target line -- the candidate's role family + 3-4 core \
+strengths, drawn from their actual experience (e.g. "Registered Nurse - Critical \
+Care - ACLS - Charge Nurse", or "Controls Engineer - Embedded - Real-Time Control").
+3. summary: 2-3 lines -- level, core strengths, and 1-2 quantified wins.
+4. skills: return GROUPED strings "Category: a, b, c" using categories natural to \
+the field (e.g. "Clinical: ICU, telemetry, wound care" or "Languages: Python, \
+C++17"). Spell out a field acronym once with its short form.
+5. certifications: list licenses/certifications relevant to the role, one per \
+string (e.g. "RN - Ohio Board of Nursing", "BLS/ACLS (AHA)", "PMP", "CDL Class A", \
+"PE"). Omit only if the candidate has none. For licensed fields (nursing, trades, \
+teaching, driving, accounting) these are often the single most important screen.
+6. Bullets (experience + projects): result-first XYZ form -- "Accomplished [X] as \
+measured by [Y] by doing [Z]". Start each with a strong past-tense verb (Led, \
+Managed, Reduced, Improved, Trained, Built); never "Responsible for". Put the \
+strongest, most-quantified bullet FIRST in each role. Aim for a hard number in most \
+bullets where the field allows it. 3-5 bullets for recent/relevant roles, 2-3 for older.
+7. projects: include when the candidate's projects strengthen fit for the role; \
 omit otherwise.
-7. One page: at most ~4 roles; trim the weakest bullets to fit. Use one consistent \
+8. One page: at most ~4 roles; trim the weakest bullets to fit. Use one consistent \
 date format ("Month YYYY").
-8. Reorder which experience/skills lead to match the role's track (software / \
-controls / data / mechanical) — lead with what the posting most values.
-9. Cover letter: 3 paragraphs — opening (role + why), middle (2-3 quantified \
+9. Lead with whatever the posting most values, drawn from the candidate's own \
+tracks/roles - do not impose a fixed set of tracks.
+10. Cover letter: 3 paragraphs - opening (role + why), middle (2-3 quantified \
 achievements), closing (call to action).
-Draw contact/education facts only from the candidate experience; do not invent."""
+Draw contact/education/certification facts only from the candidate experience; do \
+not invent."""
 
 
 def _build_system(experience: dict) -> list[dict]:
