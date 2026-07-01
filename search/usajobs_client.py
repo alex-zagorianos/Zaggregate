@@ -1,12 +1,12 @@
+import os
 from pathlib import Path
 from typing import Optional
 
+import config
 from config import (
-    USAJOBS_API_KEY,
     USAJOBS_BASE_URL,
     USAJOBS_RATE_LIMIT,
     USAJOBS_RESULTS_PER_PAGE,
-    USAJOBS_USER_AGENT,
 )
 from models import JobResult
 from search.base_client import JobAPIClient
@@ -25,8 +25,14 @@ class USAJobsClient(JobAPIClient):
         cache_dir: Optional[Path] = None,
         cache_enabled: bool = True,
     ):
-        self.api_key = api_key or USAJOBS_API_KEY
-        self.user_agent = user_agent or USAJOBS_USER_AGENT
+        # Re-resolve env-then-secret at construction (config constants froze at
+        # import) so a key/email pasted into the in-app box is honored. Explicit
+        # args still win for tests.
+        self.api_key = api_key or config.resolve_secret("USAJOBS_API_KEY", "usajobs_api_key")
+        self.user_agent = user_agent or (
+            os.getenv("USAJOBS_EMAIL") or os.getenv("USAJOBS_USER_AGENT")
+            or config.read_secret("usajobs_email")
+        )
         if not self.api_key or not self.user_agent:
             raise ValueError(
                 "USAJobs credentials missing. Set USAJOBS_API_KEY and USAJOBS_USER_AGENT in .env. "
