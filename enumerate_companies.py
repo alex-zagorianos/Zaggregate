@@ -137,9 +137,13 @@ def _remote_ok():
     """True when the active project's hard preferences allow remote (plan P5)."""
     try:
         import preferences
-        return bool(preferences.load().get("remote_ok"))
+        return bool(preferences.load().get("hard", {}).get("remote_ok", True))
     except Exception:
         return False
+
+
+# Prompt "metro" for the nationwide/remote-first enumeration pass.
+NATIONAL_METRO = "the United States (nationwide, remote-friendly employers)"
 
 
 def main(argv=None):
@@ -158,6 +162,12 @@ def main(argv=None):
                     help="Print the enumeration prompt for claude.ai and exit (bridge)")
     ap.add_argument("--in", dest="infile", default=None,
                     help="Read a pasted JSON reply (bridge) instead of calling the API")
+    grp = ap.add_mutually_exclusive_group()
+    grp.add_argument("--national", dest="national", action="store_true", default=None,
+                     help="Also enumerate nationwide/remote-first employers "
+                          "(default: on when the project's preferences allow remote)")
+    grp.add_argument("--no-national", dest="national", action="store_false",
+                     help="Metro-only, even if remote is allowed")
     ap.add_argument("--dry-run", action="store_true", help="Resolve + verify but do NOT save")
     args = ap.parse_args(argv)
 
@@ -179,30 +189,57 @@ def main(argv=None):
               + (f" --metro {metro}" if args.metro else ""))
         return 0
 
-    # ── Get candidates: from a pasted reply, or via the API ────────────────────
+    run_national = args.national if args.national is not None else _remote_ok()
+
+    # ── Build the pass list: metro always; a nationwide/remote-first pass too when
+    #    remote is allowed. Each pass = (candidates, industries, metro_tag). ───────
+    passes = []  # (candidates, pass_industries, metro_tag)
     if args.infile:
         text = Path(args.infile).read_text(encoding="utf-8")
-        candidates = enum.parse_enumeration_response(text)
-        print(f"Parsed {len(candidates)} candidate(s) from {args.infile}.")
+        metro_cands = enum.dedupe_candidates(enum.parse_enumeration_response(text))
+        print(f"Parsed {len(metro_cands)} candidate(s) from {args.infile}.")
+        passes.append((metro_cands, industries, args.metro_tag))
     else:
         try:
-            candidates = enum.enumerate_via_api(metro, industries, exclude_names=names,
-                                                angles=angles, limit=args.limit)
+            metro_cands = enum.dedupe_candidates(
+                enum.enumerate_via_api(metro, industries, exclude_names=names,
+                                       angles=angles, limit=args.limit))
+            print(f"Enumerated {len(metro_cands)} candidate(s) via API for '{metro}'"
+                  + (f" [{industry}]" if industry else "") + ".")
+            passes.append((metro_cands, industries, args.metro_tag))
+            if run_national:
+                seen = {enum.normalize_domain(c["domain"]) for c in metro_cands}
+                natl_angles = enum.angles_for_industry(industry, scope="national")
+                natl_cands = enum.dedupe_candidates(
+                    enum.enumerate_via_api(NATIONAL_METRO, industries, exclude_names=names,
+                                           exclude_domains=seen, angles=natl_angles,
+                                           limit=args.limit),
+                    exclude_domains=seen)
+                print(f"Enumerated {len(natl_cands)} nationwide/remote candidate(s).")
+                # national adds carry national+remote tags (metro tag is dropped);
+                # their jobs surface under the inbox's remote/all views (geo/filter).
+                passes.append((natl_cands, industries + ["national", "remote"], "remote"))
         except RuntimeError as e:
             print(f"{e}\nRe-run with --print-prompt (bridge) or set an API key.")
             return 2
-        print(f"Enumerated {len(candidates)} candidate(s) via API for '{metro}'"
-              + (f" [{industry}]" if industry else "") + ".")
 
-    candidates = enum.dedupe_candidates(candidates)
-    if not candidates:
+    total_cands = sum(len(c) for c, _, _ in passes)
+    if not total_cands:
         print("No candidates to verify.")
         return 0
 
-    # ── Resolve + verify ───────────────────────────────────────────────────────
-    print(f"Resolving + probing {len(candidates)} candidate(s)…")
-    verified, dropped = resolve_and_verify(candidates, industries,
-                                           metro_tag=args.metro_tag, existing_names=names)
+    # ── Resolve + verify each pass (later passes exclude earlier verified names) ──
+    print(f"Resolving + probing {total_cands} candidate(s)…")
+    verified, dropped = [], []
+    known = list(names)
+    for cands, pass_inds, metro_tag in passes:
+        if not cands:
+            continue
+        v, d = resolve_and_verify(cands, pass_inds, metro_tag=metro_tag,
+                                  existing_names=known)
+        verified.extend(v)
+        dropped.extend(d)
+        known.extend(e.name for e, _ in v)
     print(f"\nVERIFIED (live boards): {len(verified)} | dropped: {len(dropped)}")
     for e, n in verified:
         print(f"  + {e.name[:34]:34} | {e.ats_type:15} | {e.slug[:26]:26} | {n} jobs")
