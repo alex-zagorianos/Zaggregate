@@ -11,13 +11,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import workspace
-from match.scorer import salary_from_text, score_job
+from match.scorer import salary_from_text, score_jobs
 from models import JobResult
 from tracker.db import current_db_path
 
 
 def _cfg() -> dict:
     return workspace.load_config()
+
+
+def _remote_ok() -> bool:
+    """The same remote_ok context daily_run derives from preferences.json, so a
+    rescore reproduces daily_run's scoring instead of stripping it."""
+    try:
+        import preferences
+        return bool(preferences.load().get("hard", {}).get("remote_ok", True))
+    except Exception:
+        return True
 
 
 def rescore(db_path=None, cfg=None, dry_run=False):
@@ -30,24 +40,36 @@ def rescore(db_path=None, cfg=None, dry_run=False):
     cols = set(rows[0].keys()) if rows else set()
 
     before = [r["score"] for r in rows]
-    after = []
-    miss = blocked = 0
+    pairs = []  # (row, job) so we survive score_jobs' in-place sort
     for r in rows:
         lo, hi = salary_from_text(r["salary_text"] or "")
-        job = JobResult(
+        pairs.append((r, JobResult(
             title=r["title"], company=r["company"], location=r["location"] or "",
             salary_min=lo, salary_max=hi, description=r["description"] or "",
             url=r["url"] or "", source_keyword="", created=r["created"] or "",
             source_api=r["source"] or "",
             board_count=r["board_count"] if "board_count" in cols else -1,
-        )
-        sc, notes = score_job(
-            job, keywords=kws, location=loc, salary_floor=floor,
-            exclude_keywords=cfg.get("exclude_keywords", []),
-            exclude_titles=cfg.get("exclude_titles"),
-            title_miss_penalty=cfg.get("title_miss_penalty"),
-            seniority_exclude=cfg.get("seniority_exclude"),
-        )
+        )))
+
+    # Route through the ONE scoring path (score_jobs), which derives target_level
+    # (exec adjustment) and semantic_profile itself, and pass remote_ok from
+    # preferences. Previously this called score_job WITHOUT those three, silently
+    # erasing the exec +/-15/16 adjustment daily_run applies at insert (P0#7).
+    # score_jobs SORTS in place, so we hold (row, job) pairs and read each job's
+    # own .score/.score_notes back rather than relying on positional order.
+    score_jobs(
+        [j for _, j in pairs], keywords=kws, location=loc, salary_floor=floor,
+        exclude_keywords=cfg.get("exclude_keywords", []),
+        exclude_titles=cfg.get("exclude_titles"),
+        title_miss_penalty=cfg.get("title_miss_penalty"),
+        seniority_exclude=cfg.get("seniority_exclude"),
+        remote_ok=_remote_ok(),
+    )
+
+    after = []
+    miss = blocked = 0
+    for r, job in pairs:
+        sc, notes = job.score, job.score_notes
         after.append(sc)
         miss += "title-miss" in notes
         blocked += "excl-title" in notes

@@ -130,10 +130,32 @@ def test_confidence_marker_data_rich():
 
 
 def test_renormalization_drops_missing_component_weight():
-    # A poor-data on-target title still reaches 100 because the missing skill/
-    # salary/recency neutrals no longer dilute the present title+location weight.
-    score, _ = scorer.score_job(_job("Controls Engineer"), keywords=KW, location=LOC)
-    assert score == 100
+    # A poor-data on-target title's title+location weight is renormalized to a full
+    # composite, but confidence shrinkage (P2) then damps its distance from 50 by
+    # data-presence (conf 2/5 -> factor 0.82): 50 + 50*0.82 = 91. This is the point
+    # of the shrinkage -- a title-only match no longer pins 100 and outranks a
+    # data-rich 92. (Pre-shrinkage this asserted == 100.)
+    score, notes = scorer.score_job(_job("Controls Engineer"), keywords=KW, location=LOC)
+    assert "conf 2/5" in notes
+    assert score == 91
+
+
+def test_confidence_shrinkage_pulls_title_only_toward_midpoint():
+    # A title-only perfect match (composite 100, conf 2/5) is damped toward 50 by
+    # the presence factor 0.7 + 0.3*2/5 = 0.82 -> 50 + 50*0.82 = 91 (deterministic).
+    # This is the mechanism that stops a data-poor title-only 100 from pinning the
+    # top of the list above genuinely data-rich matches.
+    poor, np = scorer.score_job(_job("Controls Engineer"), keywords=KW, location=LOC)
+    assert "conf 2/5" in np
+    assert poor == 91
+
+    # More data present -> less damping (the 3/5 job keeps more of its spread than
+    # the 2/5 job would at the same composite). Adding a recency date lifts conf to
+    # 3/5, and the on-target title's score rises accordingly.
+    dated, nd = scorer.score_job(_job("Controls Engineer", created="2026-06-30"),
+                                 keywords=KW, location=LOC)
+    assert "conf 3/5" in nd
+    assert dated >= poor
 
 
 def test_recency_data_lifts_confidence():

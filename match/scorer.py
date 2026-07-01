@@ -85,17 +85,34 @@ def _target_level(keywords) -> Optional[int]:
 
 def _seniority_fit_adj(job_title: str, target_level: Optional[int]) -> int:
     """Bounded score nudge for how well a posting's level matches the target.
-    Neutral (0) unless the user targets management+ (>= _MANAGEMENT_MIN)."""
-    if target_level is None or target_level < _MANAGEMENT_MIN:
+
+    Two symmetric branches:
+    - EXEC seeker (target >= _MANAGEMENT_MIN): reward at/above-target roles, sink
+      clearly-junior ones (byte-identical to the original behavior).
+    - IC seeker (target present but < _MANAGEMENT_MIN): mirror-penalize roles that
+      are clearly ABOVE the target into management -- a manager/director posting is
+      off-target for someone seeking an IC role. Manager -> -10, director+ -> -14.
+      An IC target of None (no keywords) stays neutral, and a same/lower-level
+      posting is untouched, so an ordinary IC/senior search's non-management
+      results are unchanged."""
+    if target_level is None:
         return 0
-    delta = _level_of(job_title, "") - target_level
-    if delta >= 0:
-        return 15          # at or above the target level
-    if delta == -1:
-        return 4           # one tier below (e.g. manager when seeking director)
-    if delta == -2:
-        return -8
-    return -16             # clearly junior for an exec seeker (mid/entry/intern)
+    job_level = _level_of(job_title, "")
+    if target_level >= _MANAGEMENT_MIN:
+        delta = job_level - target_level
+        if delta >= 0:
+            return 15          # at or above the target level
+        if delta == -1:
+            return 4           # one tier below (e.g. manager when seeking director)
+        if delta == -2:
+            return -8
+        return -16             # clearly junior for an exec seeker (mid/entry/intern)
+    # IC seeker: penalize a role that overshoots into management.
+    if job_level >= _LEVEL_ORD["director"]:
+        return -14             # director/VP/chief -- well above an IC target
+    if job_level >= _MANAGEMENT_MIN:
+        return -10             # manager -- above an IC target
+    return 0
 
 # ── Auto-strict relevance — downrank off-target titles, never hide ────────────
 # A title that satisfies none of the search queries (positive miss, or a NOT
@@ -178,12 +195,14 @@ def extract_skill_terms(experience_path=None) -> frozenset[str]:
 
 
 def _term_present(term: str, tl: str) -> bool:
-    """A positive query term in the (lowercased) title: phrases match contiguously,
-    single words match as a substring with a trailing 's' stripped from long words."""
-    if " " in term:
-        return term in tl
-    s = term[:-1] if len(term) > 3 and term.endswith("s") else term
-    return s in tl
+    """A positive query term in the (lowercased) title, matched at a WORD START
+    (mirrors query._Leaf) instead of raw substring, which killed false hits like
+    'rn' inside 'internship' while still letting a term prefix a longer word
+    ('robot' -> 'Robotics'). A long word's trailing 's' folds to optional so
+    'controls' still matches both 'Control Systems' and 'Controls'."""
+    stem = term[:-1] if (" " not in term and len(term) > 3 and term.endswith("s")) else term
+    fold = stem != term
+    return bool(_word_start_pattern(stem, fold).search(tl))
 
 
 def _title_score(queries, tl: str) -> float:
@@ -224,6 +243,25 @@ def _term_pattern(term: str) -> re.Pattern:
     if pat is None:
         pat = re.compile(r"(?<!\w)" + re.escape(term) + r"(?!\w)")
         _term_pattern_cache[term] = pat
+    return pat
+
+
+_word_start_pattern_cache: dict[tuple[str, bool], re.Pattern] = {}
+
+
+def _word_start_pattern(stem: str, fold_s: bool) -> re.Pattern:
+    """Word-START matcher for a POSITIVE title term (leading boundary, no trailing
+    anchor) so a term may prefix a longer word ('robot' -> 'Robotics') -- kills the
+    mid/end substring false hits ('rn' in 'internship') without cutting keyword
+    recall. Mirrors search.query._bound. `fold_s` makes a trailing 's' optional.
+    Deliberately looser than _term_pattern (full \\b, used for blocklists/skills,
+    where precision matters)."""
+    key = (stem, fold_s)
+    pat = _word_start_pattern_cache.get(key)
+    if pat is None:
+        body = re.escape(stem) + ("s?" if fold_s else "")
+        pat = re.compile(r"(?<!\w)" + body)
+        _word_start_pattern_cache[key] = pat
     return pat
 
 
@@ -430,6 +468,16 @@ def score_job(
         + (base_w["r"] * scale * r if recency_present else 0.0)
         + (base_w["m"] * scale * m if sem_present else 0.0)
     )
+
+    # Confidence shrinkage (P2): renormalization can push a 2-of-5-component job to
+    # 100, so a title-only match outranks a data-rich 92. Damp the distance from 50
+    # by how much data we actually have (present/5): a full-data job is untouched
+    # (factor 1.0), a title+loc-only job's spread shrinks to 0.82. This keeps the
+    # composite HONEST -- data-poor extremes pull toward the neutral midpoint -- so
+    # title-only 100s no longer outrank data-rich 92s. The breakdown/notes stay
+    # truthful: components are reported as-computed; only the aggregate is damped.
+    conf_factor = 0.7 + 0.3 * (present / 5.0)
+    score = 50.0 + (score - 50.0) * conf_factor
 
     # Company-size modifier from the careers boards' total-postings proxy.
     size_adj = 0
