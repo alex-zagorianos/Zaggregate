@@ -112,6 +112,7 @@ def _to_jobresult(obj: dict, base_url: str) -> JobResult | None:
         created=obj.get("datePosted") or "",
         job_id="",
         source_api="careers",
+        valid_through=(obj.get("validThrough") or "")[:32] if isinstance(obj.get("validThrough"), str) else "",
     )
 
 

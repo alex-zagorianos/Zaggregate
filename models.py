@@ -104,6 +104,10 @@ class JobResult:
     # not in the previous run's baseline for its source. Carried into the inbox
     # row's extras (new_batch) at insert; surfaced by the GUI "New only" filter.
     is_new: bool = False
+    # schema.org/JobPosting validThrough (publisher-attested expiry, ISO date) when
+    # a source exposes it (JSON-LD career pages). A publisher-declared expiry in the
+    # past is the strongest ghost/stale signal there is. "" = not exposed (abstain).
+    valid_through: str = ""
 
     @property
     def dedup_key(self) -> str:

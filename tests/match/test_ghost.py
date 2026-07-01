@@ -78,6 +78,36 @@ def test_created_empty_with_rest_present_no_crash_low_unknown():
     assert out["score"] <= 20
 
 
+# ── validThrough (publisher-attested expiry) signal ────────────────────────────
+def _iso_days_ahead(days: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(days=days)).date().isoformat()
+
+
+def test_expired_validthrough_is_stale():
+    # A fresh posting date but a validThrough in the past -> stale (expiry wins).
+    out = ghost_score(_job(created=_iso_days_ago(2), valid_through=_iso_days_ago(5)))
+    assert out["level"] == "stale"
+    assert out["score"] >= 60
+    assert any("expired" in r for r in out["reasons"])
+
+
+def test_future_validthrough_does_not_fire():
+    out = ghost_score(_job(created=_iso_days_ago(2), valid_through=_iso_days_ahead(20)))
+    assert out["level"] == "fresh"        # only the fresh-age signal fired
+    assert not any("expired" in r for r in out["reasons"])
+
+
+def test_expired_validthrough_via_inbox_dict():
+    row = {"title": "RN", "valid_through": _iso_days_ago(10)}
+    out = ghost_score(row)
+    assert out["level"] == "stale"
+
+
+def test_missing_validthrough_abstains():
+    out = ghost_score(_job(created=_iso_days_ago(3), valid_through=""))
+    assert not any("expired" in r for r in out["reasons"])
+
+
 def test_created_unparseable_does_not_crash():
     out = ghost_score(_job(created="not-a-date"))
     assert out["level"] == "unknown"

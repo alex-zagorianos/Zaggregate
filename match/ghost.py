@@ -16,6 +16,9 @@ Signals (additive, clamped 0..100):
      (inbox rows) — a small bump; ghost/evergreen reposts often omit pay.
   3) Evergreen / pipeline title pattern ("always hiring", "talent community",
      "general application", ...) — a strong bump; these are perpetual reqs.
+  4) Expired validThrough — the posting's own schema.org publisher-declared
+     expiry (JobResult.valid_through / inbox extras) is in the PAST. This is
+     attested, not inferred, so it's the strongest single signal.
 
 Repost-count is intentionally NOT implemented: freshness history isn't retained
 yet, so there's nothing to read — the signal abstains rather than guess.
@@ -41,6 +44,8 @@ AGE_FRESH_BUMP = -15      # fresh dated jobs pull the score down
 
 MISSING_SALARY_BUMP = 12
 EVERGREEN_BUMP = 62       # a perpetual-req title alone reads "stale"
+EXPIRED_BUMP = 80         # publisher-declared validThrough in the past = strongest
+                          # single signal; alone it clears "stale" decisively
 
 UNKNOWN_BASE = 10         # score for the genuine no-signal case (kept below the
                           # smallest real signal so any fired signal outscores it)
@@ -127,6 +132,22 @@ def _missing_salary_signal(job, reasons):
     return 0, False
 
 
+def _expired_signal(job, reasons):
+    """Strong bump when the posting's publisher-declared expiry (schema.org
+    validThrough, carried on JobResult / inbox extras) is in the PAST. This is a
+    publisher-attested signal, not an inference, so it's the most reliable ghost
+    marker. Abstains when validThrough is missing/unparseable or still in future."""
+    vt = _get(job, "valid_through") or _get(job, "validThrough")
+    dt = _parse_created(vt)
+    if dt == _EPOCH:
+        return 0, False
+    days_past = (datetime.now(timezone.utc) - dt).days
+    if days_past > 0:
+        reasons.append(f"listing expired {days_past}d ago (validThrough)")
+        return EXPIRED_BUMP, True
+    return 0, False  # expiry still in the future -> no opinion here
+
+
 def _evergreen_signal(job, reasons):
     """Strong bump for perpetual-req / pipeline title patterns."""
     title = (_get(job, "title") or "").lower()
@@ -159,15 +180,16 @@ def ghost_score(job):
     age_pts, age_fired = _age_signal(job, reasons)
     sal_pts, sal_fired = _missing_salary_signal(job, reasons)
     evg_pts, evg_fired = _evergreen_signal(job, reasons)
+    exp_pts, exp_fired = _expired_signal(job, reasons)
 
-    any_signal = age_fired or sal_fired or evg_fired
+    any_signal = age_fired or sal_fired or evg_fired or exp_fired
 
     if not any_signal:
         # No date and no other signal: report the abstain case, not a false fresh.
         return {"score": UNKNOWN_BASE, "level": "unknown",
                 "reasons": ["no staleness signal available"]}
 
-    raw = age_pts + sal_pts + evg_pts
+    raw = age_pts + sal_pts + evg_pts + exp_pts
     score = int(max(0, min(100, round(raw))))
     level = _level_for(score, any_signal=True)
     return {"score": score, "level": level, "reasons": reasons}
