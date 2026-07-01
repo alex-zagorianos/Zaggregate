@@ -3043,6 +3043,7 @@ class App(tk.Tk):
         self._proj_cb.pack(side="left", padx=4, pady=7)
         self._proj_cb.bind("<<ComboboxSelected>>", self._on_project_change)
         theme.btn(bar, "+ New", self._new_project, "ghost").pack(side="left", padx=6)
+        theme.btn(bar, "+ Person", self._new_person, "ghost").pack(side="left", padx=2)
         tk.Frame(wrap, bg=theme.BORDER, height=1).pack(fill="x", side="top")
         self._refresh_projectbar()
 
@@ -3052,16 +3053,23 @@ class App(tk.Tk):
             self._projbar = None
         self._build_projectbar()
 
+    @staticmethod
+    def _proj_label(p):
+        # Show "Person — Campaign" once a project is tagged with a person (GOAL 2),
+        # else just the campaign name (unchanged for single-person installs).
+        person = p.get("person")
+        return f"{person} \N{EM DASH} {p['name']}" if person else p["name"]
+
     def _refresh_projectbar(self):
         if not self._proj_var:
             return
         projs = workspace.list_projects()
-        self._name_to_slug = {p["name"]: p["slug"] for p in projs}
-        self._proj_cb["values"] = [p["name"] for p in projs]
+        self._name_to_slug = {self._proj_label(p): p["slug"] for p in projs}
+        self._proj_cb["values"] = [self._proj_label(p) for p in projs]
         active = workspace.active_slug()
         for p in projs:
             if p["slug"] == active:
-                self._proj_var.set(p["name"])
+                self._proj_var.set(self._proj_label(p))
                 break
 
     def _on_project_change(self, _event=None):
@@ -3097,6 +3105,36 @@ class App(tk.Tk):
         self._refresh_projectbar()
         self._rebuild_tabs()
         self._update_title()
+
+    def _new_person(self):
+        # A person is just a project tagged with an owner (GOAL 2). New person =>
+        # a fresh blank campaign (NO resume copy — different identity/PII) + the
+        # setup wizard so they onboard their own profile.
+        person = simpledialog.askstring(
+            "New Person", "Whose job search is this? (their name)", parent=self)
+        if not person or not person.strip():
+            return
+        person = person.strip()
+        name = simpledialog.askstring(
+            "New Person", f"Name {person}'s search campaign:",
+            initialvalue=f"{person} — search", parent=self)
+        if not name or not name.strip():
+            return
+        try:
+            workspace.create_project(name.strip(), person=person, make_active=True)
+        except Exception as exc:
+            messagebox.showerror("New Person", str(exc))
+            return
+        self._refresh_projectbar()
+        self._rebuild_tabs()
+        self._update_title()
+        # Onboard the new person's profile into the now-active project.
+        try:
+            from ui import setup_wizard
+            setup_wizard.run(self, on_finish=lambda applied: (
+                self._rebuild_tabs(), self._update_title()))
+        except Exception:
+            pass
 
     # ── tabs ───────────────────────────────────────────────────────────────────
     def _build_tabs(self):

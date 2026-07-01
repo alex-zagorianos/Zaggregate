@@ -93,6 +93,32 @@ def active_slug() -> str | None:
     return projs[0]["slug"] if projs else None
 
 
+# ── people (a person = a set of projects; plan GOAL 2) ────────────────────────
+def people() -> list:
+    """Distinct `person` labels across projects, in registry order. `None` is the
+    default/unassigned person (pre-GOAL-2 projects, and the root 'default')."""
+    seen = []
+    for p in list_projects():
+        person = p.get("person")
+        if person not in seen:
+            seen.append(person)
+    return seen
+
+
+def projects_for_person(person) -> list[dict]:
+    """Projects belonging to `person` (None = the default/unassigned person)."""
+    return [p for p in list_projects() if p.get("person") == person]
+
+
+def person_of(slug: str | None = None):
+    """The person label owning a project (None if unassigned)."""
+    resolved = slug or active_slug()
+    for p in list_projects():
+        if p.get("slug") == resolved:
+            return p.get("person")
+    return None
+
+
 def project_dir(slug: str | None = None) -> Path:
     """The active (or named) project's data root. ROOT BASE_DIR pre-migration and
     always for the 'default' slug so existing root files stay reachable."""
@@ -185,9 +211,12 @@ def set_active(slug: str) -> None:
 
 def create_project(name: str, *, slug: str | None = None, config: dict | None = None,
                    copy_resume_from: str | Path | None = None,
-                   make_active: bool = False, today: str | None = None) -> str:
+                   make_active: bool = False, today: str | None = None,
+                   person: str | None = None) -> str:
     """Create projects/<slug>/ with config.json, experience.md, output/. Returns
     the slug. copy_resume_from = a project slug or a path to seed experience.md.
+    `person` tags the project's owner (GOAL 2 — a person is just a set of projects);
+    None = the default/unassigned person, so old callers are unchanged.
 
     When this is the very FIRST project (no registry exists yet), the existing root
     workspace is automatically registered as 'default' first so the root inbox,
@@ -219,10 +248,11 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
                        else _EXPERIENCE_STUB, encoding="utf-8")
 
     if slug not in existing:
-        reg.setdefault("projects", []).append({
-            "slug": slug, "name": name,
-            "created": today or date.today().isoformat(), "daily": False,
-        })
+        entry = {"slug": slug, "name": name,
+                 "created": today or date.today().isoformat(), "daily": False}
+        if person is not None:
+            entry["person"] = person       # omit when unassigned (back-compat)
+        reg.setdefault("projects", []).append(entry)
     if make_active or reg.get("active") is None:
         reg["active"] = slug
     _write_registry(reg)
