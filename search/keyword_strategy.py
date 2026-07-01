@@ -82,6 +82,36 @@ def normalize_industry(industry: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+def effective_keywords(cfg: dict) -> list[str]:
+    """The search keywords for a project config, with a genre-safe fallback.
+
+    - Explicit `cfg['keywords']` always win.
+    - Otherwise, a project that set a NON-engineering `industry` must NOT silently
+      fall back to the engineering DEFAULT_KEYWORDS (that's the bug where a health/
+      finance project created via the People/Project button — no wizard — searched
+      for engineers). Derive from the field instead: the industry term + its profile
+      synonyms/title-terms.
+    - An engineering or industry-less project falls back to DEFAULT_KEYWORDS (unchanged).
+    """
+    from config import DEFAULT_KEYWORDS
+    kw = cfg.get("keywords")
+    if kw:
+        return list(kw)
+    industry = (cfg.get("industry") or "").strip()
+    if industry:
+        try:
+            import industry_profile
+            p = industry_profile.resolve(industry)
+            if not p.eng_like:
+                derived = [normalize_industry(industry)] + list(p.query_synonyms)
+                derived = [k for k in derived if k]
+                if derived:
+                    return list(dict.fromkeys(derived))
+        except Exception:
+            pass
+    return list(DEFAULT_KEYWORDS)
+
+
 def _dedupe_ci(items: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []

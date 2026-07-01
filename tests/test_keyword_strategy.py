@@ -81,3 +81,26 @@ def test_broad_drops_too_short_stems():
     # a 2-char leftover isn't a useful query term
     out = ks.broad_query_keywords(["Sr QA"], "")
     assert "qa" not in out or all(len(k) >= 3 for k in out)
+
+
+def test_broad_adds_bounded_synonyms():
+    out = ks.broad_query_keywords(["Data Analyst"], "", synonyms=["business intelligence", "data analyst"])
+    assert "business intelligence" in out      # added
+    assert out.count("data analyst") == 1      # dup synonym not re-added
+
+
+def test_effective_keywords_explicit_wins():
+    assert ks.effective_keywords({"keywords": ["nurse"], "industry": "health"}) == ["nurse"]
+
+
+def test_effective_keywords_noneng_project_without_keywords_not_engineering():
+    import config
+    out = ks.effective_keywords({"industry": "health_informatics"})
+    assert "health informatics" in out
+    assert out != list(config.DEFAULT_KEYWORDS)   # NOT the engineering fallback
+
+
+def test_effective_keywords_eng_or_empty_falls_back_to_default():
+    import config
+    assert ks.effective_keywords({}) == list(config.DEFAULT_KEYWORDS)
+    assert ks.effective_keywords({"industry": "controls_engineering"}) == list(config.DEFAULT_KEYWORDS)

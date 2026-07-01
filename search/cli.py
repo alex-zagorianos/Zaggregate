@@ -382,7 +382,10 @@ def main():
     elif user_cfg.get("keywords"):
         keywords = list(user_cfg["keywords"])
     else:
-        keywords = list(DEFAULT_KEYWORDS)
+        # Genre-safe fallback: a non-eng project without keywords derives from its
+        # field, not the engineering DEFAULT_KEYWORDS.
+        from search.keyword_strategy import effective_keywords
+        keywords = effective_keywords(user_cfg)
     if args.add_keyword:
         keywords.append(args.add_keyword.strip())
 

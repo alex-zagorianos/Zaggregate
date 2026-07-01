@@ -33,6 +33,20 @@ from search.search_engine import _EPOCH, _location_score, _parse_created
 _STOPWORDS = {"engineer", "engineering", "senior", "junior", "lead", "staff",
               "and", "or", "of", "the", "i", "ii", "iii"}
 
+# Terms too GENERIC to constitute a real title match by themselves. When a keyword
+# degrades to only these (e.g. "VP Health IT" -> just "health" after 2-char tokens
+# are dropped), any posting mentioning the word ("Healthcare Services", "Mercy
+# Health") would otherwise get full title credit AND escape the miss-penalty. A
+# match on ONLY generic words is capped to partial credit. Field-specific terms
+# ("controls", "informatics", "analytics", "nurse", ...) are NOT here, so a genuine
+# single-term field match (Alex's "controls") is unaffected.
+_GENERIC_TITLE_TERMS = frozenset({
+    "health", "care", "medical", "clinical", "services", "service", "business",
+    "data", "systems", "system", "technology", "information", "digital",
+    "management", "solutions", "general", "support", "operations", "global",
+    "national", "corporate", "specialist", "associate",
+})
+
 # Skill terms shorter than this are too ambiguous to substring-match ("c", "qt").
 _MIN_TERM_LEN = 3
 
@@ -145,7 +159,11 @@ def _term_present(term: str, tl: str) -> bool:
 
 def _title_score(queries, tl: str) -> float:
     """1.0 = the title satisfies a whole search query; otherwise partial credit
-    for significant positive-term overlap. `queries` are pre-parsed query.Query."""
+    for significant positive-term overlap. `queries` are pre-parsed query.Query.
+
+    A partial match on ONLY generic words (health/care/data/...) is capped at 0.5:
+    a keyword that degrades to a single generic term ("VP Health IT" -> "health")
+    must not award full title credit to every posting that merely says "health"."""
     best = 0.0
     for q in queries:
         if q.matches(tl):
@@ -154,8 +172,15 @@ def _title_score(queries, tl: str) -> float:
                if t not in _STOPWORDS and len(t) >= _MIN_TERM_LEN]
         if not sig:
             continue
-        hit = sum(1 for t in sig if _term_present(t, tl))
-        best = max(best, hit / len(sig))
+        matched = [t for t in sig if _term_present(t, tl)]
+        if not matched:
+            continue
+        frac = len(matched) / len(sig)
+        # A match on a SINGLE generic word ("health" alone) isn't a real title
+        # match; cap it. Two+ terms ("health data") or any specific term keep credit.
+        if len(matched) == 1 and matched[0] in _GENERIC_TITLE_TERMS:
+            frac = min(frac, 0.5)
+        best = max(best, frac)
     return best
 
 

@@ -66,8 +66,9 @@ def main():
     globals()["_RUN_ID"] = run_id  # handed to run_main's except for the failed path
 
     cfg = load_user_config(args.user_config)
-    keywords = cfg.get("keywords") or list(DEFAULT_KEYWORDS)
-    location = cfg.get("location") or DEFAULT_LOCATION
+    from search.keyword_strategy import effective_keywords
+    keywords = effective_keywords(cfg)  # genre-safe: a non-eng project w/o keywords
+    location = cfg.get("location") or DEFAULT_LOCATION  # won't silently search for engineers
     salary_min = int(cfg["salary_min"]) if cfg.get("salary_min") is not None else None
     min_score = args.min_score if args.min_score is not None else int(
         cfg.get("daily_min_score", DAILY_MIN_SCORE))
