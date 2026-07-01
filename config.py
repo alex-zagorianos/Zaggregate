@@ -207,9 +207,12 @@ HN_RATE_LIMIT = 10
 MIN_SCORE_DEFAULT = 0            # CLI --min-score default (0 = show all)
 DAILY_MIN_SCORE = 40             # daily_run.py inbox threshold
 DAILY_SOURCES = ["adzuna", "usajobs", "careers", "themuse", "remoteok",
-                 "remotive", "jobicy", "himalayas", "hn"]
-# jsearch is excluded from DAILY_SOURCES: 10 keywords/day would blow the
-# 200/month free tier in ~3 weeks. Use it for manual searches only.
+                 "remotive", "jobicy", "himalayas", "hn",
+                 "weworkremotely", "workingnomads"]
+# weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
+# risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
+# OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
+# 10 keywords/day would blow the 200/month free tier in ~3 weeks (manual only).
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.

@@ -4,6 +4,22 @@ import coverage.reach as reach
 from models import JobResult
 
 
+def test_badge_line_none_and_uncertifiable_and_certified():
+    # No snapshot -> blank badge (GUI shows nothing).
+    assert reach.badge_line(None) == ""
+    assert reach.badge_line({}) == ""
+    # Not certifiable (disjoint sources) -> honest, no bare percentage.
+    unc = {"n_distinct": 917, "n_families": 8, "coverage_pct": None,
+           "coverage_ci": None, "certifiable": False}
+    t = reach.badge_line(unc)
+    assert "not yet certifiable" in t and "917 distinct" in t and "%" not in t
+    # Certifiable -> qualified percentage with the CI band.
+    cert = {"n_distinct": 300, "n_families": 3, "coverage_pct": 62.0,
+            "coverage_ci": [55.0, 71.0], "certifiable": True}
+    t2 = reach.badge_line(cert)
+    assert t2.startswith("Reach ~62%") and "(55–71%)" in t2 and "3 src families" in t2
+
+
 def mk(title, company, source, loc="Cincinnati, OH", url=""):
     return JobResult(title=title, company=company, location=loc,
                      salary_min=None, salary_max=None, description="",

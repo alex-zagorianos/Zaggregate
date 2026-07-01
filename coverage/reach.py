@@ -198,6 +198,23 @@ def persist_reach(est: ReachEstimate, *, project: str = "") -> Path:
     return latest
 
 
+def badge_line(snap: dict | None) -> str:
+    """One-line reach badge from a persisted snapshot dict (see load_latest) —
+    for the GUI/CLI. Blank when there's no snapshot; a qualified percentage only
+    when the estimate is certifiable, else an honest 'not yet certifiable'."""
+    if not snap:
+        return ""
+    nd, nf = snap.get("n_distinct"), snap.get("n_families")
+    cov, ci = snap.get("coverage_pct"), snap.get("coverage_ci")
+    if snap.get("certifiable") and cov is not None:
+        s = f"Reach ~{cov:.0f}%"
+        if (isinstance(ci, (list, tuple)) and len(ci) == 2
+                and ci[0] is not None and ci[1] is not None):
+            s += f" ({ci[0]:.0f}–{ci[1]:.0f}%)"
+        return s + f" · {nd} distinct / {nf} src families"
+    return f"Reach: not yet certifiable · {nd} distinct / {nf} src families"
+
+
 def load_latest(project: str = "") -> dict | None:
     """Most recent persisted reach snapshot for a project, or None."""
     slug = (project or "root").replace("/", "_").replace("\\", "_")

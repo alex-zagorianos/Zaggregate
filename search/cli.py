@@ -20,7 +20,7 @@ from search.search_engine import SearchEngine
 ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers", "themuse", "remoteok",
                "remotive", "jobicy", "himalayas", "hn",
                "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi",
-               "socrata"]
+               "socrata", "weworkremotely", "workingnomads"]
 
 
 def load_user_config(path=None) -> dict:
@@ -131,6 +131,14 @@ def build_clients(
                       f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
             except ValueError as e:
                 print(f"  [serpapi] Skipping — {e}")
+
+        elif source == "weworkremotely":
+            from search.weworkremotely_client import WeWorkRemotelyClient
+            clients.append(WeWorkRemotelyClient(cache_enabled=cache_enabled))
+
+        elif source == "workingnomads":
+            from search.workingnomads_client import WorkingNomadsClient
+            clients.append(WorkingNomadsClient(cache_enabled=cache_enabled))
 
         elif source == "socrata":
             from search.socrata_client import SocrataClient

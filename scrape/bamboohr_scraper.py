@@ -34,23 +34,34 @@ def _default_fetch(url: str):
     return resp.json()
 
 
+def _loc_from(d) -> str:
+    """City/state/country from one BambooHR location dict, collapsing consecutive
+    duplicate parts (live data returns city==state=="Argentina")."""
+    if not isinstance(d, dict):
+        return ""
+    if d.get("isRemote"):
+        return "Remote"
+    seen: list[str] = []
+    for p in (d.get("city"), d.get("state") or d.get("province"), d.get("country")):
+        p = (p or "").strip()
+        if p and (not seen or seen[-1].lower() != p.lower()):
+            seen.append(p)
+    return ", ".join(seen)
+
+
 def _location(job: dict) -> str:
-    loc = job.get("atsLocation")
-    if not isinstance(loc, dict):
-        loc = job.get("location")
-    if isinstance(loc, dict):
-        if loc.get("isRemote"):
-            return "Remote"
-        parts = [loc.get("city"), loc.get("state")]
-        joined = ", ".join(p for p in parts if p)
-        if joined:
-            return joined
-    city = job.get("locationCity")
-    state = job.get("locationState")
-    joined = ", ".join(p for p in (city, state) if p)
-    if joined:
-        return joined
-    if job.get("isRemote"):
+    # BambooHR populates EITHER `location` (seen live) OR `atsLocation` (the
+    # fixture/older shape) with city/state — the other is often present but
+    # all-null — so prefer whichever actually has content, then a flat fallback,
+    # then a remote signal.
+    for key in ("location", "atsLocation"):
+        s = _loc_from(job.get(key))
+        if s:
+            return s
+    flat = ", ".join(p for p in (job.get("locationCity"), job.get("locationState")) if p)
+    if flat:
+        return flat
+    if job.get("isRemote") or "remote" in (job.get("employmentStatusLabel") or "").lower():
         return "Remote"
     return ""
 

@@ -36,6 +36,23 @@ def test_fetch_skips_malformed_entries():
     assert [j.title for j in jobs] == ["A", "B"]   # 2 valid, no raise
 
 
+# ── review s26 round-2: live BambooHR (validated vs trafilea) fills the top-level
+#    `location` dict and leaves `atsLocation` all-null — must not go blank. ──
+def test_fetch_real_shape_location():
+    payload = {"result": [
+        {"id": 1, "jobOpeningName": "Rep",
+         "location": {"city": "Argentina", "state": "Argentina"},   # dup collapses
+         "atsLocation": {"country": None, "state": None, "city": None},
+         "isRemote": None, "employmentStatusLabel": "Remote Contributor"},
+        {"id": 2, "jobOpeningName": "Eng",
+         "location": {}, "atsLocation": {}, "isRemote": None,
+         "employmentStatusLabel": "Fully Remote"},   # remote via status label
+    ]}
+    jobs = B.fetch("acme", fetcher=_stub_fetcher(payload))
+    assert jobs[0].location == "Argentina"       # not "Argentina, Argentina", not blank
+    assert jobs[1].location == "Remote"
+
+
 def test_fetch_maps_remote_atslocation():
     jobs = B.fetch("acme", fetcher=_stub_fetcher())
     remote = next(j for j in jobs if j.job_id == "bamboohr_1001")

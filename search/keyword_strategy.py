@@ -200,7 +200,8 @@ def broad_query_keywords(roles: Iterable[str], industry: str = "",
 # hands-on/clinical/trade field they mostly add noise + wasted API calls rather
 # than reach. Gated the same way Muse/Jobicy already are (industry_profile), not
 # hardcoded per-source.
-TECH_SKEWED_SOURCES = frozenset({"remoteok", "remotive", "himalayas", "arbeitnow", "hn"})
+TECH_SKEWED_SOURCES = frozenset({"remoteok", "remotive", "himalayas", "arbeitnow", "hn",
+                                 "weworkremotely", "workingnomads"})
 
 
 def is_knowledge_work(industry: str) -> bool:

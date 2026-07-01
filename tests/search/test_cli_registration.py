@@ -19,6 +19,18 @@ def test_build_clients_arbeitnow(tmp_path):
     clients = cli.build_clients(["arbeitnow"], cache_enabled=False)
     assert [type(c).__name__ for c in clients] == ["ArbeitnowClient"]
 
+def test_build_clients_free_remote_feeds(tmp_path):
+    clients = cli.build_clients(["weworkremotely", "workingnomads"], cache_enabled=False)
+    assert [type(c).__name__ for c in clients] == ["WeWorkRemotelyClient", "WorkingNomadsClient"]
+
+def test_free_remote_feeds_registered_and_gated():
+    for s in ("weworkremotely", "workingnomads"):
+        assert s in cli.ALL_SOURCES
+        import config
+        assert s in config.DAILY_SOURCES          # free -> in the daily net
+        from search.keyword_strategy import TECH_SKEWED_SOURCES
+        assert s in TECH_SKEWED_SOURCES            # remote-skewed -> gated off non-knowledge-work
+
 def test_build_clients_serpapi_skipped_without_key(monkeypatch, capsys):
     import search.serpapi_client as SC
     monkeypatch.setattr(SC, "SERPAPI_KEY", "")

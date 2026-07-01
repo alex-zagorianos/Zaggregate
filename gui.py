@@ -827,6 +827,11 @@ class InboxTab(ttk.Frame):
         self._count_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
                                     fg=theme.MUTED, font=theme.FONT_SM)
         self._count_lbl.pack(side="right", padx=14)
+        # Reach badge (goal: certify how wide the net is) — honest capture-recapture
+        # verdict from the last daily_run, or blank until one exists. See coverage/reach.py.
+        self._reach_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                   fg=theme.MUTED, font=theme.FONT_SM)
+        self._reach_lbl.pack(side="right", padx=14)
         theme.tip_strip(
             self, "Your shortlist. Pick jobs you like and click "
                   "“Track ▸ Interested” — they move to Apply Queue. "
@@ -1039,8 +1044,19 @@ class InboxTab(ttk.Frame):
         if self._f_source.get() not in self._source_cb["values"]:
             self._f_source.set("All")
         self._render()
+        self._update_reach_badge()
         if self._on_change:
             self._on_change()
+
+    def _update_reach_badge(self):
+        """Best-effort: read the last persisted reach snapshot for the active
+        project. Never let a reach/coverage error touch the inbox render."""
+        try:
+            from coverage.reach import badge_line, load_latest
+            snap = load_latest(workspace.active_slug() or "root")
+            self._reach_lbl.config(text=badge_line(snap))
+        except Exception:
+            self._reach_lbl.config(text="")
 
     def _filtered(self) -> list[dict]:
         rows = self._all
