@@ -277,19 +277,27 @@ def _cache_dir() -> Path:
     return d
 
 
-def _profile_sig(industry: str, skill_terms) -> str | None:
+def _profile_sig(industry: str, skill_terms, soc_code: str | None = None) -> str | None:
     """A short cache-key suffix when facts depend on a profile/field, so a health
     seeker's facts can't be served from an engineering seeker's cache (the trap:
-    the cache is keyed by job_key only). None for the default tech/no-skills path
-    -> the original `{job_key}.json` filename, byte-identical for Alex."""
-    if is_tech_industry(industry) and not skill_terms:
+    the cache is keyed by job_key only). None for the default tech/no-skills/
+    no-soc path -> the original `{job_key}.json` filename, byte-identical for
+    Alex. `soc_code` (item 25: workspace's persisted, STABLE O*NET-SOC code) is
+    optional extra entropy only — it can only make the key MORE specific than
+    industry+skill_terms alone, never less, so it cannot reintroduce a leak;
+    omitted entirely from the payload when falsy so passing soc_code=None (every
+    caller before item 25 wired it up) hashes byte-identically to before."""
+    if is_tech_industry(industry) and not skill_terms and not soc_code:
         return None
     import hashlib
     payload = f"{(industry or '').lower()}|{','.join(sorted(skill_terms or []))}"
+    if soc_code:
+        payload += f"|{soc_code}"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]
 
 
-def facts_for(job, *, use_cache: bool = True, skill_terms=None, industry: str = "") -> dict:
+def facts_for(job, *, use_cache: bool = True, skill_terms=None, industry: str = "",
+             soc_code: str | None = None) -> dict:
     """Cached extraction keyed by job_key (+ a profile signature when facts depend
     on the active field/profile, so they never leak across people/projects).
     Deterministic today; the cache is what makes a future model-backed extractor
@@ -301,7 +309,7 @@ def facts_for(job, *, use_cache: bool = True, skill_terms=None, industry: str = 
         key = job.job_key
     except Exception:
         return extract_facts(job, skill_terms=skill_terms, industry=industry)
-    sig = _profile_sig(industry, skill_terms)
+    sig = _profile_sig(industry, skill_terms, soc_code)
     fname = f"{key}.json" if sig is None else f"{key}.{sig}.json"
     path = _cache_dir() / fname
     cached = read_cache(path)

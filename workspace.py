@@ -181,6 +181,29 @@ def save_config(cfg: dict, slug=None) -> Path:
 
 # ── mutations ─────────────────────────────────────────────────────────────────
 
+def _attach_onet_soc(cfg_data: dict) -> None:
+    """Resolve + persist a STABLE O*NET-SOC code alongside a new project's
+    free-text `industry` (item 25), so downstream callers (industry_profile,
+    match.facts) can key off a code that doesn't drift if the user later edits
+    the industry text slightly. Best-effort and additive: no `industry`, an
+    eng-flavored one, or one that doesn't confidently resolve to a real
+    occupation leaves `cfg_data` untouched (no new keys) -- and this only ever
+    runs once, at project creation, so it never touches an existing project's
+    config.json (mirrors the `if not cfg_file.exists()` guard around the only
+    caller)."""
+    industry = (cfg_data.get("industry") or "").strip()
+    if not industry or "onet_soc_code" in cfg_data:
+        return
+    try:
+        import industry_profile
+        soc = industry_profile.resolve_soc(industry)
+    except Exception:
+        soc = None
+    if soc:
+        cfg_data["onet_soc_code"] = soc["code"]
+        cfg_data["onet_soc_title"] = soc["title"]
+
+
 def _ensure_default_root_registered(today: str | None = None) -> None:
     """Register the pre-migration root workspace as slug 'default' so it stays
     reachable in the project switcher after the first real project is created.
@@ -235,7 +258,9 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
 
     cfg_file = pdir / "config.json"
     if not cfg_file.exists():
-        cfg_file.write_text(json.dumps(config or {}, indent=2), encoding="utf-8")
+        cfg_data = dict(config or {})
+        _attach_onet_soc(cfg_data)
+        cfg_file.write_text(json.dumps(cfg_data, indent=2), encoding="utf-8")
 
     exp = pdir / "experience.md"
     if not exp.exists():

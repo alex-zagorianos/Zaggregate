@@ -113,3 +113,55 @@ def test_rank_via_api_without_key_raises(monkeypatch):
         assert False, "expected RuntimeError"
     except RuntimeError:
         pass
+
+
+# ── _facts_profile (item 25: persisted onet_soc_code) ────────────────────────
+
+def test_facts_profile_returns_soc_code_from_explicit_cfg():
+    industry, skill_terms, soc_code = ranker._facts_profile(
+        {"industry": "health_informatics", "onet_soc_code": "29-1141.00"})
+    assert soc_code == "29-1141.00"
+    assert industry == "health_informatics"
+
+
+def test_facts_profile_soc_code_none_when_absent():
+    industry, skill_terms, soc_code = ranker._facts_profile({"industry": "health_informatics"})
+    assert soc_code is None
+
+
+def test_facts_profile_soc_code_none_for_eng_default():
+    industry, skill_terms, soc_code = ranker._facts_profile({})
+    assert soc_code is None
+    assert industry == ""
+
+
+def test_facts_profile_cfg_none_falls_back_to_active_config(monkeypatch):
+    """The pre-existing cfg=None -> active-project-config fallback (the GUI's
+    'Ask AI to rank' buttons call through with no cfg) must keep working, and
+    must surface onet_soc_code from that fallback too."""
+    import workspace
+    monkeypatch.setattr(workspace, "load_config",
+                        lambda: {"industry": "health_informatics", "onet_soc_code": "29-1141.00"})
+    industry, skill_terms, soc_code = ranker._facts_profile(None)
+    assert industry == "health_informatics"
+    assert soc_code == "29-1141.00"
+
+
+def test_build_compact_request_soc_code_separates_facts_cache(tmp_path, monkeypatch):
+    """End-to-end: two projects with the SAME industry text but a DIFFERENT
+    persisted SOC code must not share a facts-cache entry (item 25's whole
+    point) -- verified through the real build_compact_request path, not just
+    match.facts directly."""
+    from match import facts as F
+    monkeypatch.setattr(F, "_cache_dir", lambda: tmp_path)
+    jobs = [_job("Health Informatics Analyst", url="https://x.co/hia")]
+    jobs[0].description = "clinical informatics EHR analytics"
+    prefs = {"profile_md": "", "hard": {}}
+    ranker.build_compact_request(jobs, prefs=prefs,
+                                 cfg={"industry": "health_informatics",
+                                      "onet_soc_code": "29-1141.00"})
+    ranker.build_compact_request(jobs, prefs=prefs,
+                                 cfg={"industry": "health_informatics",
+                                      "onet_soc_code": "15-1211.00"})
+    files = list(tmp_path.glob(f"{jobs[0].job_key}*"))
+    assert len(files) == 2
