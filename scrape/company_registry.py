@@ -225,6 +225,16 @@ def _industry_tag_match(key: str, tag: str) -> bool:
     return bool(t) and (k == t or k in t or t in k)
 
 
+def has_industry(industry: str | None, user_json: Optional[Path] = None) -> bool:
+    """True when the registry has at least one company for `industry` (hardcoded
+    ∪ companies.json). Empty/None industry -> True (the whole registry applies).
+    Used to decide whether a non-tech first-run needs a free discovery pass so it
+    isn't left with an empty, eng-only starter registry (plan 1D)."""
+    if not (industry or "").strip():
+        return True
+    return bool(get_registry(industry=industry, user_json=user_json))
+
+
 def get_registry(industry: str | None = None, user_json: Optional[Path] = None) -> list[CompanyEntry]:
     """Return companies filtered by industry key or tag, merged with user companies.json.
 

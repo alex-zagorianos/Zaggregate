@@ -54,13 +54,30 @@ def build_request(jobs, prefs: dict | None = None,
 # model call. Same parse_response contract; a future local model swaps in by
 # changing only who runs the prompt.
 
+def _facts_profile(cfg: dict | None):
+    """(industry, skill_terms) for facts extraction from the active search config.
+    A tech/empty field keeps the engineering-tuned map + vocab (byte-identical for
+    Alex); any other field merges universal role buckets and falls back to
+    profile-derived skills (the eng vocab is useless there). Plan 1E."""
+    from match import facts as _facts
+    industry = (cfg or {}).get("industry") or ""
+    skill_terms = None
+    if industry and not _facts.is_tech_industry(industry):
+        from match import scorer as _scorer
+        st = _scorer.extract_skill_terms()
+        skill_terms = list(st) if st else None
+    return industry, skill_terms
+
+
 def build_compact_request(jobs, prefs: dict | None = None,
                           cfg: dict | None = None) -> str:
     """A compact ranking prompt: per-job extracted facts (not descriptions) + a
     rubric (match.rubric). ~15x less context per job than build_request."""
     from match import facts as _facts, rubric as _rubric
     prefs = prefs if prefs is not None else preferences.load()
-    facts_list = [_facts.facts_for(j) for j in jobs]
+    industry, skill_terms = _facts_profile(cfg)
+    facts_list = [_facts.facts_for(j, skill_terms=skill_terms, industry=industry)
+                  for j in jobs]
     rb = _rubric.build_rubric(prefs, cfg)
     return bridge.build_fit_prompt_compact(jobs, facts_list, _rubric.rubric_text(rb))
 
@@ -76,7 +93,9 @@ def prepare_compact(jobs, prefs: dict | None = None, cfg: dict | None = None) ->
     from match import facts as _facts, rubric as _rubric, gate as _gate
     prefs = prefs if prefs is not None else preferences.load()
     rb = _rubric.build_rubric(prefs, cfg)
-    pairs = [(j, _facts.facts_for(j)) for j in jobs]
+    industry, skill_terms = _facts_profile(cfg)
+    pairs = [(j, _facts.facts_for(j, skill_terms=skill_terms, industry=industry))
+             for j in jobs]
     kept, dropped = _gate.partition(pairs, rb)
     kept_jobs = [j for j, _f, _g in kept]
     kept_facts = [f for _j, f, _g in kept]

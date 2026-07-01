@@ -97,6 +97,45 @@ _SKILL_VOCAB = [
     "controls", "automation", "robotics", "mechatronics", "hmi", "cnc", "i2c", "uart",
 ]
 
+# Universal role buckets merged in ONLY for non-tech fields (agnostic, plan 1E).
+# Additive: none of these keywords fire on an engineering title/description, so a
+# tech posting's role_type is unchanged — but they let a nurse/clerk/accountant
+# posting classify correctly instead of defaulting to "build".
+_UNIVERSAL_ROLE_KEYWORDS = {
+    "care":    ["nurse", "rn ", "registered nurse", "clinical", "patient care",
+                "caregiver", "therapist", "physician", "medical assistant", "bedside",
+                "informatics"],
+    "admin":   ["administrative", "office manager", "receptionist", "scheduler",
+                "clerk", "data entry", "front desk", "administrative assistant"],
+    "finance": ["accountant", "accounting", "financial analyst", "bookkeeper",
+                "auditor", "payroll", "accounts payable", "accounts receivable"],
+    "trade":   ["electrician", "plumber", "hvac technician", "welder", "carpenter",
+                "machinist", "install technician", "maintenance technician"],
+}
+
+# Industry tokens that keep the engineering-tuned maps (byte-identical for Alex).
+_TECH_TOKENS = {
+    "controls", "control", "engineering", "engineer", "software", "robotics",
+    "embedded", "mechanical", "mechatronics", "automation", "hardware", "electrical",
+    "manufacturing", "industrial", "aerospace", "ai", "ml", "data", "tech",
+    "technology", "semiconductor", "firmware",
+}
+
+
+def is_tech_industry(industry: str) -> bool:
+    """True when the engineering-tuned role map / skill vocab fits this field (or
+    it's empty). Non-tech fields merge the universal buckets + use profile skills."""
+    toks = [t for t in re.split(r"[\s_\-/,]+", (industry or "").lower()) if t]
+    return not toks or any(t in _TECH_TOKENS for t in toks)
+
+
+def _role_keywords_for(industry: str) -> dict:
+    """The engineering map for tech/empty industries (byte-identical); the eng map
+    PLUS universal buckets for any other field."""
+    if is_tech_industry(industry):
+        return _ROLE_KEYWORDS
+    return {**_ROLE_KEYWORDS, **_UNIVERSAL_ROLE_KEYWORDS}
+
 
 def _detect_seniority(title: str, desc: str) -> str:
     for level, pat in _SENIORITY:
@@ -138,10 +177,11 @@ def _detect_restriction(text: str) -> Optional[str]:
     return None
 
 
-def _detect_role_type(title: str, desc: str) -> str:
+def _detect_role_type(title: str, desc: str, role_map: dict | None = None) -> str:
+    role_map = role_map or _ROLE_KEYWORDS
     tl, dl = title.lower(), desc.lower()
-    scores = {role: 0 for role in _ROLE_KEYWORDS}
-    for role, kws in _ROLE_KEYWORDS.items():
+    scores = {role: 0 for role in role_map}
+    for role, kws in role_map.items():
         for kw in kws:
             if kw in tl:
                 scores[role] += 3
@@ -151,23 +191,29 @@ def _detect_role_type(title: str, desc: str) -> str:
     return best if scores[best] > 0 else "build"
 
 
-def _detect_skills(desc: str, limit: int = 6) -> list[str]:
+def _detect_skills(desc: str, limit: int = 6, terms=None) -> list[str]:
     dl = (desc or "").lower()
+    vocab = terms if terms else _SKILL_VOCAB
     hits = []
-    for term in _SKILL_VOCAB:
-        if _term_pattern(term).search(dl):
+    for term in vocab:
+        if term and _term_pattern(term).search(dl):
             hits.append(term)
         if len(hits) >= limit:
             break
     return hits
 
 
-def extract_facts(job) -> dict:
+def extract_facts(job, *, skill_terms=None, industry: str = "") -> dict:
     """Pure deterministic extraction of structured facts from a JobResult.
 
     Returns a JobFacts dict:
       {seniority, required_years, role_type, clearance_required, location_type,
        restriction, comp_min, comp_max, top_skills}
+
+    `industry`/`skill_terms` are agnostic seams (plan 1E): a non-tech industry
+    merges universal role buckets; `skill_terms` (profile-derived) replaces the
+    engineering skill vocab. Defaults ('' / None) reproduce the original output
+    byte-for-byte, so an engineering seeker is unaffected.
     """
     title = job.title or ""
     desc = job.description or ""
@@ -178,7 +224,7 @@ def extract_facts(job) -> dict:
         comp_min, comp_max = salary_from_text(desc)
 
     seniority = _detect_seniority(title, desc)
-    role_type = _detect_role_type(title, desc)
+    role_type = _detect_role_type(title, desc, _role_keywords_for(industry))
     # A manager/director title IS people-management for the gate's purposes, even
     # when generic "build" keywords dominate the body.
     if seniority in ("manager", "director"):
@@ -193,7 +239,7 @@ def extract_facts(job) -> dict:
         "restriction": _detect_restriction(text),
         "comp_min": int(comp_min) if comp_min else None,
         "comp_max": int(comp_max) if comp_max else None,
-        "top_skills": _detect_skills(desc),
+        "top_skills": _detect_skills(desc, terms=skill_terms),
     }
 
 
@@ -231,22 +277,37 @@ def _cache_dir() -> Path:
     return d
 
 
-def facts_for(job, *, use_cache: bool = True) -> dict:
-    """Cached extraction keyed by job_key. Deterministic today (cache is a no-op
-    win); the cache is what makes a future model-backed extractor near-free on
-    re-runs — only net-new postings are ever extracted."""
+def _profile_sig(industry: str, skill_terms) -> str | None:
+    """A short cache-key suffix when facts depend on a profile/field, so a health
+    seeker's facts can't be served from an engineering seeker's cache (the trap:
+    the cache is keyed by job_key only). None for the default tech/no-skills path
+    -> the original `{job_key}.json` filename, byte-identical for Alex."""
+    if is_tech_industry(industry) and not skill_terms:
+        return None
+    import hashlib
+    payload = f"{(industry or '').lower()}|{','.join(sorted(skill_terms or []))}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]
+
+
+def facts_for(job, *, use_cache: bool = True, skill_terms=None, industry: str = "") -> dict:
+    """Cached extraction keyed by job_key (+ a profile signature when facts depend
+    on the active field/profile, so they never leak across people/projects).
+    Deterministic today; the cache is what makes a future model-backed extractor
+    near-free on re-runs — only net-new postings are ever extracted."""
     if not use_cache:
-        return extract_facts(job)
+        return extract_facts(job, skill_terms=skill_terms, industry=industry)
     from scrape.cache_helpers import read_cache, write_cache
     try:
         key = job.job_key
     except Exception:
-        return extract_facts(job)
-    path = _cache_dir() / f"{key}.json"
+        return extract_facts(job, skill_terms=skill_terms, industry=industry)
+    sig = _profile_sig(industry, skill_terms)
+    fname = f"{key}.json" if sig is None else f"{key}.{sig}.json"
+    path = _cache_dir() / fname
     cached = read_cache(path)
     if isinstance(cached, dict) and "seniority" in cached:
         return cached
-    facts = extract_facts(job)
+    facts = extract_facts(job, skill_terms=skill_terms, industry=industry)
     try:
         write_cache(path, facts)
     except OSError:

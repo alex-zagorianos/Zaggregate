@@ -122,12 +122,40 @@ def prefill_from_existing(prefs: dict | None = None, cfg: dict | None = None) ->
         "remote_ok": remote_ok,
         "salary_min": str(salary_min) if salary_min else "",
         "about": about,
+        "industry": str(cfg.get("industry") or ""),
+        "level": _config_to_level(cfg or {}),
     }
 
 
+# Career-level → rubric config (match.rubric reads these off the search config).
+# Only emitted when a level is chosen, so an unset level leaves defaults intact.
+_LEVELS = ("", "Entry", "Mid", "Senior", "Manager/Exec")
+
+
+def _level_to_config(level: str) -> dict:
+    lvl = (level or "").strip().lower()
+    if lvl in ("entry", "entry-level", "junior"):
+        return {"seniority_target": "entry", "allow_intern": True, "years_cap": 3}
+    if lvl in ("mid", "mid-level"):
+        return {"seniority_target": "mid", "years_cap": 8}
+    if lvl == "senior":
+        return {"seniority_target": "senior", "years_cap": 12}
+    if lvl in ("manager/exec", "manager", "exec", "executive", "management"):
+        return {"seniority_target": "senior-exec", "allow_management": True, "years_cap": 25}
+    return {}
+
+
+def _config_to_level(cfg: dict) -> str:
+    if cfg.get("allow_management"):
+        return "Manager/Exec"
+    return {"entry": "Entry", "mid": "Mid", "senior": "Senior",
+            "senior-exec": "Manager/Exec"}.get(
+        (cfg.get("seniority_target") or "").lower(), "")
+
+
 def _search_config(answers: dict, existing: dict | None = None) -> dict:
-    """Seed the search-tab config (keywords/location/salary) from answers so the
-    Search tab pre-fills. Preserves any existing keys."""
+    """Seed the search-tab config (keywords/location/salary/industry/level) from
+    answers so the Search tab pre-fills. Preserves any existing keys."""
     cfg = dict(existing or {})
     roles = [r.strip() for r in answers.get("roles", []) if r and r.strip()]
     if roles:
@@ -136,6 +164,10 @@ def _search_config(answers: dict, existing: dict | None = None) -> dict:
         cfg["location"] = answers["location"].strip()
     if answers.get("salary_min"):
         cfg["salary_min"] = answers["salary_min"]
+    if (answers.get("industry") or "").strip():
+        cfg["industry"] = answers["industry"].strip()
+    if (answers.get("level") or "").strip():
+        cfg.update(_level_to_config(answers["level"]))  # rubric-read keys
     return cfg
 
 
@@ -181,6 +213,8 @@ class SetupWizard(tk.Toplevel):
             "location": tk.StringVar(),
             "remote_ok": tk.BooleanVar(value=True),
             "salary_min": tk.StringVar(),
+            "industry": tk.StringVar(),
+            "level": tk.StringVar(),
         }
         # Pre-populate from existing preferences/config so re-running the wizard
         # to edit one field does not blank-overwrite the rest.
@@ -190,6 +224,8 @@ class SetupWizard(tk.Toplevel):
             self._vars["location"].set(_existing["location"])
             self._vars["remote_ok"].set(_existing["remote_ok"])
             self._vars["salary_min"].set(_existing["salary_min"])
+            self._vars["industry"].set(_existing.get("industry", ""))
+            self._vars["level"].set(_existing.get("level", ""))
             self._about_cache = _existing["about"]
         except Exception:
             self._about_cache = ""
@@ -244,10 +280,10 @@ class SetupWizard(tk.Toplevel):
     def _step_welcome(self):
         self._heading(
             "Welcome \N{WAVING HAND SIGN}",
-            "This app finds engineering jobs for you, scores how well each fits, "
-            "and helps you apply faster. You always click submit yourself — it "
-            "never applies automatically, and your information stays on this "
-            "computer.")
+            "This app finds jobs that match what you're looking for, scores how "
+            "well each one fits, and helps you apply faster. You always click "
+            "submit yourself — it never applies automatically, and your "
+            "information stays on this computer.")
         for n, t in [
             ("1.  Find jobs", "Search job boards or check your daily Inbox."),
             ("2.  Keep the good ones", "Track the jobs you like; dismiss the rest."),
@@ -269,10 +305,29 @@ class SetupWizard(tk.Toplevel):
         ttk.Entry(self._body, textvariable=self._vars["roles"]).pack(
             fill="x", pady=(0, 6))
         ttk.Label(self._body,
-                  text="Examples:  controls engineer, mechatronics engineer, "
-                       "automation engineer",
+                  text="Examples:  registered nurse, controls engineer, staff "
+                       "accountant, HVAC technician, UX designer",
                   style="Muted.TLabel", wraplength=560,
                   justify="left").pack(anchor="w")
+        # Optional field + career level — tune enumeration + the ranking rubric to
+        # any field, not just engineering. Both blank = today's behavior.
+        fl = ttk.Frame(self._body)
+        fl.pack(fill="x", pady=(12, 0))
+        ttk.Label(fl, text="Your field / industry (optional)").grid(
+            row=0, column=0, sticky="w")
+        ttk.Label(fl, text="Career level (optional)").grid(
+            row=0, column=1, sticky="w", padx=(12, 0))
+        ttk.Entry(fl, textvariable=self._vars["industry"]).grid(
+            row=1, column=0, sticky="ew", pady=(2, 0))
+        ttk.Combobox(fl, textvariable=self._vars["level"], values=list(_LEVELS),
+                     state="readonly", width=16).grid(
+            row=1, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
+        fl.columnconfigure(0, weight=1)
+        ttk.Label(self._body,
+                  text="Field examples:  health informatics · nursing · finance · "
+                       "controls engineering",
+                  style="Muted.TLabel", wraplength=560,
+                  justify="left").pack(anchor="w", pady=(4, 0))
         ttk.Label(self._body, text="Anything else the AI should know? (optional)",
                   style="H2.TLabel").pack(anchor="w", pady=(18, 2))
         ttk.Label(self._body,
@@ -393,6 +448,8 @@ class SetupWizard(tk.Toplevel):
             "location": self._vars["location"].get().strip(),
             "remote_ok": bool(self._vars["remote_ok"].get()),
             "salary_min": salary,
+            "industry": self._vars["industry"].get().strip(),
+            "level": self._vars["level"].get().strip(),
             "resume_text": getattr(self, "_resume_cache", ""),
             "about": getattr(self, "_about_cache", ""),
         }
@@ -412,8 +469,29 @@ class SetupWizard(tk.Toplevel):
         except Exception as e:  # never trap the user in a broken wizard
             messagebox.showerror("Setup error", str(e), parent=self)
             return
+        self._maybe_offer_discovery(answers.get("industry", ""))
         self._finished = True
         self._close(applied=True)
+
+    def _maybe_offer_discovery(self, industry: str) -> None:
+        """A non-engineering first run starts with an empty, eng-only starter
+        registry. Point the user at the free company-discovery paths so they don't
+        get an empty Inbox (plan 1D). Best-effort; never blocks finishing."""
+        industry = (industry or "").strip()
+        if not industry:
+            return
+        try:
+            from scrape.company_registry import has_industry
+            if has_industry(industry):
+                return
+            messagebox.showinfo(
+                "Build your employer list",
+                f"There aren't any {industry} employers in the starter list yet. "
+                "To fill your Inbox, use Search \N{RIGHTWARDS ARROW} + Add "
+                "Companies to paste a few careers-page links, or run company "
+                "discovery — both are free.", parent=self)
+        except Exception:
+            pass
 
     def _on_skip(self):
         # Skipping leaves the app unconfigured — confirm so it isn't an accident.
