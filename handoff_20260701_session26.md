@@ -78,17 +78,35 @@ Read-me-first: `brain/plan-2026-07-01-session26-scale-onboarding.md` (plan) +
   location fix); WWR/WorkingNomads remote postings hidden from the default view (now tagged
   "{region} (Remote)").
 
-## Still un-built (free, next levers — none started)
+## Round 3 (free reach + efficiency) — DONE (through `0dd43c8`, 1221 tests, 27 ahead, push held)
 
-- **NEOGOV / governmentjobs.com** municipal+state postings (the real municipal channel; Socrata is
-  a dead end). CHECKED 2026-07-01: **no free/legal public API** (like Indeed) — reachable only by
-  scraping, which is ToS-sensitive, so NOT auto-built (same line we drew on Indeed). Options for
-  Alex: (a) the already-wired Google-Jobs proxies surface some gov postings; (b) a compliant,
-  user-gated capture; (c) accept it as out of scope. Needs your call — no autonomous scraper.
-- **ETag / If-Modified-Since** conditional GET for Greenhouse/Lever/Ashby (free efficiency — cheap
-  daily runs on a big registry).
-- **Bulk registry seed** from a free open ATS-slug dataset (jobhive/OpenJobs) — biggest raw-reach
-  lever; `seed_companies.py` path exists, needs the dataset fetched.
+- **jobhive bulk seeder** (`discover/jobhive_seed.py`) — STREAMING (never stores the 996MB+ slices),
+  byte-bounded, field-targeted, probe-verified, max-parallel; from the jobhive open dataset (MIT,
+  manifest `storage.stapply.ai/jobhive/v1/manifest.json`, needs a UA header). Wired into
+  `build_company_list --jobhive` = the per-field **onboarding seed-pull** you asked me to note.
+- **Ran it thorough:** **+252 field-tagged, probe-verified companies** (software 150, applied_ai
+  150, controls 67, health_informatics 13); `companies.json` (TRACKED) ~371 → ~623. Real names:
+  Figure, Skild AI, Third Wave Automation, Cohere Health, Zus Health. Precision: a `_GENERIC_TOKENS`
+  stoplist so "health informatics" stops grabbing 1800contacts via bare "health"/"analyst".
+- **ETag / conditional-GET** for greenhouse+lever — cheap daily runs at scale; parsed output
+  byte-identical; same-run zero-network dedup preserved.
+- **Round-3 review** (`brain/REVIEW-REPORT-2026-07-01-session26-round3.md`) → 3 defects fixed:
+  **CRIT** conditional-GET re-served a dead (404) board's stale jobs forever (now HTTP-error →
+  mark-failed); `_looks_junk` len-rule dropped real long-name orgs (labs/hospital systems) → now
+  hex/digit-heavy only; `keywords_for_industry` re-polluted for all-generic fields → returns [] +
+  callers skip.
+
+## Still un-built (free — for you)
+
+- **NEOGOV / governmentjobs.com** — CHECKED 2026-07-01: robots is `User-agent: * → Disallow: /`
+  (whole site off-limits to non-whitelisted bots) + **no free public API**. Scrape-only + ToS-
+  sensitive, so **NOT auto-built** (same line we drew on Indeed). Reach gov postings via the wired
+  Google-Jobs proxy, or a user-gated capture, or accept out-of-scope. Your call — no autonomous scraper.
+- **BM25** skill/title scoring — deferred: it **changes existing scores** (not byte-identical), so it
+  needs an off-by-default flag + your re-tune; also overlaps the shipped Model2Vec semantic ranking.
+- **Deeper jobhive seed** — re-run `--jobhive` per field for more depth (F1 fix now includes
+  long-name orgs), or seed Workday/iCIMS slices for health systems (heavier probes). Registry is
+  already ~623; weigh reach vs. careers-run heaviness (ETag + tiering mitigate).
 - **BM25** skill/title scoring (deferred — changes existing scores; wants a flag/your call).
 
 ## Env
