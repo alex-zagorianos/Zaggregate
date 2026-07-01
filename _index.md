@@ -9,28 +9,31 @@ status: active
 
 > Python job-search aggregator + local match-scoring + assisted apply-queue.
 > **Assisted batch, never auto-apply** — tool ranks/preps/queues, Alex clicks Submit.
-> Status: **🟢 Active — **Session 19** researched LinkedIn/Indeed data acquisition + how jobs are really found (web workflow + fact-check: no read API for either, they're ATS syndication, the company **registry is the binding coverage constraint**), then planned + built a **company-acquisition pipeline**: a metro **enumeration CLI** (`enumerate_companies.py` — an LLM proposes local companies, a **probe-verify gate** drops the fakes), **enterprise-ATS** coverage (Workday/iCIMS/Taleo/SF via JSON-LD), **tiered scheduling** (keep a big registry fast), and **remote-first-class** scoring (remote no longer zeroed). Pre-push review: no real bugs. **725 tests; 37 commits LOCAL, not pushed** — pending Alex's `py gui.py` eyeball + push, and running the enumeration on Cincinnati. (Prior: S18 modern ttkbootstrap UI + dark-outline fix + extension full-detail capture.)** (Orientation stub; canonical brain is [[project-status]].)
+> Status: **🟢 Active — pushed (origin even), 841 tests.** **Session 21** (cheap-backend) did a controls smoke test (+8 verified boards, controls `preferences.md`, top-18 AI-ranked into Top Picks) and built the **AI-pipeline optimization spine** — deterministic `facts → gate → compact-prompt` that makes AI ranking ~⅓ the tokens, cached, and gated (now live in both "Ask AI to rank" buttons); **local-model integration deferred** (spec §11b). **Session 20** (Opus) deep-reviewed the app + ran the live `.exe` new-user test → fixed every finding (Scrapling, schema v4→v5, the `data_static` exe-crash), 725→841. (Orientation stub; canonical brain is [[project-status]].)
 
 ---
 
 ## Core Documents
 
-| Document                                                | Purpose                                                                                                                                                   |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                                                                                  |
-| [[handoff_20260625_session19]]                          | **Latest session** — research → company-acquisition pipeline (metro enumeration + enterprise-ATS + tiering) + remote-first-class (37 commits, 725 tests). |
-| [[handoff_20260625_session18]]                          | Modern ttkbootstrap UI + dark-outline fix + extension full-detail capture (31 commits, 696 tests).                                                        |
-| [[handoff_20260624_session17]]                          | Dead-link fix + competitive Tier 1–3 buildout (25 commits, 682 tests).                                                                                    |
-| `brain\plan-2026-06-24-all-tiers-buildout.md`           | The all-tiers roadmap (with per-item status) + `brain\buildout-log-2026-06-24.md` decisions.                                                              |
-| [[handoff_20260624_session16]]                          | Wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep.                                                                               |
-| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                                                                                     |
-| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                                                                             |
-| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                                                                                      |
-| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                                                                                 |
-| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.                                                                |
-| [[experience]]                                          | Career master file (resume/cover source).                                                                                                                 |
-| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                                                                               |
-| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                                                                             |
+| Document                                                | Purpose                                                                                                                                                                           |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [[project-status]]                                      | **Canonical project brain** (`brain\project-status.md`).                                                                                                                          |
+| [[handoff_20260630_session21]]                          | **Latest session** — controls smoke test + **AI-pipeline optimization** spine (facts→gate→compact prompt, ~⅓ tokens, live in the rank buttons); local-model deferred (spec §11b). |
+| `brain\spec-2026-06-29-ai-pipeline-optimization.md`     | Approved design for decomposing AI ranking for cheap/local models (extract/gate/score/harvest; §11b = deferred local-model work).                                                 |
+| [[handoff_20260630_session20]]                          | Deep review → live `.exe` new-user test → fix-ALL-findings remediation (GLM+Sonnet); Scrapling, schema v4→v5, exe-crash fix (79 commits, 725→841 tests).                          |
+| [[handoff_20260625_session19]]                          | Research → company-acquisition pipeline (metro enumeration + enterprise-ATS + tiering) + remote-first-class (725 tests).                                                          |
+| [[handoff_20260625_session18]]                          | Modern ttkbootstrap UI + dark-outline fix + extension full-detail capture (31 commits, 696 tests).                                                                                |
+| [[handoff_20260624_session17]]                          | Dead-link fix + competitive Tier 1–3 buildout (25 commits, 682 tests).                                                                                                            |
+| `brain\plan-2026-06-24-all-tiers-buildout.md`           | The all-tiers roadmap (with per-item status) + `brain\buildout-log-2026-06-24.md` decisions.                                                                                      |
+| [[handoff_20260624_session16]]                          | Wire latent gaps (JSON-LD, discovery funnel, freshness) + mechanical sweep.                                                                                                       |
+| [[handoff_20260622_session15]]                          | Top Picks: full-inbox AI snapshot → ranked top-X shortlist + GUI tab.                                                                                                             |
+| [[handoff_20260622_session14]]                          | UI/UX pass: clean light theme, Guide/Help, dark mode, first-run Setup wizard.                                                                                                     |
+| [[handoff_20260622_session12]]                          | Distributable AI-native product rebuild (exe + MCP).                                                                                                                              |
+| `brain\spec-2026-06-22-distributable-product-design.md` | Approved two-channel product design spec.                                                                                                                                         |
+| [[handoff_20260614_session9]]                           | Earlier session — archive, search tightening, projects, add-companies, browser-ext verify.                                                                                        |
+| [[experience]]                                          | Career master file (resume/cover source).                                                                                                                                         |
+| [[claude_code_kickoff_prompt]]                          | Original CC kickoff prompt.                                                                                                                                                       |
+| `gui.py` / `daily_run.py`                               | 5-tab GUI + scheduled daily-run entry points.                                                                                                                                     |
 
 ## Pipeline
 
@@ -51,4 +54,4 @@ Wide-net search → preferences JSON hard-gate → local 0–100 match scoring (
 
 ---
 
-_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 20" + `handoff_20260630_session20.md`. Last updated 2026-06-30 (Session 20: review + fix-all-findings remediation; 725→841 tests; 79 ahead, push held)._
+_Source chat: 41a289c2 (job search / LinkedIn). Full detail: `brain\project-status.md` §"Session 21"/"Session 20" + `handoff_20260630_session21.md`. Last updated 2026-06-30 (Session 21: controls smoke test + AI-pipeline optimization spine; local-model deferred; **pushed**, origin even, 841 tests — 1 uncommitted test-isolation fix to commit)._
