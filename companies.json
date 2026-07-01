@@ -8,12 +8,12 @@
     "  smartrecruiters: slug = the company id from jobs.smartrecruiters.com/YOUR_SLUG (case-sensitive)",
     "  workday:    slug = 'tenant:N:site'  e.g. 'cat:5:CaterpillarCareers'",
     "  direct:     slug = full careers page URL (best-effort HTML scrape)",
-    "industries: list of tags \u2014 used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",
+    "industries: list of tags — used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",
     "If a company name matches one already in the built-in registry, your entry overrides it."
   ],
   "companies": [
     {
-      "_example": "Greenhouse company \u2014 remove _example key when using",
+      "_example": "Greenhouse company — remove _example key when using",
       "name": "Example Greenhouse Co",
       "ats_type": "greenhouse",
       "slug": "exampleco",
@@ -27,16 +27,6 @@
       "ats_type": "lever",
       "slug": "exampleco",
       "industries": [
-        "controls_engineering"
-      ]
-    },
-    {
-      "_example": "Direct URL company (Workday with CSRF, custom portal, etc.)",
-      "name": "Example Direct Co",
-      "ats_type": "direct",
-      "slug": "https://careers.example.com/jobs",
-      "industries": [
-        "health_informatics",
         "controls_engineering"
       ]
     },
@@ -2021,18 +2011,6 @@
       ]
     },
     {
-      "name": "Emporia Energy",
-      "ats_type": "greenhouse",
-      "slug": "emporiarevolutionizinghomeenergy",
-      "industries": [
-        "energy",
-        "ev",
-        "embedded",
-        "hardware",
-        "iot"
-      ]
-    },
-    {
       "name": "Arbor Batteries",
       "ats_type": "ashby",
       "slug": "arbor",
@@ -2090,16 +2068,6 @@
       ]
     },
     {
-      "name": "Patriot Software",
-      "ats_type": "greenhouse",
-      "slug": "55564patriot334567software868575745",
-      "industries": [
-        "software",
-        "ohio",
-        "midwest"
-      ]
-    },
-    {
       "name": "Physna",
       "ats_type": "direct",
       "slug": "https://www.physna.com/careers",
@@ -2109,20 +2077,6 @@
         "manufacturing",
         "software",
         "cnc",
-        "ohio",
-        "midwest"
-      ]
-    },
-    {
-      "name": "Toolpath",
-      "ats_type": "direct",
-      "slug": "https://toolpath.com/join-team-toolpath",
-      "industries": [
-        "applied_ai",
-        "cnc",
-        "cam",
-        "manufacturing",
-        "software",
         "ohio",
         "midwest"
       ]
@@ -3153,6 +3107,2170 @@
       "industries": [
         "health_informatics",
         "health"
+      ]
+    },
+    {
+      "name": "0g",
+      "ats_type": "ashby",
+      "slug": "0g",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "100ms",
+      "ats_type": "lever",
+      "slug": "100ms",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "10alabs",
+      "ats_type": "greenhouse",
+      "slug": "10alabs",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "10xteam",
+      "ats_type": "ashby",
+      "slug": "10xteam",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "1800contacts",
+      "ats_type": "greenhouse",
+      "slug": "1800contacts",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "1inch",
+      "ats_type": "lever",
+      "slug": "1inch",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "1mind",
+      "ats_type": "ashby",
+      "slug": "1mind",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "2bc11c2c7us",
+      "ats_type": "greenhouse",
+      "slug": "2bc11c2c7us",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "2u",
+      "ats_type": "greenhouse",
+      "slug": "2u",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "3cloud",
+      "ats_type": "greenhouse",
+      "slug": "3cloud",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "3y-health",
+      "ats_type": "ashby",
+      "slug": "3y-health",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "66degrees",
+      "ats_type": "greenhouse",
+      "slug": "66degrees",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "6sense",
+      "ats_type": "greenhouse",
+      "slug": "6sense",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "7shifts",
+      "ats_type": "greenhouse",
+      "slug": "7shifts",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "8thlightrebuild",
+      "ats_type": "greenhouse",
+      "slug": "8thlightrebuild",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "9-mothers",
+      "ats_type": "ashby",
+      "slug": "9-mothers",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "9fin",
+      "ats_type": "ashby",
+      "slug": "9fin",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "a-team",
+      "ats_type": "ashby",
+      "slug": "a-team",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "abacum",
+      "ats_type": "ashby",
+      "slug": "abacum",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "abacusinsights",
+      "ats_type": "greenhouse",
+      "slug": "abacusinsights",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "abakaai",
+      "ats_type": "greenhouse",
+      "slug": "abakaai",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "abbyy",
+      "ats_type": "greenhouse",
+      "slug": "abbyy",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "abc",
+      "ats_type": "greenhouse",
+      "slug": "abc",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "abound",
+      "ats_type": "ashby",
+      "slug": "abound",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "acadiapharmaceuticals",
+      "ats_type": "greenhouse",
+      "slug": "acadiapharmaceuticals",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "accela",
+      "ats_type": "greenhouse",
+      "slug": "accela",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "acceldata",
+      "ats_type": "lever",
+      "slug": "acceldata",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "accenturefederalservices",
+      "ats_type": "greenhouse",
+      "slug": "accenturefederalservices",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "accesso",
+      "ats_type": "greenhouse",
+      "slug": "accesso",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "accionlabs2",
+      "ats_type": "smartrecruiters",
+      "slug": "accionlabs2",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "accordion",
+      "ats_type": "greenhouse",
+      "slug": "accordion",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "accurx",
+      "ats_type": "ashby",
+      "slug": "accurx",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "achievers",
+      "ats_type": "lever",
+      "slug": "achievers",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "aclu",
+      "ats_type": "greenhouse",
+      "slug": "aclu",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "acommerce",
+      "ats_type": "greenhouse",
+      "slug": "acommerce",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "acorns",
+      "ats_type": "ashby",
+      "slug": "acorns",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "acquia",
+      "ats_type": "greenhouse",
+      "slug": "acquia",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "acquisition",
+      "ats_type": "ashby",
+      "slug": "acquisition",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "acrisureinnovation",
+      "ats_type": "greenhouse",
+      "slug": "acrisureinnovation",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "acryldata",
+      "ats_type": "greenhouse",
+      "slug": "acryldata",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "actian",
+      "ats_type": "lever",
+      "slug": "actian",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "acutechgroupinc",
+      "ats_type": "greenhouse",
+      "slug": "acutechgroupinc",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "ada18",
+      "ats_type": "greenhouse",
+      "slug": "ada18",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "adaption",
+      "ats_type": "ashby",
+      "slug": "adaption",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "adaptivesecurity",
+      "ats_type": "ashby",
+      "slug": "adaptivesecurity",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "addepar1",
+      "ats_type": "greenhouse",
+      "slug": "addepar1",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "additionwealth",
+      "ats_type": "lever",
+      "slug": "additionwealth",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "admios",
+      "ats_type": "greenhouse",
+      "slug": "admios",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "adora",
+      "ats_type": "lever",
+      "slug": "adora",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "advancedspace",
+      "ats_type": "greenhouse",
+      "slug": "advancedspace",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "adventus",
+      "ats_type": "lever",
+      "slug": "adventus",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "adyen",
+      "ats_type": "greenhouse",
+      "slug": "adyen",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "aechelontechnology",
+      "ats_type": "greenhouse",
+      "slug": "aechelontechnology",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "aeratechnology",
+      "ats_type": "lever",
+      "slug": "aeratechnology",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "aerospike",
+      "ats_type": "greenhouse",
+      "slug": "aerospike",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "aerostrat",
+      "ats_type": "lever",
+      "slug": "aerostrat",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "aestudio",
+      "ats_type": "greenhouse",
+      "slug": "aestudio",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "afero",
+      "ats_type": "lever",
+      "slug": "afero",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "affinidi",
+      "ats_type": "greenhouse",
+      "slug": "affinidi",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "affinipay1",
+      "ats_type": "greenhouse",
+      "slug": "affinipay1",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "affinity",
+      "ats_type": "greenhouse",
+      "slug": "affinity",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "affirm",
+      "ats_type": "greenhouse",
+      "slug": "affirm",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "afresh",
+      "ats_type": "greenhouse",
+      "slug": "afresh",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "agecareers",
+      "ats_type": "greenhouse",
+      "slug": "agecareers",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "agency",
+      "ats_type": "greenhouse",
+      "slug": "agency",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "agencywithin",
+      "ats_type": "greenhouse",
+      "slug": "agencywithin",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "agicap",
+      "ats_type": "lever",
+      "slug": "agicap",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "agile-defense",
+      "ats_type": "lever",
+      "slug": "agile-defense",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "agilisys",
+      "ats_type": "greenhouse",
+      "slug": "agilisys",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "agiloft",
+      "ats_type": "lever",
+      "slug": "agiloft",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "agoda",
+      "ats_type": "greenhouse",
+      "slug": "agoda",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "agodasandbox",
+      "ats_type": "greenhouse",
+      "slug": "agodasandbox",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "agtonomy",
+      "ats_type": "lever",
+      "slug": "agtonomy",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "aifi",
+      "ats_type": "lever",
+      "slug": "aifi",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "aift",
+      "ats_type": "greenhouse",
+      "slug": "aift",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "air-tek",
+      "ats_type": "lever",
+      "slug": "air-tek",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "airalo",
+      "ats_type": "lever",
+      "slug": "airalo",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "airapps",
+      "ats_type": "ashby",
+      "slug": "airapps",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "airbnb",
+      "ats_type": "greenhouse",
+      "slug": "airbnb",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "aircall",
+      "ats_type": "lever",
+      "slug": "aircall",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "airia",
+      "ats_type": "greenhouse",
+      "slug": "airia",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "airops",
+      "ats_type": "ashby",
+      "slug": "airops",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "airship",
+      "ats_type": "greenhouse",
+      "slug": "airship",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "airslate",
+      "ats_type": "lever",
+      "slug": "airslate",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "airtable",
+      "ats_type": "greenhouse",
+      "slug": "airtable",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "airtrunk",
+      "ats_type": "greenhouse",
+      "slug": "airtrunk",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "airwallex",
+      "ats_type": "ashby",
+      "slug": "airwallex",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "aiserajobs",
+      "ats_type": "greenhouse",
+      "slug": "aiserajobs",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "aisquared",
+      "ats_type": "greenhouse",
+      "slug": "aisquared",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "aiwyn",
+      "ats_type": "ashby",
+      "slug": "aiwyn",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "ajax",
+      "ats_type": "lever",
+      "slug": "ajax",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "akersystems",
+      "ats_type": "greenhouse",
+      "slug": "akersystems",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "akidolabs",
+      "ats_type": "greenhouse",
+      "slug": "akidolabs",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "akko",
+      "ats_type": "greenhouse",
+      "slug": "akko",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "akuity",
+      "ats_type": "greenhouse",
+      "slug": "akuity",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "alamarbiosciences",
+      "ats_type": "greenhouse",
+      "slug": "alamarbiosciences",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "alan",
+      "ats_type": "ashby",
+      "slug": "alan",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "albedo",
+      "ats_type": "greenhouse",
+      "slug": "albedo",
+      "industries": [
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "alembic",
+      "ats_type": "ashby",
+      "slug": "alembic",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "alephalpha",
+      "ats_type": "ashby",
+      "slug": "alephalpha",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "alertmedia",
+      "ats_type": "greenhouse",
+      "slug": "alertmedia",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alertus",
+      "ats_type": "lever",
+      "slug": "alertus",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "algolia",
+      "ats_type": "greenhouse",
+      "slug": "algolia",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alice-bob",
+      "ats_type": "lever",
+      "slug": "alice-bob",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alimentiv-2",
+      "ats_type": "lever",
+      "slug": "alimentiv-2",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "alixpartners",
+      "ats_type": "greenhouse",
+      "slug": "alixpartners",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "allcareers",
+      "ats_type": "greenhouse",
+      "slug": "allcareers",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "allencontrolsystems",
+      "ats_type": "greenhouse",
+      "slug": "allencontrolsystems",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "allica-bank",
+      "ats_type": "ashby",
+      "slug": "allica-bank",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "allium",
+      "ats_type": "ashby",
+      "slug": "allium",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "alluxio",
+      "ats_type": "lever",
+      "slug": "alluxio",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alma31",
+      "ats_type": "greenhouse",
+      "slug": "alma31",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "almedia",
+      "ats_type": "ashby",
+      "slug": "almedia",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "alohi",
+      "ats_type": "ashby",
+      "slug": "alohi",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "aloyoga",
+      "ats_type": "greenhouse",
+      "slug": "aloyoga",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alpaca",
+      "ats_type": "greenhouse",
+      "slug": "alpaca",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "alphafmcroles",
+      "ats_type": "greenhouse",
+      "slug": "alphafmcroles",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alphagrepsecurities",
+      "ats_type": "greenhouse",
+      "slug": "alphagrepsecurities",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alphasense",
+      "ats_type": "greenhouse",
+      "slug": "alphasense",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alphasenseindia",
+      "ats_type": "greenhouse",
+      "slug": "alphasenseindia",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alt",
+      "ats_type": "greenhouse",
+      "slug": "alt",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "altamirafreelance",
+      "ats_type": "greenhouse",
+      "slug": "altamirafreelance",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "altaml",
+      "ats_type": "lever",
+      "slug": "altaml",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "altanaai",
+      "ats_type": "greenhouse",
+      "slug": "altanaai",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "altentechnologyusa",
+      "ats_type": "greenhouse",
+      "slug": "altentechnologyusa",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "altoslabs",
+      "ats_type": "greenhouse",
+      "slug": "altoslabs",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "altruist",
+      "ats_type": "greenhouse",
+      "slug": "altruist",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "alu",
+      "ats_type": "greenhouse",
+      "slug": "alu",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "alumniventures",
+      "ats_type": "greenhouse",
+      "slug": "alumniventures",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "alvys",
+      "ats_type": "greenhouse",
+      "slug": "alvys",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "amaehealth",
+      "ats_type": "greenhouse",
+      "slug": "amaehealth",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "amberelectric",
+      "ats_type": "lever",
+      "slug": "amberelectric",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "ambiencehealthcare",
+      "ats_type": "ashby",
+      "slug": "ambiencehealthcare",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "ambiententerprises",
+      "ats_type": "greenhouse",
+      "slug": "ambiententerprises",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "ambrook",
+      "ats_type": "ashby",
+      "slug": "ambrook",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "amca",
+      "ats_type": "greenhouse",
+      "slug": "amca",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "amigo",
+      "ats_type": "ashby",
+      "slug": "amigo",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "amo",
+      "ats_type": "ashby",
+      "slug": "amo",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "amount",
+      "ats_type": "greenhouse",
+      "slug": "amount",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "amplitude",
+      "ats_type": "greenhouse",
+      "slug": "amplitude",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "analyticpartners",
+      "ats_type": "lever",
+      "slug": "analyticpartners",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "anaplan",
+      "ats_type": "greenhouse",
+      "slug": "anaplan",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "anavationllc",
+      "ats_type": "lever",
+      "slug": "anavationllc",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "anchanto",
+      "ats_type": "greenhouse",
+      "slug": "anchanto",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "anchorage",
+      "ats_type": "lever",
+      "slug": "anchorage",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "angellist",
+      "ats_type": "lever",
+      "slug": "angellist",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "anrok",
+      "ats_type": "ashby",
+      "slug": "anrok",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "ans",
+      "ats_type": "lever",
+      "slug": "ans",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "ansatzcapital",
+      "ats_type": "lever",
+      "slug": "ansatzcapital",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "answersnow",
+      "ats_type": "ashby",
+      "slug": "answersnow",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "antaiventures",
+      "ats_type": "ashby",
+      "slug": "antaiventures",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "anteriad",
+      "ats_type": "greenhouse",
+      "slug": "anteriad",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "anthropic",
+      "ats_type": "greenhouse",
+      "slug": "anthropic",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "anybotics",
+      "ats_type": "lever",
+      "slug": "anybotics",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "anysignal",
+      "ats_type": "ashby",
+      "slug": "anysignal",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "aperaaiinc",
+      "ats_type": "greenhouse",
+      "slug": "aperaaiinc",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "apex-ai",
+      "ats_type": "lever",
+      "slug": "apex-ai",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "apiphani",
+      "ats_type": "greenhouse",
+      "slug": "apiphani",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "apolloio",
+      "ats_type": "greenhouse",
+      "slug": "apolloio",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "apolloresearch",
+      "ats_type": "lever",
+      "slug": "apolloresearch",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "appdirect",
+      "ats_type": "greenhouse",
+      "slug": "appdirect",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "appen-2",
+      "ats_type": "lever",
+      "slug": "appen-2",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "appfollow",
+      "ats_type": "lever",
+      "slug": "appfollow",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "appian",
+      "ats_type": "greenhouse",
+      "slug": "appian",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "appier",
+      "ats_type": "greenhouse",
+      "slug": "appier",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "applied",
+      "ats_type": "ashby",
+      "slug": "applied",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "applydigital",
+      "ats_type": "lever",
+      "slug": "applydigital",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "appnation",
+      "ats_type": "lever",
+      "slug": "appnation",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "appzen",
+      "ats_type": "lever",
+      "slug": "appzen",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "april",
+      "ats_type": "ashby",
+      "slug": "april",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "aqemia.com",
+      "ats_type": "lever",
+      "slug": "aqemia.com",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "aquabyte",
+      "ats_type": "lever",
+      "slug": "aquabyte",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "arbitalhealth",
+      "ats_type": "lever",
+      "slug": "arbitalhealth",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "arcteryx.com",
+      "ats_type": "lever",
+      "slug": "arcteryx.com",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "array-behavioral-care",
+      "ats_type": "ashby",
+      "slug": "array-behavioral-care",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "arrivelogistics",
+      "ats_type": "lever",
+      "slug": "arrivelogistics",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "arsiem",
+      "ats_type": "lever",
+      "slug": "arsiem",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "artera",
+      "ats_type": "lever",
+      "slug": "artera",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "artera-2",
+      "ats_type": "lever",
+      "slug": "artera-2",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "asapp-2",
+      "ats_type": "lever",
+      "slug": "asapp-2",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "askfavor",
+      "ats_type": "lever",
+      "slug": "askfavor",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "assorthealth",
+      "ats_type": "ashby",
+      "slug": "assorthealth",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "astera",
+      "ats_type": "ashby",
+      "slug": "astera",
+      "industries": [
+        "controls",
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "athletetoathlete",
+      "ats_type": "lever",
+      "slug": "athletetoathlete",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "atlan",
+      "ats_type": "ashby",
+      "slug": "atlan",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "atomcomputing",
+      "ats_type": "lever",
+      "slug": "atomcomputing",
+      "industries": [
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "avante",
+      "ats_type": "lever",
+      "slug": "avante",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "aviyatech",
+      "ats_type": "lever",
+      "slug": "aviyatech",
+      "industries": [
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "azul",
+      "ats_type": "lever",
+      "slug": "azul",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "bannerbank",
+      "ats_type": "lever",
+      "slug": "bannerbank",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "basis",
+      "ats_type": "lever",
+      "slug": "basis",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "bazaarvoice",
+      "ats_type": "lever",
+      "slug": "bazaarvoice",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "beaconai",
+      "ats_type": "ashby",
+      "slug": "beaconai",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "bee-talents",
+      "ats_type": "lever",
+      "slug": "bee-talents",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "beghouconsulting",
+      "ats_type": "lever",
+      "slug": "beghouconsulting",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "bellotalabs",
+      "ats_type": "lever",
+      "slug": "bellotalabs",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "belvederetrading",
+      "ats_type": "lever",
+      "slug": "belvederetrading",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "betr",
+      "ats_type": "lever",
+      "slug": "betr",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "betterup",
+      "ats_type": "ashby",
+      "slug": "betterup",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "bfsaul",
+      "ats_type": "lever",
+      "slug": "bfsaul",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "bfsaulhotels",
+      "ats_type": "lever",
+      "slug": "bfsaulhotels",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "bhg-inc",
+      "ats_type": "lever",
+      "slug": "bhg-inc",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "bhhc",
+      "ats_type": "lever",
+      "slug": "bhhc",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "bigblue",
+      "ats_type": "lever",
+      "slug": "bigblue",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "binance",
+      "ats_type": "lever",
+      "slug": "binance",
+      "industries": [
+        "applied_ai",
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "biointellisense",
+      "ats_type": "lever",
+      "slug": "biointellisense",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "bjakcareer",
+      "ats_type": "ashby",
+      "slug": "bjakcareer",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "blablacar",
+      "ats_type": "lever",
+      "slug": "blablacar",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "blackbirdinteractive",
+      "ats_type": "lever",
+      "slug": "blackbirdinteractive",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "blinq",
+      "ats_type": "lever",
+      "slug": "blinq",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "bloomon",
+      "ats_type": "lever",
+      "slug": "bloomon",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "blue",
+      "ats_type": "lever",
+      "slug": "blue",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "bluecatnetworks",
+      "ats_type": "lever",
+      "slug": "bluecatnetworks",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "bluelightconsulting",
+      "ats_type": "lever",
+      "slug": "bluelightconsulting",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "bluesight",
+      "ats_type": "lever",
+      "slug": "bluesight",
+      "industries": [
+        "controls",
+        "software"
+      ]
+    },
+    {
+      "name": "bosonai",
+      "ats_type": "lever",
+      "slug": "bosonai",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "bounteous",
+      "ats_type": "lever",
+      "slug": "bounteous",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "bpmcpa",
+      "ats_type": "lever",
+      "slug": "bpmcpa",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "brevo",
+      "ats_type": "lever",
+      "slug": "brevo",
+      "industries": [
+        "software"
+      ]
+    },
+    {
+      "name": "brightedge",
+      "ats_type": "lever",
+      "slug": "brightedge",
+      "industries": [
+        "applied_ai",
+        "software"
+      ]
+    },
+    {
+      "name": "brillio-2",
+      "ats_type": "lever",
+      "slug": "brillio-2",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "brinc",
+      "ats_type": "ashby",
+      "slug": "brinc",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "brindleyengineering",
+      "ats_type": "lever",
+      "slug": "brindleyengineering",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "britecore",
+      "ats_type": "lever",
+      "slug": "britecore",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "brooksrunning",
+      "ats_type": "lever",
+      "slug": "brooksrunning",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "bumbleinc",
+      "ats_type": "lever",
+      "slug": "bumbleinc",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "burga",
+      "ats_type": "lever",
+      "slug": "burga",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "buspatrol",
+      "ats_type": "ashby",
+      "slug": "buspatrol",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "cabonorte",
+      "ats_type": "lever",
+      "slug": "cabonorte",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "cagents",
+      "ats_type": "lever",
+      "slug": "cagents",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "caliza-financial-technologies",
+      "ats_type": "lever",
+      "slug": "caliza-financial-technologies",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "canvasmedical",
+      "ats_type": "lever",
+      "slug": "canvasmedical",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "capital",
+      "ats_type": "lever",
+      "slug": "capital",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "captivateiq",
+      "ats_type": "lever",
+      "slug": "captivateiq",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "caremessage",
+      "ats_type": "lever",
+      "slug": "caremessage",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "caseware",
+      "ats_type": "lever",
+      "slug": "caseware",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "celaralabs",
+      "ats_type": "lever",
+      "slug": "celaralabs",
+      "industries": [
+        "applied_ai",
+        "controls"
+      ]
+    },
+    {
+      "name": "celerion",
+      "ats_type": "lever",
+      "slug": "celerion",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "cellares",
+      "ats_type": "lever",
+      "slug": "cellares",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "centivo",
+      "ats_type": "ashby",
+      "slug": "centivo",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "certik",
+      "ats_type": "lever",
+      "slug": "certik",
+      "industries": [
+        "applied_ai"
+      ]
+    },
+    {
+      "name": "charge-robotics",
+      "ats_type": "ashby",
+      "slug": "charge-robotics",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "circuithub",
+      "ats_type": "ashby",
+      "slug": "circuithub",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "claylabs",
+      "ats_type": "ashby",
+      "slug": "claylabs",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "clera",
+      "ats_type": "ashby",
+      "slug": "clera",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "cohere",
+      "ats_type": "ashby",
+      "slug": "cohere",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "confluent",
+      "ats_type": "ashby",
+      "slug": "confluent",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "contoro",
+      "ats_type": "ashby",
+      "slug": "contoro",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "coram-ai",
+      "ats_type": "ashby",
+      "slug": "coram-ai",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "cosmic-robotics",
+      "ats_type": "ashby",
+      "slug": "cosmic-robotics",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "deltia",
+      "ats_type": "ashby",
+      "slug": "deltia",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "dexmate",
+      "ats_type": "ashby",
+      "slug": "dexmate",
+      "industries": [
+        "controls"
+      ]
+    },
+    {
+      "name": "drata",
+      "ats_type": "ashby",
+      "slug": "drata",
+      "industries": [
+        "controls",
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "duet",
+      "ats_type": "ashby",
+      "slug": "duet",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "eightsleep",
+      "ats_type": "ashby",
+      "slug": "eightsleep",
+      "industries": [
+        "health_informatics"
+      ]
+    },
+    {
+      "name": "endurance-energy",
+      "ats_type": "ashby",
+      "slug": "endurance-energy",
+      "industries": [
+        "controls"
       ]
     }
   ]
