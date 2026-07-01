@@ -11,9 +11,9 @@ def tmp_db(tmp_path, monkeypatch):
 
 
 def test_init_sets_user_version_4_and_second_init_is_noop(tmp_db):
-    assert db.init_db() is True     # first call migrates -> v4
+    assert db.init_db() is True     # first call migrates -> current
     with db.get_conn() as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     assert db.init_db() is False    # already current -> fast-path skip
 
 
