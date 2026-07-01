@@ -1,0 +1,83 @@
+# Research — Ranking & matching jobs once found (2026-07-01)
+
+_Confidence: High on architecture/integration recommendations (grounded directly in the read source files match/scorer.py, ranker.py, match/facts.py, match/rubric.py, match/gate.py, app.spec, tracker/db.py, requirements.txt). High on Model2Vec/BM25/RRF/LambdaMART facts (multiple corroborating sources). Medium on exact current MTEB numeric scores for e5-small-v2/gte-small (searches returned strong data for bge-small-en-v1.5 and Model2Vec but incomplete for the other two - recommend a quick empirical bench before final model choice) and on gte-small's exact license tag (older thenlper card vs newer Apache-2.0 Alibaba-NLP gte-base-en-v1.5 - verify the specific model card before bundling)._
+
+## Summary
+JobScout's deterministic scorer (match/scorer.py) is already a well-built keyword/rule engine with real anti-gaming guards (generic-title dampening, skill saturation, weight renormalization for missing data) that mirror what commercial tools like Huntr do. The single missing layer is local semantic similarity - nothing in the pipeline understands that "mechatronics" and "controls engineering" are related, only exact/substring term overlap. The fix is small and exe-friendly: MinishLab's Model2Vec potion-base-8M/-32M static embeddings (MIT license, numpy-only, no torch, 8-30MB on disk, ~25k sentences/sec on one CPU core) slot in as a new capped scoring component, reusing the same facts-cache pattern already in match/facts.py. True LambdaMART-style learning-to-rank is the wrong tool for a single-user, privacy-first local app (needs query-grouped volume JobScout will never accumulate); a tiny logistic-regression re-weighting over tracker.db's existing applied/dismissed signal is the right-sized analog once ~50-100 labeled actions exist. Reciprocal Rank Fusion is real and cited, but should stay an internal AI-batch-selection tool, not the user-facing score, because RRF outputs aren't calibrated across runs and would break the GUI's score chips and score_history trend charts.
+
+## Findings
+## Where JobScout stands today
+
+`match/scorer.py` is a deterministic, weighted-composite ranker: title (35), skills (25), salary (15), location (15), recency (10), plus a company-size modifier and hard penalties (title-miss gate, exclude-title/seniority blocklists, exclude-keyword hits). It already implements two textbook anti-keyword-stuffing guards independently: `_GENERIC_TITLE_TERMS` caps a title match on a single generic word ("health") to 0.5 credit, and `_skill_score` saturates at 8 hits (`min(hits/8.0, 1.0)`) so stuffing 50 buzzwords into a description can't blow past full skill credit. It also renormalizes weights over "present" components so missing data doesn't get penalized as a false negative. This is functionally close to what Huntr's Job Match Score does: keywords are explicitly capped at **under 20% of the final score**, with qualifications/responsibilities carrying "roughly one-third to one-half," specifically so gaming keyword density can't win ([Huntr Help Center](https://help.huntr.co/en/articles/12241684-job-match-score)). Jobscan's match rate uses the same idea from the other side - hard skills weighted far above soft-skill keywords, plus title and education signals ([Jobscan support](https://support.jobscan.co/hc/en-us/articles/360055995534-How-is-the-resume-match-rate-calculated)).
+
+`ranker.py` + `match/facts.py` + `match/rubric.py` + `match/gate.py` already implement the "cheap-model-first" LLM cascade pattern the industry converges on: deterministic extraction -> deterministic hard gate (drops internships/clearance/foreign-visa/management-mismatch before any model call) -> a compact facts+rubric prompt (`build_compact_request`, ~15x smaller than raw HTML) sent to the LLM only for the survivors. This matches current guidance that cheap recall should run first and expensive reasoning should only touch the top slice ([ZeroEntropy: Should You Use LLMs for Reranking?](https://zeroentropy.dev/articles/should-you-use-llms-for-reranking-a-deep-dive-into-pointwise-listwise-and-cross-encoders/)). What's genuinely absent from the whole pipeline is a semantic/embedding signal - everything today is regex/substring term matching, so a "controls engineer" search never surfaces a "mechatronics systems engineer" posting that shares zero literal tokens.
+
+## Local embeddings: the right model for a PyInstaller exe
+
+The standard sentence-transformers small models (`all-MiniLM-L6-v2`, `bge-small-en-v1.5`, `e5-small-v2`, `gte-small`) are all viable candidates (all ~80-130MB fp32, 384-dim, all MIT/Apache-2.0 permissively licensed) but they pull in **torch + transformers via `sentence-transformers`**, which is a multi-hundred-MB-to-GB dependency bloat for a codebase that today has *no numpy at all* in `requirements.txt`. `bge-small-en-v1.5` quantized to int8 ONNX is only 32.4MB ([BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5)) but still needs `onnxruntime`. Qdrant's `fastembed` avoids torch entirely (ONNX-only, no CUDA requirement) and is the right middle-tier choice if quality needs beat the option below ([qdrant/fastembed](https://github.com/qdrant/fastembed)).
+
+The best fit for JobScout specifically is **MinishLab's Model2Vec** (`minishlab/potion-base-8M` or `-32M`, MIT license): static (non-transformer) embeddings distilled from a real transformer, with **the base package's only dependency being numpy** - no torch, no onnxruntime, no tokenizer runtime. `potion-base-8M` is ~1.8-7.5M params / ~8MB on disk and does ~25,000 sentences/sec on a single CPU core (~500x `all-MiniLM-L6-v2`'s ~50/sec), retaining roughly 80-90% of MiniLM's MTEB accuracy; `potion-base-32M` is ~30MB and closes most of that gap ([MinishLab/model2vec GitHub](https://github.com/MinishLab/model2vec), [potion-base-2M model card](https://huggingface.co/minishlab/potion-base-2M)). At 8-30MB this ships trivially in `app.spec`'s `datas` list (compare to the existing 1.4GB Scrapling-browser lazy-download precedent already in the repo - this doesn't even need that pattern, it can just be bundled). Avoid `jina-embeddings-v3` - its license flipped from Apache-2.0 (v2) to **CC-BY-NC-4.0** ([Jina AI migration notes](https://jina.ai/news/migration-from-jina-embeddings-v2-to-v3/)), which is a legal-risk mismatch for a freely redistributable exe; `jina-embeddings-v2-small-en` (Apache-2.0) is fine if Model2Vec's accuracy ever proves insufficient.
+
+## Concrete integration plan
+
+1. **New `match/semantic.py`** (S-M effort): load `potion-base-8M` once at process start; embed `facts_summary(facts)` (the ~40-token compact string already built in `match/facts.py`) rather than raw `job.description` - consistent with the "facts not HTML" principle the AI pipeline already follows. Embed the candidate's profile once (skills from `experience.md` + `preferences.md` prose, cached on mtime the same way `extract_skill_terms` memoizes in `match/scorer.py`). Cosine similarity -> a `semantic_score` in [0,1].
+2. **Calibrate before blending**: raw cosine similarities on short job-fact text cluster tightly (commonly 0.3-0.7), so don't min-max normalize per search batch - that would make the score incomparable across days and corrupt `score_history` trend charts in `tracker/db.py`. Fit one fixed affine remap empirically once (same spirit as the existing 10-day recency half-life constant) rather than a per-run normalization.
+3. **Add it as a capped weighted component** in `score_job`'s existing present/absent renormalization scheme (`match/scorer.py:374-386`) - e.g. weight ~12-15, deliberately below title(35)/skills(25) so it can't dominate, mirroring Huntr's <20% keyword-analog cap philosophy. Surface it in `score_breakdown()`'s parsed chips for the GUI scorecard.
+4. **Feed it to the LLM stage too**: add `semantic_fit` as a field in `extract_facts`'s `JobFacts` dict (`match/facts.py`) so `ranker.build_compact_request` gives the model a numeric prior instead of re-deriving relevance from the facts summary alone - cheaper and more consistent AI verdicts.
+5. Cache per-job embeddings keyed by `job_key` (+ profile signature, mirroring `_profile_sig` in `match/facts.py`) exactly like `facts_for`'s disk cache, so re-scoring is near-free.
+
+## Sparse retrieval upgrade (cheap, independent win)
+
+`_skill_score`/`_title_score` today are unweighted term-presence counts - a rare, high-signal skill term ("EtherCAT") counts the same as a common one ("automation"). Swapping in a real BM25 term-frequency/IDF weighting via `rank_bm25` or the faster `bm25s` (pure Python, sparse-matrix, no heavy deps) over the small per-search job corpus is a low-effort, no-license-risk improvement independent of embeddings ([xhluca/bm25s](https://github.com/xhluca/bm25s), [rank_bm25 PyPI](https://pypi.org/project/rank-bm25/)).
+
+## Reciprocal Rank Fusion - real, but not for the displayed score
+
+RRF (`score = sum of 1/(k + rank)`, k=60 standard) is the dominant scale-free way to fuse independently-ranked lists, and on the WANDS e-commerce benchmark it beats both BM25-alone (NDCG 0.6983) and dense-alone (0.6953) at 0.7068 ([Serghei's Blog](https://blog.serghei.pl/posts/reciprocal-rank-fusion-explained/)). It's the right tool if JobScout ever wants to fuse (BM25 rank, semantic rank, deterministic rank) for **selecting which N jobs go into the AI batch** - but it should *not* replace the displayed 0-100 score, because RRF scores are rank-relative and not comparable across different days' search runs, which would silently break `score_history`.
+
+## Learning-to-rank: right-sized, not LambdaMART
+
+`tracker/db.py` already has real feedback substrate: `applications.status` (interested/applied/phone_screen/interview/offer/rejected/withdrawn), the `dismissed` table (implicit negative), and `score_history` (batch scoring snapshots). This is exactly the click/apply signal LTR wants. But full LambdaMART (the LightGBM `lambdarank` objective most production search systems use - [Shaped.ai explainer](https://www.shaped.ai/blog/lambdamart-explained-the-workhorse-of-learning-to-rank)) needs query-grouped, multi-graded training data at real volume; the cold-start literature itself (e.g. LambdaMART-MF, [arXiv:1511.01282](https://arxiv.org/pdf/1511.01282)) exists precisely because vanilla LambdaMART starves on small/sparse data - and JobScout is architecturally single-tenant per data folder (privacy-first, no cross-user pooling). The right-sized analog: once a profile has ~50-100 labeled outcomes, fit a small pointwise logistic regression over the *existing* component features (`score_breakdown()`'s title/skill/salary/location/recency/semantic percentages) to predict apply-probability, then use the fitted coefficients to re-weight `base_w` per profile. This can be hand-rolled in pure numpy (gradient descent) to avoid adding scikit-learn as a dependency - defer this to a later session once real usage data exists; it's not worth building against synthetic data.
+
+## Effort/impact summary
+
+- **S**: BM25 term-weighting for skill/title scores (`rank_bm25`/`bm25s`) - low effort, no license risk.
+- **M**: Model2Vec semantic component in `match/scorer.py` + `match/facts.py` + `app.spec` bundling - the highest-impact single upgrade; closes the "related but not keyword-matching" gap for every field, not just engineering.
+- **M**: Thread `semantic_fit` into the compact AI prompt (`ranker.py`) - cheap once step 2 exists.
+- **L, deferred**: personalized logistic re-weighting from `tracker.db` outcomes - needs real usage volume first.
+- **L, optional/lower priority**: RRF-based AI-batch selection - nice-to-have, not urgent given the gate/rubric pipeline already does structural pre-filtering.
+
+## Key recommendations
+
+- **[M/High - closes the only real gap in the pipeline: no signal today understands related-but-not-keyword-matching roles, which matters even more for the agnostic (any-field) use case than for Alex's own engineering search./risk:none]** Add match/semantic.py using MinishLab Model2Vec potion-base-8M (or potion-base-32M for higher fidelity) as a local, numpy-only static embedding model for semantic similarity between the candidate profile and each job's facts_summary; bundle the ~8-30MB model file directly in app.spec's datas.  
+  MIT license, no torch/onnxruntime dependency (unlike sentence-transformers or fastembed), ~25k sentences/sec on one CPU core, fits the existing facts_for() disk-cache pattern in match/facts.py and the PyInstaller exe-size constraint far better than a full transformer.
+- **[S/Medium-High/risk:none]** Blend the new semantic_score into match/scorer.py's score_job as a capped weighted component (~12-15 of 100) inside the existing present/absent weight-renormalization scheme, not as a replacement for the current title/skill logic.  
+  Mirrors Huntr's <20%-of-score keyword cap so no single signal can dominate or be gamed, and keeps the GUI's score_breakdown() chips and score_history trend charts calibrated and comparable across runs.
+- **[S/Medium/risk:none]** Add a semantic_fit field to match/facts.py's extract_facts() output and thread it through ranker.build_compact_request so the LLM re-rank stage receives it as a numeric prior instead of re-deriving relevance from the compact facts alone.  
+  Keeps the existing cheap-model-first, structured-facts-not-raw-HTML cascade architecture intact while giving the AI stage a stronger, cheaper signal than facts text alone.
+- **[S/Medium/risk:none]** Upgrade _skill_score/_title_score from unweighted term-presence counting to real BM25 term-frequency/IDF weighting via rank_bm25 or bm25s over each search's small job corpus.  
+  Rare, high-signal skill terms currently count the same as common ones; BM25 is a pure-Python, dependency-light, well-understood fix independent of the embedding work.
+- **[L/Medium, long-term personalization/risk:none]** Defer LambdaMART/full learning-to-rank; instead plan a later, small pointwise logistic-regression re-weighting of score_job's component weights, trained per-profile on tracker.db's applications.status + dismissed outcomes once ~50-100 labeled actions accumulate.  
+  Vanilla LambdaMART needs query-grouped bulk training data JobScout's single-tenant, privacy-first architecture will never produce; the cold-start LTR literature confirms this is a known failure mode. A hand-rolled numpy logistic regression avoids adding scikit-learn as a new heavy dependency.
+- **[M/Low-Medium, optional/risk:none]** Do not replace the displayed 0-100 composite score with Reciprocal Rank Fusion; reserve RRF (k=60) as an optional internal mechanism for selecting which jobs enter the LLM AI-ranking batch when fusing BM25/semantic/deterministic rankings.  
+  RRF scores are rank-relative and not comparable across different search runs, which would break score_history trend charts and the GUI's percentage-based score chips; the existing auditable weighted-composite design is more appropriate for a user-facing, explainable score.
+- **[S/Risk mitigation/risk:medium if ignored]** Avoid jina-embeddings-v3 for any bundled/offline model; if a stronger model than Model2Vec is ever needed, use jina-embeddings-v2-small-en (Apache-2.0) or bge-small-en-v1.5 (MIT) instead.  
+  Jina's license changed from Apache-2.0 (v2) to CC-BY-NC-4.0 (v3), restricting commercial/on-prem redistribution - a mismatch for JobScout's free/legal/distributable-exe commitment.
+
+## Sources
+- https://help.huntr.co/en/articles/12241684-job-match-score
+- https://support.jobscan.co/hc/en-us/articles/360055995534-How-is-the-resume-match-rate-calculated
+- https://github.com/MinishLab/model2vec
+- https://huggingface.co/minishlab/potion-base-2M
+- https://huggingface.co/BAAI/bge-small-en-v1.5
+- https://huggingface.co/intfloat/e5-small-v2
+- https://huggingface.co/thenlper/gte-small
+- https://jina.ai/news/migration-from-jina-embeddings-v2-to-v3/
+- https://github.com/qdrant/fastembed
+- https://github.com/xhluca/bm25s
+- https://pypi.org/project/rank-bm25/
+- https://blog.serghei.pl/posts/reciprocal-rank-fusion-explained/
+- https://www.shaped.ai/blog/lambdamart-explained-the-workhorse-of-learning-to-rank
+- https://arxiv.org/pdf/1511.01282
+- https://zeroentropy.dev/articles/should-you-use-llms-for-reranking-a-deep-dive-into-pointwise-listwise-and-cross-encoders/
+- https://github.com/srbhr/Resume-Matcher
+- https://sbert.net/docs/sentence_transformer/usage/efficiency.html
