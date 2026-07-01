@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-import search.jooble_client as JC
+import config
 from search.jooble_client import JoobleClient
 
 FX = Path(__file__).resolve().parents[1] / "fixtures" / "ws2"
@@ -18,7 +18,9 @@ def test_parse_maps(tmp_path):
     assert jobs[0].url.endswith("/123")
 
 def test_no_key_warns_and_empty(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(JC, "JOOBLE_API_KEY", "")
+    # Key now resolves env-then-secret at call time: clear both so it's unset.
+    monkeypatch.delenv("JOOBLE_API_KEY", raising=False)
+    monkeypatch.setattr(config, "SECRETS_DIR", tmp_path / "no_secrets")
     c = JoobleClient(cache_dir=tmp_path, cache_enabled=False)
     assert c.search("automation engineer", "Cincinnati") == {"jobs": []}
     assert "WARNING" in capsys.readouterr().out
