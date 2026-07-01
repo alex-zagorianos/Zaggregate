@@ -239,12 +239,39 @@ def _dataset_stage(dataset: str, industry: str, classify: bool, dry_run: bool, l
     return out
 
 
+# ── stage: jobhive bulk seed (the "onboarding seed-pull" — biggest raw-reach lever) ─
+def _jobhive_stage(industry: str, dry_run: bool, log=print) -> dict:
+    """Bulk-seed the registry from the jobhive open dataset (MIT/free), scoped to
+    THIS field so companies.json stays relevant: streamed + byte-bounded + probe-
+    verified. Best-effort; a failure logs and skips."""
+    print = log
+    try:
+        from discover.jobhive_seed import (FieldSpec, SEEDABLE_ATS,
+                                            keywords_for_industry, seed_from_jobhive)
+    except ImportError:
+        print("[jobhive] discover/jobhive_seed.py unavailable -- skipping.")
+        return {"skipped": "module not available"}
+    if not industry:
+        print("[jobhive] no field to scope the seed to -- skipping.")
+        return {"skipped": "no industry"}
+    import re
+    tag = re.sub(r"[^a-z0-9]+", "_", industry.strip().lower()).strip("_") or "seeded"
+    field = FieldSpec(tag=tag, keywords=keywords_for_industry(industry))
+    result = seed_from_jobhive([field], SEEDABLE_ATS, dry_run=dry_run, log=log)
+    cands = sum(a.get("candidates", 0) for a in result.get("ats", {}).values())
+    print(f"[jobhive] {cands} candidate(s) -> verified {result.get('verified', 0)}, "
+          f"added {result.get('added', 0)} board(s) for '{industry}'.")
+    return {"candidates": cands, "verified": result.get("verified", 0),
+            "added": result.get("added", 0)}
+
+
 # ── orchestrator ─────────────────────────────────────────────────────────────────
 def build_company_list(*, project: str | None = None, metro: str | None = None,
                        industry: str | None = None, national: bool = False,
                        dataset: str | None = None, use_inbox: bool = True,
                        print_prompt: bool = False, in_file: str | None = None,
-                       classify: bool = False, dry_run: bool = False,
+                       classify: bool = False, jobhive: bool = False,
+                       dry_run: bool = False,
                        api_key: str | None = None, log=print) -> dict:
     """Build (or grow) a target-company list for the active/named project's field
     + location. Orchestrates the existing inbox-harvest / LLM-enumerate /
@@ -316,6 +343,17 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
         else:
             summary["stages"]["classify"] = None
 
+    # 4b ── jobhive bulk seed (optional; the biggest raw-reach lever) ─────────────
+    if jobhive:
+        print("== jobhive bulk seed ==")
+        try:
+            summary["stages"]["jobhive"] = _jobhive_stage(resolved_industry, dry_run, log=log)
+        except Exception as e:
+            print(f"[jobhive] unexpected failure ({type(e).__name__}: {e}) -- skipping.")
+            summary["stages"]["jobhive"] = {"error": str(e)}
+    else:
+        summary["stages"]["jobhive"] = None
+
     # 5 ── report ────────────────────────────────────────────────────────────────
     print("== Registry report ==")
     try:
@@ -377,6 +415,9 @@ def main(argv=None) -> int:
                     help="Feed a saved claude.ai JSON reply (bridge mode) instead of calling the API")
     ap.add_argument("--classify", action="store_true",
                     help="Apply the relevance gate to dataset-seeded companies")
+    ap.add_argument("--jobhive", action="store_true",
+                    help="Also bulk-seed from the jobhive open dataset, scoped to this field "
+                         "(streamed + byte-bounded + probe-verified)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve + verify but never write companies.json")
     ap.add_argument("--json", action="store_true",
@@ -388,7 +429,7 @@ def main(argv=None) -> int:
             project=args.project, metro=args.metro, industry=args.industry,
             national=args.national, dataset=args.dataset, use_inbox=args.use_inbox,
             print_prompt=args.print_prompt, in_file=args.in_file,
-            classify=args.classify, dry_run=args.dry_run)
+            classify=args.classify, jobhive=args.jobhive, dry_run=args.dry_run)
     except ValueError as e:
         print(f"error: {e}")
         return 2

@@ -328,7 +328,21 @@ def test_keywords_for_industry_is_deduped_and_lowercased():
     kw = jhs.keywords_for_industry("controls engineering")
     assert kw == list(dict.fromkeys(kw))          # no duplicates
     assert all(k == k.lower() for k in kw)         # all lowercase
-    assert "controls" in kw and "engineering" in kw
+    # Distinctive token kept; generic token dropped (company-selection precision).
+    assert "controls" in kw
+    assert "engineering" not in kw
+
+
+def test_keywords_for_industry_drops_generic_keeps_distinctive():
+    kw = jhs.keywords_for_industry("health informatics")
+    # generic single tokens that pollute company selection are filtered out...
+    for generic in ("health", "clinical", "analyst", "nurse", "director"):
+        assert generic not in kw
+    # ...distinctive single tokens + multi-word phrases survive.
+    assert "informatics" in kw
+    assert "clinical informatics" in kw
+    # never returns empty: a field whose terms are ALL generic falls back to them
+    assert jhs.keywords_for_industry("data") != []
 
 
 # ── ONE tiny live smoke test (per plan) — real manifest + a small real slice,

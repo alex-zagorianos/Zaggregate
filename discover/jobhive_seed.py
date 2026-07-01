@@ -88,12 +88,32 @@ class FieldSpec:
     keywords: list[str]
 
 
+# Single tokens too COMMON to indicate a field for company-SELECTION: a job whose
+# only match is one of these (a "Data Analyst" or "Director" at any company) is NOT
+# evidence the employer hires in the target field, so matching on them alone would
+# pollute the registry with unrelated companies. Multi-word phrases ("clinical
+# informatics") and distinctive single tokens ("informatics", "ehr", "scada") are
+# always kept. (Seniority words come straight from the exec title_terms.)
+_GENERIC_TOKENS = frozenset({
+    "vp", "director", "chief", "manager", "lead", "senior", "junior", "head",
+    "principal", "staff", "associate", "coordinator", "specialist", "officer",
+    "president", "executive", "intern", "assistant", "supervisor",
+    "analyst", "engineer", "engineering", "developer", "scientist", "consultant",
+    "advisor", "representative", "agent", "administrator", "technician",
+    "health", "data", "business", "operations", "sales", "marketing", "care",
+    "technology", "tech", "digital", "product", "project", "program", "service",
+    "services", "support", "admin", "clinical", "nurse", "physician", "medical",
+    "general", "global", "national", "team", "group", "corporate",
+})
+
+
 def keywords_for_industry(industry: str) -> list[str]:
     """Derive a jobhive relevance-keyword vocabulary for `industry`: its own
     tokens + industry_profile.resolve(industry)'s query_synonyms/title_terms,
-    deduped and lowercased. Reuses the same per-field knobs the rest of the
-    app already derives for a genre — no separate keyword list to maintain
-    per field."""
+    deduped and lowercased, then filtered to DISTINCTIVE terms (multi-word phrase
+    OR a single token not in `_GENERIC_TOKENS`) so the seed selects companies that
+    genuinely hire in the field rather than any company with a generic role. Falls
+    back to the unfiltered set if filtering would leave nothing."""
     import industry_profile
     prof = industry_profile.resolve(industry)
     terms = (_TOKEN_RE.split((industry or "").lower())
@@ -105,13 +125,25 @@ def keywords_for_industry(industry: str) -> list[str]:
         if t and t not in seen:
             seen.add(t)
             out.append(t)
-    return out
+    specific = [k for k in out if (" " in k) or (k not in _GENERIC_TOKENS)]
+    return specific or out
 
 
 def _fallback_slug(company: str) -> str:
     """Best-effort slug from a company display name, used only when
     detect_ats(url) can't resolve a real board (no/unrecognized url)."""
     return re.sub(r"[^a-z0-9]+", "-", (company or "").strip().lower()).strip("-")
+
+
+_HEX_SLUG = re.compile(r"^[0-9a-f]{12,}$")
+
+
+def _looks_junk(slug: str) -> bool:
+    """Reject obviously-anonymous/test board slugs (hash-like or absurdly long)
+    that occasionally appear in the raw dataset, so they don't land in the
+    registry as garbage company names (e.g. '55564patriot...868575745')."""
+    s = (slug or "").replace("-", "").replace("_", "")
+    return len(s) > 30 or bool(_HEX_SLUG.match(s))
 
 
 def _derive_board(row_ats_type: str, url: str, company: str, csv_ats: str) -> tuple[str, str]:
@@ -123,11 +155,11 @@ def _derive_board(row_ats_type: str, url: str, company: str, csv_ats: str) -> tu
     the fallback's last resort when the row's own ats_type column is unusable."""
     if url:
         d_ats, d_slug = detect_ats(url)
-        if d_ats and d_ats != "direct" and d_slug:
+        if d_ats and d_ats != "direct" and d_slug and not _looks_junk(d_slug):
             return d_ats, d_slug
     ats = normalize_ats(row_ats_type) or csv_ats
     slug = _fallback_slug(company)
-    if not ats or not slug:
+    if not ats or not slug or _looks_junk(slug):
         return "", ""
     return ats, slug
 
