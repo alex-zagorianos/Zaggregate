@@ -72,6 +72,10 @@ def _parse_created(value: str) -> datetime:
 class SearchEngine:
     def __init__(self, clients: list[JobAPIClient]):
         self.clients = clients
+        # Raw (pre-dedup) results of the most recent run_full_search, kept so the
+        # coverage/reach estimator can see the cross-source membership that dedup
+        # discards. Empty until a search runs. Read-only for callers.
+        self.last_raw_results: list[JobResult] = []
 
     def run_full_search(
         self,
@@ -128,6 +132,7 @@ class SearchEngine:
         for source in sorted(agg_n):
             print(f"[{source}] {agg_n[source]} results in ~{agg_t[source]:.1f}s")
 
+        self.last_raw_results = all_results  # for coverage/reach (membership)
         deduped = self._deduplicate(all_results)
         if sort_by == "location":
             deduped.sort(key=lambda j: _location_score(j.location, location), reverse=True)

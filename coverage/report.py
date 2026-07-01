@@ -23,6 +23,13 @@ class CoverageReport:
     n_clusters: int
     n_raw: int
     paths_used: dict
+    # Appended (defaulted) fields — additive so from_dict() on older persisted
+    # reports (missing these keys) still constructs. jackknife = {jack1, jack2}
+    # incidence cross-checks; cov_upper_method names the ceiling estimator;
+    # source_families = the independence-collapsed source list actually used.
+    jackknife: dict | None = None
+    cov_upper_method: str = "chao2"
+    source_families: list | None = None
 
     def to_dict(self) -> dict:
         d = dataclasses.asdict(self)
@@ -48,7 +55,8 @@ def human_summary(report: CoverageReport) -> str:
         f"Coverage [{report.area} | {report.window} | {report.soc_grouping}]  scope={report.scope_hash}",
         f"  Composite score : {report.composite_score:.1f} / 100",
         f"  Capture-recapture: {fmt(report.cov_cr, 3)}{ci}",
-        f"  Ceiling (Chao1) : {fmt(report.cov_upper, 1)}",
+        f"  Ceiling ({(report.cov_upper_method or 'chao2').title():5}): {fmt(report.cov_upper, 1)}",
+        f"  Jackknife (1/2) : {report.jackknife}",
         f"  Completeness    : {fmt(report.c_hat, 3)}",
         f"  Reference proxy : {fmt(report.cov_proxy_weighted, 3)}",
         f"  JOLTS gate      : {report.jolts_verdict}",

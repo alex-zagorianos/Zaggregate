@@ -23,6 +23,72 @@ def chapman(n1: int, n2: int, m: int) -> ChapmanResult:
 def chao1(f1: int, f2: int, s_obs: int) -> float:
     return s_obs + (f1 * (f1 - 1)) / (2 * (f2 + 1))
 
+
+def chao2(q1: int, q2: int, s_obs: int, t: int) -> float:
+    """Incidence-based Chao2 richness estimate with the (t-1)/t finite-sample
+    correction, for capture data expressed as SAMPLE incidence:
+
+        q1 = species (jobs) found in exactly ONE sample (source)
+        q2 = species found in exactly TWO samples
+        s_obs = observed richness (distinct jobs seen)
+        t = number of samples (independent sources)
+
+    This is the correct estimator when the "captures" are presence/absence across
+    sources (our case), where the abundance-based chao1 is a mislabel. The
+    correction factor collapses to chao1's form as t -> inf; with t < 2 it is
+    undefined, so we fall back to the uncorrected bias-corrected form.
+    """
+    corr = (t - 1) / t if t and t >= 2 else 1.0
+    return s_obs + corr * (q1 * (q1 - 1)) / (2 * (q2 + 1))
+
+
+def jackknife1(q1: int, s_obs: int, t: int) -> float:
+    """First-order incidence jackknife richness estimate. Degenerates to s_obs
+    for a single sample (no unseen-class information)."""
+    if not t or t <= 1:
+        return float(s_obs)
+    return s_obs + q1 * (t - 1) / t
+
+
+def jackknife2(q1: int, q2: int, s_obs: int, t: int) -> float:
+    """Second-order incidence jackknife richness estimate. Needs t >= 3;
+    degenerates to s_obs below that (the (t-2) terms vanish/are undefined)."""
+    if not t or t <= 2:
+        return float(s_obs)
+    return s_obs + q1 * (2 * t - 3) / t - q2 * (t - 2) ** 2 / (t * (t - 1))
+
+
+def loglinear_ci(membership: list, *, n_boot: int = 200, alpha: float = 0.05,
+                 seed: int = 1234567) -> tuple:
+    """Nonparametric percentile bootstrap CI around ``loglinear`` — which
+    otherwise returns a bare point estimate with no variance. Resamples the
+    per-job source-membership list with replacement ``n_boot`` times and takes
+    the (alpha/2, 1-alpha/2) percentiles of the recomputed estimates.
+
+    Returns ``(point, lo, hi)``. Deterministic given ``seed`` (so tests and
+    persisted reports are reproducible). Failed resamples are skipped; if none
+    survive, the CI collapses to the point estimate.
+    """
+    import random
+    point = loglinear(membership) if membership else 0.0
+    n = len(membership)
+    if n == 0 or n_boot <= 0:
+        return point, point, point
+    rng = random.Random(seed)
+    ests: list[float] = []
+    for _ in range(n_boot):
+        sample = [membership[rng.randrange(n)] for _ in range(n)]
+        try:
+            ests.append(loglinear(sample))
+        except Exception:
+            continue
+    if not ests:
+        return point, point, point
+    ests.sort()
+    lo = ests[int((alpha / 2) * len(ests))]
+    hi = ests[min(len(ests) - 1, int((1 - alpha / 2) * len(ests)))]
+    return point, lo, hi
+
 def good_turing(f1: int, n: int) -> float:
     if n <= 0:
         return 0.0

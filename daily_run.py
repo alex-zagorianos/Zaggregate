@@ -121,7 +121,8 @@ def main():
                           error="no sources could be initialized (check .env)")
         sys.exit(1)
 
-    results = SearchEngine(clients).run_full_search(
+    engine = SearchEngine(clients)
+    results = engine.run_full_search(
         keywords=query_keywords, location=location, salary_min=salary_min,
         max_pages_per_keyword=args.max_pages,
     )
@@ -219,6 +220,20 @@ def main():
                 f"added {summary.get('added', 0)} board(s)")
         except Exception as e:  # best-effort; never fail the run for discovery
             log(f"WARN: discovery skipped: {type(e).__name__}: {e}")
+
+    # Reach certification: from the RAW pre-dedup multi-source results, estimate
+    # what fraction of the reachable universe this run actually saw (capture-
+    # recapture over independent source families). Read-only, best-effort — logs a
+    # one-line honest verdict and persists a snapshot the GUI/CLI can surface. A
+    # single-source run (or no overlap) honestly reports 'cannot certify'.
+    try:
+        from coverage.reach import estimate_reach, persist_reach
+        reach = estimate_reach(engine.last_raw_results, area=location,
+                               industry=industry or "")
+        log(reach.summary_line())
+        persist_reach(reach, project=run_project)
+    except Exception as e:  # best-effort; coverage math must never kill a run
+        log(f"WARN: reach estimate skipped: {type(e).__name__}: {e}")
 
     # Health beacon: 'zero' when nothing new landed, else 'ok', with per-source
     # counts of what the search returned this run.
