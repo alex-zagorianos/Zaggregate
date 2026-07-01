@@ -28,6 +28,20 @@ def _looks_js_shell(html: str) -> bool:
     return False
 
 
+def _stealth_escalation_allowed(company: CompanyEntry) -> bool:
+    """robots.txt good-faith check (research-2026-07-01-reach-stealth-legal.md
+    #3.4): skip the stealth-browser escalation when the site's robots.txt
+    explicitly Disallows this path for our user agent. Only gates the STEALTH
+    step -- the plain-requests fetch above this is unaffected, and any
+    fetch/parse error fails OPEN (allowed), since robots.txt has no binding
+    legal force and a hiccup here must never block a working board."""
+    from discover.career_link import is_disallowed
+    if is_disallowed(company.slug):
+        print(f"  [direct] {company.name}: robots.txt disallows this path — skipping stealth fetch")
+        return False
+    return True
+
+
 def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> str | None:
     """Fetch (or read cached) HTML for a company's page, with the shared
     negative-failure cache. Returns None on a known-dead or failed fetch.
@@ -66,14 +80,15 @@ def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> 
             # (a) Try stealth fallback before marking the URL as dead.
             import config
             from scrape import stealth_fetch
-            if config.SCRAPLING_FALLBACK and stealth_fetch.available():
+            if (config.SCRAPLING_FALLBACK and stealth_fetch.available()
+                    and _stealth_escalation_allowed(company)):
                 print(f"  [direct] {company.name}: escalating to stealth fetch")
-                html = stealth_fetch.fetch_html(company.slug)
+                html = stealth_fetch.fetch_html(company.slug, company=company)
                 if html:
                     if cache_enabled:
                         write_cache(cache_file, html)
                     return html
-            # Both requests and stealth fallback failed.
+            # Both requests and stealth fallback failed (or robots.txt disallowed it).
             if cache_enabled:
                 mark_failed(failed_file)
             return None
@@ -82,9 +97,10 @@ def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> 
         if _looks_js_shell(html):
             import config
             from scrape import stealth_fetch
-            if config.SCRAPLING_FALLBACK and stealth_fetch.available():
+            if (config.SCRAPLING_FALLBACK and stealth_fetch.available()
+                    and _stealth_escalation_allowed(company)):
                 print(f"  [direct] {company.name}: JS shell detected, escalating to stealth fetch")
-                fallback = stealth_fetch.fetch_html(company.slug)
+                fallback = stealth_fetch.fetch_html(company.slug, company=company)
                 if fallback:
                     html = fallback
 

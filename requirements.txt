@@ -15,4 +15,10 @@ defusedxml==0.7.1
 ttkbootstrap==1.20.4
 # Optional stealth/JS fetch fallback (scrape/stealth_fetch.py). Browser binaries
 # are a separate one-time `scrapling install`; absent package => graceful no-op.
-scrapling
+# Pinned (was unpinned) so an upgrade can't silently change the default stealth
+# engine/fingerprint under us (Scrapling >=0.3.13 moved StealthyFetcher's default
+# from Camoufox to Patchright). NOTE: not importable in this dev environment as
+# of 2026-07-01 (`import scrapling` -> ModuleNotFoundError), so this pins to the
+# last version documented in brain/scraping-sources.md rather than a locally
+# verified `scrapling.__version__` — re-verify against a real install.
+scrapling==0.4.9

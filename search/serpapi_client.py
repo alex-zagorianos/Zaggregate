@@ -1,6 +1,7 @@
 """SerpApi Google-Jobs backend — BYO-paid, key-gated, quota-conserving
 (mirrors jsearch_client.py). Key from SERPAPI_KEY env or secrets/serpapi_key.
 Covers Indeed/LinkedIn/Glassdoor/ZipRecruiter via Google Jobs aggregation."""
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -45,6 +46,7 @@ class SerpApiClient(JobAPIClient):
         self.limiter = RateLimiter(SERPAPI_RATE_LIMIT)
         self.quota = MonthlyQuota((cache_dir or CACHE_DIR) / "serpapi_usage.json", SERPAPI_MONTHLY_LIMIT)
         self._quota_warned = False
+        self._indeed_engine_warned = False
 
     def search(self, keyword: str, location: str = "Cincinnati, OH",
                salary_min: Optional[int] = None, page: int = 1) -> dict:
@@ -59,6 +61,7 @@ class SerpApiClient(JobAPIClient):
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
+                self._warn_if_indeed_engine_empty(engine, cached)
                 return cached
         if not self.quota.try_increment():
             if not self._quota_warned:
@@ -82,7 +85,30 @@ class SerpApiClient(JobAPIClient):
             raise
         if self.cache_enabled:
             self.cache.put(key, data)
+        self._warn_if_indeed_engine_empty(engine, data)
         return data
+
+    def _warn_if_indeed_engine_empty(self, engine: str, data: dict) -> None:
+        """SerpApi's current public engine catalog no longer clearly lists a
+        standalone "indeed" engine (only google_jobs/google_jobs_listing) — see
+        brain/research-2026-07-01-reach-indeed-access.md. Rather than let
+        SERPAPI_ENGINE="indeed" silently return zero jobs forever, warn once
+        (stderr) the first time it yields no usable jobs_results, so a config
+        mistake or a since-removed engine is never a silent zero."""
+        if engine != "indeed" or self._indeed_engine_warned:
+            return
+        items = data.get("jobs_results") if isinstance(data, dict) else None
+        if isinstance(items, list) and items:
+            return
+        print(
+            "  [serpapi] WARNING: SERPAPI_ENGINE=\"indeed\" returned no jobs_results. "
+            "SerpApi's public engine catalog no longer clearly documents a standalone "
+            "\"indeed\" engine — it may be unavailable/deprecated. Falling back to "
+            "empty results for this query; consider switching SERPAPI_ENGINE back to "
+            "the default \"google_jobs\".",
+            file=sys.stderr,
+        )
+        self._indeed_engine_warned = True
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         # google_jobs -> "jobs_results"; indeed engine -> "jobs_results" too but a
