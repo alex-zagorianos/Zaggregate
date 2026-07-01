@@ -19,7 +19,8 @@ from search.search_engine import SearchEngine
 
 ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careers", "themuse", "remoteok",
                "remotive", "jobicy", "himalayas", "hn",
-               "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi"]
+               "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi",
+               "socrata"]
 
 
 def load_user_config(path=None) -> dict:
@@ -130,6 +131,17 @@ def build_clients(
                       f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
             except ValueError as e:
                 print(f"  [serpapi] Skipping — {e}")
+
+        elif source == "socrata":
+            from search.socrata_client import SocrataClient
+            from config import SOCRATA_APP_TOKEN, SOCRATA_CITIES
+            clients.append(SocrataClient(
+                cities=SOCRATA_CITIES, app_token=SOCRATA_APP_TOKEN,
+                cache_enabled=cache_enabled,
+            ))
+            if not SOCRATA_CITIES:
+                print("  [socrata] No SOCRATA_CITIES configured — client is inert "
+                      "(add a city key, e.g. 'nyc', to config.SOCRATA_CITIES).")
 
         else:
             print(f"  Unknown source {source!r} — ignoring.")

@@ -69,6 +69,10 @@ projects/
 *.log
 logs/
 
+# Claude Code agent worktrees (transient; created per builder run) + reach run data
+.claude/worktrees/
+coverage/reach/
+
 # === LOCAL SCAFFOLDING & PERSONAL STRATEGY (kept local; not part of the distributable) ===
 candidates.json
 flatten_candidates.py

@@ -87,6 +87,18 @@ def detect_ats(url: str) -> tuple[str, str]:
             if sub and sub not in ("www", "api"):
                 return ("personio", sub)
 
+    # BambooHR: {slug}.bamboohr.com/careers — the embedded careers-list JSON API
+    # lives at {slug}.bamboohr.com/careers/list. slug = the tenant subdomain.
+    if host.endswith(".bamboohr.com"):
+        sub = host[: -len(".bamboohr.com")]
+        if sub and sub not in ("www", "api"):
+            return ("bamboohr", sub)
+
+    # Rippling: hosted boards at ats.rippling.com/{slug}; the public board JSON is
+    # api.rippling.com/platform/api/ats/v1/board/{slug}/jobs.
+    if host == "ats.rippling.com" and segs:
+        return ("rippling", segs[0])
+
     # Enterprise ATSes with no open public job-board API (the Cincinnati
     # industrials run these). We can't hit a JSON API, but their career pages
     # carry schema.org/JobPosting JSON-LD (the same data Google for Jobs reads),
@@ -179,6 +191,21 @@ def probe_count(entry: CompanyEntry) -> int | None:
                 timeout=TO)
             if r.ok:
                 return r.json().get("total")
+        elif t == "bamboohr":
+            # Embedded careers-list JSON. BambooHR 403s some subdomains headless,
+            # so a failed probe returns None (fail-soft) rather than a false zero.
+            r = requests.get(f"https://{slug}.bamboohr.com/careers/list", timeout=TO,
+                             headers={"User-Agent": "Mozilla/5.0"})
+            if r.ok:
+                return len(r.json().get("result", []))
+        elif t == "rippling":
+            r = requests.get(
+                f"https://api.rippling.com/platform/api/ats/v1/board/{slug}/jobs",
+                timeout=TO, headers={"Accept": "application/json",
+                                     "User-Agent": "JobSearchTool/1.0 (personal use)"})
+            if r.ok:
+                d = r.json()
+                return len(d if isinstance(d, list) else d.get("items", []) or [])
         elif t in ("icims", "taleo", "successfactors", "jsonld"):
             # JSON-LD-backed boards (no count API): count schema.org/JobPosting
             # entries on the career page. 0 when the page hides them behind

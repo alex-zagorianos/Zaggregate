@@ -11,6 +11,12 @@ def test_ats_detect_recruitee():
 def test_ats_detect_personio():
     assert detect_ats("https://acme.jobs.personio.de/") == ("personio", "acme")
 
+def test_ats_detect_bamboohr():
+    assert detect_ats("https://acme.bamboohr.com/careers") == ("bamboohr", "acme")
+
+def test_ats_detect_rippling():
+    assert detect_ats("https://ats.rippling.com/acme/jobs") == ("rippling", "acme")
+
 def _capture_stub(captured, name):
     """Stub scraper that records the slug + keyword it was forwarded and returns []."""
     def _stub(slug, *, keyword=""):
@@ -57,3 +63,13 @@ def test_dispatch_routes_personio(tmp_path, monkeypatch):
     company = CompanyEntry("Delta", "personio", "delta", [])
     client._scrape_one(company, "engineer")
     assert captured["personio"] == {"slug": "delta", "keyword": "engineer"}
+
+
+def test_dispatch_routes_bamboohr(tmp_path, monkeypatch):
+    import scrape.careers_client as cc
+    captured = {}
+    monkeypatch.setattr(cc, "scrape_bamboohr", _capture_stub(captured, "bamboohr"))
+    client = CareersClient(cache_dir=tmp_path, cache_enabled=False, discovery_enabled=False)
+    company = CompanyEntry("Epsilon", "bamboohr", "epsilon", [])
+    client._scrape_one(company, "engineer")
+    assert captured["bamboohr"] == {"slug": "epsilon", "keyword": "engineer"}

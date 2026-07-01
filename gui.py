@@ -1852,6 +1852,188 @@ class AddCompaniesDialog(tk.Toplevel):
                 text=f"Added {added}. They're scraped on the next 'careers' search.")
 
 
+class BuildCompanyListDialog(tk.Toplevel):
+    """One-click 'Build My Company List' for ANY field. Runs the
+    build_company_list orchestrator: harvest employers already seen in the Inbox,
+    ask an AI to name more local + remote employers for the field (auto if an API
+    key is set, else a copy-paste prompt), verify each has live jobs, and save
+    them to companies.json so future 'careers' searches cover them."""
+
+    def __init__(self, parent, default_industry="", default_metro=""):
+        super().__init__(parent)
+        self.title("Build My Company List")
+        self.geometry("760x560")
+        self.configure(bg=theme.WINDOW)
+        self.transient(parent)
+        self.grab_set()
+        self._running = False
+        self._build(default_industry, default_metro)
+
+    def _build(self, default_industry, default_metro):
+        tk.Label(
+            self, justify="left", wraplength=720, fg=theme.INK, bg=theme.WINDOW,
+            text="Automatically build your target-company list for any field. It "
+                 "harvests employers already seen in your Inbox, asks an AI to name "
+                 "more local + remote employers for your field, checks each has live "
+                 "jobs, and saves them — so future searches cover them.\n"
+                 "No API key? Use “Get AI prompt” to copy a prompt into claude.ai, "
+                 "then “Load AI reply…”. (The Inbox harvest runs with or without a key.)"
+        ).pack(fill="x", padx=12, pady=(12, 6))
+
+        row = tk.Frame(self, bg=theme.WINDOW)
+        row.pack(fill="x", padx=12, pady=4)
+        tk.Label(row, text="Field:", bg=theme.WINDOW, fg=theme.INK).pack(side="left")
+        self._industry = tk.StringVar(value=default_industry)
+        ttk.Entry(row, textvariable=self._industry, width=22).pack(side="left", padx=(4, 12))
+        tk.Label(row, text="Location:", bg=theme.WINDOW, fg=theme.INK).pack(side="left")
+        self._metro = tk.StringVar(value=default_metro)
+        ttk.Entry(row, textvariable=self._metro, width=18).pack(side="left", padx=4)
+        self._national = tk.BooleanVar(value=True)
+        ttk.Checkbutton(row, text="Include nationwide/remote",
+                        variable=self._national).pack(side="left", padx=8)
+
+        btnrow = tk.Frame(self, bg=theme.WINDOW)
+        btnrow.pack(fill="x", padx=12, pady=6)
+        self._build_btn = theme.btn(btnrow, "Build now", self._on_build, "accent")
+        self._build_btn.pack(side="left")
+        self._prompt_btn = theme.btn(btnrow, "Get AI prompt", self._on_prompt, "ghost")
+        self._prompt_btn.pack(side="left", padx=6)
+        self._load_btn = theme.btn(btnrow, "Load AI reply\N{HORIZONTAL ELLIPSIS}",
+                                   self._on_load_reply, "ghost")
+        self._load_btn.pack(side="left", padx=6)
+        theme.btn(btnrow, "Close", self._on_close, "ghost").pack(side="right")
+
+        self._log = theme.text_widget(self, height=15, wrap="word")
+        self._log.pack(fill="both", expand=True, padx=12, pady=(4, 6))
+        self._status = tk.Label(self, text="Ready.", fg=theme.MUTED, bg=theme.WINDOW,
+                                anchor="w")
+        self._status.pack(fill="x", padx=12, pady=(0, 10))
+
+    # ── logging (thread-safe: all widget writes go through self.after) ──────────
+    def _append(self, text):
+        if not self.winfo_exists():
+            return
+        self._log.insert("end", text)
+        self._log.see("end")
+
+    def _run_orchestrator(self, **kwargs):
+        """Worker body shared by Build/Load: capture the orchestrator's stdout
+        into the log, then report via _build_done on the UI thread."""
+        import contextlib
+        import io
+        from build_company_list import build_company_list
+
+        class _Sink(io.TextIOBase):
+            def __init__(self, cb):
+                self._cb = cb
+
+            def write(self, s):
+                if s:
+                    self._cb(s)
+                return len(s)
+
+        sink = _Sink(lambda s: self.after(0, self._append, s))
+        summary = err = None
+        try:
+            with contextlib.redirect_stdout(sink):
+                summary = build_company_list(**kwargs)
+        except Exception as e:  # surface, never crash the GUI thread
+            err = f"{type(e).__name__}: {e}"
+        self.after(0, self._build_done, summary, err)
+
+    def _on_build(self):
+        if self._running:
+            return
+        industry = self._industry.get().strip()
+        metro = self._metro.get().strip()
+        if not industry and not metro:
+            messagebox.showinfo("Build My Company List",
+                                "Enter a field and/or location first.", parent=self)
+            return
+        try:
+            import build_company_list as _bcl
+            if not _bcl._detect_api_key():
+                self._append("(No AI key configured — the Inbox harvest still runs; "
+                             "a copy-paste AI prompt will appear below. For the "
+                             "cleanest flow use “Get AI prompt”.)\n")
+        except Exception:
+            pass
+        self._set_running(True)
+        self._append("== Building company list… this can take a minute or two ==\n")
+        threading.Thread(target=self._run_orchestrator,
+                         kwargs=dict(industry=industry or None, metro=metro or None,
+                                     national=self._national.get(), use_inbox=True),
+                         daemon=True).start()
+
+    def _on_prompt(self):
+        industry = self._industry.get().strip()
+        metro = self._metro.get().strip() or "your area"
+        try:
+            from discover.enumerate import build_enumeration_prompt
+            from scrape.company_registry import get_registry
+            existing = [e.name for e in get_registry()]
+            prompt = build_enumeration_prompt(
+                metro, [industry] if industry else [], exclude_names=existing,
+                angle="Include a mix of company sizes and types.", limit=60)
+        except Exception as e:
+            messagebox.showerror("Get AI prompt", str(e), parent=self)
+            return
+        self._log.delete("1.0", "end")
+        self._append(prompt + "\n\n# Copy everything above into claude.ai, save its "
+                     "JSON reply to a file, then click “Load AI reply…”.\n")
+        self._status.config(text="Prompt ready — paste into claude.ai, then Load AI reply.")
+
+    def _on_load_reply(self):
+        if self._running:
+            return
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            parent=self, title="Select the saved AI reply",
+            filetypes=[("JSON/text", "*.json *.txt"), ("All files", "*.*")])
+        if not path:
+            return
+        industry = self._industry.get().strip()
+        metro = self._metro.get().strip()
+        self._set_running(True)
+        self._append(f"== Importing employers from {path} ==\n")
+        threading.Thread(target=self._run_orchestrator,
+                         kwargs=dict(industry=industry or None, metro=metro or None,
+                                     use_inbox=False, in_file=path),
+                         daemon=True).start()
+
+    def _build_done(self, summary, err):
+        if not self.winfo_exists():
+            return
+        self._set_running(False)
+        if err:
+            self._status.config(text=f"Failed: {err}")
+            self._append(f"\nERROR: {err}\n")
+            return
+        stats = (summary or {}).get("registry_stats") or {}
+        total = sum(stats.values()) if stats else 0
+        self._status.config(text=f"Done — registry now has {total} companies.")
+        self._append(f"\nDone. Registry now has {total} companies across "
+                     f"{len(stats)} tag(s). They're searched on your next "
+                     f"'careers' run.\n")
+
+    def _set_running(self, running):
+        self._running = running
+        state = "disabled" if running else "normal"
+        for b in (self._build_btn, self._prompt_btn, self._load_btn):
+            try:
+                b.config(state=state)
+            except Exception:
+                pass
+        if running:
+            self._status.config(text="Working\N{HORIZONTAL ELLIPSIS}")
+
+    def _on_close(self):
+        if self._running and not messagebox.askyesno(
+                "Close", "A build is still running. Close anyway?", parent=self):
+            return
+        self.destroy()
+
+
 class SearchTab(ttk.Frame):
     """Run a multi-source search without leaving the app; Track or Dismiss each
     result. Dismissed/tracked jobs are hidden from future searches."""
@@ -1880,12 +2062,22 @@ class SearchTab(ttk.Frame):
     def _add_companies(self):
         AddCompaniesDialog(self, default_industry=self._user_cfg.get("industry", ""))
 
+    def _build_company_list(self):
+        BuildCompanyListDialog(
+            self, default_industry=self._user_cfg.get("industry", ""),
+            default_metro=self._user_cfg.get("location", ""))
+
     def _build(self):
         hdr = theme.header_bar(self, "Job Search",
                                "Search many job boards at once.")
         theme.tip(theme.btn(hdr, "+ Add Companies", self._add_companies, "ghost"),
                   "Paste a company's careers-page link so its jobs appear in "
                   "future searches.").pack(side="right", padx=10, pady=8)
+        theme.tip(theme.btn(hdr, "\N{SPARKLES} Build My List",
+                            self._build_company_list, "accent"),
+                  "Auto-build your target-company list for your field — harvest "
+                  "from your Inbox, AI-suggest more, verify live jobs.").pack(
+                      side="right", padx=(10, 0), pady=8)
         theme.tip_strip(
             self, "Enter keywords and a location, then click Search. Every result "
                   "is scored 0–100 for fit — Track the good ones, Dismiss the rest.")

@@ -17,6 +17,7 @@ from scrape.workable_scraper import fetch as scrape_workable
 from scrape.recruitee_scraper import fetch as scrape_recruitee
 from scrape.rippling_scraper import fetch as scrape_rippling
 from scrape.personio_scraper import fetch as scrape_personio
+from scrape.bamboohr_scraper import fetch as scrape_bamboohr
 from scrape.jsonld_scraper import scrape_jsonld
 
 
@@ -178,6 +179,8 @@ class CareersClient(JobAPIClient):
             return scrape_rippling(company.slug, keyword=keyword)
         elif company.ats_type == "personio":
             return scrape_personio(company.slug, keyword=keyword)
+        elif company.ats_type == "bamboohr":
+            return scrape_bamboohr(company.slug, keyword=keyword)
         elif company.ats_type in ("jsonld", "icims", "taleo", "successfactors"):
             # Enterprise/custom boards with no JSON API — extract schema.org/
             # JobPosting structured data from the career page.

@@ -495,9 +495,10 @@ class SetupWizard(tk.Toplevel):
             messagebox.showinfo(
                 "Build your employer list",
                 f"There aren't any {industry} employers in the starter list yet. "
-                "To fill your Inbox, use Search \N{RIGHTWARDS ARROW} + Add "
-                "Companies to paste a few careers-page links, or run company "
-                "discovery — both are free.", parent=self)
+                "Open Search \N{RIGHTWARDS ARROW} \N{SPARKLES} Build My List to "
+                "auto-build one for your field (it harvests your Inbox, AI-suggests "
+                "employers, and verifies live jobs) — or use + Add Companies to "
+                "paste a few careers-page links. Both are free.", parent=self)
         except Exception:
             pass
 

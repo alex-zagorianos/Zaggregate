@@ -18,6 +18,8 @@ _ATS_SITES = {
     "ashby":           "jobs.ashbyhq.com",
     "smartrecruiters": "jobs.smartrecruiters.com",
     "workday":         "myworkdayjobs.com",
+    "bamboohr":        "bamboohr.com",
+    "rippling":        "ats.rippling.com",
 }
 
 

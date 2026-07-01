@@ -22,6 +22,10 @@ def _no_real_registry_io(monkeypatch):
     monkeypatch.setattr(bcl, "loop_signal", lambda history, *a, **k: "rising")
     # No active project by default -- tests that need one stub workspace.load_config.
     monkeypatch.setattr(workspace, "load_config", lambda *a, **k: {})
+    # Never run the REAL inbox harvester by default: it does live domain-guess +
+    # probe HTTP over the machine's inbox (slow/networked/flaky). Tests that
+    # assert harvest behavior override this with their own _stub_inbox().
+    _stub_inbox(monkeypatch, lambda *, industry=None, dry_run=False, **kw: _Harvest())
 
 
 def _stub_inbox(monkeypatch, fn):
@@ -189,9 +193,10 @@ def test_use_inbox_true_calls_harvest(monkeypatch):
 
 
 def test_missing_inbox_module_is_skipped_not_fatal(monkeypatch):
-    """discover/inbox_harvest.py may not exist yet -- ImportError must be a
-    graceful, logged skip, never a crash."""
-    monkeypatch.delitem(sys.modules, "discover.inbox_harvest", raising=False)
+    """discover/inbox_harvest.py may not be importable -- ImportError must be a
+    graceful, logged skip, never a crash. Setting sys.modules[name] = None makes
+    `import` raise ImportError even though the file now exists on disk."""
+    monkeypatch.setitem(sys.modules, "discover.inbox_harvest", None)
     monkeypatch.setattr(bcl, "enumerate_via_api", lambda *a, **k: [])
     monkeypatch.setattr(bcl, "resolve_and_verify", lambda *a, **k: ([], []))
 

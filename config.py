@@ -280,3 +280,12 @@ SERPAPI_MONTHLY_LIMIT = 250        # verified real free-tier cap (serpapi.com/pr
 # listing) — it may be legacy/deprecated. serpapi_client.py warns once (stderr)
 # if this engine yields no jobs_results rather than silently returning zero.
 SERPAPI_ENGINE = os.getenv("SERPAPI_ENGINE", "google_jobs")
+
+# Socrata / SODA municipal job boards — free, no key required. Optional
+# X-App-Token (env SOCRATA_APP_TOKEN) raises the per-IP rate ceiling. City keys
+# in SOCRATA_CITIES index into search.socrata_client.SOCRATA_DATASETS (currently
+# "nyc"). Empty by default -> the client registers but is inert (no HTTP calls)
+# until a user opts a city in; deliberately NOT in DAILY_SOURCES, so the
+# automated daily run stays byte-identical for existing users.
+SOCRATA_APP_TOKEN = os.getenv("SOCRATA_APP_TOKEN")
+SOCRATA_CITIES: list[str] = []

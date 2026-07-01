@@ -40,6 +40,14 @@ def _detect_new_ats(host: str, segs: list) -> tuple[str, str] | None:
             sub = host[: -len(suffix)]
             if sub and sub not in ("www", "api"):
                 return ("personio", sub)
+    # bamboohr: {slug}.bamboohr.com/careers
+    if host.endswith(".bamboohr.com"):
+        sub = host[: -len(".bamboohr.com")]
+        if sub and sub not in ("www", "api"):
+            return ("bamboohr", sub)
+    # rippling: ats.rippling.com/{slug}
+    if host == "ats.rippling.com" and segs:
+        return ("rippling", segs[0])
     return None
 
 

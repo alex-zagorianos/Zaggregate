@@ -228,6 +228,19 @@ def main():
         except Exception as e:  # best-effort; never fail the run for discovery
             log(f"WARN: discovery skipped: {type(e).__name__}: {e}")
 
+    # Inbox -> registry harvest: employer names we've ALREADY seen hiring in the
+    # inbox but that aren't in the careers registry yet -> resolve to their board
+    # -> live-probe -> add. Free, deterministic, compounds every run. Opt-in
+    # ("harvest_inbox": true), default OFF so existing users' runs are unchanged.
+    if cfg.get("harvest_inbox"):
+        try:
+            from discover.inbox_harvest import harvest_inbox_companies
+            hr = harvest_inbox_companies(industry=industry or None)
+            log(f"inbox harvest: {hr.candidates} candidate(s) -> {hr.added} new "
+                f"board(s) added to the careers registry")
+        except Exception as e:  # best-effort; never fail a run for harvesting
+            log(f"WARN: inbox harvest skipped: {type(e).__name__}: {e}")
+
     # Reach certification: from the RAW pre-dedup multi-source results, estimate
     # what fraction of the reachable universe this run actually saw (capture-
     # recapture over independent source families). Read-only, best-effort — logs a
