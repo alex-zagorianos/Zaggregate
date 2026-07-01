@@ -96,8 +96,37 @@ Token invariant intact — no new `facts_summary` field, no new `rubric_text` li
 all new AI is occasional company-building (cached/bounded), never per-search. Capture-recapture stays
 2-independent-list (registry vs dataset/host-harvest, never the enumerator). Not fleet-safety code.
 
-## Verification
+## Verification + adversarial review (all findings FIXED)
 
-`py -m pytest -q` → **925 passed** after every phase. A background adversarial Workflow review (Sonnet
-workers, 7 areas → per-finding verify) ran at close — see the review outcome appended below / in the
-final session note.
+`py -m pytest -q` → green after every phase. A background adversarial Workflow review (Sonnet workers,
+7 areas → per-finding adversarial verify, ~1.16M subagent tokens) at close **confirmed 9 real defects
+— ALL fixed + regression-tested** (`2dc1a82`; +6 tests → **931 passed**):
+
+1. **`models.normalize_url` (MAJOR, real data-loss):** the generic `?url=/?target=` redirect-unwrap
+   fired on EVERY host → a direct ATS/apply URL carrying such a marketing param (e.g. a ZipRecruiter
+   apply link) got replaced by the unrelated destination → distinct postings collapsed in dedup, one
+   silently dropped from the inbox. → gated to click/redirect-looking hosts/paths.
+2. **`ranker._facts_profile` (MAJOR):** no `workspace.load_config()` fallback when `cfg is None`, and
+   the live GUI "Ask AI to rank" buttons call with cfg=None → the whole **1E agnostic feature never
+   fired for non-tech projects** (dad-health) AND the facts cache collapsed to the shared job_key-only
+   file (the very cross-person leak 1E was meant to prevent). → falls back like `build_rubric`; tech
+   industry still yields no skill_terms (Alex byte-identical). This also resolves finding #5.
+3. **`cc_harvest.harvest_host_index` (MAJOR):** a later-page failure discarded earlier pages and
+   misreported "no hosts reachable". → first page sets reachability; later-page errors keep prior pages.
+4. **`dataset_seed` (MAJOR):** bulk-seed ignored the dataset's real `name` column → two distinct boards
+   sharing a slug across ATS platforms collided on the synthetic name and one was silently dropped. →
+   threads the real name.
+5. **`enumerate_companies` national (MAJOR):** defaulted ON via `remote_ok` (True for any project
+   without a preferences.json — controls-cincinnati has none) → a silent 2nd LLM pass. → **now explicit
+   `--national` opt-in** + a discoverability hint (`--no-national` removed). _(This supersedes the
+   "P5 national follows remote_ok" note above — it is now opt-in.)_
+6. **`gui._new_person`/`_new_project` (MAJOR):** no duplicate-slug guard → re-creating a name silently
+   reactivated the existing project and the wizard OVERWROTE its profile. → guarded.
+7. **`gui` project switcher (MINOR):** resolved selection by display label → identical "Person —
+   Campaign" labels made one project unreachable. → index-based.
+8. **`classify.is_relevant_deterministic` (MINOR):** `\b` regex missed symbol keywords (C++/.NET). →
+   uses `scorer._term_pattern`.
+
+Net: **931 passed, 1 headless-GUI skip, clean tree.** Two fixes (#2 ranker, #7/#9 GUI) are behavioral
+improvements worth an eyeball in `py gui.py`; #7/#9 are GUI-only (not headless-unit-testable), the
+rest have regression tests in `tests/test_review_fixes_s23.py`.
