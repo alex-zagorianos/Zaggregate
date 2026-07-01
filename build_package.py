@@ -18,9 +18,18 @@ import argparse
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+import config
+
+# Single source of truth for the release version (config.APP_VERSION): names the
+# zip, stamps CHANGES.txt, matches the exe's version resource (app.spec).
+APP_VERSION = config.APP_VERSION
+
 DIST = ROOT / "dist"
 APP_BUILD = DIST / "JobProgram"     # PyInstaller onedir output
 PKG = DIST / "JobScout"             # assembled package
@@ -33,12 +42,14 @@ _SEEDS = {
     "preferences.json":        "preferences.json",
 }
 
-README = """\
+README = f"""\
+JobScout v{APP_VERSION}
+
 First time? Read FIRST-RUN.txt - it shows how to open the app past Windows'
 "unknown publisher" warning (the app is safe; it just isn't code-signed yet).
 
 JobScout - a personal job search that ranks roles to YOUR preferences using your
-own Claude.
+own AI (Claude, ChatGPT, Gemini, Copilot - a free tier is fine).
 
 QUICK START
   1. Run  JobProgram\\JobProgram.exe.
@@ -46,18 +57,43 @@ QUICK START
      salary, and your resume - no files to edit. (Changed your mind later? Run it
      again from  Help -> Run Setup Wizard.)
   3. Search, then click "Ask AI to rank these", paste the prompt into your own
-     Claude (claude.ai - any plan), and paste the reply back with "Paste AI
-     ranking". The app ranks your inbox to your preferences. (Optional: add an
-     Anthropic API key in Tools > "Connect your AI (API key)..." to rank
-     automatically, no pasting.)
+     AI chat, and paste the reply back with "Paste AI ranking". The app ranks
+     your inbox to your preferences. (Optional: add an API key in
+     Tools > "Connect your AI (API key)..." to rank automatically, no pasting.)
 
 To keep your Inbox filling on its own, turn on daily updates from
 Tools > "Turn on daily updates".
 
+UPGRADING TO A NEWER VERSION
+  Your app and your data are kept separate, so upgrading never loses your saved
+  jobs, preferences, or resume.
+  1. Download and unzip the new JobScout-vX.Y.Z.zip to a NEW folder.
+  2. Point the new app at your existing data - EITHER:
+       * copy your old  JobProgram\\data  folder into the new
+         JobProgram\\ folder (replacing the empty seeded one), OR
+       * on a protected install where your data lives under
+         %LOCALAPPDATA%\\JobProgram, the new app finds it automatically.
+  3. Run the new JobProgram.exe. Your Inbox, tracker, and settings carry over.
+  See CHANGES.txt for what's new in this version.
+
 Everything you enter stays on this computer. To find or back up your files, use
 Help -> Open my data folder (the app picks the right location automatically; on a
 protected install it lives under %LOCALAPPDATA%\\JobProgram). Nothing is sent
-anywhere except the prompts you choose to paste into your own Claude.
+anywhere except the prompts you choose to paste into your own AI.
+"""
+
+# A minimal per-release changelog stub written next to README.txt. The date is a
+# placeholder the release author fills in; the body points at the review that
+# drove this release rather than duplicating it.
+CHANGES = f"""\
+JobScout - CHANGES
+
+v{APP_VERSION} - {date.today().isoformat()}
+  First versioned release. See brain/review-2026-07-01-deep-product-review.md in
+  the source tree for the full remediation plan behind this build.
+
+  (Release author: replace the date above with the actual ship date and add a
+  short bullet list of user-facing changes for each future version.)
 """
 
 # Friendly walkthrough for getting past SmartScreen. A non-technical user reads
@@ -180,15 +216,23 @@ def assemble() -> None:
         req_bundled = True
 
     (PKG / "README.txt").write_text(README, encoding="utf-8")
+    (PKG / "CHANGES.txt").write_text(CHANGES, encoding="utf-8")
+    print(f"      version: v{APP_VERSION}")
     print(f"      data/ seeded: {', '.join(created)}")
     print(f"      first-run kit: {', '.join(kit)}")
     print(f"      browser_ext bundled: {ext_bundled}")
     print(f"      claude-code bundled: {cc_bundled}; requirements-mcp: {req_bundled}")
 
 
+def zip_name() -> str:
+    """The versioned archive base name (no extension), e.g. 'JobScout-v1.0.0'.
+    Kept as a helper so the build and its unit test agree on the naming."""
+    return f"JobScout-v{APP_VERSION}"
+
+
 def zip_package() -> None:
     print("[3/3] Zipping...")
-    out = shutil.make_archive(str(DIST / "JobScout"), "zip",
+    out = shutil.make_archive(str(DIST / zip_name()), "zip",
                               root_dir=str(DIST), base_dir="JobScout")
     print(f"Done -> {out}")
 

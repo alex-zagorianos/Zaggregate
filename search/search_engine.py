@@ -4,9 +4,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
 
+import applog
 from config import SEARCH_MAX_WORKERS
 from models import JobResult, normalize_url
 from search.base_client import JobAPIClient
+
+# Per-source fetch failures used to print() to a console the frozen exe throws
+# away, so an expired key / throttled board looked identical to a thin market
+# (review #2). Route them through the framework so they PERSIST to the rotating
+# app.log. Logged at INFO so the console text is byte-identical to the old
+# print() lines (the bare-message console formatter adds no prefix).
+_log = applog.get_logger("search_engine")
 
 _STATE_ABBREVS = {
     "alabama": "al", "alaska": "ak", "arizona": "az", "arkansas": "ar",
@@ -176,7 +184,7 @@ class SearchEngine:
                 except Exception as e:
                     if source not in agg_err:
                         agg_err[source] = str(e)
-                    print(f"[{source}] failed: {e}")
+                    _log.info(f"[{source}] failed: {e}")
                 # A source is "done" once its LAST unit resolves; a multi-unit
                 # source reports once, when the final unit lands.
                 remaining = sum(1 for f, s in futures.items()
@@ -250,7 +258,7 @@ class SearchEngine:
                     # failure here stops paging this keyword but not the run.
                     if not first_error:
                         first_error = str(e)
-                    print(f"  [{source}] {keyword!r} page {page} error: {e}")
+                    _log.info(f"  [{source}] {keyword!r} page {page} error: {e}")
                     break
                 if not results:
                     # A keyword-blind feed (e.g. The Muse) can return a page with

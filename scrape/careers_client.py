@@ -2,8 +2,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
+import applog
 from config import CACHE_DIR, CAREERS_MAX_WORKERS
 from models import JobResult
+
+# Per-company scrape results/errors used to print() to a discarded console; route
+# them through the framework so a failing board finally persists to app.log. INFO
+# level keeps the console text byte-identical to the old print() lines.
+_log = applog.get_logger("careers")
 from search.base_client import JobAPIClient
 from scrape.company_registry import CompanyEntry, get_registry, save_companies
 from scrape.discoverer import discover_companies
@@ -114,7 +120,7 @@ class CareersClient(JobAPIClient):
                 try:
                     jobs = future.result()
                     if jobs:
-                        print(f"  [careers] {company.name}: {len(jobs)} match(es)")
+                        _log.info(f"  [careers] {company.name}: {len(jobs)} match(es)")
                         if company.slug in discovered_slugs:
                             self._record_winner(company)
                     if self._tiered:
@@ -124,7 +130,7 @@ class CareersClient(JobAPIClient):
                         self._run_ok.add(k)   # responded -> reachable (not cold)
                     results.extend(jobs)
                 except Exception as e:
-                    print(f"  [careers] {company.name}: error — {e}")
+                    _log.info(f"  [careers] {company.name}: error — {e}")
         return results
 
     def finalize_tiering(self) -> None:

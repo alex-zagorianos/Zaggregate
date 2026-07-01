@@ -6,9 +6,35 @@ The bundle (DATA_DIR/_MEIPASS) ships neutral templates under data_templates/;
 shipping anyone's personal data. Idempotent — it never overwrites existing files.
 """
 import shutil
+import sys
 from pathlib import Path
 
 import config
+
+# File-sync roots that corrupt a WAL-mode SQLite DB when they sync mid-write. We
+# never relocate anything automatically (that would surprise the user); we just
+# warn loudly once per launch and let daily_run record it in last_run.json errors
+# so "Report a problem" surfaces the root cause of a mystery corruption.
+_SYNC_MARKERS = ("onedrive", "dropbox", "google drive", "googledrive")
+
+
+def sync_folder_warning(data_dir=None) -> str | None:
+    """If the data dir sits under a known file-syncer (OneDrive/Dropbox/Google
+    Drive), return a human-readable warning string; else None. A file syncer
+    copying the DB mid-write is a real WAL-SQLite corruption vector."""
+    d = str(data_dir if data_dir is not None else config.USER_DATA_DIR)
+    low = d.replace("\\", "/").lower()
+    for marker in _SYNC_MARKERS:
+        if marker in low:
+            pretty = {"onedrive": "OneDrive", "dropbox": "Dropbox",
+                      "google drive": "Google Drive",
+                      "googledrive": "Google Drive"}[marker]
+            return (
+                f"Your data folder is inside {pretty} ({d}). A file syncer can "
+                "corrupt the job database while it is being written. Move your "
+                "data folder outside the synced area (Help -> Open my data "
+                "folder) or exclude it from syncing.")
+    return None
 
 # bundle template filename (in data_templates/) -> target name in the data folder
 _TEMPLATES = {
@@ -55,7 +81,20 @@ def bootstrap() -> list[str]:
     """First-run setup, safe to call on every launch: ensure the data folder
     exists, is seeded from templates, and has its cache/output dirs. Returns the
     names of any files created (empty after the first run). Wire this into each
-    entry point (GUI, daily_run, CLI) so a fresh/unzipped copy just works."""
+    entry point (GUI, daily_run, CLI) so a fresh/unzipped copy just works.
+
+    Also emits a one-time sync-folder warning (log + stderr) when the data dir is
+    under OneDrive/Dropbox/Google Drive — a WAL-SQLite corruption vector — but
+    NEVER relocates anything on its own. daily_run reads sync_folder_warning()
+    separately to persist it into last_run.json."""
     created = scaffold(config.USER_DATA_DIR)
     config.ensure_writable_dirs()
+    warning = sync_folder_warning()
+    if warning:
+        try:
+            import applog
+            applog.get_logger("userdata").warning(warning)
+        except Exception:
+            pass
+        print(f"WARNING: {warning}", file=sys.stderr)
     return created

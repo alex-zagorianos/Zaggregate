@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import workspace
+import applog
 from config import DEFAULT_KEYWORDS, DEFAULT_LOCATION
 from search.adzuna_client import AdzunaClient
 from search.jsearch_client import JSearchClient
@@ -40,7 +41,8 @@ def load_user_config(path=None) -> dict:
     try:
         return json.loads(target.read_text(encoding="utf-8"))
     except Exception as e:
-        print(f"  [config] Warning: could not load {target.name} - {e}")
+        applog.get_logger("config").warning(
+            f"  [config] Warning: could not load {target.name} - {e}")
         return {}
 
 
@@ -54,36 +56,42 @@ def build_clients(
     tiered_careers: bool = False,
 ) -> list[JobAPIClient]:
     clients: list[JobAPIClient] = []
+    # Route per-source init failures/skips through the logging framework so a
+    # keyless-skip or throttle finally PERSISTS to <data>/logs/app.log (a friend
+    # can send it) instead of print()-ing to a console the frozen exe discards.
+    # These log at INFO so the console text stays byte-identical to the old
+    # print() lines (the bare-message console formatter adds no prefix).
+    slog = applog.get_logger("sources")
 
     for source in sources:
         if source == "adzuna":
             try:
                 clients.append(AdzunaClient(cache_enabled=cache_enabled))
             except ValueError as e:
-                print(f"  [adzuna] Skipping — {e}")
+                slog.info(f"  [adzuna] Skipping — {e}")
 
         elif source == "jsearch":
             try:
                 clients.append(JSearchClient(cache_enabled=cache_enabled))
-                print(
+                slog.info(
                     "  [jsearch] NOTE: Free tier is 200 req/month. "
                     "Each keyword/page costs 1 request."
                 )
             except ValueError as e:
-                print(f"  [jsearch] Skipping — {e}")
+                slog.info(f"  [jsearch] Skipping — {e}")
 
         elif source == "usajobs":
             try:
                 clients.append(USAJobsClient(cache_enabled=cache_enabled))
             except ValueError as e:
-                print(f"  [usajobs] Skipping — {e}")
+                slog.info(f"  [usajobs] Skipping — {e}")
 
         elif source == "careeronestop":
             from search.careeronestop_client import CareerOneStopClient
             try:
                 clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
             except ValueError as e:
-                print(f"  [careeronestop] Skipping — {e}")
+                slog.info(f"  [careeronestop] Skipping — {e}")
 
         elif source == "themuse":
             from search.themuse_client import TheMuseClient
@@ -134,18 +142,18 @@ def build_clients(
 
         elif source == "linkedin_guest":
             from search.linkedin_guest_client import LinkedInGuestClient
-            print("  [linkedin_guest] NOTE: logged-out PUBLIC guest endpoint only — "
-                  "no login/cookies. Review LinkedIn ToS before enabling.")
+            slog.info("  [linkedin_guest] NOTE: logged-out PUBLIC guest endpoint only — "
+                      "no login/cookies. Review LinkedIn ToS before enabling.")
             clients.append(LinkedInGuestClient(cache_enabled=cache_enabled))
 
         elif source == "serpapi":
             from search.serpapi_client import SerpApiClient
             try:
                 clients.append(SerpApiClient(cache_enabled=cache_enabled))
-                print(f"  [serpapi] BYO Google-Jobs backend active "
-                      f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
+                slog.info(f"  [serpapi] BYO Google-Jobs backend active "
+                          f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
             except ValueError as e:
-                print(f"  [serpapi] Skipping — {e}")
+                slog.info(f"  [serpapi] Skipping — {e}")
 
         elif source == "weworkremotely":
             from search.weworkremotely_client import WeWorkRemotelyClient
@@ -163,11 +171,11 @@ def build_clients(
                 cache_enabled=cache_enabled,
             ))
             if not SOCRATA_CITIES:
-                print("  [socrata] No SOCRATA_CITIES configured — client is inert "
-                      "(add a city key, e.g. 'nyc', to config.SOCRATA_CITIES).")
+                slog.info("  [socrata] No SOCRATA_CITIES configured — client is inert "
+                          "(add a city key, e.g. 'nyc', to config.SOCRATA_CITIES).")
 
         else:
-            print(f"  Unknown source {source!r} — ignoring.")
+            slog.warning(f"  Unknown source {source!r} — ignoring.")
 
     return clients
 
