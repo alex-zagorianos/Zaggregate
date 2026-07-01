@@ -199,7 +199,7 @@ def enumerate_via_api(metro: str, industries, *, exclude_names=(),
             "or use the clipboard bridge (--bridge)."
         )
     import anthropic
-    client = anthropic.Anthropic(api_key=key)
+    client = anthropic.Anthropic(api_key=key, base_url=config.anthropic_base_url())
     angles = DEFAULT_ANGLES if angles is None else angles
     all_candidates: list[dict] = []
     for angle in angles:

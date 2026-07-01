@@ -173,7 +173,7 @@ def rank_via_api(jobs, prefs: dict | None = None,
         )
     prompt = build_request(jobs, prefs, experience_summary)
     import anthropic
-    client = anthropic.Anthropic(api_key=key)
+    client = anthropic.Anthropic(api_key=key, base_url=config.anthropic_base_url())
     msg = client.messages.create(
         model=model or config.ANTHROPIC_MODEL,
         max_tokens=4096,

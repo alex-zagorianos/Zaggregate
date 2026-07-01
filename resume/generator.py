@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import anthropic
+import config
 from config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL
 from resume.experience_parser import experience_corpus, load_experience
 
@@ -145,7 +146,8 @@ def generate_resume_and_cover_letter(job_posting: str) -> dict:
         raise ResumeGenerationError("Job posting is empty.")
 
     system = _build_system(load_experience())
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY,
+                                 base_url=config.anthropic_base_url())
     try:
         message = client.messages.create(
             model=ANTHROPIC_MODEL,

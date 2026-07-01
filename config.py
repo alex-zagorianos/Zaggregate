@@ -197,6 +197,33 @@ def adzuna_country_for(location=None, country=None):
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+# The fast/cheap model for light one-shot calls (industry-profile enrichment).
+# Resolvable so a BYO-AI backend that lacks the haiku id can point it elsewhere;
+# defaults to the current hardcoded value so behavior is byte-identical.
+ANTHROPIC_FAST_MODEL = os.getenv("ANTHROPIC_FAST_MODEL", "claude-haiku-4-5-20251001")
+
+
+def anthropic_base_url():
+    """Provider-agnostic API base URL for ALL five AI call sites (ranker /
+    gui / resume-generator / company-enumeration / industry-profile). Resolves
+    env-then-secret ('base_url'): the ANTHROPIC_BASE_URL env var wins, else the
+    plaintext file the in-app 'Connect your AI' box writes to secrets/base_url,
+    else None (the SDK's default = Anthropic's own endpoint, byte-identical for
+    Alex). Any Anthropic-compatible endpoint works: Ollama v0.14+ native, GLM,
+    DeepSeek, Kimi. Read as a function (not frozen at import) so a URL pasted
+    into the box after startup takes effect without a restart, mirroring
+    resolve_secret's laziness.
+
+    None is returned for an empty/whitespace value so `anthropic.Anthropic(
+    base_url=None)` falls through to the SDK default rather than a broken URL."""
+    v = resolve_secret("ANTHROPIC_BASE_URL", "base_url")
+    v = (v or "").strip()
+    return v or None
+
+
+# Frozen snapshot for back-compat / import-time readers; the callers prefer the
+# function above so a mid-session paste is honored.
+ANTHROPIC_BASE_URL = anthropic_base_url()
 
 # JSearch (RapidAPI) — aggregates Indeed, LinkedIn, Glassdoor
 JSEARCH_RAPIDAPI_KEY = os.getenv("JSEARCH_RAPIDAPI_KEY")

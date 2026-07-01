@@ -83,7 +83,7 @@ def _call_prompt_via_api(prompt):
             "No Anthropic API key -- set ANTHROPIC_API_KEY or save one in "
             "Tools > Connect your AI.")
     import anthropic
-    client = anthropic.Anthropic(api_key=key)
+    client = anthropic.Anthropic(api_key=key, base_url=_cfg.anthropic_base_url())
     msg = client.messages.create(
         model=_cfg.ANTHROPIC_MODEL,
         max_tokens=4096,
@@ -3452,6 +3452,22 @@ class App(tk.Tk):
                  font=theme.FONT_SM, width=16, anchor="w").pack(side="left")
         akey = tk.StringVar(value=uisettings.get_api_key("anthropic"))
         ttk.Entry(row, textvariable=akey, width=44, show="*").pack(side="left")
+        # Base URL: point the SAME key box at any Anthropic-compatible endpoint
+        # (Ollama v0.14+ native, GLM, DeepSeek, Kimi) instead of Anthropic's own.
+        # Stored to secrets/base_url via config.write_secret; blank = Anthropic.
+        import config as _cfg
+        row2 = tk.Frame(dlg, bg=theme.WINDOW)
+        row2.pack(fill="x", padx=14, pady=(4, 2))
+        tk.Label(row2, text="Base URL (optional):", bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_SM, width=16, anchor="w").pack(side="left")
+        aurl = tk.StringVar(value=(_cfg.read_secret("base_url") or ""))
+        ttk.Entry(row2, textvariable=aurl, width=44).pack(side="left")
+        tk.Label(dlg, justify='left', bg=theme.WINDOW, fg=theme.MUTED,
+                 font=theme.FONT_SM,
+                 text='Leave Base URL blank to use Claude. Or point it at any\n'
+                      'Anthropic-compatible endpoint -- a local Ollama\n'
+                      '(http://localhost:11434), GLM, DeepSeek, or Kimi -- to\n'
+                      'run BYO-AI ranking through your own model.').pack(anchor='w', padx=14, pady=(2, 0))
         status = tk.Label(dlg, text="", bg=theme.WINDOW, fg=theme.MUTED,
                           font=theme.FONT_SM)
         status.pack(anchor="w", padx=14, pady=(4, 0))
@@ -3459,6 +3475,7 @@ class App(tk.Tk):
         def save():
             v = akey.get().strip()
             uisettings.set_api_key("anthropic", v)
+            _cfg.write_secret("base_url", aurl.get().strip())
             ok = (not v) or uisettings.looks_like_key("anthropic", v)
             status.config(text="Saved." if ok else
                           "Saved — but that doesn't look like an Anthropic key (sk-ant-…).",
