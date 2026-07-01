@@ -190,8 +190,192 @@ def make_backup(dest_base: str) -> str:
     tracker DB, and settings."""
     import shutil
     base = dest_base[:-4] if dest_base.lower().endswith(".zip") else dest_base
-    shutil.make_archive(base, "zip", root_dir=str(Path(config.USER_DATA_DIR)))
+    # Exclude the backups/ and logs/ trees so a backup never nests prior backups
+    # (a self-including archive balloons on every run) or churns on the live log.
+    src = Path(config.USER_DATA_DIR)
+
+    def _ignore(dir_path, names):
+        if Path(dir_path).resolve() == src.resolve():
+            return [n for n in names if n in ("backups", "logs")]
+        return []
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as staging:
+        mirror = Path(staging) / "data"
+        shutil.copytree(src, mirror, ignore=_ignore)
+        shutil.make_archive(base, "zip", root_dir=str(mirror))
     return base + ".zip"
+
+
+BACKUP_DIR_NAME = "backups"
+
+
+def backups_dir() -> Path:
+    """The rotating auto-backup directory (<data>/backups), created on demand."""
+    d = Path(config.USER_DATA_DIR) / BACKUP_DIR_NAME
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def auto_backup(keep: int = 7, when=None) -> str | None:
+    """Take a dated snapshot of the data folder into <data>/backups/ and prune to
+    the most recent ``keep`` archives. Reuses make_backup so the headless daily
+    path and the Help menu share one backup implementation — friends' data
+    survives corruption even if they never open Help. Returns the new zip path,
+    or None if the data folder doesn't exist yet. Best-effort by contract; the
+    daily-run caller wraps this so a backup hiccup never fails the run."""
+    from datetime import datetime as _dt
+    src = Path(config.USER_DATA_DIR)
+    if not src.exists():
+        return None
+    stamp = (when or _dt.now()).strftime("%Y%m%d_%H%M%S")
+    dest = backups_dir() / f"jobscout-backup-{stamp}"
+    out = make_backup(str(dest))
+    _prune_backups(keep)
+    return out
+
+
+def _prune_backups(keep: int) -> list[str]:
+    """Delete all but the newest ``keep`` dated auto-backups. Returns the removed
+    filenames. Only touches files matching the auto-backup name pattern so a
+    user's manually-saved zip dropped in here is never removed."""
+    d = backups_dir()
+    archives = sorted(d.glob("jobscout-backup-*.zip"),
+                      key=lambda p: p.name, reverse=True)
+    removed = []
+    for old in archives[max(keep, 0):]:
+        try:
+            old.unlink()
+            removed.append(old.name)
+        except OSError:
+            pass
+    return removed
+
+
+def _providers_configured() -> dict:
+    """A redacted snapshot of which API keys/credentials are set — NAMES and a
+    set/unset flag ONLY, never a value. So a bug report shows "anthropic key: set,
+    adzuna: unset" without ever leaking the secret itself."""
+    snapshot = {}
+    try:
+        from ui import settings as ui_settings
+        for provider in sorted(ui_settings._KEY_FILES):
+            try:
+                snapshot[provider] = "set" if ui_settings.has_api_key(provider) else "unset"
+            except Exception:
+                snapshot[provider] = "unknown"
+    except Exception:
+        pass
+    return snapshot
+
+
+def _report_meta() -> dict:
+    """The redaction-safe metadata blob for a problem report: version, platform,
+    timestamp, a sync-folder warning if any, and which providers have keys set
+    (values redacted). No secret values, resume text, or personal data."""
+    import platform
+    from datetime import datetime as _dt
+    meta = {
+        "app_version": config.APP_VERSION,
+        "generated": _dt.now().isoformat(timespec="seconds"),
+        "platform": platform.platform(),
+        "python": sys.version.split()[0],
+        "providers_configured": _providers_configured(),
+    }
+    try:
+        import userdata
+        warn = userdata.sync_folder_warning()
+        if warn:
+            meta["sync_folder_warning"] = warn
+    except Exception:
+        pass
+    # A quick registry of known projects so support knows which last_run.json's to
+    # look at. Names only — no config contents.
+    try:
+        import workspace
+        meta["projects"] = [p.get("slug") for p in workspace.list_projects()]
+    except Exception:
+        pass
+    return meta
+
+
+def build_report_zip(dest_dir=None) -> str:
+    """Assemble a timestamped diagnostic zip for "Report a problem" and return its
+    path. ALLOWLIST by construction — it copies ONLY non-secret diagnostics:
+
+      * report_meta.json  (version, platform, redacted provider flags, sync warn)
+      * logs/             (the rotating app.log family)
+      * last_run.json     (per project: root + each project dir)
+
+    It deliberately never touches secrets/, experience.md, preferences, or the
+    tracker DB, so a friend can send it without leaking their API keys or resume.
+    Written to ``dest_dir`` (default: the data folder), so the caller can reveal
+    the containing folder."""
+    import json as _json
+    import shutil
+    import tempfile
+    from datetime import datetime as _dt
+
+    src = Path(config.USER_DATA_DIR)
+    stamp = _dt.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = Path(dest_dir) if dest_dir else src
+    out_dir.mkdir(parents=True, exist_ok=True)
+    base = out_dir / f"jobscout-report-{stamp}"
+
+    with tempfile.TemporaryDirectory() as staging:
+        stage = Path(staging) / "report"
+        stage.mkdir(parents=True, exist_ok=True)
+        # 1. redaction-safe metadata
+        (stage / "report_meta.json").write_text(
+            _json.dumps(_report_meta(), indent=2), encoding="utf-8")
+        # 2. logs/ (rotating app.log family) — support's primary evidence
+        logs_src = src / config.LOG_DIR_NAME
+        if logs_src.is_dir():
+            shutil.copytree(logs_src, stage / "logs")
+        # 3. every last_run.json (root + per project). Machine-readable run summary
+        # with NO secrets — added by daily_run.
+        seen = set()
+        candidates = [src]
+        try:
+            import workspace
+            for p in workspace.list_projects():
+                try:
+                    candidates.append(Path(workspace.project_dir(p.get("slug"))))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        for i, proj_dir in enumerate(candidates):
+            lr = Path(proj_dir) / "last_run.json"
+            if lr.is_file() and lr.resolve() not in seen:
+                seen.add(lr.resolve())
+                # Flatten to a unique name so multiple projects don't collide.
+                name = "last_run.json" if i == 0 else f"last_run.{i}.json"
+                shutil.copyfile(lr, stage / name)
+        out = shutil.make_archive(str(base), "zip", root_dir=str(stage))
+    return out
+
+
+def report_problem(parent=None) -> None:
+    """Help -> "Report a problem...": build a redaction-safe diagnostic zip
+    (logs + version + last-run status, NO keys/resume) and open the folder so the
+    user can attach it to a message. The menu wiring for this lives in gui.py; if
+    the other builder hasn't added the Help item yet, this function is ready to
+    call (recorded as a deviation for the orchestrator)."""
+    try:
+        out = build_report_zip()
+    except Exception as e:
+        messagebox.showerror("Report a problem", f"Could not build the report:\n{e}",
+                             parent=parent)
+        return
+    messagebox.showinfo(
+        "Report a problem",
+        "A diagnostic report was saved to:\n" + out + "\n\n"
+        "It contains app logs, your version, and the last-run summary — but NOT "
+        "your API keys, resume, or job data. Attach it to your message so the "
+        "problem can be diagnosed.",
+        parent=parent)
+    _open_path(Path(out).parent)
 
 
 def restore_backup(zip_path: str) -> None:
@@ -327,7 +511,8 @@ def show_privacy(parent=None) -> None:
 def show_about(parent=None) -> None:
     messagebox.showinfo(
         "About " + APP_NAME,
-        f"{APP_NAME}\n\n"
+        f"{APP_NAME}\n"
+        f"Version {config.APP_VERSION}\n\n"
         "A private, on-your-computer job-search assistant: it finds and scores "
         "jobs in your field, helps you tailor a resume, and tracks your "
         "applications.\n\n"
