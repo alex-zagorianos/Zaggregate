@@ -285,25 +285,41 @@ def match_fit(jobs, parsed) -> list:
     return out
 
 
-def score_inbox_from_reply(jobs, reply: str) -> int:
-    """Parse a fit reply, write token-verified fits back to inbox rows, AND derive
-    a Top-Picks shortlist (rank best-first) from those fits so the free clipboard
-    round-trip fills the Top Picks tab without the file-import/MCP path."""
+def score_inbox_from_reply(jobs, reply: str, *, source: str = "bridge"):
+    """Parse a fit reply, write token-verified fits back to inbox rows under ONE
+    shared batch (so Undo can revert the whole set atomically regardless of
+    route), AND derive a Top-Picks shortlist (rank best-first) so the free
+    clipboard round-trip fills the Top Picks tab without the file-import/MCP path.
+
+    `source` tags the batch ('bridge' for the clipboard paste, 'api' for the auto
+    route) so undo scope='any' still reverts across routes.
+
+    Returns (applied, missed):
+      applied — jobs whose score actually landed on an inbox row.
+      missed  — [{"title","company"}] for jobs we ASKED to score but that got no
+                score back (dropped/skipped by the model, or a write that didn't
+                land) — surfaced by the GUI as 'Scored X/N - k not scored', at
+                parity with the file-import unmatched reporting.
+    """
     parsed = parse_fit_reply(reply, len(jobs))
+    batch = new_rec_batch()
     scored = []  # (inbox_id, fit)
-    applied = 0
+    scored_ids = set()
     for job, fit_score, rationale in match_fit(jobs, parsed):
         if not job.job_id:
             continue
-        db.inbox_set_fit(int(job.job_id), fit_score, rationale)
-        scored.append((int(job.job_id), fit_score))
-        applied += 1
+        if db.inbox_set_fit(int(job.job_id), fit_score, rationale,
+                            source=source, batch=batch):
+            scored.append((int(job.job_id), fit_score))
+            scored_ids.add(str(job.job_id))
     if scored:
-        batch = new_rec_batch()
         for rank, (jid, _fit) in enumerate(
                 sorted(scored, key=lambda t: -t[1]), start=1):
             db.inbox_merge_extras(jid, rank_patch(rank, batch))
-    return applied
+    missed = [{"title": getattr(j, "title", ""), "company": getattr(j, "company", "")}
+              for j in jobs
+              if getattr(j, "job_id", None) and str(j.job_id) not in scored_ids]
+    return len(scored), missed
 
 
 def score_applications_from_reply(jobs, reply: str) -> int:
@@ -376,10 +392,20 @@ def undo_last_rerank(scope: str = "file_import") -> int:
 # ── Top Picks (AI shortlist over the whole inbox) ─────────────────────────────
 
 def new_rec_batch() -> str:
-    """A fresh recommendation-batch stamp (UTC ISO, second precision). One per
-    set_fit_scores / import call, so a newer AI run's picks supersede the old."""
+    """A fresh recommendation-batch stamp: UTC ISO (microsecond precision) + a
+    short random suffix. One per set_fit_scores / import / reply call.
+
+    Two properties matter:
+      * time-ordered PREFIX so top_picks() can pick the newest batch by max()
+        (a later run's picks supersede the old).
+      * a UNIQUE suffix so two routes firing in the same instant get DISTINCT
+        batches — otherwise score_history undo('any') would revert BOTH at once
+        (the batches would collide at second precision). Microsecond precision +
+        the suffix make same-tick collisions effectively impossible."""
+    import uuid
     from datetime import datetime, timezone
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    ts = datetime.now(timezone.utc).isoformat()
+    return f"{ts}#{uuid.uuid4().hex[:8]}"
 
 
 def rank_patch(rank: int, batch: str, tags: str | None = None) -> dict:

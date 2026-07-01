@@ -830,11 +830,17 @@ def inbox_search(query: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual", batch: str = ""):
+def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual",
+                  batch: str = "") -> bool:
     """Set an inbox row's fit + why. Snapshots the prior fit/score to
     score_history BEFORE the UPDATE (mirrors the status_history precedent), so
     a re-rank can be undone and before/after diffed. `source` tags the change
-    ('manual', 'file_import', ...)."""
+    ('manual', 'file_import', 'bridge', 'api', 'mcp', 'gate', ...).
+
+    Returns True when a row was actually updated, False on a missing/unknown id
+    (previously a silent no-op) — so callers writing from arbitrary AIs can count
+    only the scores that really landed, and no phantom score_history row is
+    written for an id that does not exist."""
     from datetime import datetime, timezone
     # A batch groups one logical re-rank so undo reverts the whole set at once.
     # apply_rerank_scores passes one shared id; a direct/manual call gets its own
@@ -859,17 +865,21 @@ def inbox_set_fit(inbox_id: int, fit: int, why: str, source: str = "manual", bat
         row = conn.execute(
             "SELECT title, company, location, url, source, fit, score "
             "FROM inbox WHERE id=?", (inbox_id,)).fetchone()
-        if row is not None:
-            conn.execute(
-                "INSERT INTO score_history "
-                "(inbox_id, job_key, old_fit, new_fit, old_score, source, batch, ts) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (inbox_id, _job_key_of(row), row["fit"], fit, row["score"],
-                 source, batch,
-                 datetime.now(timezone.utc).replace(microsecond=0).isoformat()))
+        if row is None:
+            # Unknown id: no history row, no phantom "applied". (Fixes the
+            # MCP set_fit_scores counting nonexistent ids as applied.)
+            return False
+        conn.execute(
+            "INSERT INTO score_history "
+            "(inbox_id, job_key, old_fit, new_fit, old_score, source, batch, ts) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (inbox_id, _job_key_of(row), row["fit"], fit, row["score"],
+             source, batch,
+             datetime.now(timezone.utc).replace(microsecond=0).isoformat()))
         conn.execute("UPDATE inbox SET fit=?, fit_why=? WHERE id=?",
                      (fit, why, inbox_id))
         conn.commit()
+        return True
 
 
 def inbox_set_extras(inbox_id: int, extras: str):

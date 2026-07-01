@@ -95,6 +95,16 @@ def _call_prompt_via_api(prompt):
     )
 
 
+def _scored_status(applied, asked, missed) -> str:
+    """Status line for a fit-scoring round, surfacing partial coverage:
+    'Scored 17/20 - 3 not scored' (bridge partial-coverage, C2 P4). No missed
+    -> 'Scored 20/20.'"""
+    n_missed = len(missed) if missed else 0
+    if n_missed:
+        return f"Scored {applied}/{asked} - {n_missed} not scored"
+    return f"Scored {applied}/{asked}."
+
+
 class _LineSink(io.TextIOBase):
     """A minimal text stream that forwards whole lines to a callback. Used to
     capture the daily-ingest pipeline's print() output (per-source counts, a
@@ -1100,7 +1110,8 @@ class InboxTab(ttk.Frame):
                        "already have a Fit grade.")
         mcb.pack(side="left", padx=2)
         theme.tip(theme.btn(abar, "Undo AI ranking", self._undo_rerank, "ghost"),
-                  "Revert the last imported AI ranking.").pack(side="left", padx=2)
+                  "Revert the last AI ranking - whether it came from a file "
+                  "import, a pasted reply, the API, or Claude Code.").pack(side="left", padx=2)
         self._status = tk.Label(abar, text="", bg=theme.WINDOW, fg=theme.MUTED,
                                 font=theme.FONT_SM)
         self._status.pack(side="left", padx=10)
@@ -1722,18 +1733,37 @@ class InboxTab(ttk.Frame):
             self.after(0, lambda: set_status(self._status, f"API error: {exc}", "err"))
             return
         try:
-            applied = tracker_service.score_inbox_from_reply(jobs, reply)
+            applied, missed = tracker_service.score_inbox_from_reply(
+                jobs, reply, source="api")
         except Exception as exc:
             self.after(0, lambda: set_status(
                 self._status, f"Parse error: {exc}", "err"))
             return
-        self.after(0, self._api_rank_done, applied)
+        self.after(0, self._api_rank_done, applied, len(jobs), missed)
 
-    def _api_rank_done(self, applied):
+    def _api_rank_done(self, applied, asked, missed):
         if not self.winfo_exists():
             return
-        set_status(self._status, f"Ranked {applied} job(s) via API.", "ok")
+        set_status(self._status, _scored_status(applied, asked, missed),
+                   "ok" if not missed else "work")
+        if missed:
+            self._show_not_scored(missed)
         self.refresh()
+
+    def _show_not_scored(self, missed):
+        """Detail popup listing the jobs the AI was asked to score but didn't —
+        parity with the file-import unmatched report."""
+        if not missed:
+            return
+        titles = "\n".join(
+            f"- {(m.get('title') or '(untitled)')} - {(m.get('company') or '')}".rstrip(" -")
+            for m in missed[:40])
+        more = f"\n...and {len(missed) - 40} more" if len(missed) > 40 else ""
+        messagebox.showinfo(
+            "Some jobs weren't scored",
+            f"{len(missed)} job(s) were sent to the AI but came back without a "
+            f"score, so their Fit grade is unchanged:\n\n{titles}{more}",
+            parent=self)
 
     def _paste_fit(self):
         if not self._fit_jobs:
@@ -1745,11 +1775,12 @@ class InboxTab(ttk.Frame):
         # Token-verified mapping (SCORE-5): the service uses the bridge's
         # match_fit_to_jobs so scores land on the right row even if the reply
         # reordered or skipped jobs — not positional trust.
+        asked = len(self._fit_jobs)
         try:
-            ok, applied = db_guard(
+            ok, res = db_guard(
                 self,
                 lambda: tracker_service.score_inbox_from_reply(
-                    self._fit_jobs, dlg.result),
+                    self._fit_jobs, dlg.result, source="bridge"),
                 status_cb=lambda m: set_status(self._status, m, "err"),
                 action="apply fit scores")
         except BridgeParseError as e:
@@ -1757,7 +1788,11 @@ class InboxTab(ttk.Frame):
             return
         if not ok:
             return
-        set_status(self._status, f"Applied {applied} fit score(s).", "ok")
+        applied, missed = res
+        set_status(self._status, _scored_status(applied, asked, missed),
+                   "ok" if not missed else "work")
+        if missed:
+            self._show_not_scored(missed)
         self.refresh()
 
     def _export_rows(self) -> list[dict]:
@@ -1830,11 +1865,14 @@ class InboxTab(ttk.Frame):
         self.refresh()
 
     def _undo_rerank(self):
-        """Revert the most recent file-import re-rank batch via score_history."""
-        n = tracker_service.undo_last_rerank("file_import")
+        """Revert the most recent AI re-rank batch on ANY route (file import,
+        clipboard bridge, API auto-rank, or MCP) via score_history. scope='any'
+        makes Undo work after a paste/MCP rank, not just a file import — the
+        biggest BYO-AI trust hazard (arbitrary AIs writing scores)."""
+        n = tracker_service.undo_last_rerank("any")
         set_status(self._status,
-                   f"Undid last re-rank: restored {n} row(s)." if n else
-                   "No re-rank to undo.", "muted" if n else "info")
+                   f"Undid last AI ranking: restored {n} job(s)." if n else
+                   "No AI ranking to undo.", "muted" if n else "info")
         self.refresh()
 
 

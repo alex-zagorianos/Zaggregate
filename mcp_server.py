@@ -117,12 +117,20 @@ def set_fit_scores(scores: list[dict]) -> dict:
     from tracker import service
     batch = service.new_rec_batch()
     applied = 0
+    missed = 0
     for s in scores:
         try:
             iid = int(s["id"])
-            db.inbox_set_fit(iid, max(0, min(100, int(s["fit"]))),
-                             str(s.get("rationale", "")))
+            landed = db.inbox_set_fit(iid, max(0, min(100, int(s["fit"]))),
+                                      str(s.get("rationale", "")),
+                                      source="mcp", batch=batch)
         except (KeyError, TypeError, ValueError):
+            continue
+        # Only count a score that ACTUALLY landed on a row — a nonexistent id is
+        # a phantom, not an applied score (fixes the over-count bug). Same shared
+        # batch + source='mcp' so Undo (scope='any') reverts the whole MCP set.
+        if not landed:
+            missed += 1
             continue
         applied += 1
         rank = s.get("rank")
@@ -131,7 +139,7 @@ def set_fit_scores(scores: list[dict]) -> dict:
                 db.inbox_merge_extras(iid, service.rank_patch(int(rank), batch))
             except (TypeError, ValueError):
                 pass
-    return {"applied": applied}
+    return {"applied": applied, "missed": missed}
 
 
 @mcp.tool()

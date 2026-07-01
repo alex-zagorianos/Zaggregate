@@ -51,7 +51,7 @@ def test_rank_via_api_runs_prompt_and_parses(monkeypatch):
         return types.SimpleNamespace(content=[block])
 
     fake_anthropic = types.SimpleNamespace(
-        Anthropic=lambda api_key=None: types.SimpleNamespace(
+        Anthropic=lambda api_key=None, base_url=None: types.SimpleNamespace(
             messages=types.SimpleNamespace(create=fake_create)))
     monkeypatch.setitem(sys.modules, "anthropic", fake_anthropic)
     monkeypatch.setattr(ranker, "api_key", lambda: "sk-test")

@@ -28,8 +28,8 @@ def test_clipboard_scoring_fills_top_picks(tmp_db):
     import json
     objs = [{"token": claude_bridge.fit_token(j), "fit": fit, "why": "ok"}
             for j, fit in zip(jobs, (85, 70))]
-    n = service.score_inbox_from_reply(jobs, json.dumps(objs))
-    assert n == 2
+    n, missed = service.score_inbox_from_reply(jobs, json.dumps(objs))
+    assert n == 2 and missed == []
     picks = service.top_picks()
     assert [p["rank"] for p in picks] == [1, 2]
     assert picks[0]["fit"] == 85  # best fit ranked first

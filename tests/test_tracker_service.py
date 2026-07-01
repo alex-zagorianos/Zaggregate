@@ -146,8 +146,9 @@ def test_score_inbox_from_reply_writes_token_verified(tmp_db):
         f' {{"i": 1, "token": "{fit_token(jobs[0])}", "fit": 91, '
         f'"why": "strong", "flags": ""}}]'
     )
-    applied = svc.score_inbox_from_reply(jobs, reply)
+    applied, missed = svc.score_inbox_from_reply(jobs, reply)
     assert applied == 2
+    assert missed == []
     by_id = {r["id"]: r for r in svc.list_inbox()}
     assert by_id[int(jobs[0].job_id)]["fit"] == 91
     assert by_id[int(jobs[1].job_id)]["fit"] == 55
