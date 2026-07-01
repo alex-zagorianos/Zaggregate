@@ -11,6 +11,7 @@ Run:  py mcp_server.py            (stdio transport; see claude-code/.mcp.json)
 Requires the `mcp` package (official SDK; ships FastMCP). The data folder is
 resolved by config (JOBPROGRAM_DATA env / ./data when frozen / repo root in dev).
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mcp.server.fastmcp import FastMCP
 
 import userdata
+import workspace
 import preferences as prefs_mod
 import ranker
 from tracker import db
@@ -172,8 +174,29 @@ def import_scores(path: str, policy: str = "overwrite") -> dict:
             "errors": res.errors}
 
 
-def main() -> None:
+def _parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="jobscout MCP stdio server")
+    parser.add_argument("--project", type=str, default=None,
+                        help="Serve this project workspace (default: active). "
+                             "Pinned once at startup so a GUI project switch "
+                             "mid-session can't redirect our writes.")
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> None:
+    args = _parse_args(argv)
     userdata.bootstrap()   # seed the data folder before serving
+    if args.project:
+        known = {p["slug"] for p in workspace.list_projects()}
+        if args.project not in known:
+            raise SystemExit(f"unknown project: {args.project!r} "
+                             f"(known: {sorted(known) or 'none'})")
+    # Pin the active project ONCE at startup. A long-lived MCP session resolves
+    # db/config/output paths per-call from projects.json, so without this a GUI
+    # project switch (or a concurrent run) mid-session would silently redirect
+    # our inbox/config writes into a DIFFERENT project (the S27 corruption
+    # class). Pin the explicit --project, else whatever is active right now.
+    workspace.pin_active(args.project or workspace.active_slug())
     db.init_db()
     mcp.run()              # stdio transport
 
