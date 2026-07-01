@@ -1183,6 +1183,11 @@ class InboxTab(ttk.Frame):
         self._reach_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
                                    fg=theme.MUTED, font=theme.FONT_SM)
         self._reach_lbl.pack(side="right", padx=14)
+        # Last-update stamp from the run beacon (applog.last_run_info), so a user
+        # can tell "no new jobs" from "updates stopped running" at a glance.
+        self._lastrun_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                     fg=theme.MUTED, font=theme.FONT_SM)
+        self._lastrun_lbl.pack(side="right", padx=14)
         theme.tip_strip(
             self, "Your shortlist. Pick jobs you like and click "
                   "“Track ▸ Interested” — they move to Apply Queue. "
@@ -1443,6 +1448,17 @@ class InboxTab(ttk.Frame):
             self._reach_lbl.config(text=badge_line(snap))
         except Exception:
             self._reach_lbl.config(text="")
+        try:
+            import applog
+            info = applog.last_run_info(workspace.active_slug())
+            if info and info.get("timestamp"):
+                when = str(info["timestamp"])[:16].replace("T", " ")
+                self._lastrun_lbl.config(
+                    text=f"Last updated {when} — {info.get('added', 0)} new")
+            else:
+                self._lastrun_lbl.config(text="")
+        except Exception:
+            self._lastrun_lbl.config(text="")
 
     # ── Update my Inbox now (the daily loop, in-GUI) ──────────────────────────
     def _update_inbox_now(self):
@@ -3682,6 +3698,8 @@ class App(tk.Tk):
         helpm.add_separator()
         helpm.add_command(label="Privacy: what leaves this computer",
                           command=lambda: uihelp.show_privacy(self))
+        helpm.add_command(label="Report a problem…",
+                          command=lambda: uihelp.report_problem(self))
         helpm.add_command(label="About", command=lambda: uihelp.show_about(self))
         menubar.add_cascade(label="Help", menu=helpm)
 

@@ -67,9 +67,13 @@ config_dad.json
 projects/
 *.bak
 
-# === LOGS ===
+# === LOGS & RUN STATE ===
 *.log
 logs/
+# Rolling tracker.db backups + machine-readable run beacon (dev checkout runs
+# write these at the repo root, since USER_DATA_DIR = repo root in dev).
+backups/
+last_run.json
 
 # Claude Code agent worktrees (transient; created per builder run) + reach run data
 .claude/worktrees/

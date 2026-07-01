@@ -84,6 +84,13 @@ class SearchEngine:
         # coverage/reach estimator can see the cross-source membership that dedup
         # discards. Empty until a search runs. Read-only for callers.
         self.last_raw_results: list[JobResult] = []
+        # Per-source first-error map from the most recent run (source -> message),
+        # consumed by the daily run beacon (last_run.json errors[]). Read-only.
+        self.last_source_errors: dict[str, str] = {}
+
+    def source_errors(self) -> dict:
+        """Per-source first-error map from the most recent run_full_search."""
+        return dict(self.last_source_errors)
 
     def run_full_search(
         self,
@@ -208,6 +215,7 @@ class SearchEngine:
             print(f"[{source}] {agg_n[source]} results in ~{agg_t[source]:.1f}s")
 
         self.last_raw_results = all_results  # for coverage/reach (membership)
+        self.last_source_errors = dict(agg_err)  # for the run beacon (last_run.json)
         deduped = self._deduplicate(all_results)
         if sort_by == "location":
             deduped.sort(key=lambda j: _location_score(j.location, location), reverse=True)
