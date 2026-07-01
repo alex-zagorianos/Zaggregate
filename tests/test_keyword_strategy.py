@@ -158,3 +158,49 @@ def test_related_tier_end_to_end_real_data():
     industry_profile.clear_cache()
     out = ks.broad_query_keywords(["Analyst"], "database administrator")
     assert "database administrator" in out
+
+
+# ── tech/remote-skewed source gating (item 24) ───────────────────────────────
+_TECH_SOURCES = ["adzuna", "usajobs", "careers", "themuse", "remoteok",
+                 "remotive", "jobicy", "himalayas", "hn", "arbeitnow"]
+
+
+def test_is_knowledge_work_true_for_empty_and_eng():
+    assert ks.is_knowledge_work("") is True
+    assert ks.is_knowledge_work("controls_engineering") is True
+
+
+def test_is_knowledge_work_true_for_mapped_jobicy_field():
+    assert ks.is_knowledge_work("finance") is True     # jobicy_industry='finance'
+
+
+def test_is_knowledge_work_false_for_hands_on_field():
+    assert ks.is_knowledge_work("nursing") is False
+    assert ks.is_knowledge_work("plumbing") is False
+
+
+def test_gate_tech_sources_noop_for_alex_default():
+    out = ks.gate_tech_sources(_TECH_SOURCES, "")
+    assert out == _TECH_SOURCES
+
+
+def test_gate_tech_sources_drops_tech_boards_for_nursing():
+    out = ks.gate_tech_sources(_TECH_SOURCES, "nursing")
+    for s in ks.TECH_SKEWED_SOURCES:
+        assert s not in out
+    # non-tech-skewed sources untouched
+    assert "adzuna" in out and "careers" in out and "themuse" in out
+    # jobicy already skips itself for nursing (existing behavior) but stays in
+    # the LIST — the client itself returns [] — this gate targets the other 5.
+    assert "jobicy" in out
+
+
+def test_gate_tech_sources_respects_explicit_override():
+    out = ks.gate_tech_sources(_TECH_SOURCES, "nursing", cfg_sources={"remoteok": True})
+    assert "remoteok" in out
+    assert "remotive" not in out            # not explicitly overridden -> still dropped
+
+
+def test_gate_tech_sources_explicit_false_still_drops():
+    out = ks.gate_tech_sources(_TECH_SOURCES, "nursing", cfg_sources={"remoteok": False})
+    assert "remoteok" not in out

@@ -2032,7 +2032,12 @@ class SearchTab(ttk.Frame):
             # search spent the paid JSearch 200/month quota and hit sources the
             # user had disabled.
             _cfg_sources = (self._user_cfg or {}).get("sources", {}) or {}
+            _ind = (self._user_cfg or {}).get("industry") or ""
             _sources = [s for s in ALL_SOURCES if _cfg_sources.get(s, True)]
+            # Drop tech/remote-skewed boards for a non-knowledge-work field
+            # (no-op for eng/knowledge-work fields; explicit toggle still wins).
+            from search.keyword_strategy import gate_tech_sources
+            _sources = gate_tech_sources(_sources, _ind, _cfg_sources)
             clients = build_clients(_sources, cache_enabled=True)
             # Broaden the QUERY keywords for API recall (search broad, score
             # narrow); the original `keywords` stay the scoring set below. No-op
@@ -2040,7 +2045,6 @@ class SearchTab(ttk.Frame):
             from search.keyword_strategy import broad_query_keywords
             if (self._user_cfg or {}).get("broaden_keywords", True):
                 import industry_profile
-                _ind = (self._user_cfg or {}).get("industry") or ""
                 _syn = industry_profile.resolve(_ind).query_synonyms
                 query_keywords = broad_query_keywords(keywords, _ind, synonyms=_syn)
             else:

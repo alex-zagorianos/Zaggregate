@@ -192,3 +192,39 @@ def broad_query_keywords(roles: Iterable[str], industry: str = "",
                 if added >= _MAX_SYNONYMS:
                     break
     return base
+
+
+# ── tech/remote-skewed source gating (item 24) ───────────────────────────────
+# RemoteOK, Remotive, Himalayas, Arbeitnow, and HN-whoishiring are remote/tech-
+# audience boards at the SOURCE (their own postings skew software/eng), so for a
+# hands-on/clinical/trade field they mostly add noise + wasted API calls rather
+# than reach. Gated the same way Muse/Jobicy already are (industry_profile), not
+# hardcoded per-source.
+TECH_SKEWED_SOURCES = frozenset({"remoteok", "remotive", "himalayas", "arbeitnow", "hn"})
+
+
+def is_knowledge_work(industry: str) -> bool:
+    """True when the tech/remote-audience boards fit this field: the SAME
+    eng_like / mapped-Jobicy signal Muse and Jobicy already use to route (an
+    unmapped Jobicy industry means 'this tech-centric remote board has nothing
+    for this field' — jobicy_client already skips itself on that signal; the
+    generic (unmapped) fallback also already skips Jobicy for the same reason).
+    Empty industry (Alex/default) -> True, so nothing changes when unconfigured.
+    """
+    import industry_profile
+    p = industry_profile.resolve(industry)
+    return p.eng_like or p.jobicy_industry is not None
+
+
+def gate_tech_sources(sources: Iterable[str], industry: str,
+                      cfg_sources: dict | None = None) -> list[str]:
+    """Drop TECH_SKEWED_SOURCES for a non-knowledge-work field so a plumber/nurse
+    search doesn't waste calls on remote-tech boards. An explicit per-source
+    `True` in `cfg_sources` (the user's own Settings toggle) always wins and
+    keeps a source on regardless of field. Additive: eng/knowledge-work fields
+    (and any explicit override) are unaffected."""
+    cfg_sources = cfg_sources or {}
+    if is_knowledge_work(industry):
+        return list(sources)
+    return [s for s in sources
+           if s not in TECH_SKEWED_SOURCES or cfg_sources.get(s) is True]

@@ -77,6 +77,13 @@ def main():
     sources = [s for s in DAILY_SOURCES if cfg_sources.get(s, True)]
     industry = cfg.get("industry") or None  # filters the careers registry
 
+    # Drop the tech/remote-skewed boards (RemoteOK, Remotive, Himalayas,
+    # Arbeitnow, HN) for a non-knowledge-work field — noise + wasted calls for a
+    # plumber/nurse search. No-op for eng/knowledge-work fields (Alex unchanged);
+    # an explicit cfg_sources[<name>]=True override always wins.
+    from search.keyword_strategy import gate_tech_sources
+    sources = gate_tech_sources(sources, industry or "", cfg_sources)
+
     # Broaden the QUERY keywords for API recall — job APIs phrase-match, so narrow
     # seniority-laden titles ("VP Clinical Informatics") return ~0 while the field
     # term ("clinical informatics") returns 20x more (measured 2026-07-01). The
