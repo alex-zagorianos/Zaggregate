@@ -101,7 +101,9 @@ def test_skill_gap_missing_row(tmp_db):
 
 def test_get_resume_prompt_from_inbox(tmp_db, monkeypatch):
     from models import JobResult
-    monkeypatch.setattr("resume.experience_parser.load_experience",
+    from resume import service as rsvc
+    # build_prompt binds load_experience at import; patch it on the service module.
+    monkeypatch.setattr(rsvc, "load_experience",
                         lambda: {"work_experience": "### Controls Engineer\n- built PLC lines",
                                  "skills": "PLC, C++"})
     db.inbox_add_many([JobResult(
