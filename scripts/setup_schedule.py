@@ -39,8 +39,15 @@ def _create_task(slug: str, start_time: str) -> int:
     """schtasks /Create for one project. Returns the process return code."""
     task = _task_name(slug)
     script_dir = str(BASE)
-    # cmd /c cd /d "<dir>" && py daily_run.py --project <slug>
-    tr = f'cmd /c cd /d "{script_dir}" && py daily_run.py --project {slug}'
+    # cmd /c cd /d "<dir>" && py daily_run.py --project <slug> >> "<log>" 2>&1
+    # The redirect is essential: without it, every print() the ingest pipeline
+    # emits (per-source counts, a source that 429'd, an expired key, a scraper
+    # schema change) is discarded on the headless scheduled run, so a broken
+    # source is indistinguishable from a genuinely empty one (finding #2). The
+    # app's own log() only captures its own lines, not the engine/clients'.
+    log_name = f"daily_task_{slug}.log"
+    tr = (f'cmd /c cd /d "{script_dir}" && py daily_run.py --project {slug} '
+          f'>> "{log_name}" 2>&1')
     cmd = ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", start_time,
            "/TN", task, "/TR", tr]
     print(f"  {task} @ {start_time} -> {tr}")
@@ -83,7 +90,8 @@ def setup(projects=None) -> int:
 
     print()
     print(f"Done: {created} daily task(s) registered.")
-    print(f"Log per project: projects\\<slug>\\output\\daily_run.log")
+    print(f"App log per project: projects\\<slug>\\output\\daily_run.log")
+    print(f"Full scheduled-run console (per project): daily_task_<slug>.log")
     return created
 
 

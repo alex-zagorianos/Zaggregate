@@ -28,6 +28,18 @@ _HEADING_ALIASES: dict[str, str] = {
     "CONTACT INFORMATION":     "CONTACT",
     "SKILLS":                  "TECHNICAL SKILLS",
     "TECHNICAL SKILL":         "TECHNICAL SKILLS",
+    # Non-engineering resumes rarely use "TECHNICAL SKILLS"; without these the
+    # skill-overlap component (25% of the match score) silently goes neutral for a
+    # health-IT exec / nurse / accountant profile. (finding #17)
+    "CORE COMPETENCIES":       "TECHNICAL SKILLS",
+    "CORE COMPETENCY":         "TECHNICAL SKILLS",
+    "COMPETENCIES":            "TECHNICAL SKILLS",
+    "AREAS OF EXPERTISE":      "TECHNICAL SKILLS",
+    "KEY SKILLS":              "TECHNICAL SKILLS",
+    "SKILLS & EXPERTISE":      "TECHNICAL SKILLS",
+    "SKILLS AND EXPERTISE":    "TECHNICAL SKILLS",
+    "PROFESSIONAL SKILLS":     "TECHNICAL SKILLS",
+    "TECHNICAL PROFICIENCIES": "TECHNICAL SKILLS",
     "WORK HISTORY":            "WORK EXPERIENCE",
     "WORK EXPERIENCES":        "WORK EXPERIENCE",
     "PROFESSIONAL EXPERIENCE": "WORK EXPERIENCE",

@@ -91,6 +91,20 @@ def main():
         f"({len(query_keywords)} broadened for query) | "
         f"location={location} | min_score={min_score} | industry={industry}")
 
+    # Preflight reach check: warn when the career-page (registry) path has almost
+    # no employers for this field, so a near-zero 'careers' contribution is visible
+    # up front instead of a mystery (the eng-only registry has ~0 health cos).
+    if industry and "careers" in sources:
+        try:
+            from scrape.company_registry import industry_company_count
+            n_reg = industry_company_count(industry)
+            if n_reg < 10:
+                log(f"NOTE: only {n_reg} registry companies match industry "
+                    f"'{industry}' — the 'careers' path will add few/no jobs. Build "
+                    f"your employer list (seed_companies.py / Add Companies / discovery).")
+        except Exception:
+            pass
+
     # Opt-in tiered scraping: as the registry grows, scrape only the boards "due"
     # this run (active boards every run, quiet/dead ones less often) so the daily
     # run stays fast. Off by default — the full registry is scraped as before.

@@ -235,6 +235,27 @@ def has_industry(industry: str | None, user_json: Optional[Path] = None) -> bool
     return bool(get_registry(industry=industry, user_json=user_json))
 
 
+def industry_company_count(industry: str | None, user_json: Optional[Path] = None) -> int:
+    """How many registry companies (hardcoded ∪ companies.json) match `industry`.
+    Empty/None → the whole registry size. Lets callers warn before a search when a
+    field has almost no employers (the ATS-scraper path would return ~0)."""
+    if not (industry or "").strip():
+        return len(get_registry(user_json=user_json))
+    return len(get_registry(industry=industry, user_json=user_json))
+
+
+def registry_stats(user_json: Optional[Path] = None) -> dict[str, int]:
+    """Company count per industry TAG across the merged registry. Powers a
+    'companies for your field' readout so an empty/eng-only registry is visible
+    before a live search returns near-zero (finding #28)."""
+    from collections import Counter
+    counts: Counter = Counter()
+    for e in get_registry(user_json=user_json):
+        for tag in (e.industries or ["(untagged)"]):
+            counts[tag] += 1
+    return dict(counts)
+
+
 def get_registry(industry: str | None = None, user_json: Optional[Path] = None) -> list[CompanyEntry]:
     """Return companies filtered by industry key or tag, merged with user companies.json.
 
