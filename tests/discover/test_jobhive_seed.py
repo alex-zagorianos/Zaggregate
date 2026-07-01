@@ -369,6 +369,7 @@ def test_derive_board_keeps_long_org_slug():
 # ── ONE tiny live smoke test (per plan) — real manifest + a small real slice,
 #    hard-capped at 64 KB, skips (never fails) if the sandbox has no network. ──
 
+@pytest.mark.network  # genuine live-smoke: opts out of the conftest socket guard
 def test_live_smoke_reads_small_real_slice():
     fields = [FieldSpec("smoke", ["engineer", "manager", "specialist", "coordinator",
                                   "director", "analyst"])]
