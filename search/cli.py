@@ -415,9 +415,15 @@ def main():
     default_sources_str = ",".join(ALL_SOURCES)
     cfg_sources = user_cfg.get("sources", {})
     if args.sources != default_sources_str:
+        # An explicit --sources list is a stronger opt-in than field gating —
+        # honor it exactly as requested.
         sources = [s.strip().lower() for s in args.sources.split(",")]
     else:
         sources = [s for s in ALL_SOURCES if cfg_sources.get(s, True)]
+        # Drop tech/remote-skewed boards for a non-knowledge-work field (no-op
+        # for eng/knowledge-work fields; an explicit cfg_sources override wins).
+        from search.keyword_strategy import gate_tech_sources
+        sources = gate_tech_sources(sources, industry or "", cfg_sources)
 
     output_dir = Path(args.output_dir) if args.output_dir else workspace.output_dir()
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -80,3 +80,44 @@ def test_facts_for_cache_roundtrip(tmp_path, monkeypatch):
     first = F.facts_for(j)
     assert (tmp_path / f"{j.job_key}.json").exists()
     assert F.facts_for(j) == first   # served from cache
+
+
+# ── Item 25: soc_code as extra (optional) cache-key entropy ─────────────────
+def test_profile_sig_soc_code_none_is_byte_identical():
+    # Every caller before item 25 passes soc_code=None (the default) -- the
+    # cache-key signature must be UNCHANGED for them.
+    assert F._profile_sig("health_informatics", None) == F._profile_sig("health_informatics", None, None)
+    assert F._profile_sig("", None) is None
+    assert F._profile_sig("", None, None) is None
+
+
+def test_profile_sig_differs_by_soc_code():
+    sig_a = F._profile_sig("clinical informatics", None, "29-1141.00")
+    sig_b = F._profile_sig("clinical informatics", None, "15-1211.00")
+    assert sig_a != sig_b
+
+
+def test_profile_sig_soc_code_forces_a_signature_even_for_tech():
+    # Even a tech/empty industry with no skill_terms gets a real signature once
+    # a soc_code is supplied (defensive; not expected in practice for Alex).
+    assert F._profile_sig("", None, "15-1252.00") is not None
+
+
+def test_facts_for_soc_code_separates_cache_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(F, "_cache_dir", lambda: tmp_path)
+    j = _job("Health Informatics Analyst", "clinical informatics EHR analytics")
+    a = F.facts_for(j, industry="health_informatics", soc_code="29-1141.00")
+    b = F.facts_for(j, industry="health_informatics", soc_code="15-1211.00")
+    # Same job, same industry, DIFFERENT persisted SOC -> separate cache files
+    # (never a cross-project collision), even though extraction content is the
+    # same (soc_code doesn't change extraction logic, only cache-key entropy).
+    assert a == b
+    files = sorted(p.name for p in tmp_path.glob(f"{j.job_key}*"))
+    assert len(files) == 2
+
+
+def test_facts_for_no_soc_code_matches_pre_item25_filename(tmp_path, monkeypatch):
+    monkeypatch.setattr(F, "_cache_dir", lambda: tmp_path)
+    j = _job("Senior Firmware Engineer", "C++ real-time motion control")
+    F.facts_for(j)                                  # eng/no-industry path
+    assert (tmp_path / f"{j.job_key}.json").exists()  # unsuffixed filename, unchanged

@@ -162,6 +162,41 @@ _RULES: list[tuple[set[str], dict]] = [
 ]
 
 
+# ── SOC major-group (2-digit) -> source knobs (item 23) ────────────────────────
+# The 23 BLS/O*NET-SOC major groups, mapped to Muse categories + a Jobicy slug so
+# The Muse / Jobicy category selection works for ANY occupation the O*NET tier
+# resolves (below), not just the ~20 hand-listed fields in _RULES above. _RULES
+# still wins whenever it matches (byte-identical for every field already
+# covered) — this table only BACKS the O*NET-SOC tier for everything else.
+# muse: [] where no Muse category cleanly covers the group (keeps full reach —
+# the client still fetches unfiltered + keyword-matches, rather than mis-route).
+SOC_MAJOR_GROUPS: dict[str, dict] = {
+    "11": {"muse": ["Management", "Business Operations"], "jobicy": "management"},
+    "13": {"muse": ["Accounting and Finance", "Business Operations"], "jobicy": "business"},
+    "15": {"muse": ["Software Engineering", "Data and Analytics"], "jobicy": "engineering"},
+    "17": {"muse": ["Science and Engineering"], "jobicy": "engineering"},
+    "19": {"muse": ["Science and Engineering"], "jobicy": None},
+    "21": {"muse": [], "jobicy": None},
+    "23": {"muse": ["Legal Services"], "jobicy": "legal"},
+    "25": {"muse": ["Education"], "jobicy": None},
+    "27": {"muse": [], "jobicy": "design"},
+    "29": {"muse": ["Healthcare"], "jobicy": None},
+    "31": {"muse": ["Healthcare"], "jobicy": None},
+    "33": {"muse": [], "jobicy": None},
+    "35": {"muse": ["Food and Hospitality Services"], "jobicy": None},
+    "37": {"muse": ["Cleaning and Facilities"], "jobicy": None},
+    "39": {"muse": ["Sports, Fitness, and Recreation"], "jobicy": None},
+    "41": {"muse": ["Sales", "Account Management"], "jobicy": "sales"},
+    "43": {"muse": ["Business Operations"], "jobicy": "admin"},
+    "45": {"muse": [], "jobicy": None},
+    "47": {"muse": ["Construction"], "jobicy": None},
+    "49": {"muse": ["Installation, Maintenance, and Repairs"], "jobicy": None},
+    "51": {"muse": [], "jobicy": None},
+    "53": {"muse": ["Business Operations", "Installation, Maintenance, and Repairs"], "jobicy": None},
+    "55": {"muse": [], "jobicy": None},
+}
+
+
 def _user_json_path() -> Path:
     import config
     return Path(config.USER_DATA_DIR) / "industry_profiles.json"
@@ -184,6 +219,159 @@ def _sanitize_muse(cats) -> list[str]:
 
 
 _cache: dict[str, IndustryProfile] = {}
+
+# Generic words to drop from an O*NET occupation title before using it as
+# title_terms (relevance-classification vocabulary).
+_ONET_TITLE_STOPWORDS = frozenset({
+    "and", "of", "the", "all", "other", "except", "including", "for", "a", "an",
+})
+
+
+class _OnetMatch:
+    __slots__ = ("soc_code", "soc_title")
+
+    def __init__(self, soc_code: str, soc_title: str):
+        self.soc_code = soc_code
+        self.soc_title = soc_title
+
+
+def _normalize_for_onet(industry: str) -> str:
+    """'health_informatics' -> 'health informatics' — coverage.entity's title
+    matching only collapses whitespace, not underscores/hyphens."""
+    return " ".join(_tokens(industry))
+
+
+def _title_terms_from_soc(soc_title: str, industry: str) -> list[str]:
+    """Lowercase significant words from the matched O*NET occupation title, plus
+    the industry's own tokens, for the relevance-classification title_terms
+    field (discover/classify.py)."""
+    words = re.findall(r"[a-z][a-z'&]*", (soc_title or "").lower())
+    terms = [w for w in words if w not in _ONET_TITLE_STOPWORDS and len(w) >= 3]
+    ind_words = [w for w in _tokens(industry) if len(w) >= 3]
+    return list(dict.fromkeys(terms + ind_words))[:12]
+
+
+def _alt_titles_for_soc(soc_code: str, exclude: set[str], limit: int = 6) -> list[str]:
+    """Other O*NET alternate titles that resolve to the SAME occupation as
+    `soc_code` — a free 'related titles' pool (no second data file needed) used
+    both as this tier's query_synonyms and as search.keyword_strategy's
+    second-tier related-occupation synonyms (item 26)."""
+    try:
+        from coverage.entity import _onet as _onet_table
+        table = _onet_table()
+    except Exception:
+        return []
+    out: list[str] = []
+    for alt, (soc, _title) in table.items():
+        if soc == soc_code and alt not in exclude:
+            out.append(alt)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _onet_table_lookup(core: str, table: dict) -> Optional[tuple]:
+    """Deterministic dict lookup for `core` (already casefolded/whitespace-
+    collapsed) against the bundled alt-titles table, with a simple singular/
+    plural fallback (O*NET's canonical titles are almost always plural; a
+    user's free-text field is often singular). Returns (soc_code, soc_title)
+    or None.
+
+    Deliberately NOT a fuzzy/similarity match: verified 2026-07-01 against the
+    full ~62k-row real O*NET dataset that rapidfuzz's token_set_ratio — lenient
+    to word reordering and subset/superset token differences by design — hands
+    out misleadingly high (even literal 1.0) scores to UNRELATED occupations
+    ("registered nurse" -> "Health Education Specialists", "database
+    administrator" -> "Administrative Services Managers", "underwater basket
+    weaving" -> "Fishing and Hunting Workers" at 0.74). This tier ROUTES job
+    sources, so a wrong-but-confident match is worse than no match (it would
+    silently narrow reach) — an exact/near-exact literal match is the only
+    signal precise enough to trust for routing. coverage/entity.normalize_title
+    (fuzzy, tolerant) remains appropriate for its own use (dedup/coverage
+    estimation, where an occasional miss is just statistical noise)."""
+    if not core:
+        return None
+    if core in table:
+        return table[core]
+    if core.endswith("s") and core[:-1] in table:
+        return table[core[:-1]]
+    if not core.endswith("s") and (core + "s") in table:
+        return table[core + "s"]
+    return None
+
+
+def _match_onet(industry: str) -> Optional[_OnetMatch]:
+    """Deterministic O*NET-SOC match for free-text `industry` (see
+    _onet_table_lookup). None when it doesn't resolve to a real occupation."""
+    if not industry or not industry.strip():
+        return None
+    try:
+        from coverage.entity import _onet as _onet_table, title_core
+        core = title_core(_normalize_for_onet(industry))
+        table = _onet_table()
+    except Exception:
+        return None
+    hit = _onet_table_lookup(core, table)
+    if hit is None:
+        return None
+    soc, soc_title = hit
+    if not soc or soc == "00-0000":
+        return None
+    return _OnetMatch(soc, soc_title)
+
+
+def _resolve_via_onet(industry: str, key: str) -> Optional[IndustryProfile]:
+    """Tier 3.5 (item 22): fuzzy-match `industry` to an O*NET-SOC occupation via
+    the bundled alt-titles index, then route Muse/Jobicy off SOC_MAJOR_GROUPS
+    (item 23) and derive title_terms/query_synonyms from the matched occupation.
+    Only reached when no seed rule matched, so every hand-tuned field is
+    untouched. Returns None (falls through to the generic tier) when the match
+    is too weak or the major group has no knobs."""
+    nt = _match_onet(industry)
+    if nt is None:
+        return None
+    major = nt.soc_code.split("-")[0]
+    knobs = SOC_MAJOR_GROUPS.get(major)
+    if knobs is None:
+        return None
+    return IndustryProfile(
+        industry=key,
+        muse_categories=_sanitize_muse(knobs.get("muse")),
+        jobicy_industry=knobs.get("jobicy"),
+        query_synonyms=_alt_titles_for_soc(nt.soc_code, exclude={key}),
+        title_terms=_title_terms_from_soc(nt.soc_title, industry),
+        eng_like=False,
+        source="onet",
+    )
+
+
+def resolve_soc(industry: str) -> Optional[dict]:
+    """Best-effort, STABLE O*NET-SOC identity for free-text `industry` — for
+    callers that want to persist a code once (item 25: workspace.create_project)
+    rather than re-resolve it on every resolve() call. None when it doesn't
+    match a real occupation (see _onet_table_lookup)."""
+    nt = _match_onet(industry)
+    if nt is None:
+        return None
+    return {"code": nt.soc_code, "title": nt.soc_title}
+
+
+def related_occupation_titles(industry: str, *, exclude=(), limit: int = 6) -> list[str]:
+    """O*NET alternate titles for `industry`'s resolved occupation, regardless of
+    which resolve() tier matched it (seed or O*NET) — the second, lower-priority
+    synonym tier for search.keyword_strategy.broad_query_keywords (item 26). []
+    when the field doesn't confidently resolve, or is eng-like (no-op for eng IC
+    titles — Alex's flow is unaffected)."""
+    if not industry or not industry.strip():
+        return []
+    if resolve(industry).eng_like:
+        return []
+    nt = _match_onet(industry)
+    if nt is None:
+        return []
+    exset = {e.strip().lower() for e in exclude if e}
+    exset.add(industry.strip().lower())
+    return _alt_titles_for_soc(nt.soc_code, exclude=exset, limit=limit)
 
 
 def resolve(industry: Optional[str]) -> IndustryProfile:
@@ -235,6 +423,15 @@ def resolve(industry: Optional[str]) -> IndustryProfile:
                 title_terms=list(knobs["titles"]), eng_like=False, source="seed")
             _cache[key] = prof
             return prof
+
+    # 3.5) O*NET-SOC fuzzy-match tier (item 22) — for a field with NO hand-seeded
+    # rule above, resolve it to a real O*NET-SOC occupation via the bundled
+    # alt-titles index and route Muse/Jobicy off the SOC-major-group table
+    # (SOC_MAJOR_GROUPS) instead of the generic no-routing fallback.
+    onet_prof = _resolve_via_onet(industry, key)
+    if onet_prof is not None:
+        _cache[key] = onet_prof
+        return onet_prof
 
     # 4) generic fallback — full reach, no routing
     prof = IndustryProfile(industry=key, muse_categories=[], jobicy_industry=None,

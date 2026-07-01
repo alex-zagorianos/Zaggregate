@@ -119,3 +119,53 @@ def test_none_active_slug_does_not_crash_create(tmp_base):
     slug = workspace.create_project("Safe", make_active=True, copy_resume_from=None)
     assert slug == "safe"
     assert workspace.active_slug() == "safe"
+
+
+# ── Item 25: persist O*NET-SOC code alongside a new project's industry ──────
+def test_create_project_persists_onet_soc_for_known_industry(tmp_base):
+    slug = workspace.create_project(
+        "Nursing", config={"industry": "registered nurse"}, make_active=True)
+    cfg = workspace.load_config(slug)
+    assert cfg["onet_soc_code"] == "29-1141.00"
+    assert cfg["onet_soc_title"] == "Registered Nurses"
+    assert cfg["industry"] == "registered nurse"        # free text untouched
+
+
+def test_create_project_no_soc_key_without_industry(tmp_base):
+    slug = workspace.create_project("No Industry", config={"location": "Remote"},
+                                    make_active=True)
+    cfg = workspace.load_config(slug)
+    assert "onet_soc_code" not in cfg
+    assert "onet_soc_title" not in cfg
+
+
+def test_create_project_no_soc_key_for_unresolvable_industry(tmp_base):
+    slug = workspace.create_project(
+        "Mystery", config={"industry": "underwater basket weaving"}, make_active=True)
+    cfg = workspace.load_config(slug)
+    assert "onet_soc_code" not in cfg
+
+
+def test_create_project_no_config_arg_does_not_crash(tmp_base):
+    # config=None (the common call shape) must not crash _attach_onet_soc.
+    slug = workspace.create_project("Bare", make_active=True)
+    cfg = workspace.load_config(slug)
+    assert "onet_soc_code" not in cfg
+
+
+def test_create_project_does_not_overwrite_existing_config(tmp_base):
+    """The onet_soc enrichment must only run at CREATION (mirrors the existing
+    `if not cfg_file.exists()` guard) — never touch an already-configured
+    project's config.json on a second create_project call with the same slug."""
+    slug = workspace.create_project("Nursing", slug="nursing",
+                                    config={"industry": "registered nurse"},
+                                    make_active=True)
+    # Simulate the user hand-editing config.json after creation.
+    cfg = workspace.load_config(slug)
+    cfg["onet_soc_code"] = "EDITED"
+    workspace.save_config(cfg, slug)
+    # A second create_project call for the same slug (e.g. an idempotent
+    # re-run) must not stomp the user's edit.
+    workspace.create_project("Nursing", slug="nursing",
+                             config={"industry": "registered nurse"})
+    assert workspace.load_config(slug)["onet_soc_code"] == "EDITED"

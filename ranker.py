@@ -55,10 +55,15 @@ def build_request(jobs, prefs: dict | None = None,
 # changing only who runs the prompt.
 
 def _facts_profile(cfg: dict | None):
-    """(industry, skill_terms) for facts extraction from the active search config.
-    A tech/empty field keeps the engineering-tuned map + vocab (byte-identical for
-    Alex); any other field merges universal role buckets and falls back to
-    profile-derived skills (the eng vocab is useless there). Plan 1E.
+    """(industry, skill_terms, soc_code) for facts extraction from the active
+    search config. A tech/empty field keeps the engineering-tuned map + vocab
+    (byte-identical for Alex); any other field merges universal role buckets
+    and falls back to profile-derived skills (the eng vocab is useless there).
+    Plan 1E. `soc_code` is the project's PERSISTED O*NET-SOC code (item 25,
+    workspace.create_project) when one was resolved at creation — extra,
+    optional cache-key entropy only (see match.facts._profile_sig); None when
+    the project predates item 25 or has no industry, so behavior for every
+    existing project is unchanged until it's re-created.
 
     Falls back to the active project's config when cfg is None — the live GUI
     "Ask AI to rank" buttons call through with no cfg, and without this fallback a
@@ -72,12 +77,13 @@ def _facts_profile(cfg: dict | None):
         except Exception:
             cfg = {}
     industry = (cfg or {}).get("industry") or ""
+    soc_code = (cfg or {}).get("onet_soc_code") or None
     skill_terms = None
     if industry and not _facts.is_tech_industry(industry):
         from match import scorer as _scorer
         st = _scorer.extract_skill_terms()
         skill_terms = list(st) if st else None
-    return industry, skill_terms
+    return industry, skill_terms, soc_code
 
 
 def build_compact_request(jobs, prefs: dict | None = None,
@@ -86,8 +92,9 @@ def build_compact_request(jobs, prefs: dict | None = None,
     rubric (match.rubric). ~15x less context per job than build_request."""
     from match import facts as _facts, rubric as _rubric
     prefs = prefs if prefs is not None else preferences.load()
-    industry, skill_terms = _facts_profile(cfg)
-    facts_list = [_facts.facts_for(j, skill_terms=skill_terms, industry=industry)
+    industry, skill_terms, soc_code = _facts_profile(cfg)
+    facts_list = [_facts.facts_for(j, skill_terms=skill_terms, industry=industry,
+                                   soc_code=soc_code)
                   for j in jobs]
     rb = _rubric.build_rubric(prefs, cfg)
     return bridge.build_fit_prompt_compact(jobs, facts_list, _rubric.rubric_text(rb))
@@ -104,8 +111,9 @@ def prepare_compact(jobs, prefs: dict | None = None, cfg: dict | None = None) ->
     from match import facts as _facts, rubric as _rubric, gate as _gate
     prefs = prefs if prefs is not None else preferences.load()
     rb = _rubric.build_rubric(prefs, cfg)
-    industry, skill_terms = _facts_profile(cfg)
-    pairs = [(j, _facts.facts_for(j, skill_terms=skill_terms, industry=industry))
+    industry, skill_terms, soc_code = _facts_profile(cfg)
+    pairs = [(j, _facts.facts_for(j, skill_terms=skill_terms, industry=industry,
+                                  soc_code=soc_code))
              for j in jobs]
     kept, dropped = _gate.partition(pairs, rb)
     kept_jobs = [j for j, _f, _g in kept]

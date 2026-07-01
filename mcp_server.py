@@ -52,7 +52,10 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
     cfg = load_user_config()
     kws = keywords or cfg.get("keywords") or config.DEFAULT_KEYWORDS
     loc = location or cfg.get("location") or config.DEFAULT_LOCATION
-    clients = build_clients(config.DAILY_SOURCES, cache_enabled=True,
+    from search.keyword_strategy import gate_tech_sources
+    sources = gate_tech_sources(config.DAILY_SOURCES, cfg.get("industry") or "",
+                                cfg.get("sources", {}) or {})
+    clients = build_clients(sources, cache_enabled=True,
                             industry_filter=cfg.get("industry"))
     if not clients:
         return {"error": "no sources could be initialized — check API keys."}

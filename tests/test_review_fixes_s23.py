@@ -30,7 +30,7 @@ def test_facts_profile_falls_back_to_active_config(monkeypatch):
     import workspace
     monkeypatch.setattr(workspace, "load_config",
                         lambda *a, **k: {"industry": "health_informatics"})
-    industry, _skills = ranker._facts_profile(None)   # the live GUI path
+    industry, _skills, _soc = ranker._facts_profile(None)   # the live GUI path
     assert industry == "health_informatics"           # was silently "" before
 
 
@@ -39,8 +39,9 @@ def test_facts_profile_tech_industry_still_no_skill_terms(monkeypatch):
     import workspace
     monkeypatch.setattr(workspace, "load_config",
                         lambda *a, **k: {"industry": "controls_engineering"})
-    industry, skills = ranker._facts_profile(None)
+    industry, skills, soc = ranker._facts_profile(None)
     assert industry == "controls_engineering" and skills is None  # byte-identical
+    assert soc is None
 
 
 # ── #3 harvest_host_index keeps earlier pages when a later page fails ─────────
