@@ -102,6 +102,12 @@ def build_prompt(profile_md: str, fit_preference: str = "") -> str:
         "profile below, then score EVERY row in the attached CSV "
         "(`ranking_export.csv`).",
         "",
+        "If the export was split into several files (`ranking_export_01.csv`, "
+        "`ranking_export_02.csv`, ...) because it was too large for one chat, "
+        "answer EACH file separately and return each file's rows on their own. "
+        "The `job_key` column joins every file's answers back together on import, "
+        "so you never need all files in one reply.",
+        "",
         "## How to return your answer",
         f"Return the SAME CSV with these columns filled in: {', '.join(IN_COLUMNS)}.",
         "- `new_fit`: integer 0-100 (the scoring guide below).",

@@ -1062,6 +1062,23 @@ class InboxTab(ttk.Frame):
                        "relevance and pick your top matches), or just the rows "
                        "currently shown by your filters.")
         esc.pack(side="left", padx=(8, 0))
+        # Chunk size: split a big export so each file fits a free chatbot's window
+        # (the AI answers each file separately; job_key joins them on import).
+        self._export_chunk = tk.StringVar(value="All in one file")
+        ccb = ttk.Combobox(abar, textvariable=self._export_chunk, state="readonly",
+                           width=15, values=["All in one file",
+                                             "Split by 100", "Split by 50"])
+        theme.tip(ccb, "For a large inbox: split the export into smaller files so "
+                       "each fits a free AI chat. The AI ranks each file "
+                       "separately; results join back automatically on import.")
+        ccb.pack(side="left", padx=(6, 0))
+        # Compact: swap long descriptions for one-line facts (~15x fewer tokens).
+        self._export_compact = tk.BooleanVar(value=False)
+        cchk = ttk.Checkbutton(abar, text="Compact", variable=self._export_compact)
+        theme.tip(cchk, "Shrink the export by replacing each job's long "
+                        "description with a one-line facts summary (~15x fewer "
+                        "tokens) so a much bigger inbox fits a free AI chat.")
+        cchk.pack(side="left", padx=(6, 0))
         theme.tip(theme.btn(abar, "Export for AI", self._export_for_ai, "ghost"),
                   "Save the inbox as a spreadsheet you can hand to any AI tool.").pack(side="left", padx=(8, 2))
         theme.tip(theme.btn(abar, "Load AI results", self._import_scores, "ghost"),
@@ -1766,13 +1783,20 @@ class InboxTab(ttk.Frame):
             return
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         out_dir = Path(OUTPUT_DIR) / "rerank" / stamp
+        chunk_map = {"All in one file": None, "Split by 100": 100, "Split by 50": 50}
+        chunk_size = chunk_map.get(self._export_chunk.get())
+        compact = bool(self._export_compact.get())
         try:
-            paths = export_inbox(rows, out_dir, fmt="both")
+            paths = export_inbox(rows, out_dir, fmt="both",
+                                 chunk_size=chunk_size, compact=compact)
         except Exception as e:
             messagebox.showerror("Export failed", str(e))
             return
+        n_files = len(paths.get("csvs", [paths.get("csv")]))
+        extra = (f" ({n_files} files)" if n_files > 1 else "") + \
+                (" [compact]" if compact else "")
         set_status(self._status,
-                   f"Exported {len(rows)} rows -> {out_dir}", "info")
+                   f"Exported {len(rows)} rows -> {out_dir}{extra}", "info")
         try:
             subprocess.Popen(["explorer", str(out_dir)])
         except Exception:

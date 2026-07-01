@@ -157,7 +157,10 @@ def export_inbox(out_dir: str, fmt: str = "both") -> dict:
     fmt in {"both","csv","md"}. Returns the written paths as strings."""
     from rerank.export import export_inbox as _export
     paths = _export(db.inbox_all(), out_dir, fmt=fmt)
-    return {k: str(v) for k, v in paths.items()}
+    out = {}
+    for k, v in paths.items():
+        out[k] = [str(p) for p in v] if isinstance(v, list) else str(v)
+    return out
 
 
 @mcp.tool()
