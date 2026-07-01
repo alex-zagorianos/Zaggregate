@@ -10,8 +10,9 @@ from tracker import db
 def test_score_cell_static():
     import gui
     assert gui.InboxTab._score_cell(-1) == ""              # unscored -> blank
-    assert gui.InboxTab._score_cell(82).endswith("82")     # value kept
-    assert gui.InboxTab._score_cell(82).split()[0] in gui.theme.BAND_GLYPH.values()
+    # The band color moved to a colored chip in the tree's #0 gutter
+    # (ui.chrome.score_chip); the score cell text is now just the number.
+    assert gui.InboxTab._score_cell(82) == "82"
     assert gui.InboxTab._score_cell(None) == ""
 
 

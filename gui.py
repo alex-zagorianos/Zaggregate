@@ -50,6 +50,7 @@ from match.scorer import score_breakdown, extract_skill_terms
 from tracker import analytics as analyticsmod
 from scrape.inbox_health import prune_inbox
 from ui import theme
+from ui import chrome
 from ui import help as uihelp
 from ui import setup_wizard
 from ui import settings as uisettings
@@ -767,8 +768,7 @@ class InboxTab(ttk.Frame):
             return ""
         if n < 0:
             return ""
-        g = theme.score_glyph(n)
-        return f"{g} {n}" if g else str(n)
+        return str(n)   # band color now shown as a colored chip in the #0 gutter
 
     @staticmethod
     def _size_badge(board_count) -> str:
@@ -916,6 +916,7 @@ class InboxTab(ttk.Frame):
             self._tree.heading(col, text=label,
                                command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, anchor=anchor, minwidth=40)
+        chrome.enable_score_chips(self._tree)   # left #0 gutter for the score-band chip
         theme.zebra(self._tree)
         vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
@@ -1131,7 +1132,8 @@ class InboxTab(ttk.Frame):
         for i, r in enumerate(rows):
             iid = str(r["id"])
             self._rows[iid] = r
-            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),), values=(
+            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),),
+                              image=chrome.score_chip(self._tree, r["score"]), values=(
                 self._score_cell(r["score"]),
                 self._score_cell(r["fit"]),
                 r["title"], r["company"],
