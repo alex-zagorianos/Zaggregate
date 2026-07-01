@@ -83,3 +83,99 @@ def test_soc_major_groups_only_emit_valid_muse_categories():
     for code, knobs in ip.SOC_MAJOR_GROUPS.items():
         for cat in knobs["muse"]:
             assert cat in ip.MUSE_CATEGORIES_ALL, f"group {code} -> invalid Muse category {cat!r}"
+
+
+# ── O*NET-SOC fuzzy-match tier (item 22) ────────────────────────────────────
+class _FakeNT:
+    def __init__(self, soc_code, soc_title, confidence):
+        self.soc_code = soc_code
+        self.soc_title = soc_title
+        self.confidence = confidence
+        self.seniority = None
+
+
+def test_onet_tier_fires_for_unseeded_occupation(monkeypatch):
+    # "phlebotomist" has no seed rule and isn't tech/eng.
+    monkeypatch.setattr("coverage.entity.normalize_title",
+                        lambda t: _FakeNT("31-9097.00", "Phlebotomists", 0.9))
+    p = ip.resolve("phlebotomist")
+    assert p.source == "onet"
+    assert p.muse_categories == ["Healthcare"]          # SOC 31 -> Healthcare Support
+    assert p.jobicy_industry is None
+    assert p.eng_like is False
+    assert "phlebotomists" in p.title_terms
+
+
+def test_onet_tier_low_confidence_falls_through_to_generic(monkeypatch):
+    monkeypatch.setattr("coverage.entity.normalize_title",
+                        lambda t: _FakeNT("31-9097.00", "Phlebotomists", 0.5))
+    p = ip.resolve("some obscure field xyz")
+    assert p.source == "generic"
+
+
+def test_onet_tier_unmapped_major_group_falls_through_to_generic(monkeypatch):
+    monkeypatch.setattr("coverage.entity.normalize_title",
+                        lambda t: _FakeNT("99-9999.00", "Made Up Occupation", 0.95))
+    p = ip.resolve("some obscure field xyz")
+    assert p.source == "generic"
+
+
+def test_seed_rules_win_over_onet_tier(monkeypatch):
+    # Even a confident O*NET match must never override an existing seed rule.
+    def _boom(t):
+        raise AssertionError("O*NET tier must not be consulted when a seed rule matches")
+    monkeypatch.setattr("coverage.entity.normalize_title", _boom)
+    p = ip.resolve("nursing")
+    assert p.source == "seed"
+
+
+def test_onet_tier_exception_safety(monkeypatch):
+    def _boom(t):
+        raise RuntimeError("data file missing")
+    monkeypatch.setattr("coverage.entity.normalize_title", _boom)
+    p = ip.resolve("some unseeded field")
+    assert p.source == "generic"          # never crashes; falls back to full reach
+
+
+def test_onet_tier_uses_real_bundled_data_end_to_end():
+    # No mocking: exercises the real bundled stub against a title with no seed
+    # rule (database roles aren't in _RULES) to prove the wiring works, not just
+    # the mocked logic.
+    ip.clear_cache()
+    p = ip.resolve("database administrator")
+    assert p.source == "onet"
+    assert p.eng_like is False
+    for c in p.muse_categories:
+        assert c in ip.MUSE_CATEGORIES_ALL
+
+
+def test_resolve_soc_returns_stable_code():
+    ip.clear_cache()
+    soc = ip.resolve_soc("registered nurse")
+    assert soc is not None
+    assert soc["code"] == "29-1141.00"
+    assert soc["title"] == "Registered Nurses"
+
+
+def test_resolve_soc_none_for_empty_or_unmatched():
+    assert ip.resolve_soc("") is None
+    assert ip.resolve_soc("underwater basket weaving") is None
+
+
+def test_related_occupation_titles_noop_for_eng(monkeypatch):
+    assert ip.related_occupation_titles("") == []
+    assert ip.related_occupation_titles("mechanical engineering") == []
+
+
+def test_related_occupation_titles_from_same_soc(monkeypatch):
+    monkeypatch.setattr("coverage.entity.normalize_title",
+                        lambda t: _FakeNT("31-9097.00", "Phlebotomists", 0.9))
+    monkeypatch.setattr("coverage.entity._onet", lambda: {
+        "phlebotomist": ("31-9097.00", "Phlebotomists"),
+        "phlebotomy technician": ("31-9097.00", "Phlebotomists"),
+        "lab assistant": ("31-9099.00", "Other Healthcare Support Workers"),
+    })
+    out = ip.related_occupation_titles("phlebotomist")
+    assert "phlebotomy technician" in out
+    assert "lab assistant" not in out          # different SOC code
+    assert "phlebotomist" not in out           # excludes the query itself
