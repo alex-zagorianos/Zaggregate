@@ -55,6 +55,30 @@ class _FakeSession:
 # ---------------------------------------------------------------------------
 # conditional_get_json — direct unit tests
 # ---------------------------------------------------------------------------
+def test_http_error_signals_failure_not_stale_body(tmp_path):
+    # review r3 F3: a cached board that later 404s (removed/renamed) must return
+    # (None, False) so the caller marks it FAILED — never re-serve the stale
+    # snapshot as if live (which would resurrect a dead board's jobs forever).
+    cache_file = tmp_path / "dead.json"
+    ok = _FakeSession([_FakeResp({"jobs": [{"id": 1}]}, status_code=200, etag='W/"x"')])
+    body, _ = conditional_get_json("http://x/dead", cache_file, session=ok)
+    assert body == {"jobs": [{"id": 1}]}
+    gone = _FakeSession([_FakeResp(None, status_code=404)])
+    body2, from_cache2 = conditional_get_json("http://x/dead", cache_file, session=gone)
+    assert body2 is None and from_cache2 is False
+
+
+def test_network_error_still_falls_back_to_stale_body(tmp_path):
+    # A TRANSIENT network error (no server response) still serves the last-good
+    # cached body — that resilience path is preserved by the F3 fix.
+    cache_file = tmp_path / "blip.json"
+    ok = _FakeSession([_FakeResp({"jobs": [{"id": 1}]}, status_code=200)])
+    conditional_get_json("http://x/blip", cache_file, session=ok)
+    blip = _FakeSession([requests.ConnectionError("blip")])
+    body, from_cache = conditional_get_json("http://x/blip", cache_file, session=blip)
+    assert body == {"jobs": [{"id": 1}]} and from_cache is False
+
+
 def test_first_200_stores_etag_second_304_reuses_cached_body(tmp_path):
     cache_file = tmp_path / "board.json"
     body = {"jobs": [{"id": 1, "title": "Engineer"}]}

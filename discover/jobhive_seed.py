@@ -112,8 +112,12 @@ def keywords_for_industry(industry: str) -> list[str]:
     tokens + industry_profile.resolve(industry)'s query_synonyms/title_terms,
     deduped and lowercased, then filtered to DISTINCTIVE terms (multi-word phrase
     OR a single token not in `_GENERIC_TOKENS`) so the seed selects companies that
-    genuinely hire in the field rather than any company with a generic role. Falls
-    back to the unfiltered set if filtering would leave nothing."""
+    genuinely hire in the field rather than any company with a generic role.
+
+    Returns [] when a field has NO distinctive terms (e.g. "general manager" ->
+    only 'general'/'manager', both generic). Callers must treat an empty result as
+    "too generic to seed precisely" and SKIP — never seed on generics, which would
+    re-pollute the registry (the exact failure this filter exists to prevent)."""
     import industry_profile
     prof = industry_profile.resolve(industry)
     terms = (_TOKEN_RE.split((industry or "").lower())
@@ -125,8 +129,7 @@ def keywords_for_industry(industry: str) -> list[str]:
         if t and t not in seen:
             seen.add(t)
             out.append(t)
-    specific = [k for k in out if (" " in k) or (k not in _GENERIC_TOKENS)]
-    return specific or out
+    return [k for k in out if (" " in k) or (k not in _GENERIC_TOKENS)]
 
 
 def _fallback_slug(company: str) -> str:
@@ -139,11 +142,18 @@ _HEX_SLUG = re.compile(r"^[0-9a-f]{12,}$")
 
 
 def _looks_junk(slug: str) -> bool:
-    """Reject obviously-anonymous/test board slugs (hash-like or absurdly long)
-    that occasionally appear in the raw dataset, so they don't land in the
-    registry as garbage company names (e.g. '55564patriot...868575745')."""
+    """Reject obviously-anonymous/test board slugs — a long hex hash, or a long
+    DIGIT-HEAVY string (e.g. '55564patriot334567software868575745'). Deliberately
+    NOT length-alone: real orgs concatenate into long slugs
+    ('lawrencelivermorenationallaboratory', 'johnsonandjohnsoninnovativemedicine',
+    hospital systems, universities) that we very much want to seed."""
     s = (slug or "").replace("-", "").replace("_", "")
-    return len(s) > 30 or bool(_HEX_SLUG.match(s))
+    if not s:
+        return True
+    if _HEX_SLUG.match(s):
+        return True
+    digits = sum(c.isdigit() for c in s)
+    return len(s) >= 20 and digits / len(s) >= 0.4
 
 
 def _derive_board(row_ats_type: str, url: str, company: str, csv_ats: str) -> tuple[str, str]:
@@ -556,8 +566,17 @@ def main(argv=None) -> int:
         print("error: at least one --industry is required.")
         return 2
 
-    fields = [FieldSpec(tag=_cli_tag(ind), keywords=keywords_for_industry(ind))
-              for ind in args.industries]
+    fields = []
+    for ind in args.industries:
+        kws = keywords_for_industry(ind)
+        if not kws:
+            print(f"  [jobhive] skipping '{ind}': no distinctive terms to seed on "
+                  f"(too generic — a match would pollute the registry).")
+            continue
+        fields.append(FieldSpec(tag=_cli_tag(ind), keywords=kws))
+    if not fields:
+        print("error: no field had distinctive keywords to seed on.")
+        return 2
     ats_list = [a.strip() for a in args.ats.split(",") if a.strip()]
 
     result = seed_from_jobhive(fields, ats_list, max_bytes_per_ats=args.max_bytes,

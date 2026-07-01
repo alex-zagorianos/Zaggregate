@@ -341,8 +341,29 @@ def test_keywords_for_industry_drops_generic_keeps_distinctive():
     # ...distinctive single tokens + multi-word phrases survive.
     assert "informatics" in kw
     assert "clinical informatics" in kw
-    # never returns empty: a field whose terms are ALL generic falls back to them
-    assert jhs.keywords_for_industry("data") != []
+
+
+# ── review r3 F2: an ALL-generic field returns [] (caller must skip — NOT fall
+#    back to the loose set, which would re-pollute the registry). ──
+def test_keywords_for_industry_all_generic_returns_empty():
+    assert jhs.keywords_for_industry("general manager") == []
+
+
+# ── review r3 F1: real long-name org slugs (labs/universities/hospital systems)
+#    must NOT be dropped as junk; only hash-like / digit-heavy slugs are. ──
+def test_looks_junk_keeps_long_real_names():
+    assert not jhs._looks_junk("lawrencelivermorenationallaboratory")
+    assert not jhs._looks_junk("johnsonandjohnsoninnovativemedicine")
+    assert not jhs._looks_junk("acme")
+    assert jhs._looks_junk("55564patriot334567software868575745")   # digit-heavy
+    assert jhs._looks_junk("a1b2c3d4e5f60011")                      # hex hash
+
+
+def test_derive_board_keeps_long_org_slug():
+    url = "https://job-boards.greenhouse.io/lawrencelivermorenationallaboratory/jobs/12345"
+    ats, slug = jhs._derive_board("greenhouse", url,
+                                  "Lawrence Livermore National Laboratory", "greenhouse")
+    assert (ats, slug) == ("greenhouse", "lawrencelivermorenationallaboratory")
 
 
 # ── ONE tiny live smoke test (per plan) — real manifest + a small real slice,

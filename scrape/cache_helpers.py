@@ -177,9 +177,17 @@ def conditional_get_json(
 
     try:
         resp.raise_for_status()
+    except Exception:
+        # The server ANSWERED with a 4xx/5xx (board removed/renamed/broken) — this
+        # is a real failure, not a transient network blip. Signal it (None) so the
+        # caller marks the board failed and backs off, exactly as before the
+        # conditional-GET migration; do NOT re-serve a stale snapshot as if live
+        # (that would resurrect a dead board's jobs forever).
+        return (None, False)
+    try:
         body = resp.json()
     except Exception:
-        return (cached_body, False)
+        return (None, False)
 
     resp_headers = getattr(resp, "headers", None) or {}
     get_header = resp_headers.get if hasattr(resp_headers, "get") else (lambda *_a: None)

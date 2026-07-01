@@ -254,9 +254,15 @@ def _jobhive_stage(industry: str, dry_run: bool, log=print) -> dict:
     if not industry:
         print("[jobhive] no field to scope the seed to -- skipping.")
         return {"skipped": "no industry"}
+    kws = keywords_for_industry(industry)
+    if not kws:
+        print(f"[jobhive] '{industry}' has no distinctive terms to seed on precisely "
+              f"(too generic) -- skipping to avoid polluting the registry. Seed via the "
+              f"CLI with explicit keywords if you really want this field.")
+        return {"skipped": "no distinctive keywords"}
     import re
     tag = re.sub(r"[^a-z0-9]+", "_", industry.strip().lower()).strip("_") or "seeded"
-    field = FieldSpec(tag=tag, keywords=keywords_for_industry(industry))
+    field = FieldSpec(tag=tag, keywords=kws)
     result = seed_from_jobhive([field], SEEDABLE_ATS, dry_run=dry_run, log=log)
     cands = sum(a.get("candidates", 0) for a in result.get("ats", {}).values())
     print(f"[jobhive] {cands} candidate(s) -> verified {result.get('verified', 0)}, "
