@@ -8,8 +8,8 @@ stage rollup, stage-to-stage conversion, response rate, and median time deltas
 Every function takes a sqlite3.Connection so tests can pass a temp DB; the thin
 ``compute(db_path=None)`` opens the active project DB via tracker.db.get_conn.
 
-Funnel order:  interested -> applied -> phone_screen -> interview -> offer
-Terminal (off-funnel): rejected, withdrawn.
+Funnel order:  interested -> applied -> phone_screen -> interview -> offer -> accepted
+Terminal (off-funnel): rejected, withdrawn, ghosted.
 
 "Reached AT LEAST stage X" means the job's CURRENT status is stage-X-or-further
 *or* its status_history shows it passed through X at some point — so a job that
@@ -27,8 +27,10 @@ from statistics import median
 from typing import Optional
 
 # Progress stages in order; index encodes "how far" a job has advanced.
-FUNNEL = ["interested", "applied", "phone_screen", "interview", "offer"]
-TERMINAL = {"rejected", "withdrawn"}
+# 'accepted' is the success terminal AFTER an offer, so it caps the funnel and
+# offer->accepted becomes a reportable conversion (D1 P5).
+FUNNEL = ["interested", "applied", "phone_screen", "interview", "offer", "accepted"]
+TERMINAL = {"rejected", "withdrawn", "ghosted"}
 _STAGE_INDEX = {s: i for i, s in enumerate(FUNNEL)}
 
 # Response = an applied job that reached at least this stage.
@@ -227,9 +229,13 @@ def funnel(conn: sqlite3.Connection) -> dict:
 
 def by_source(conn: sqlite3.Connection) -> list[dict]:
     """Per applications.source breakdown: how many applied, how many advanced to
-    interview-or-further, the source's response rate, and a low_n flag (<5 applied
-    so the rate is noise). Sorted by applied desc then source name. Empty list on
-    no data."""
+    interview-or-further, the source's interview_rate (interview+ / applied), and
+    a low_n flag (<5 applied so the rate is noise). Sorted by applied desc then
+    source name. Empty list on no data.
+
+    The rate key is 'interview_rate' (D1 P5): it measures reaching INTERVIEW, a
+    distinct metric from funnel()'s applied->phone_screen 'response_rate' — the
+    two shared one name in the same dialog and were confusing."""
     apps = _load_applications(conn)
     if not apps:
         return []
@@ -251,7 +257,7 @@ def by_source(conn: sqlite3.Connection) -> list[dict]:
             "source": src,
             "applied": b["applied"],
             "interview_plus": b["interview_plus"],
-            "response_rate": _rate(b["interview_plus"], b["applied"]),
+            "interview_rate": _rate(b["interview_plus"], b["applied"]),
             "low_n": b["applied"] < 5,
         })
     out.sort(key=lambda r: (-r["applied"], r["source"]))

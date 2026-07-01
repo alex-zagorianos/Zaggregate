@@ -55,6 +55,144 @@ def set_status(job_id: int, status: str) -> None:
     db.update_job(job_id, status=status)
 
 
+# ── Application cycle: notes, timeline, interview rounds, contacts (D1) ────────
+
+def add_status_note(job_id: int, note: str) -> int | None:
+    """Attach a timestamped note to an application without changing its status."""
+    return db.add_status_note(job_id, note)
+
+
+def status_timeline(job_id: int) -> list[dict]:
+    """Read-only chronological timeline (status changes + notes) for a job."""
+    return db.status_timeline(job_id)
+
+
+def add_interview_round(app_id: int, **fields) -> int:
+    return db.add_interview_round(app_id, **fields)
+
+
+def list_interview_rounds(app_id: int) -> list[dict]:
+    return db.list_interview_rounds(app_id)
+
+
+def update_interview_round(round_id: int, **fields) -> None:
+    db.update_interview_round(round_id, **fields)
+
+
+def delete_interview_round(round_id: int) -> None:
+    db.delete_interview_round(round_id)
+
+
+def get_interview_round(round_id: int) -> dict | None:
+    return db.get_interview_round(round_id)
+
+
+def contacts_for_company(company: str) -> list[dict]:
+    """People the user knows at a company — for the 'consider a referral' nudge
+    surfaced in the Apply Queue detail pane and the Tracker edit dialog."""
+    return db.contacts_for_company(company)
+
+
+def referral_hint(company: str) -> str:
+    """One-line referral nudge for a company, or '' when no contacts are known.
+    'You know 2 people at Acme: Jane Doe, John Roe - consider asking for a
+    referral.' (referrals are the highest-conversion channel)."""
+    people = db.contacts_for_company(company)
+    if not people:
+        return ""
+    names = ", ".join(p["name"] for p in people if p.get("name"))
+    n = len(people)
+    who = "person" if n == 1 else "people"
+    tail = f": {names}" if names else ""
+    return (f"You know {n} {who} at {company}{tail} - "
+            "consider asking for a referral.")
+
+
+def add_contact(name: str, **fields) -> int:
+    """Record a networking contact (optionally linked to an app_id +
+    last_contacted). Thin pass-through so the GUI Contacts dialog goes through
+    the service layer like every other mutation."""
+    return db.add_contact(name, **fields)
+
+
+# ── ICS calendar export for interview rounds (stdlib-only) ────────────────────
+
+def round_to_ics(app: dict, rnd: dict) -> str:
+    """Build a minimal RFC-5545 VEVENT for a scheduled interview round (stdlib
+    only, no deps). `rnd['scheduled_at']` is an ISO datetime; a bare date is
+    treated as an all-day-ish 1-hour block at 09:00 local. Returns the full
+    VCALENDAR text. Raises ValueError when the round has no scheduled_at."""
+    from datetime import datetime, timedelta
+    sched = (rnd.get("scheduled_at") or "").strip()
+    if not sched:
+        raise ValueError("This interview round has no scheduled date/time.")
+    try:
+        start = datetime.fromisoformat(sched)
+    except ValueError:
+        start = datetime.strptime(sched[:10], "%Y-%m-%d").replace(hour=9)
+    end = start + timedelta(hours=1)
+
+    def _fmt(dt) -> str:
+        # Floating local time (no Z): calendar apps read it in the user's zone.
+        return dt.strftime("%Y%m%dT%H%M%S")
+
+    def _esc(s) -> str:
+        # RFC-5545 TEXT escaping: backslash, semicolon, comma, newline.
+        return (str(s or "").replace("\\", "\\\\").replace(";", "\\;")
+                .replace(",", "\\,").replace("\r\n", "\\n")
+                .replace("\n", "\\n"))
+
+    company = app.get("company", "") or ""
+    title = app.get("title", "") or ""
+    kind = (rnd.get("kind") or "other").title()
+    summary = f"{kind} interview - {company}".strip(" -")
+    desc_bits = []
+    if title:
+        desc_bits.append(f"Role: {title}")
+    if rnd.get("interviewer"):
+        desc_bits.append(f"Interviewer: {rnd['interviewer']}")
+    if rnd.get("notes"):
+        desc_bits.append(str(rnd["notes"]))
+    if app.get("url"):
+        desc_bits.append(f"Posting: {app['url']}")
+    description = "  ".join(desc_bits)
+    from datetime import timezone
+    uid = f"jobscout-round-{rnd.get('id', 0)}-{app.get('id', 0)}@jobscout.local"
+    dtstamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//JobScout//Interview Rounds//EN",
+        "CALSCALE:GREGORIAN",
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{dtstamp}",
+        f"DTSTART:{_fmt(start)}",
+        f"DTEND:{_fmt(end)}",
+        f"SUMMARY:{_esc(summary)}",
+    ]
+    if description:
+        lines.append(f"DESCRIPTION:{_esc(description)}")
+    if company:
+        lines.append(f"LOCATION:{_esc(company)}")
+    lines += ["END:VEVENT", "END:VCALENDAR"]
+    return "\r\n".join(lines) + "\r\n"
+
+
+def write_round_ics(app: dict, rnd: dict, out_dir) -> "Path":
+    """Write the VEVENT for a round to <out_dir>/interview-<company>-r<n>.ics and
+    return the file path. Caller opens the containing folder."""
+    from pathlib import Path as _Path
+    import re as _re
+    out = _Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    slug = _re.sub(r"[^A-Za-z0-9]+", "-", (app.get("company") or "job")).strip("-") or "job"
+    name = f"interview-{slug}-r{rnd.get('round_no', 0)}.ics"
+    path = out / name
+    path.write_text(round_to_ics(app, rnd), encoding="utf-8")
+    return path
+
+
 # ── Inbox triage ──────────────────────────────────────────────────────────────
 
 def list_inbox() -> list[dict]:

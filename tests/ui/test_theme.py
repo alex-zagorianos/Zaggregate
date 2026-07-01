@@ -99,7 +99,7 @@ def test_status_badge_swaps_by_mode():
     theme.set_mode("dark")
     dark = dict(theme.STATUS_BADGE)
     statuses = {"interested", "applied", "phone_screen", "interview",
-                "offer", "rejected", "withdrawn"}
+                "offer", "accepted", "rejected", "withdrawn", "ghosted"}
     assert set(light) == set(dark) == statuses
     assert light != dark                       # dark badges are brightened
     assert all(v.startswith("#") for v in dark.values())

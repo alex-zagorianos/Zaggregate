@@ -108,10 +108,14 @@ _BASE_THEME = {"light": "cosmo", "dark": "darkly"}
 _STATUS_BADGE = {
     "light": {"interested": "#1565c0", "applied": "#2e7d32",
               "phone_screen": "#e65100", "interview": "#bf360c",
-              "offer": "#1b5e20", "rejected": "#c62828", "withdrawn": "#757575"},
+              "offer": "#1b5e20", "accepted": "#00695c",
+              "rejected": "#c62828", "withdrawn": "#757575",
+              "ghosted": "#8d6e63"},
     "dark":  {"interested": "#5b9bf0", "applied": "#66bb6a",
               "phone_screen": "#ffa726", "interview": "#ff8a65",
-              "offer": "#81c784", "rejected": "#ef5350", "withdrawn": "#9aa3b2"},
+              "offer": "#81c784", "accepted": "#4db6ac",
+              "rejected": "#ef5350", "withdrawn": "#9aa3b2",
+              "ghosted": "#bcaaa4"},
 }
 _mode = "light"
 

@@ -22,22 +22,33 @@ DB_PATH = None
 # two overlap sources under different URLs. Old rows backfill NULL (their JobResult
 # is gone and job_key can't be reliably recomputed from a stored row), and the
 # dedup logic treats NULL as "no key" (never coalesces on it).
-SCHEMA_VERSION = 6
+# v7 (D1 application-cycle): new interview_rounds table; status_history.note
+# column (per-stage timestamped notes + note-only events); applications offer_*
+# columns via the _EXTRA_COLUMNS ALTER pattern. All additive/backfill-free.
+SCHEMA_VERSION = 7
 
 
 def current_db_path() -> Path:
     return Path(DB_PATH) if DB_PATH is not None else workspace.db_path()
 
-STATUSES = ["interested", "applied", "phone_screen", "interview", "offer", "rejected", "withdrawn"]
+STATUSES = ["interested", "applied", "phone_screen", "interview", "offer",
+            "accepted", "rejected", "withdrawn", "ghosted"]
 STATUS_LABELS = {
     "interested":  "Interested",
     "applied":     "Applied",
     "phone_screen":"Phone Screen",
     "interview":   "Interview",
     "offer":       "Offer",
+    "accepted":    "Accepted",     # success terminal — you got (and took) the job
     "rejected":    "Rejected",
     "withdrawn":   "Withdrawn",
+    "ghosted":     "Ghosted",      # terminal — the employer went silent
 }
+
+# Applications with no status_history movement in this many days while still at
+# 'applied' are treated as candidates for the auto-ghost nudge. Config-free
+# constant (D1 P5): 3 weeks with no response is the practical give-up signal.
+GHOST_NUDGE_DAYS = 21
 
 # Columns added after the original schema shipped. init_db() ALTERs any that are
 # missing, so an existing tracker.db upgrades in place without data loss.
@@ -52,12 +63,18 @@ _EXTRA_COLUMNS = {
     "fit_score":      "INTEGER DEFAULT -1",  # Claude fit score (claude_bridge)
     "fit_rationale":  "TEXT DEFAULT ''",     # Claude's 2-line why / red flags
     "archived":       "INTEGER DEFAULT 0",   # soft-delete: hidden from normal views
+    # Offer fields (D1 P5): shown in JobDialog once a role reaches offer/accepted,
+    # so offer->accepted yield is reportable.
+    "offer_amount":   "TEXT DEFAULT ''",     # offered comp (free text: '$120k', '$58/hr')
+    "offer_deadline": "TEXT DEFAULT ''",     # decision deadline (YYYY-MM-DD)
+    "offer_notes":    "TEXT DEFAULT ''",     # negotiation notes / verbal terms
 }
 
 _EDITABLE = {
     "status", "notes", "date_applied", "title", "company", "location", "url",
     "salary_text", "follow_up_date", "deadline", "contact", "description", "resume_path",
     "cover_path", "score", "fit_score", "fit_rationale",
+    "offer_amount", "offer_deadline", "offer_notes",
 }
 
 
@@ -268,6 +285,33 @@ def init_db() -> bool:
                 changed_at  TEXT NOT NULL
             )
         """)
+        # v7 (D1): per-stage timestamped notes. A note-only event has
+        # old_status == new_status and a non-empty note; a real transition may
+        # also carry a note. Added via the same in-place pattern so an existing
+        # status_history table upgrades without data loss.
+        sh_existing = {r["name"] for r in conn.execute(
+            "PRAGMA table_info(status_history)")}
+        if "note" not in sh_existing:
+            _safe_add_column(conn, "status_history", "note", "TEXT DEFAULT ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_status_history_job "
+                     "ON status_history(job_id)")
+        # v7 (D1): interview rounds — one row per scheduled/completed interview so
+        # the full application cycle (phone/tech/onsite/final) is trackable and
+        # each round can be exported to a .ics calendar event.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS interview_rounds (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id       INTEGER NOT NULL,
+                round_no     INTEGER DEFAULT 0,
+                kind         TEXT DEFAULT 'other',
+                scheduled_at TEXT DEFAULT '',
+                interviewer  TEXT DEFAULT '',
+                notes        TEXT DEFAULT '',
+                outcome      TEXT DEFAULT ''
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_interview_rounds_app "
+                     "ON interview_rounds(app_id)")
         # v3 (WS-3): round-trip extras blob + score-change audit/undo log.
         inbox_existing_v3 = {r["name"] for r in conn.execute("PRAGMA table_info(inbox)")}
         if "extras" not in inbox_existing_v3:
@@ -359,6 +403,82 @@ def init_db() -> bool:
         return True
 
 
+# ── Data safety (D1 P5): integrity check + rolling daily backup ───────────────
+
+def quick_check() -> tuple[bool, str]:
+    """Run PRAGMA quick_check once (called at launch). Returns (ok, message):
+    ok=True when the db is fine ('ok') or doesn't exist yet (nothing to check);
+    ok=False with the first reported problem otherwise. Fully guarded — never
+    raises, so a failed check surfaces as a warning, never a crash."""
+    try:
+        path = current_db_path()
+        if not Path(path).exists():
+            return True, "ok"
+        conn = sqlite3.connect(str(path), timeout=5)
+        try:
+            rows = conn.execute("PRAGMA quick_check").fetchall()
+        finally:
+            conn.close()
+        results = [str(r[0]) for r in rows]
+        if results == ["ok"]:
+            return True, "ok"
+        return False, "; ".join(results[:5])
+    except Exception as e:  # noqa: BLE001 - integrity check must never crash launch
+        return False, f"quick_check failed: {e}"
+
+
+def rolling_backup(keep: int = 7, today=None) -> Path | None:
+    """Once per day (first open), snapshot tracker.db to a dated backup next to
+    it, keeping the last `keep` snapshots. Reuses the migration-backup pattern:
+    WAL-checkpoint (so the copy includes committed-but-un-checkpointed data) then
+    shutil.copy2. Returns the backup path written, or None when nothing was
+    written (db missing, or today's snapshot already exists). Best-effort — never
+    raises."""
+    import shutil
+    from datetime import date
+    try:
+        src = Path(current_db_path())
+        if not src.exists():
+            return None
+        stamp = (today or date.today().isoformat())
+        dest = src.with_name(src.name + f".bak-{stamp}")
+        if dest.exists():
+            return None  # already backed up today
+        try:
+            conn = sqlite3.connect(str(src), timeout=5)
+            try:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            finally:
+                conn.close()
+        except Exception:
+            pass  # checkpoint is best-effort; copy proceeds regardless
+        shutil.copy2(str(src), str(dest))
+        # Prune older dated snapshots, keeping the newest `keep`.
+        prefix = src.name + ".bak-"
+        snaps = sorted(
+            (p for p in src.parent.glob(src.name + ".bak-*")
+             if _is_dated_backup(p.name, prefix)),
+            key=lambda p: p.name)
+        for old in snaps[:-keep] if keep > 0 else []:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        return dest
+    except Exception:
+        return None
+
+
+def _is_dated_backup(name: str, prefix: str) -> bool:
+    """True for a '<db>.bak-YYYY-MM-DD' snapshot (not the '.bak-vN' migration
+    backups, which must not be pruned by the rolling-backup rotation)."""
+    if not name.startswith(prefix):
+        return False
+    tail = name[len(prefix):]
+    return len(tail) == 10 and tail[4] == "-" and tail[7] == "-" and \
+        tail.replace("-", "").isdigit()
+
+
 def add_job(title, company, location="", url="", salary_text="",
             source="manual", status="interested", date_added="",
             date_applied="", notes="", **extra):
@@ -416,10 +536,13 @@ def get_all(status_filter=None):
     return [dict(r) for r in rows]
 
 
-def count_followups_due(today=None):
-    """Number of active (non-archived) applications whose follow_up_date has
-    arrived — for the Tracker header nudge. A targeted COUNT so the GUI no longer
-    pulls the whole table into Python just to tally this (GUI-10)."""
+def count_followups_due(today=None, include_no_response=True):
+    """Number of active (non-archived) applications needing attention — for the
+    Tracker header nudge, the tab badge, and the startup banner. Counts every row
+    whose follow_up_date has arrived, PLUS (when include_no_response, D1 P5) the
+    auto-ghost 'no response' candidates that aren't already counted by their
+    follow-up date. A targeted COUNT so the GUI no longer pulls the whole table
+    into Python just to tally this (GUI-10)."""
     from datetime import date
     if today is None:
         today = date.today().isoformat()
@@ -431,7 +554,15 @@ def count_followups_due(today=None):
             "AND status IN ('applied', 'phone_screen', 'interview')",
             (today,),
         ).fetchone()
-    return int(row[0])
+    n = int(row[0])
+    if include_no_response:
+        # Only count no-response rows NOT already surfaced by a due follow-up,
+        # so the badge doesn't double-count one application.
+        for r in stale_applications(today=today):
+            fu = (r.get("follow_up_date") or "").strip()
+            if not (fu and fu <= today):
+                n += 1
+    return n
 
 
 def followups_due(within_days=0, today=None, include_deadlines=True):
@@ -480,6 +611,51 @@ def followups_due(within_days=0, today=None, include_deadlines=True):
     return out
 
 
+def stale_applications(days=None, today=None):
+    """Applications still at status 'applied' with NO status_history movement
+    (any row newer than `days` days ago) — the auto-ghost candidates surfaced in
+    the Due dialog as 'no response'. Modeled on followups_due: returns full row
+    dicts, each stamped due_kind='no response' and due_date=<the reference date
+    N days ago> (soonest/most-overdue first).
+
+    "No movement" means: the most recent status_history.changed_at for the job is
+    older than the cutoff (or there's no history at all and it was added before
+    the cutoff). date_added is the fallback when history is missing so a freshly
+    imported 'applied' row without a transition log still ages in.
+    """
+    from datetime import date, timedelta
+    if days is None:
+        days = GHOST_NUDGE_DAYS
+    if today is None:
+        today = date.today()
+    elif isinstance(today, str):
+        today = date.fromisoformat(today)
+    cutoff = (today - timedelta(days=days)).isoformat()
+    out = []
+    with get_conn() as conn:
+        for r in conn.execute(
+            "SELECT * FROM applications WHERE archived=0 AND status='applied' "
+            "ORDER BY id"
+        ).fetchall():
+            # Most recent history timestamp for this job (transition or note).
+            last = conn.execute(
+                "SELECT MAX(changed_at) FROM status_history WHERE job_id=?",
+                (r["id"],),
+            ).fetchone()[0]
+            # Fall back to date_applied then date_added when there's no history.
+            ref = last or (r["date_applied"] or "") or (r["date_added"] or "")
+            if not ref:
+                continue
+            # Compare on the date portion so a bare date and an ISO timestamp both
+            # work (changed_at is a full UTC timestamp; date_added is a bare date).
+            if ref[:10] <= cutoff:
+                d = dict(r)
+                d["due_kind"], d["due_date"] = "no response", cutoff
+                out.append(d)
+    out.sort(key=lambda d: (d["due_date"], d.get("date_applied") or "", d["id"]))
+    return out
+
+
 def get_counts():
     with get_conn() as conn:
         rows = conn.execute(
@@ -500,17 +676,17 @@ def get_counts():
 
 
 def update_job(job_id, **fields):
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, date, timedelta
     updates = {k: v for k, v in fields.items() if k in _EDITABLE}
     if not updates:
         return
-    set_clause = ", ".join(f"{k}=?" for k in updates)
     with get_conn() as conn:
         # Record a status transition (old->new) before applying it, so the
         # status_history funnel reflects every real change. (delegate T4)
         if "status" in updates:
             row = conn.execute(
-                "SELECT status FROM applications WHERE id=?", (job_id,)
+                "SELECT status, date_applied, follow_up_date FROM applications "
+                "WHERE id=?", (job_id,)
             ).fetchone()
             if row and row["status"] != updates["status"]:
                 conn.execute(
@@ -519,6 +695,20 @@ def update_job(job_id, **fields):
                     (job_id, row["status"], updates["status"],
                      datetime.now(timezone.utc).isoformat()),
                 )
+                # Centralized entered-'applied' side-effects (D1 P5): stamp
+                # date_applied if blank and arm a +7-day follow-up if blank, so
+                # EVERY path into 'applied' (Apply Queue, Tracker quick-status,
+                # Flask /update, /api/add, browser extension) arms the same
+                # follow-up engine instead of only the Apply Queue button.
+                # Only auto-fill when the caller didn't set the field itself.
+                if updates["status"] == "applied":
+                    today = date.today().isoformat()
+                    if "date_applied" not in updates and not (row["date_applied"] or "").strip():
+                        updates["date_applied"] = today
+                    if "follow_up_date" not in updates and not (row["follow_up_date"] or "").strip():
+                        updates["follow_up_date"] = (
+                            date.today() + timedelta(days=7)).isoformat()
+        set_clause = ", ".join(f"{k}=?" for k in updates)
         conn.execute(
             f"UPDATE applications SET {set_clause} WHERE id=?",
             (*updates.values(), job_id),
@@ -561,6 +751,122 @@ def get_job(job_id):
     with get_conn() as conn:
         row = conn.execute(
             "SELECT * FROM applications WHERE id=?", (job_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ── Per-stage notes + timeline (D1 P5) ────────────────────────────────────────
+
+def add_status_note(job_id, note: str) -> int | None:
+    """Attach a timestamped note to an application WITHOUT changing its status:
+    a status_history event where old_status == new_status (the app's current
+    status) carrying the note. Returns the new history-row id, or None if the
+    application doesn't exist or the note is blank."""
+    from datetime import datetime, timezone
+    note = (note or "").strip()
+    if not note:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status FROM applications WHERE id=?", (job_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        cur = conn.execute(
+            "INSERT INTO status_history "
+            "(job_id, old_status, new_status, changed_at, note) VALUES (?,?,?,?,?)",
+            (job_id, row["status"], row["status"],
+             datetime.now(timezone.utc).isoformat(), note),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def status_timeline(job_id) -> list[dict]:
+    """Chronological timeline for one application: every status_history row
+    (transitions AND note-only events), oldest first, each a dict with
+    old_status, new_status, changed_at, note and a 'kind' of 'status' (a real
+    transition) or 'note' (old_status == new_status with a note). Read-only —
+    for the job edit dialog's timeline pane."""
+    out = []
+    with get_conn() as conn:
+        cols = {r["name"] for r in conn.execute(
+            "PRAGMA table_info(status_history)")}
+        has_note = "note" in cols
+        sel = "old_status, new_status, changed_at" + (", note" if has_note else "")
+        for r in conn.execute(
+            f"SELECT {sel} FROM status_history WHERE job_id=? "
+            "ORDER BY changed_at, id", (job_id,)
+        ).fetchall():
+            note = (r["note"] if has_note else "") or ""
+            kind = "note" if (r["old_status"] == r["new_status"] and note) else "status"
+            out.append({
+                "old_status": r["old_status"], "new_status": r["new_status"],
+                "changed_at": r["changed_at"], "note": note, "kind": kind,
+            })
+    return out
+
+
+# ── Interview rounds (D1 P5) ──────────────────────────────────────────────────
+
+def add_interview_round(app_id, kind="other", scheduled_at="", interviewer="",
+                        notes="", outcome="", round_no=None) -> int:
+    """Record an interview round for a tracked application. round_no defaults to
+    the next sequential number for that app when not given. Returns the new id."""
+    with get_conn() as conn:
+        if round_no is None:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(round_no), 0) FROM interview_rounds WHERE app_id=?",
+                (app_id,),
+            ).fetchone()
+            round_no = int(row[0]) + 1
+        cur = conn.execute(
+            "INSERT INTO interview_rounds "
+            "(app_id, round_no, kind, scheduled_at, interviewer, notes, outcome) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (app_id, round_no, kind, scheduled_at, interviewer, notes, outcome),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def list_interview_rounds(app_id) -> list[dict]:
+    """All interview rounds for an application, ordered by round_no then id."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM interview_rounds WHERE app_id=? ORDER BY round_no, id",
+            (app_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+_ROUND_EDITABLE = {"round_no", "kind", "scheduled_at", "interviewer", "notes",
+                   "outcome"}
+
+
+def update_interview_round(round_id, **fields) -> None:
+    updates = {k: v for k, v in fields.items() if k in _ROUND_EDITABLE}
+    if not updates:
+        return
+    set_clause = ", ".join(f"{k}=?" for k in updates)
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE interview_rounds SET {set_clause} WHERE id=?",
+            (*updates.values(), round_id),
+        )
+        conn.commit()
+
+
+def delete_interview_round(round_id) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM interview_rounds WHERE id=?", (round_id,))
+        conn.commit()
+
+
+def get_interview_round(round_id) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM interview_rounds WHERE id=?", (round_id,)
         ).fetchone()
     return dict(row) if row else None
 
@@ -1194,6 +1500,55 @@ def record_run_finish(run_id: int, status: str, source_counts=None, error: str =
              error or "", run_id),
         )
         conn.commit()
+
+
+def export_applications_csv(path) -> int:
+    """Dump every application (with its status_history joined in) to a CSV at
+    `path` using the csv stdlib. One row per application; the whole status
+    timeline is folded into a 'history' column as 'changed_at old->new [note]'
+    entries separated by ' | ', so a single spreadsheet carries the full cycle.
+    Returns the number of application rows written."""
+    import csv
+    fields = [
+        "id", "title", "company", "location", "status", "url", "salary_text",
+        "source", "date_added", "date_applied", "follow_up_date", "deadline",
+        "contact", "offer_amount", "offer_deadline", "offer_notes", "notes",
+        "history",
+    ]
+    with get_conn() as conn:
+        apps = [dict(r) for r in conn.execute(
+            "SELECT * FROM applications WHERE archived=0 ORDER BY id"
+        ).fetchall()]
+        hist: dict[int, list[str]] = {}
+        for ev in status_timeline_all(conn):
+            note = f" [{ev['note']}]" if ev["note"] else ""
+            hist.setdefault(ev["job_id"], []).append(
+                f"{ev['changed_at']} {ev['old_status']}->{ev['new_status']}{note}")
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        for a in apps:
+            a["history"] = " | ".join(hist.get(a["id"], []))
+            w.writerow(a)
+    return len(apps)
+
+
+def status_timeline_all(conn) -> list[dict]:
+    """Every status_history event across all jobs (for CSV export), oldest first
+    per job. Tolerant of a pre-v7 db with no `note` column."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(status_history)")}
+    has_note = "note" in cols
+    sel = "job_id, old_status, new_status, changed_at" + (", note" if has_note else "")
+    out = []
+    for r in conn.execute(
+        f"SELECT {sel} FROM status_history ORDER BY job_id, changed_at, id"
+    ).fetchall():
+        out.append({
+            "job_id": r["job_id"], "old_status": r["old_status"],
+            "new_status": r["new_status"], "changed_at": r["changed_at"],
+            "note": (r["note"] if has_note else "") or "",
+        })
+    return out
 
 
 def get_last_run(project: str | None = None) -> dict | None:
