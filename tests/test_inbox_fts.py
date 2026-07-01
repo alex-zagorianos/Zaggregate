@@ -216,10 +216,12 @@ def test_inbox_add_many_behavior_unchanged_by_fts_wiring(tmp_db):
     """Sanity: the FTS sync triggers/optimize call must not change
     inbox_add_many's dedup/count/cap behavior for existing callers."""
     db.init_db()
+    # Distinct titles -> distinct job_keys so the ONLY collapse here is the
+    # duplicate norm_url (C1 job_key coalescing is exercised separately).
     added = db.inbox_add_many([
-        _job("https://x.com/1", company="Acme"),
-        _job("https://x.com/1", company="Acme"),  # dup norm_url -> ignored
-        _job("https://x.com/2", company="Acme"),
+        _job("https://x.com/1", company="Acme", title="Eng One"),
+        _job("https://x.com/1", company="Acme", title="Eng One"),  # dup norm_url -> ignored
+        _job("https://x.com/2", company="Acme", title="Eng Two"),
     ])
     assert added == 2
     assert db.inbox_count() == 2

@@ -26,7 +26,10 @@ def _job(url, is_new, title="Controls Engineer"):
 
 def test_inbox_add_many_stamps_new_batch_only_on_new_rows(tmp_db):
     batch = "2026-06-24T10:00:00+00:00"
-    db.inbox_add_many([_job("https://x/1", True), _job("https://x/2", False)],
+    # Distinct titles -> distinct job_keys so these stay two rows (C1 coalescing
+    # would otherwise merge a same-title/company/location pair).
+    db.inbox_add_many([_job("https://x/1", True, title="Controls Engineer"),
+                       _job("https://x/2", False, title="Mechatronics Engineer")],
                       new_batch=batch)
     rows = {r["url"]: r for r in db.inbox_all()}
     e1 = json.loads(rows["https://x/1"]["extras"] or "{}")

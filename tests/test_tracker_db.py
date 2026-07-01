@@ -115,10 +115,12 @@ def test_roundrobin_orders_by_created_within_run(tmp_db):
     """TRACK-8: same company, same date_added, same score -> intra-run order is
     decided by `created` (full timestamp) descending, not left undefined."""
     db.init_db()
+    # Distinct titles -> distinct job_keys so these are two POSTINGS (not one
+    # posting via two URLs, which C1 coalescing correctly merges).
     db.inbox_add_many([
-        _job("https://x.com/old", company="Acme", score=50,
+        _job("https://x.com/old", company="Acme", title="Older Eng", score=50,
              created="2026-06-01T08:00:00"),
-        _job("https://x.com/new", company="Acme", score=50,
+        _job("https://x.com/new", company="Acme", title="Newer Eng", score=50,
              created="2026-06-01T20:00:00"),
     ])
     rows = db.inbox_all(order="roundrobin")
@@ -131,14 +133,18 @@ def test_persisted_per_company_cap(tmp_db):
     """MISSED-4: the cap is enforced against the PERSISTED inbox across runs, so a
     board can't accrue cap rows every run."""
     db.init_db()
+    # Distinct titles -> distinct job_keys so the cap (not C1 job_key coalescing)
+    # is what limits how many land.
     # Run 1: 3 Acme jobs, cap 2 -> only 2 land.
     n1 = db.inbox_add_many(
-        [_job(f"https://x.com/a{i}", company="Acme") for i in range(3)],
+        [_job(f"https://x.com/a{i}", company="Acme", title=f"Eng A{i}")
+         for i in range(3)],
         per_company_cap=2)
     assert n1 == 2
     # Run 2: 3 more fresh Acme jobs, cap 2 -> already at 2, so 0 more land.
     n2 = db.inbox_add_many(
-        [_job(f"https://x.com/b{i}", company="Acme") for i in range(3)],
+        [_job(f"https://x.com/b{i}", company="Acme", title=f"Eng B{i}")
+         for i in range(3)],
         per_company_cap=2)
     assert n2 == 0
     assert db.inbox_company_counts()["acme"] == 2
