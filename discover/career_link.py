@@ -3,11 +3,21 @@
 robots.txt (harvest Sitemap:) -> sitemap.xml (filter job-ish locs) ->
 homepage careers-anchor regex (one-hop). All HTTP behind _get() so tests mock
 one seam. Fail-soft: every step returns None/[] on error, never raises.
+
+Also exposes `is_disallowed()` — a robots.txt Disallow check used by
+scrape/direct_scraper.py before escalating a path to the stealth (Scrapling)
+fetcher (research-2026-07-01-reach-stealth-legal.md #3.4). robots.txt has no
+binding legal force (Ziff Davis v. OpenAI, 2025 — "keep off the grass" sign,
+not a DMCA technological protection measure) but courts and site owners treat
+compliance as good-faith evidence, so it's a cheap goodwill check — NOT a
+security boundary. It is fail-open: any fetch/parse error is treated as
+"allowed" so a robots.txt hiccup never blocks a working board.
 """
 from __future__ import annotations
 import ipaddress
 import re
 import socket
+import urllib.robotparser as robotparser
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
@@ -96,6 +106,50 @@ def sitemap_job_urls(domain: str) -> list:
     # dedupe, preserve order
     seen: set[str] = set()
     return [u for u in found if not (u in seen or seen.add(u))]
+
+
+# Per-origin robots.txt parse cache (in-process). Keyed by "scheme://host[:port]".
+_ROBOTS_CACHE: dict[str, "robotparser.RobotFileParser | None"] = {}
+
+
+def _robots_for(origin: str) -> "robotparser.RobotFileParser | None":
+    """Fetch + cache (per-process, per-origin) the parsed robots.txt. Returns
+    None when unreachable/empty — callers treat that as "allowed" (fail-open)."""
+    if origin in _ROBOTS_CACHE:
+        return _ROBOTS_CACHE[origin]
+    txt = _get(f"{origin}/robots.txt")
+    rp: "robotparser.RobotFileParser | None" = None
+    if txt:
+        rp = robotparser.RobotFileParser()
+        try:
+            rp.parse(txt.splitlines())
+        except Exception:
+            rp = None
+    _ROBOTS_CACHE[origin] = rp
+    return rp
+
+
+def is_disallowed(url: str, user_agent: str = "*") -> bool:
+    """True only when robots.txt EXPLICITLY disallows `url` for `user_agent`.
+    Fail-open (False) on any malformed URL, unreachable robots.txt, or parse
+    error — this is a good-faith courtesy check (no binding legal force), not
+    a security boundary, so it must never block a working career page on a
+    network hiccup. Used only before the stealth-escalation step; the plain
+    requests-first path is unaffected."""
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return False
+    origin = f"{parts.scheme}://{parts.netloc}"
+    rp = _robots_for(origin)
+    if rp is None:
+        return False
+    try:
+        return not rp.can_fetch(user_agent, url)
+    except Exception:
+        return False
 
 
 def find_career_url(domain: str) -> str | None:
