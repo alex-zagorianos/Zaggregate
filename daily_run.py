@@ -23,6 +23,26 @@ from config import DAILY_MIN_SCORE, DAILY_SOURCES, DEFAULT_KEYWORDS, DEFAULT_LOC
 _RUN_ID = None
 
 
+TIERED_DEFAULT_THRESHOLD = 200
+
+
+def _tiered_default(cfg: dict, industry) -> bool:
+    """Decide whether tiered scraping is on for this run. An explicit
+    ``tiered_scrape`` in the config always wins (True or False); otherwise the
+    default flips ON once the (industry-filtered) registry exceeds
+    TIERED_DEFAULT_THRESHOLD companies, so a large registry doesn't trigger a
+    slow, 429-prone O(N) daily scrape."""
+    explicit = cfg.get("tiered_scrape")
+    if explicit is not None:
+        return bool(explicit)
+    try:
+        from scrape.company_registry import industry_company_count
+        registry_size = industry_company_count(industry)
+    except Exception:
+        registry_size = 0
+    return registry_size > TIERED_DEFAULT_THRESHOLD
+
+
 def log(msg: str):
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{stamp}] {msg}"
@@ -122,10 +142,12 @@ def main():
         except Exception:
             pass
 
-    # Opt-in tiered scraping: as the registry grows, scrape only the boards "due"
-    # this run (active boards every run, quiet/dead ones less often) so the daily
-    # run stays fast. Off by default — the full registry is scraped as before.
-    tiered = bool(cfg.get("tiered_scrape"))
+    # Tiered scraping: as the registry grows, scrape only the boards "due" this
+    # run (active boards every run, quiet/dead ones less often) so the daily run
+    # stays fast and doesn't hammer every ATS host. Explicit config wins; the
+    # DEFAULT now flips ON above ~200 registry companies (a full O(N) daily
+    # scrape of a large registry is both the speed problem and a 429 contributor).
+    tiered = _tiered_default(cfg, industry)
     clients = build_clients(sources, cache_enabled=True, industry_filter=industry,
                             tiered_careers=tiered)
     if not clients:
@@ -268,6 +290,19 @@ def main():
     source_counts = dict(Counter((r.source_api or "") for r in results))
     status = "zero" if added == 0 else "ok"
     record_run_finish(run_id, status, source_counts=source_counts)
+
+    # Cache GC: the cache/ tree (ATS payload blobs + per-source FileCaches) was
+    # write-mostly and never evicted -> hundreds of MB. Evict entries older than
+    # the GC window at the end of a run; anything still needed is re-fetched
+    # cheaply (and conditional-GET makes that a 304). Best-effort, never fatal.
+    try:
+        from config import CACHE_DIR
+        from scrape.cache_helpers import gc_cache_dir
+        n_gc = gc_cache_dir(CACHE_DIR)
+        if n_gc:
+            log(f"cache GC | removed {n_gc} stale cache file(s)")
+    except Exception as e:  # GC must never kill a run
+        log(f"WARN: cache GC skipped: {type(e).__name__}: {e}")
 
 
 def run_main() -> int:
