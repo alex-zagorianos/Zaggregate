@@ -206,6 +206,7 @@ def conditional_get(
     headers: Optional[dict] = None,
     timeout: Optional[float] = None,
     session: Optional[Any] = None,
+    parse: Optional[Any] = None,
 ) -> FetchResult:
     """Status-aware conditional GET (ETag / Last-Modified). Returns a FetchResult
     so the caller can distinguish failure classes:
@@ -261,10 +262,12 @@ def conditional_get(
         # 404 / 410 / other hard 4xx: board removed/renamed. Never re-serve stale.
         return FetchResult(None, False, STATUS_PERMANENT)
 
+    parser = parse if parse is not None else (lambda r: r.json())
     try:
-        body = resp.json()
+        body = parser(resp)
     except Exception:
-        # A 200 that isn't valid JSON is a broken/renamed board, not a blip.
+        # A 200 that can't be parsed (invalid JSON/XML) is a broken/renamed
+        # board, not a blip.
         return FetchResult(None, False, STATUS_PERMANENT)
 
     resp_headers = getattr(resp, "headers", None) or {}

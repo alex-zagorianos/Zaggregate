@@ -165,7 +165,16 @@ def _age_cache_file(path, hours):
     os.utime(path, (old, old))
 
 
+def _patch_scraper_session(monkeypatch, module, handler):
+    """Route a scraper's shared careers_session + host limiter to test doubles."""
+    monkeypatch.setattr(module, "careers_session",
+                        lambda: type("_S", (), {"get": staticmethod(handler)})())
+    monkeypatch.setattr(module, "careers_host_limiter",
+                        lambda host: type("_L", (), {"acquire": lambda self: None})())
+
+
 def test_greenhouse_304_reuses_cache_and_matches_200_output(tmp_path, monkeypatch):
+    import scrape.greenhouse_scraper as GH
     payload = {
         "meta": {"total": 1},
         "jobs": [{
@@ -186,7 +195,7 @@ def test_greenhouse_304_reuses_cache_and_matches_200_output(tmp_path, monkeypatc
             return _FakeResp(payload, status_code=200, etag='W/"gh-1"')
         return _FakeResp(status_code=304)
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    _patch_scraper_session(monkeypatch, GH, fake_get)
     company = CompanyEntry("Acme", "greenhouse", "acme")
 
     jobs1 = scrape_greenhouse(company, "controls engineer", tmp_path, cache_enabled=True)
@@ -223,7 +232,8 @@ def test_greenhouse_same_run_second_keyword_no_extra_network_call(tmp_path, monk
         calls["n"] += 1
         return _FakeResp(payload, status_code=200, etag='W/"gh-7"')
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    import scrape.greenhouse_scraper as GH
+    _patch_scraper_session(monkeypatch, GH, fake_get)
     company = CompanyEntry("Acme", "greenhouse", "acme")
 
     scrape_greenhouse(company, "automation engineer", tmp_path, cache_enabled=True)
@@ -248,7 +258,8 @@ def test_lever_304_reuses_cache_and_matches_200_output(tmp_path, monkeypatch):
             return _FakeResp(payload, status_code=200, etag='"lv-1"')
         return _FakeResp(status_code=304)
 
-    monkeypatch.setattr(requests, "get", fake_get)
+    import scrape.lever_scraper as LV
+    _patch_scraper_session(monkeypatch, LV, fake_get)
     company = CompanyEntry("Acme", "lever", "acme")
 
     jobs1 = scrape_lever(company, "controls technician", tmp_path, cache_enabled=True)
@@ -264,13 +275,17 @@ def test_lever_304_reuses_cache_and_matches_200_output(tmp_path, monkeypatch):
 
 
 def test_greenhouse_unreachable_with_no_cache_marks_failed(tmp_path, monkeypatch):
+    # A pure NETWORK error (no HTTP response) with no cache is TRANSIENT now:
+    # the board is skipped but NOT poisoned (429-safety), so no _FAILED marker.
     def boom(url, timeout=None, headers=None):
         raise requests.ConnectionError("dead host")
 
-    monkeypatch.setattr(requests, "get", boom)
+    import scrape.greenhouse_scraper as GH
+    _patch_scraper_session(monkeypatch, GH, boom)
     company = CompanyEntry("Dead Co", "greenhouse", "dead")
 
     assert scrape_greenhouse(company, "controls", tmp_path, cache_enabled=True) == []
     from scrape.cache_helpers import is_failed, read_cache
     cache_file = tmp_path / "greenhouse_dead.json"
-    assert is_failed(read_cache(cache_file)) is True
+    # Transient network failure must NOT negative-cache the board.
+    assert is_failed(read_cache(cache_file)) is not True

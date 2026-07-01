@@ -1,12 +1,14 @@
 from pathlib import Path
 from typing import Optional
 
-import requests
-
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
+from scrape.cache_helpers import (
+    STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
+    read_cache, slug_safe,
+)
 from scrape.company_registry import CompanyEntry
+from search.http_util import careers_host_limiter, careers_session, host_of
 
 # Ashby public job-posting API — no auth. The newest/smallest startups skew
 # heavily to Ashby (e.g. Gecko Robotics), so this unlocks exactly the
@@ -22,33 +24,38 @@ def scrape_ashby(
     cache_enabled: bool,
 ) -> list[JobResult]:
     cache_file = cache_dir / f"ashby_{slug_safe(company.slug)}.json"
+    url = _BASE_URL.format(slug=company.slug)
 
     if cache_enabled:
         cached = read_cache(cache_file)
         if is_failed(cached):
             return []  # known-dead this TTL window
         if cached is not None:
-            return _filter_and_map(cached, company, keyword)
+            return _filter_and_map(http_cache_body(cached), company, keyword)
 
+        # TTL-stale/first-ever: conditional GET (429/5xx serves stale + never
+        # poisons; 404/410 marks dead), rate-limited + Retry-After honored.
+        careers_host_limiter(host_of(url)).acquire()
+        result = conditional_get(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT,
+                                 session=careers_session())
+        if result.status == STATUS_PERMANENT:
+            print(f"  [ashby] {company.name}: gone — skipping")
+            mark_failed(cache_file)
+            return []
+        if result.body is None:
+            print(f"  [ashby] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            return []
+        return _filter_and_map(result.body, company, keyword)
+
+    # cache_enabled is False (CLI --no-cache): plain fetch, nothing persisted.
+    careers_host_limiter(host_of(url)).acquire()
     try:
-        url = _BASE_URL.format(slug=company.slug)
-        resp = requests.get(url, timeout=CAREERS_REQUEST_TIMEOUT)
+        resp = careers_session().get(url, timeout=CAREERS_REQUEST_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
-    except requests.HTTPError as e:
-        print(f"  [ashby] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
-        if cache_enabled:
-            mark_failed(cache_file)
-        return []
     except Exception as e:
         print(f"  [ashby] {company.name}: error — {e}")
-        if cache_enabled:
-            mark_failed(cache_file)
         return []
-
-    if cache_enabled:
-        write_cache(cache_file, data)
-
     return _filter_and_map(data, company, keyword)
 
 

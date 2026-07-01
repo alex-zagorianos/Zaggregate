@@ -94,21 +94,38 @@ def scrape_workday(
     # Best-effort CSRF priming (uses requests.get; silently skipped on failure).
     csrf_headers = _prime_csrf(tenant, n, site)
 
+    # Track whether a failure was PERMANENT (404/410 -> dead board, negative-cache
+    # for a week) vs TRANSIENT (429 throttle / 5xx outage / network blip -> do NOT
+    # poison; today ANY exception poisoned a board for 168h, which the self-
+    # inflicted-429 incident showed erodes live coverage).
+    saw_permanent = {"v": False}
+
     def _post(offset: int) -> dict | None:
         payload = {"appliedFacets": {}, "limit": _PAGE_LIMIT, "offset": offset, "searchText": keyword}
         headers = {"Content-Type": "application/json", "Accept": "application/json", **csrf_headers}
         try:
-            resp = requests.post(url, json=payload, headers=headers,
-                                 timeout=CAREERS_SLOW_TIMEOUT)
+            # Shared session: its urllib3 Retry honors 429 + Retry-After.
+            resp = _make_session().post(url, json=payload, headers=headers,
+                                        timeout=CAREERS_SLOW_TIMEOUT)
+            code = getattr(resp, "status_code", 200)
+            if 400 <= code < 500 and code != 429:
+                # 404/410/403 etc. -> board removed/renamed: permanent.
+                saw_permanent["v"] = True
+                print(f"  [workday] {company.name}: HTTP {code} at offset {offset} — gone")
+                return None
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
-            print(f"  [workday] {company.name}: HTTP error at offset {offset} — {e}")
+            # No status / 429 / 5xx / parse error -> transient. Leave saw_permanent
+            # False so the board is retried next run, not marked dead.
+            print(f"  [workday] {company.name}: transient error at offset {offset} — {e}")
             return None
 
     first = _post(0)
     if first is None:
-        if cache_enabled:
+        # Only negative-cache a genuinely-dead board; a transient failure is
+        # retried next run instead of skipped for a week.
+        if cache_enabled and saw_permanent["v"]:
             mark_failed(failed_file)
         return []
 

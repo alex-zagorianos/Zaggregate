@@ -25,6 +25,16 @@ from scrape import (
 )
 from scrape.cache_helpers import is_failed, mark_failed, read_cache
 from scrape.company_registry import CompanyEntry, get_registry
+from tests.scrape._scrape_fakes import patch_session
+
+
+def _patch_wd_post(monkeypatch, post_fn):
+    """Workday's jobs POST now runs through the shared retry session
+    (_make_session); patch that instead of the global requests.post."""
+    class _S:
+        def post(self, *a, **k):
+            return post_fn(*a, **k)
+    monkeypatch.setattr(workday_scraper, "_make_session", lambda *a, **k: _S())
 
 
 class _Resp:
@@ -122,7 +132,7 @@ def test_ashby_dept_not_in_match_haystack(tmp_path, monkeypatch):
         "jobUrl": "https://jobs.ashbyhq.com/acme/x1",
         "isListed": True,
     }]}
-    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(payload))
+    patch_session(monkeypatch, ashby_scraper, lambda *a, **k: _Resp(payload))
     company = CompanyEntry("Acme", "ashby", "acme")
     assert ashby_scraper.scrape_ashby(company, "controls engineer", tmp_path,
                                       cache_enabled=False) == []
@@ -144,7 +154,7 @@ def test_smartrecruiters_dept_not_in_match_haystack(tmp_path, monkeypatch):
             "releasedDate": "2026-06-01",
         }],
     }
-    monkeypatch.setattr(requests, "get", lambda *a, **k: _Resp(payload))
+    patch_session(monkeypatch, smartrecruiters_scraper, lambda *a, **k: _Resp(payload))
     # Avoid the per-match detail fetch by leaving it to return "".
     monkeypatch.setattr(smartrecruiters_scraper, "_fetch_description",
                         lambda *a, **k: "")
@@ -170,7 +180,7 @@ def test_workday_reads_board_total(tmp_path, monkeypatch):
             "reqId": "R1",
         }],
     }
-    monkeypatch.setattr(requests, "post", lambda *a, **k: _Resp(payload))
+    _patch_wd_post(monkeypatch, lambda *a, **k: _Resp(payload))
     company = CompanyEntry("Caterpillar", "workday", "cat:5:CaterpillarCareers")
     jobs = workday_scraper.scrape_workday(company, "controls", tmp_path,
                                           cache_enabled=False)
@@ -182,7 +192,7 @@ def test_workday_missing_total_stays_unknown(tmp_path, monkeypatch):
     payload = {"jobPostings": [{
         "title": "Controls Engineer", "locationsText": "TX",
         "externalPath": "/job/x_R2", "reqId": "R2"}]}
-    monkeypatch.setattr(requests, "post", lambda *a, **k: _Resp(payload))
+    _patch_wd_post(monkeypatch, lambda *a, **k: _Resp(payload))
     company = CompanyEntry("Caterpillar", "workday", "cat:5:CaterpillarCareers")
     jobs = workday_scraper.scrape_workday(company, "controls", tmp_path,
                                           cache_enabled=False)
@@ -252,14 +262,27 @@ def test_direct_scraper_negative_cache_skips_refetch(tmp_path, monkeypatch):
     assert calls["n"] == 1  # no extra network attempt
 
 
-def test_workday_negative_cache_uses_json_marker(tmp_path, monkeypatch):
+class _StatusResp:
+    """A response carrying an HTTP status (for the transient/permanent split)."""
+    def __init__(self, status_code):
+        self.status_code = status_code
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"HTTP {self.status_code}")
+    def json(self):
+        return {}
+
+
+def test_workday_permanent_404_negative_caches(tmp_path, monkeypatch):
+    # A 404 (board removed/renamed) is PERMANENT -> negative-cache it so the run
+    # doesn't re-probe a dead tenant every day for a week.
     calls = {"n": 0}
 
-    def boom(*a, **k):
+    def gone(*a, **k):
         calls["n"] += 1
-        raise requests.ConnectionError("dead tenant")
+        return _StatusResp(404)
 
-    monkeypatch.setattr(requests, "post", boom)
+    _patch_wd_post(monkeypatch, gone)
     company = CompanyEntry("Dead WD", "workday", "deadwd:1:Careers")
 
     assert workday_scraper.scrape_workday(company, "controls", tmp_path,
@@ -271,6 +294,35 @@ def test_workday_negative_cache_uses_json_marker(tmp_path, monkeypatch):
     assert workday_scraper.scrape_workday(company, "controls", tmp_path,
                                           cache_enabled=True) == []
     assert calls["n"] == 1  # marker short-circuits the second attempt
+
+
+def test_workday_transient_does_not_negative_cache(tmp_path, monkeypatch):
+    # A 429/5xx/network blip is TRANSIENT -> the board must NOT be poisoned for a
+    # week (the self-inflicted-429 under-coverage bug). No _FAILED marker written,
+    # and the board is re-attempted on the next run.
+    calls = {"n": 0}
+
+    def throttled(*a, **k):
+        calls["n"] += 1
+        return _StatusResp(429)
+
+    _patch_wd_post(monkeypatch, throttled)
+    company = CompanyEntry("Busy WD", "workday", "busywd:1:Careers")
+
+    assert workday_scraper.scrape_workday(company, "controls", tmp_path,
+                                          cache_enabled=True) == []
+    assert list(tmp_path.glob("workday_*_FAILED.json")) == []  # not poisoned
+
+    # A network exception is also transient (no marker, re-attempted).
+    def boom(*a, **k):
+        calls["n"] += 1
+        raise requests.ConnectionError("blip")
+
+    _patch_wd_post(monkeypatch, boom)
+    assert workday_scraper.scrape_workday(company, "controls", tmp_path,
+                                          cache_enabled=True) == []
+    assert list(tmp_path.glob("workday_*_FAILED.json")) == []
+    assert calls["n"] == 2  # both attempts actually ran (no short-circuit marker)
 
 
 # ---------------------------------------------------------------------------

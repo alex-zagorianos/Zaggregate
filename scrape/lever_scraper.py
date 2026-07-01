@@ -6,9 +6,11 @@ import requests
 from config import CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import (
-    conditional_get_json, http_cache_body, is_failed, mark_failed, read_cache, slug_safe,
+    STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
+    read_cache, slug_safe,
 )
 from scrape.company_registry import CompanyEntry
+from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
 
@@ -34,13 +36,19 @@ def scrape_lever(
             return _filter_and_map(http_cache_body(cached), company, keyword)
 
         # TTL-stale (or first-ever) — conditional GET so an unchanged board
-        # costs a cheap 304 instead of a full re-download.
-        data, _from_cache = conditional_get_json(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT)
-        if data is None:
-            print(f"  [lever] {company.name}: unreachable — skipping")
+        # costs a cheap 304 instead of a full re-download. Shared retry/Retry-
+        # After session + per-host limiter so a lever burst can't self-429.
+        careers_host_limiter(host_of(url)).acquire()
+        result = conditional_get(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT,
+                                 session=careers_session())
+        if result.status == STATUS_PERMANENT:
+            print(f"  [lever] {company.name}: gone — skipping")
             mark_failed(cache_file)
             return []
-        return _filter_and_map(data, company, keyword)
+        if result.body is None:
+            print(f"  [lever] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            return []
+        return _filter_and_map(result.body, company, keyword)
 
     try:
         resp = requests.get(url, timeout=CAREERS_REQUEST_TIMEOUT)
