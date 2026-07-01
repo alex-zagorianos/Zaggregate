@@ -84,8 +84,34 @@ class SearchEngine:
         salary_min: Optional[int] = None,
         max_pages_per_keyword: int = 2,
         sort_by: str = "date",
+        progress=None,
+        cancel=None,
     ) -> list[JobResult]:
+        """Run every client concurrently and return the de-duplicated results.
+
+        ``progress`` (optional) is a callback invoked from worker threads with a
+        single dict event so a GUI can show determinate per-source feedback
+        without this engine importing Tk. It MUST be thread-safe (the GUI marshals
+        onto the Tk thread). Events:
+          {"phase": "start",  "total": N}                       once, before work
+          {"phase": "source_start", "source": str}             each client begins
+          {"phase": "source_done",  "source": str, "count": n, "ok": bool,
+           "error": str, "done": k, "total": N}                 each client ends
+          {"phase": "done",   "raw": n, "deduped": m}          once, after dedup
+        ``cancel`` (optional) is a threading.Event checked between clients and (in
+        _run_client) between keywords/pages; when set, in-flight units finish but
+        no new work starts and the partial results collected so far are returned.
+        Both default to None = today's behavior exactly (no callback, no cancel).
+        """
         all_results: list[JobResult] = []
+        cancelled = bool(cancel and cancel.is_set())
+
+        def _emit(**event):
+            if progress:
+                try:
+                    progress(event)
+                except Exception:
+                    pass  # a UI callback must never break the search
 
         # Build the fetch work-list. Every client runs concurrently (the rate
         # limiter and file cache are thread-safe), and a keyword-parameterized
@@ -106,26 +132,67 @@ class SearchEngine:
 
         agg_n: dict[str, int] = defaultdict(int)
         agg_t: dict[str, float] = defaultdict(float)
+        agg_err: dict[str, str] = {}   # first per-keyword error string per source
+        # Determinate progress is per distinct SOURCE (not per unit): a
+        # keyword-parameterized client is split into several units but is one
+        # source in the UI's "source k/N" counter.
+        sources_all = sorted({type(c).__name__ for c, _ in units})
+        _emit(phase="start", total=len(sources_all))
+        started_sources: set[str] = set()
+        done_sources: set[str] = set()
+
+        def _run_unit(client, kws):
+            src = type(client).__name__
+            # source_start fires once per source (the first unit to begin it).
+            if progress and src not in started_sources:
+                started_sources.add(src)
+                _emit(phase="source_start", source=src)
+            return self._timed_run_client(client, kws, location,
+                                          salary_min, max_pages_per_keyword,
+                                          cancel=cancel)
+
         max_workers = min(len(units), SEARCH_MAX_WORKERS) or 1
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(
-                    self._timed_run_client, client, kws, location,
-                    salary_min, max_pages_per_keyword,
-                ): type(client).__name__
+                executor.submit(_run_unit, client, kws): type(client).__name__
                 for client, kws in units
             }
             for future in as_completed(futures):
                 source = futures[future]
                 try:
-                    res, elapsed = future.result()
+                    res, elapsed, unit_err = future.result()
                     agg_n[source] += len(res)
                     # Units of one source run concurrently → its wall-clock is the
                     # slowest unit, not their sum.
                     agg_t[source] = max(agg_t[source], elapsed)
                     all_results.extend(res)
+                    # _run_client swallows per-keyword errors (prints + breaks) so
+                    # a 429'd source returns [] and would LOOK like an empty market
+                    # — the review's finding #2. Surface the first such error so
+                    # the progress layer can mark the source throttled/failed, not
+                    # "ok, 0 results".
+                    if unit_err and source not in agg_err:
+                        agg_err[source] = unit_err
                 except Exception as e:
+                    if source not in agg_err:
+                        agg_err[source] = str(e)
                     print(f"[{source}] failed: {e}")
+                # A source is "done" once its LAST unit resolves; a multi-unit
+                # source reports once, when the final unit lands.
+                remaining = sum(1 for f, s in futures.items()
+                                if s == source and not f.done())
+                if remaining == 0 and source not in done_sources:
+                    done_sources.add(source)
+                    src_err = agg_err.get(source, "")
+                    # "ok" = the source ran and either returned rows or a clean
+                    # empty (no error). A source that returned rows AND errored on
+                    # some keyword still counts ok (it produced results).
+                    ok = not src_err or agg_n[source] > 0
+                    _emit(phase="source_done", source=source,
+                          count=agg_n[source], ok=ok, error=src_err,
+                          done=len(done_sources), total=len(sources_all))
+                if cancel and cancel.is_set():
+                    cancelled = True
 
         # Per-source summary with timing (no per-source instrumentation existed
         # before, so a slow source couldn't be identified without guessing).
@@ -140,14 +207,20 @@ class SearchEngine:
             deduped.sort(key=lambda j: _parse_created(j.created), reverse=True)
 
         print(f"\nTotal: {len(all_results)} raw -> {len(deduped)} after dedup")
+        _emit(phase="done", raw=len(all_results), deduped=len(deduped),
+              cancelled=cancelled)
         return deduped
 
-    def _timed_run_client(self, client, keywords, location, salary_min, max_pages):
+    def _timed_run_client(self, client, keywords, location, salary_min, max_pages,
+                          cancel=None):
         """_run_client wrapped with a wall-clock measurement (for the per-source
-        timing summary). Returns (results, elapsed_seconds)."""
+        timing summary). Returns (results, elapsed_seconds, error_str). error_str
+        is '' unless a per-keyword fetch raised (used to distinguish a throttled/
+        broken source from a genuinely empty market)."""
         t0 = time.perf_counter()
-        res = self._run_client(client, keywords, location, salary_min, max_pages)
-        return res, time.perf_counter() - t0
+        res, err = self._run_client(client, keywords, location, salary_min,
+                                    max_pages, cancel=cancel)
+        return res, time.perf_counter() - t0, err
 
     def _run_client(
         self,
@@ -156,11 +229,17 @@ class SearchEngine:
         location: str,
         salary_min: Optional[int],
         max_pages: int,
-    ) -> list[JobResult]:
+        cancel=None,
+    ) -> tuple[list[JobResult], str]:
         source = type(client).__name__
         out: list[JobResult] = []
+        first_error = ""
         for keyword in keywords:
+            if cancel and cancel.is_set():
+                break  # cooperative cancel: stop before the next keyword
             for page in range(1, max_pages + 1):
+                if cancel and cancel.is_set():
+                    break  # and before the next page
                 try:
                     results = client.search_and_parse(
                         keyword=keyword, location=location,
@@ -169,6 +248,8 @@ class SearchEngine:
                 except Exception as e:
                     # Transient errors are already retried in the session; a
                     # failure here stops paging this keyword but not the run.
+                    if not first_error:
+                        first_error = str(e)
                     print(f"  [{source}] {keyword!r} page {page} error: {e}")
                     break
                 if not results:
@@ -180,7 +261,7 @@ class SearchEngine:
                         break  # genuine end-of-results for this keyword
                     continue
                 out.extend(results)
-        return out
+        return out, first_error
 
     def _deduplicate(self, results: list[JobResult]) -> list[JobResult]:
         # URL is the fast path: normalized-url variants of the same posting

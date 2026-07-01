@@ -24,10 +24,11 @@ GUIDE = [
 
     ("h1", "The 3 steps"),
     ("h2", "1.  Find jobs"),
-    ("body", "Open the Search tab and click Search. Your Inbox also fills with "
-             "fresh matches each day once daily updates are turned on, but on "
-             "day one a Search is the fastest way to see jobs. Every job gets a "
-             "Score from 0 to 100 for how well it fits what you're looking for."),
+    ("body", "Open your Inbox and click “Update my Inbox now” to pull in fresh "
+             "matches, or use the Search tab to search on demand. To keep your "
+             "Inbox filling on its own, turn on daily updates from Tools ▸ “Turn "
+             "on daily updates”. Every job gets a Score from 0 to 100 for how "
+             "well it fits what you're looking for."),
     ("h2", "2.  Keep the good ones"),
     ("body", "Select a job you like and click “Track ▸ Interested”. "
              "It moves to your Apply Queue. Not interested? Click Dismiss and "
@@ -42,9 +43,9 @@ GUIDE = [
     ("body", "Your daily shortlist of fresh matches. Triage it: Track the ones "
              "you like, Dismiss the rest. Tip: click a row and press T (track), "
              "D (dismiss), or O (open) to fly through it with the keyboard."),
-    ("body", "New here? Your Inbox starts empty — run a Search first and it "
-             "begins filling up. After that it refreshes on its own each day, "
-             "once daily updates are turned on."),
+    ("body", "New here? Your Inbox starts empty — click “Update my Inbox now” "
+             "and it begins filling up. Turn on daily updates (Tools ▸ “Turn on "
+             "daily updates”) and it then refreshes on its own each morning."),
     ("h2", "Search"),
     ("body", "Search many job boards at once for keywords in a location. Results "
              "are scored and you can Track or Dismiss each one. “+ Add "
@@ -99,8 +100,8 @@ GUIDE = [
              "the AI gets you about 90% of the way; the last 10% — truth, your "
              "voice, the specifics — is yours. You always click submit."),
     ("body", "This step talks to an AI directly, so it needs an AI API key set "
-             "up (see the README for where to put it). Ranking your jobs with the "
-             "round-trip above is separate and needs no key at all."),
+             "up. Add it in Tools ▸ “Connect your AI (API key)…”. Ranking your "
+             "jobs with the round-trip above is separate and needs no key at all."),
 
     ("h1", "Getting the most out of AI"),
     ("body", "The AI is only as good as what you tell it about yourself. A few "
@@ -130,6 +131,22 @@ GUIDE = [
                "uploads anything on its own."),
     ("muted", "Power users: Claude Code can rank jobs directly through the "
               "included MCP server — see the claude-code folder in your install."),
+
+    ("h1", "Capture jobs from your browser (optional)"),
+    ("body", "Some big boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice) "
+             "don't offer a search feed, but you can still pull jobs you're "
+             "already looking at into your Inbox with the browser extension."),
+    ("bullet", "1.  In the app, open Tools ▸ “Capture jobs from my browser”. "
+               "It starts a small local listener (nothing leaves your computer)."),
+    ("bullet", "2.  In Chrome or Edge, open the Extensions page "
+               "(chrome://extensions), turn on “Developer mode” (top-right)."),
+    ("bullet", "3.  Click “Load unpacked” and pick the browser_ext folder inside "
+               "your install."),
+    ("bullet", "4.  Browse a job board. When you see jobs you like, click the "
+               "extension and choose “Send to Tool” — they land in your Inbox for "
+               "triage, scored like everything else."),
+    ("muted", "The listener runs only while the app is open and only accepts jobs "
+              "from the extension on your own machine."),
 
     ("h1", "Tips & FAQ"),
     ("h2", "Where is my information stored?"),
@@ -274,8 +291,8 @@ def show_ai_help(parent=None) -> None:
         "WRITE APPLICATIONS\n"
         "   • The Apply Queue & Resume Generator use AI to tailor a\n"
         "     resume + cover letter to each posting (this needs an\n"
-        "     API key — see the README). Always review before you\n"
-        "     send — you stay in control.\n\n"
+        "     API key — add it in Tools ▸ Connect your AI). Always\n"
+        "     review before you send — you stay in control.\n\n"
         "Ranking your jobs is free and needs no key.\n\n"
         "Open the Guide tab for the full walkthrough.",
         parent=parent)
@@ -312,7 +329,7 @@ def show_about(parent=None) -> None:
         "About " + APP_NAME,
         f"{APP_NAME}\n\n"
         "A private, on-your-computer job-search assistant: it finds and scores "
-        "engineering jobs, helps you tailor a resume, and tracks your "
+        "jobs in your field, helps you tailor a resume, and tracks your "
         "applications.\n\n"
         "It never applies for you and never uploads your data — everything "
         "stays on this machine.",

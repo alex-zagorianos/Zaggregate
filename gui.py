@@ -9,13 +9,16 @@ Tabs:
   Job Tracker      — replaces tracker/app.py  (http://localhost:5001)
   Resume Generator — replaces resume/app.py   (http://localhost:5000)
 """
+import io
 import json
+import queue
 import re
 import sys
 import sqlite3
 import threading
 import subprocess
 import webbrowser
+import contextlib
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
@@ -90,6 +93,68 @@ def _call_prompt_via_api(prompt):
         getattr(b, "text", "") for b in msg.content
         if getattr(b, "type", None) == "text"
     )
+
+
+class _LineSink(io.TextIOBase):
+    """A minimal text stream that forwards whole lines to a callback. Used to
+    capture the daily-ingest pipeline's print() output (per-source counts, a
+    429'd source, an expired key) so the GUI can render live progress instead of
+    discarding it — daily_run narrates via print(), not a passed-in log sink."""
+
+    def __init__(self, on_line):
+        self._on_line = on_line
+        self._buf = ""
+
+    def write(self, s):
+        if not s:
+            return 0
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            try:
+                self._on_line(line)
+            except Exception:
+                pass
+        return len(s)
+
+    def flush(self):
+        if self._buf:
+            try:
+                self._on_line(self._buf)
+            except Exception:
+                pass
+            self._buf = ""
+
+
+def run_daily_ingest(slug, *, on_line=None) -> int:
+    """Run the daily search->score->inbox pipeline for ONE project, pinned so a
+    concurrent second run or a GUI project switch can't redirect its inbox/output
+    writes mid-run (the S27 corruption class). Pins BEFORE any db write and unpins
+    in `finally`; never mutates the global active pointer. `on_line` (optional) is
+    a line sink fed the pipeline's stdout. Returns daily_run's exit code (0 = ok).
+
+    Shared by the in-GUI 'Update my Inbox now' button and the frozen exe's
+    `--daily` headless mode so both take the identical, S27-safe path."""
+    import daily_run
+    slug = slug or workspace.active_slug()
+    prev_argv = sys.argv
+    # daily_run.main() re-parses argv and re-pins from --project; pin here too so
+    # the pin is live even if that internal pin is ever removed. run_main()'s
+    # finally clears the process pin.
+    workspace.pin_active(slug)
+    sys.argv = ["daily_run.py"] + (["--project", slug] if slug else [])
+    sink = _LineSink(on_line) if on_line else None
+    try:
+        if sink is not None:
+            with contextlib.redirect_stdout(sink):
+                rc = daily_run.run_main()
+            sink.flush()
+        else:
+            rc = daily_run.run_main()
+        return rc
+    finally:
+        sys.argv = prev_argv
+        workspace.unpin_active()  # daily_run.run_main already unpins; idempotent
 
 
 # ── Palette ── all sourced from ui.theme (clean light/modern) so the whole app
@@ -338,7 +403,7 @@ class TrackerTab(ttk.Frame):
         tf.pack(fill="both", expand=True, padx=6, pady=2)
         self._tree = ttk.Treeview(
             tf, columns=[c[0] for c in self._COLS],
-            show="headings", selectmode="browse")
+            show="headings", selectmode="extended")
         for col, label, width, anchor in self._COLS:
             self._tree.heading(col, text=label,
                                command=lambda c=col: self._sort_by(c))
@@ -354,6 +419,10 @@ class TrackerTab(ttk.Frame):
 
         self._tree.bind("<Double-1>", lambda _e: self._edit())
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
+        # Ctrl+A selects every visible row (single-row actions still act on the
+        # first selection via _sel_iid()).
+        self._tree.bind("<Control-a>", self._select_all)
+        self._tree.bind("<Control-A>", self._select_all)
 
         # Action bar — contents depend on the view (active vs archive), rebuilt
         # by _rebuild_actionbar() when the view mode changes.
@@ -402,6 +471,13 @@ class TrackerTab(ttk.Frame):
     def _sel_iid(self):
         sel = self._tree.selection()
         return sel[0] if sel else None
+
+    def _select_all(self, _event=None):
+        children = self._tree.get_children()
+        if children:
+            self._tree.selection_set(children)
+            self._tree.focus_set()
+        return "break"
 
     def _on_select(self, _event=None):
         iid = self._sel_iid()
@@ -824,9 +900,17 @@ class InboxTab(ttk.Frame):
 
     def _build(self):
         hdr = theme.header_bar(self, "Inbox", "Fresh matches from the daily search.")
+        # Close the daily loop in-GUI: run the same pipeline the scheduled task
+        # runs, right now, without a Python install or a terminal (P0 #2).
+        self._update_btn = theme.tip(
+            theme.btn(hdr, "Update my Inbox now", self._update_inbox_now, "accent"),
+            "Search your sources now and add any fresh matches to this Inbox. "
+            "Runs in the background; you can keep working.")
+        self._update_btn.pack(side="right", padx=10, pady=8)
         self._count_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
                                     fg=theme.MUTED, font=theme.FONT_SM)
         self._count_lbl.pack(side="right", padx=14)
+        self._update_running = False   # single-flight guard for the update run
         # Reach badge (goal: certify how wide the net is) — honest capture-recapture
         # verdict from the last daily_run, or blank until one exists. See coverage/reach.py.
         self._reach_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
@@ -927,6 +1011,9 @@ class InboxTab(ttk.Frame):
         self._tree.bind("t", lambda _e: self._track())
         self._tree.bind("d", lambda _e: self._dismiss())
         self._tree.bind("o", lambda _e: self._open_url())
+        # Ctrl+A selects every visible row — bulk triage at 660-row scale.
+        self._tree.bind("<Control-a>", self._select_all)
+        self._tree.bind("<Control-A>", self._select_all)
 
         # Detail pane: why this job scored what it did (AI rationale + the local
         # scorecard), what the JD also wants, a staleness advisory, and a preview.
@@ -944,6 +1031,9 @@ class InboxTab(ttk.Frame):
                   "Hide the selected job(s) from all future searches.  Shortcut: D").pack(side="left", padx=2)
         theme.tip(theme.btn(abar, "Dismiss Company", self._dismiss_company, "ghost"),
                   "Hide every visible job from the selected company.").pack(side="left", padx=2)
+        theme.tip(theme.btn(abar, "Dismiss all shown", self._dismiss_all_shown, "ghost"),
+                  "Dismiss every row currently visible (respects your filters). "
+                  "Undo available.").pack(side="left", padx=2)
         theme.tip(theme.btn(abar, "Open (O)", self._open_url, "ghost"),
                   "Open the selected job in your browser.  Shortcut: O").pack(side="left", padx=2)
         theme.btn(abar, "Refresh", self.refresh, "ghost").pack(side="left", padx=2)
@@ -1021,6 +1111,11 @@ class InboxTab(ttk.Frame):
         if not floor:
             floor = workspace.load_config().get("salary_min")
         self._home_area = area or DEFAULT_LOCATION
+        # No configured home metro (DEFAULT_LOCATION is now '' — agnostic): a
+        # local-focus filter has nothing to key on, so fall back to 'All
+        # locations' and hint the user to set their location in Setup, instead of
+        # silently hiding jobs against an empty home string.
+        self._has_home = bool((self._home_area or "").strip())
         self._home_remote_ok = remote_ok
         try:
             self._pay_floor = int(floor) if floor else None
@@ -1033,6 +1128,12 @@ class InboxTab(ttk.Frame):
 
     def refresh(self):
         self._resolve_home()
+        # No home metro: force the Location filter to 'All locations' so the local
+        # view isn't silently empty, and hint where to set it. Done once per
+        # refresh (not per keystroke) so it never fights the user mid-typing.
+        if not getattr(self, "_has_home", True):
+            if self._f_location.get() != "All locations":
+                self._f_location.set("All locations")
         self._skill_terms = None   # project may have changed -> reparse on demand
         self._all = list(inbox_all())
         # Normalize disclosed pay once per load (not per filter keystroke) so the
@@ -1057,6 +1158,76 @@ class InboxTab(ttk.Frame):
             self._reach_lbl.config(text=badge_line(snap))
         except Exception:
             self._reach_lbl.config(text="")
+
+    # ── Update my Inbox now (the daily loop, in-GUI) ──────────────────────────
+    def _update_inbox_now(self):
+        """Run the daily search->score->inbox pipeline in a worker thread, pinned
+        to the active project, with live per-source progress and a running-flag so
+        it can't start twice. The worker uses run_daily_ingest (pins BEFORE any db
+        write, unpins in finally) — the S27-safe pattern."""
+        if self._update_running:
+            return
+        slug = workspace.active_slug()
+        self._update_running = True
+        self._update_before = inbox_count()
+        try:
+            self._update_btn.config(state="disabled", text="Updating…")
+        except Exception:
+            pass
+        self._count_lbl.config(text="Updating your inbox…", fg=theme.WARN)
+
+        def on_line(line):
+            # Marshal every pipeline line back onto the Tk thread for the count
+            # label; keep only the informative ones so the header isn't noisy.
+            self.after(0, self._update_progress_line, line)
+
+        def work():
+            err = None
+            try:
+                run_daily_ingest(slug, on_line=on_line)
+            except Exception as e:
+                err = f"{type(e).__name__}: {e}"
+            self.after(0, self._update_inbox_done, err)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_progress_line(self, line):
+        if not self.winfo_exists():
+            return
+        line = (line or "").strip()
+        # Surface source/inbox lines the daily pipeline prints; skip blank noise.
+        if not line:
+            return
+        marker = None
+        if "] " in line and line.startswith("["):
+            # "[Adzuna] 12 results in ~1.3s" etc.
+            marker = line.split("] ", 1)[1]
+        elif "->" in line or "inbox" in line.lower() or "found" in line.lower():
+            marker = line
+        if marker:
+            self._count_lbl.config(text=marker[:90], fg=theme.WARN)
+
+    def _update_inbox_done(self, err):
+        if not self.winfo_exists():
+            return
+        self._update_running = False
+        try:
+            self._update_btn.config(state="normal", text="Update my Inbox now")
+        except Exception:
+            pass
+        if err:
+            self._count_lbl.config(text=f"Update failed: {err}", fg=ERR)
+            messagebox.showerror(
+                "Update my Inbox", f"The update didn't finish:\n\n{err}",
+                parent=self)
+            return
+        before = getattr(self, "_update_before", 0)
+        self.refresh()               # reload rows + counts + badges
+        added = max(0, inbox_count() - before)
+        self._count_lbl.config(
+            text=(f"Added {added} new job(s)." if added
+                  else "No new jobs this time."),
+            fg=(theme.SUCCESS if added else theme.MUTED))
 
     def _filtered(self) -> list[dict]:
         rows = self._all
@@ -1089,7 +1260,9 @@ class InboxTab(ttk.Frame):
                 return top is not None and top >= self._pay_floor
             rows = [r for r in rows if _meets(r.get("_comp"))]
         mode = self._f_location.get()
-        if mode and mode != "All locations":
+        # With no configured home metro, a local-focus mode has nothing to match
+        # against — behave as 'All locations' so we don't hide every job.
+        if mode and mode != "All locations" and getattr(self, "_has_home", True):
             rows = [r for r in rows
                     if location_visible(r["location"] or "", r["title"] or "",
                                         self._home_area, mode,
@@ -1142,6 +1315,8 @@ class InboxTab(ttk.Frame):
         total = len(self._all)
         label = (f"{len(rows)} of {total} awaiting triage"
                  if len(rows) != total else f"{total} awaiting triage")
+        if not getattr(self, "_has_home", True):
+            label += "  •  All locations (set your location in Setup to enable local focus)"
         self._count_lbl.config(text=label)
         self._update_empty(rows)
 
@@ -1154,10 +1329,16 @@ class InboxTab(ttk.Frame):
         if rows:
             return
         if not self._all:
+            # Point at the real way the inbox fills: "Update my Inbox now" (and
+            # daily updates) write here — a GUI Search does NOT (it lands on the
+            # Search tab). The old copy told users to Search, which never filled
+            # the inbox (P0 #2 / empty-state lie).
             self._empty_widget = theme.empty_state(
                 self._tf,
-                "Your inbox is empty.\nOpen the Search tab and click Search — "
-                "matches land here for you to triage.")
+                "Your inbox is empty.\nClick “Update my Inbox now” to search your "
+                "sources and pull in fresh matches. Turn on daily updates "
+                "(Tools ▸ Turn on daily updates) and it refills every morning.",
+                "Update my Inbox now", self._update_inbox_now)
         else:
             self._empty_widget = theme.empty_state(
                 self._tf, "No jobs match your current filters.",
@@ -1400,6 +1581,43 @@ class InboxTab(ttk.Frame):
             "muted")
         self.refresh()
         self._restore_focus(idx)
+
+    def _select_all(self, _event=None):
+        """Ctrl+A: select every currently-visible (filtered) row, then keep the
+        keyboard on the tree so a following D dismisses the lot. Returns 'break'
+        so Tk's default Ctrl+A (which does nothing on a Treeview) is suppressed."""
+        children = self._tree.get_children()
+        if children:
+            self._tree.selection_set(children)
+            self._tree.focus_set()
+        return "break"
+
+    def _dismiss_all_shown(self):
+        """Dismiss every row currently shown (respects the active filters). Reuses
+        the same batch-dismiss + _remember_undo path as single-row Dismiss, so
+        Undo restores the whole batch."""
+        targets = list(self._rows.values())
+        if not targets:
+            messagebox.showinfo("Dismiss all shown",
+                                "There are no rows to dismiss.", parent=self)
+            return
+        if not messagebox.askyesno(
+                "Dismiss all shown",
+                f"Dismiss all {len(targets)} row(s) currently shown?\n\n"
+                "This respects your current filters and hides them from future "
+                "searches. Undo is available.", parent=self):
+            return
+        ok, _ = db_guard(
+            self, lambda: [tracker_service.dismiss_job(r["id"]) for r in targets],
+            status_cb=lambda m: set_status(self._status, m, "err"),
+            action="dismiss all shown")
+        if not ok:
+            return
+        self._remember_undo(targets)
+        set_status(
+            self._status,
+            f"Dismissed {len(targets)} row(s). (Undo available)", "muted")
+        self.refresh()
 
     def _remember_undo(self, rows):
         """Stash the just-dismissed rows so Undo can re-insert them."""
@@ -1660,6 +1878,8 @@ class TopPicksTab(ttk.Frame):
         self._tree.bind("t", lambda _e: self._track())
         self._tree.bind("d", lambda _e: self._dismiss())
         self._tree.bind("o", lambda _e: self._open_url())
+        self._tree.bind("<Control-a>", self._select_all)
+        self._tree.bind("<Control-A>", self._select_all)
 
         # Empty-state hint, packed only when there are no picks.
         self._empty = tk.Label(
@@ -1705,6 +1925,13 @@ class TopPicksTab(ttk.Frame):
     def _selected(self) -> list[dict]:
         return [self._rows[iid] for iid in self._tree.selection()
                 if iid in self._rows]
+
+    def _select_all(self, _event=None):
+        children = self._tree.get_children()
+        if children:
+            self._tree.selection_set(children)
+            self._tree.focus_set()
+        return "break"
 
     def _track(self):
         sel = self._selected()
@@ -1908,6 +2135,14 @@ class BuildCompanyListDialog(tk.Toplevel):
         ttk.Checkbutton(row, text="Include nationwide/remote",
                         variable=self._national).pack(side="left", padx=8)
 
+        # Deep seed from the open jobhive dataset — the biggest measured
+        # raw-reach lever (build_company_list already supports jobhive=True).
+        self._jobhive = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            self, variable=self._jobhive,
+            text="Deep seed from open dataset (jobhive — finds many more employers)"
+        ).pack(anchor="w", padx=12, pady=(0, 2))
+
         btnrow = tk.Frame(self, bg=theme.WINDOW)
         btnrow.pack(fill="x", padx=12, pady=6)
         self._build_btn = theme.btn(btnrow, "Build now", self._on_build, "accent")
@@ -1917,6 +2152,9 @@ class BuildCompanyListDialog(tk.Toplevel):
         self._load_btn = theme.btn(btnrow, "Load AI reply\N{HORIZONTAL ELLIPSIS}",
                                    self._on_load_reply, "ghost")
         self._load_btn.pack(side="left", padx=6)
+        self._paste_btn = theme.btn(btnrow, "Paste AI reply\N{HORIZONTAL ELLIPSIS}",
+                                    self._on_paste_reply, "ghost")
+        self._paste_btn.pack(side="left", padx=6)
         theme.btn(btnrow, "Close", self._on_close, "ghost").pack(side="right")
 
         self._log = theme.text_widget(self, height=15, wrap="word")
@@ -1970,9 +2208,13 @@ class BuildCompanyListDialog(tk.Toplevel):
             pass
         self._set_running(True)
         self._append("== Building company list… this can take a minute or two ==\n")
+        if self._jobhive.get():
+            self._append("(Deep seed from jobhive enabled — this pulls a large open "
+                         "dataset and can take longer.)\n")
         threading.Thread(target=self._run_orchestrator,
                          kwargs=dict(industry=industry or None, metro=metro or None,
-                                     national=self._national.get(), use_inbox=True),
+                                     national=self._national.get(), use_inbox=True,
+                                     jobhive=self._jobhive.get()),
                          daemon=True).start()
 
     def _on_prompt(self):
@@ -2011,6 +2253,36 @@ class BuildCompanyListDialog(tk.Toplevel):
                                      use_inbox=False, in_file=path),
                          daemon=True).start()
 
+    def _on_paste_reply(self):
+        """Paste the AI's reply directly (beside the Load-file flow) — the most
+        technical step a novice faces is the file picker, so accept a paste too.
+        The pasted text is written to a temp file and fed through the same
+        in_file import path."""
+        if self._running:
+            return
+        dlg = PasteDialog(self, title="Paste the AI's employer list",
+                          hint="Paste the AI's JSON reply of employers below:")
+        if not dlg.result:
+            return
+        import tempfile
+        try:
+            fh = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False, encoding="utf-8")
+            fh.write(dlg.result)
+            fh.close()
+            path = fh.name
+        except OSError as e:
+            messagebox.showerror("Paste AI reply", str(e), parent=self)
+            return
+        industry = self._industry.get().strip()
+        metro = self._metro.get().strip()
+        self._set_running(True)
+        self._append("== Importing employers from pasted reply ==\n")
+        threading.Thread(target=self._run_orchestrator,
+                         kwargs=dict(industry=industry or None, metro=metro or None,
+                                     use_inbox=False, in_file=path),
+                         daemon=True).start()
+
     def _build_done(self, summary, err):
         if not self.winfo_exists():
             return
@@ -2029,7 +2301,8 @@ class BuildCompanyListDialog(tk.Toplevel):
     def _set_running(self, running):
         self._running = running
         state = "disabled" if running else "normal"
-        for b in (self._build_btn, self._prompt_btn, self._load_btn):
+        for b in (self._build_btn, self._prompt_btn, self._load_btn,
+                  self._paste_btn):
             try:
                 b.config(state=state)
             except Exception:
@@ -2104,6 +2377,12 @@ class SearchTab(ttk.Frame):
         ttk.Entry(ctrl, textvariable=self._loc, width=18).grid(row=0, column=3, padx=6)
         self._search_btn = theme.btn(ctrl, "Search", self._search, "accent")
         self._search_btn.grid(row=0, column=4, padx=8)
+        # Cancel is enabled only while a search runs; backed by a threading.Event
+        # the engine checks between clients/keywords/companies.
+        self._cancel_event = None
+        self._cancel_btn = theme.btn(ctrl, "Cancel", self._cancel_search, "ghost")
+        self._cancel_btn.grid(row=0, column=6, padx=4)
+        self._cancel_btn.config(state="disabled")
         self._save_btn = theme.btn(ctrl, "Save", self._save_searches, "ghost")
         theme.tip(self._save_btn, "Save current keywords/location/salary as "
                   "defaults for this project.")
@@ -2120,10 +2399,20 @@ class SearchTab(ttk.Frame):
         self._status = tk.Label(ctrl, text="", font=theme.FONT_SM,
                                 bg=theme.WINDOW, fg=theme.MUTED)
         self._status.grid(row=2, column=1, columnspan=4, sticky="w")
-        # Indeterminate progress bar -- visible only while a search is running.
+        # Progress bar -- visible only while a search is running. Switches to
+        # determinate once the engine reports how many sources it will query.
         self._pb = ttk.Progressbar(ctrl, mode='indeterminate', length=200)
         self._pb.grid(row=2, column=5, sticky="w", padx=4)
         self._pb.grid_remove()   # hidden until search starts
+        # End-of-run source-health summary + a Details popup over the collected
+        # per-source table. Blank until a search finishes.
+        self._health = tk.StringVar(value="")
+        self._health_lbl = tk.Label(ctrl, textvariable=self._health,
+                                    font=theme.FONT_SM, bg=theme.WINDOW,
+                                    fg=theme.MUTED, cursor="hand2")
+        self._health_lbl.grid(row=2, column=6, sticky="w", padx=4)
+        self._health_lbl.bind("<Button-1>", lambda _e: self._show_health_details())
+        self._source_health: list[dict] = []  # per-source rows from the last run
         ctrl.columnconfigure(1, weight=1)
 
         tf = ttk.Frame(self)
@@ -2154,6 +2443,7 @@ class SearchTab(ttk.Frame):
         specs = [("Track \N{BLACK RIGHT-POINTING SMALL TRIANGLE} Interested",
                   self._track, "accent"),
                  ("Dismiss", self._dismiss, "ghost"),
+                 ("Add all to Inbox", self._add_results_to_inbox, "ghost"),
                  ("Open", self._open_url, "ghost")]
         for text, cmd, kind in specs:
             b = theme.btn(abar, text, cmd, kind)
@@ -2193,11 +2483,17 @@ class SearchTab(ttk.Frame):
         self._save_btn.config(state=state)
         for b in self._action_btns:
             b.config(state=state)
+        # Cancel is the inverse: live only while a search runs.
+        self._cancel_btn.config(state="normal" if busy else "disabled")
         if busy:
             self._pb.grid()
+            # Start indeterminate; the engine's first "start" event flips it to
+            # determinate once it knows the source count.
+            self._pb.configure(mode="indeterminate")
             self._pb.start(15)
         else:
             self._pb.stop()
+            self._pb.configure(mode="indeterminate", value=0)
             self._pb.grid_remove()
 
     def _search(self):
@@ -2214,16 +2510,60 @@ class SearchTab(ttk.Frame):
         except ValueError:
             messagebox.showerror("Bad salary", "Min salary must be a number.")
             return
+        self._cancel_event = threading.Event()
+        self._source_health = []
+        self._health.set("")
         self._set_busy(True)
         set_status(self._status, "Searching…", "work")
         threading.Thread(
             target=self._worker,
             args=(keywords, self._loc.get().strip() or DEFAULT_LOCATION,
-                  salary_min, self._hide_tracked.get()),
+                  salary_min, self._hide_tracked.get(), self._cancel_event),
             daemon=True,
         ).start()
 
-    def _worker(self, keywords, location, salary_min, hide_tracked):
+    def _cancel_search(self):
+        """Signal the running search to stop after in-flight sources finish."""
+        if self._cancel_event is not None:
+            self._cancel_event.set()
+            set_status(self._status, "Cancelling — finishing in-flight sources…",
+                       "muted")
+            self._cancel_btn.config(state="disabled")
+
+    def _on_progress(self, event):
+        """Engine progress callback (worker thread) -> marshal to the Tk thread."""
+        self.after(0, self._render_progress, event)
+
+    def _render_progress(self, event):
+        if not self.winfo_exists():
+            return
+        phase = event.get("phase")
+        if phase == "start":
+            total = event.get("total", 0) or 0
+            self._pb.stop()
+            self._pb.configure(mode="determinate", maximum=max(total, 1), value=0)
+        elif phase == "source_start":
+            set_status(self._status,
+                       f"Searching — {event.get('source', '')}…", "work")
+        elif phase == "source_done":
+            done = event.get("done", 0)
+            total = event.get("total", 0)
+            try:
+                self._pb.configure(value=done)
+            except tk.TclError:
+                pass
+            self._source_health.append({
+                "source": event.get("source", ""),
+                "count": event.get("count", 0),
+                "ok": bool(event.get("ok", True)),
+                "error": event.get("error", ""),
+            })
+            src = event.get("source", "")
+            set_status(self._status,
+                       f"source {done}/{total} — {src} ({event.get('count', 0)})",
+                       "work")
+
+    def _worker(self, keywords, location, salary_min, hide_tracked, cancel=None):
         try:
             from search.cli import build_clients, ALL_SOURCES
             from search.search_engine import SearchEngine
@@ -2240,7 +2580,13 @@ class SearchTab(ttk.Frame):
             # (no-op for eng/knowledge-work fields; explicit toggle still wins).
             from search.keyword_strategy import gate_tech_sources
             _sources = gate_tech_sources(_sources, _ind, _cfg_sources)
-            clients = build_clients(_sources, cache_enabled=True)
+            # Scope the careers registry to the project's field and let the
+            # careers leg tier its scrape (active boards first) — the params
+            # already exist in cli.build_clients; the GUI was running a full,
+            # unfiltered 627-board scrape (P6). No-op for a blank industry.
+            clients = build_clients(_sources, cache_enabled=True,
+                                    industry_filter=_ind or None,
+                                    tiered_careers=True)
             # Broaden the QUERY keywords for API recall (search broad, score
             # narrow); the original `keywords` stay the scoring set below. No-op
             # for eng IC titles. Opt out with "broaden_keywords": false in config.
@@ -2251,12 +2597,22 @@ class SearchTab(ttk.Frame):
                 query_keywords = broad_query_keywords(keywords, _ind, synonyms=_syn)
             else:
                 query_keywords = keywords
-            results = (
-                SearchEngine(clients).run_full_search(
+            if clients:
+                _engine = SearchEngine(clients)
+                results = _engine.run_full_search(
                     keywords=query_keywords, location=location,
-                    salary_min=salary_min, max_pages_per_keyword=2)
-                if clients else []
-            )
+                    salary_min=salary_min, max_pages_per_keyword=2,
+                    progress=self._on_progress, cancel=cancel)
+                # Persist tiering state so a tiered careers leg advances its
+                # active/quiet board buckets (mirrors daily_run).
+                for c in clients:
+                    if hasattr(c, "finalize_tiering"):
+                        try:
+                            c.finalize_tiering()
+                        except Exception:
+                            pass
+            else:
+                results = []
             if hide_tracked and results:
                 seen = seen_urls()
                 results = [r for r in results if normalize_url(r.url) not in seen]
@@ -2290,6 +2646,7 @@ class SearchTab(ttk.Frame):
             self._tree.insert("", "end", iid=str(i), tags=(theme.row_tag(i),), values=(
                 j.score if j.score >= 0 else "",
                 j.title, j.company, j.location, j.salary_display(), j.source_api))
+        self._update_health_summary()
         if not had_clients:
             set_status(self._status,
                        "No sources configured -- add API keys to .env.", "err")
@@ -2299,6 +2656,79 @@ class SearchTab(ttk.Frame):
                        "muted")
         else:
             set_status(self._status, f"{len(results)} result(s).", "ok")
+
+    def _update_health_summary(self):
+        """One-line end-of-run source health: 'N ok, M skipped (no key), K
+        throttled'. Click it for a per-source Details popup."""
+        rows = self._source_health
+        if not rows:
+            self._health.set("")
+            return
+        ok = throttled = skipped = failed = 0
+        for r in rows:
+            if r["ok"] and r["count"] >= 0:
+                ok += 1
+            err = (r.get("error") or "").lower()
+            if not r["ok"]:
+                if "429" in err or "throttl" in err or "rate" in err:
+                    throttled += 1
+                elif "key" in err or "auth" in err or "401" in err or "403" in err:
+                    skipped += 1
+                else:
+                    failed += 1
+        parts = [f"{ok} ok"]
+        if skipped:
+            parts.append(f"{skipped} skipped (no key)")
+        if throttled:
+            parts.append(f"{throttled} throttled")
+        if failed:
+            parts.append(f"{failed} failed")
+        self._health.set("Sources: " + ", ".join(parts) + "  (details)")
+
+    def _show_health_details(self):
+        if not self._source_health:
+            return
+        lines = []
+        for r in sorted(self._source_health, key=lambda x: x["source"].lower()):
+            if r["ok"]:
+                lines.append(f"{r['source']}: {r['count']} result(s)")
+            else:
+                lines.append(f"{r['source']}: FAILED — {r.get('error') or 'unknown'}")
+        messagebox.showinfo("Source health (last search)",
+                            "\n".join(lines), parent=self)
+
+    def _add_results_to_inbox(self):
+        """Offer to add the current search results to the Inbox for triage. Uses
+        inbox_add_many with the project's per-company cap, pinned to the active
+        project (the S27-safe pattern) so a background project switch can't
+        misroute the write."""
+        if not self._results:
+            messagebox.showinfo("Add to Inbox", "Run a search first.", parent=self)
+            return
+        n = len(self._results)
+        if not messagebox.askyesno(
+                "Add to Inbox",
+                f"Add these {n} result(s) to your Inbox for triage?",
+                parent=self):
+            return
+        slug = workspace.active_slug()
+        cap = 0
+        try:
+            cap = int(self._user_cfg.get("max_per_company", 15) or 0)
+        except (TypeError, ValueError):
+            cap = 0
+        from tracker.db import inbox_add_many
+        workspace.pin_active(slug)   # pin BEFORE the db write
+        try:
+            ok, added = db_guard(
+                self, lambda: inbox_add_many(self._results, per_company_cap=cap),
+                status_cb=lambda m: set_status(self._status, m, "err"),
+                action="add to inbox")
+        finally:
+            workspace.unpin_active()
+        if not ok:
+            return
+        set_status(self._status, f"Added {added} to your Inbox.", "ok")
 
     def _on_error(self, msg):
         if not self.winfo_exists():
@@ -2890,8 +3320,15 @@ class App(tk.Tk):
         toolsm.add_command(label="Application funnel…", command=self._show_funnel)
         toolsm.add_command(label="Contacts / referrals…", command=self._show_contacts)
         toolsm.add_separator()
+        toolsm.add_command(label="Turn on daily updates…",
+                           command=self._show_daily_updates)
+        toolsm.add_command(label="Capture jobs from my browser…",
+                           command=self._toggle_browser_capture)
+        toolsm.add_separator()
         toolsm.add_command(label="Connect your AI (API key)…",
                            command=self._show_settings)
+        toolsm.add_command(label="Connect job sources…",
+                           command=self._show_source_keys)
         toolsm.add_separator()
         toolsm.add_command(label="Enable stealth fetching (downloads browser)…",
                            command=self._enable_stealth)
@@ -2922,13 +3359,27 @@ class App(tk.Tk):
         if getattr(self, "_guide", None) is not None:
             self._nb.select(self._guide)
 
-    def _after_setup(self, applied: bool):
+    def _after_setup(self, applied: bool, actions: dict | None = None):
         """Called when the Setup wizard closes. On apply, refresh tabs so the
-        seeded preferences/config show up. Either way land on the Guide so a
-        brand-new user (including one who skipped) has an obvious next step
-        instead of an empty Search tab."""
+        seeded preferences/config show up, then honor the closing 'Keep jobs
+        coming' step (register daily updates / open Build-My-List). Either way
+        land on the Guide so a brand-new user (including one who skipped) has an
+        obvious next step instead of an empty Search tab."""
         if applied:
             self._rebuild_tabs()
+            actions = actions or {}
+            # Closing-step: register daily updates if the user opted in.
+            if actions.get("daily_updates"):
+                self._register_daily_updates()
+            # Closing-step: open Build-My-List unconditionally when opted in, so a
+            # fresh user's 'careers' searches have employers to scrape.
+            if actions.get("build_list"):
+                try:
+                    BuildCompanyListDialog(
+                        self, default_industry=actions.get("industry", ""),
+                        default_metro=actions.get("location", ""))
+                except Exception:
+                    pass
             # Close the loop: don't strand a fresh user on an empty app — offer to
             # run their first search right now so they SEE scored results.
             if messagebox.askyesno(
@@ -3033,6 +3484,127 @@ class App(tk.Tk):
         theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
         dlg.grab_set()
 
+    def _register_daily_updates(self, slug=None, parent=None) -> bool:
+        """Register the per-user daily Task Scheduler job for a project via the
+        shared helper (frozen -> exe --daily; dev -> py daily_run.py). Returns
+        True on success. Shared by the Tools dialog and the wizard closing step."""
+        slug = slug or workspace.active_slug()
+        try:
+            from scripts.setup_schedule import register_daily_task
+            rc = register_daily_task(slug)
+        except Exception as e:
+            messagebox.showerror("Daily updates",
+                                 f"Could not register the task:\n{e}",
+                                 parent=parent or self)
+            return False
+        if rc != 0:
+            messagebox.showwarning(
+                "Daily updates",
+                "Windows Task Scheduler returned an error registering the daily "
+                f"job (code {rc}). You can still use “Update my Inbox now” any "
+                "time.", parent=parent or self)
+            return False
+        return True
+
+    def _show_daily_updates(self):
+        """Register/unregister a per-user daily task (no admin) that runs the same
+        ingest as 'Update my Inbox now' every morning. Shows current state."""
+        slug = workspace.active_slug()
+        from scripts.setup_schedule import task_status, unregister_daily_task
+        dlg = tk.Toplevel(self)
+        dlg.title("Daily updates")
+        dlg.transient(self)
+        dlg.configure(bg=theme.WINDOW)
+        dlg.resizable(False, False)
+        theme.header_bar(dlg, "Turn on daily updates",
+                         "Refill your Inbox automatically every morning.")
+        body = tk.Frame(dlg, bg=theme.WINDOW)
+        body.pack(fill="both", expand=True, padx=16, pady=10)
+        status = task_status(slug)
+        state_txt = ("Currently ON" + (f" — next run {status['next_run']}"
+                                       if status["next_run"] else "")
+                     if status["registered"] else "Currently OFF")
+        tk.Label(body, text=state_txt, bg=theme.WINDOW, fg=theme.INK,
+                 font=theme.FONT_BOLD, anchor="w").pack(anchor="w")
+        tk.Label(
+            body, justify="left", wraplength=440, bg=theme.WINDOW, fg=theme.MUTED,
+            font=theme.FONT_SM,
+            text="This adds a Windows task (just for you — no administrator needed) "
+                 "that searches your sources every morning and drops fresh matches "
+                 "into your Inbox. You can turn it off any time."
+        ).pack(anchor="w", pady=(4, 10))
+        st = tk.Label(body, text="", bg=theme.WINDOW, fg=theme.MUTED,
+                      font=theme.FONT_SM)
+        st.pack(anchor="w")
+
+        def turn_on():
+            if self._register_daily_updates(slug, parent=dlg):
+                st.config(text="Daily updates are ON.", fg=theme.SUCCESS)
+
+        def turn_off():
+            unregister_daily_task(slug)
+            st.config(text="Daily updates are OFF.", fg=theme.MUTED)
+
+        bb = tk.Frame(dlg, bg=theme.WINDOW)
+        bb.pack(fill="x", padx=16, pady=12)
+        theme.btn(bb, "Turn on", turn_on, "accent").pack(side="left", padx=2)
+        theme.btn(bb, "Turn off", turn_off, "ghost").pack(side="left", padx=2)
+        theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
+        dlg.grab_set()
+
+    def _show_source_keys(self):
+        """Open the 'Connect job sources' dialog. The module is created by the
+        other builder this wave; guard the import so this worktree's tests pass
+        and a not-yet-merged build degrades gracefully instead of crashing."""
+        try:
+            from ui import source_keys
+        except ImportError:
+            messagebox.showinfo(
+                "Connect job sources",
+                "Job-source key management isn't available in this build yet.\n\n"
+                "For now, add Adzuna / USAJobs / Jooble / Careerjet keys to your "
+                ".env file. It's coming to the app soon.", parent=self)
+            return
+        try:
+            source_keys.open_dialog(self)
+        except Exception as e:
+            messagebox.showerror("Connect job sources", str(e), parent=self)
+
+    def _toggle_browser_capture(self):
+        """Start/stop the browser-extension receiver (Flask) as a daemon thread
+        INSIDE this GUI process, pinned to the active project. The receiver was
+        `py -m` only (dead in the exe) and unpinned (S27 class); this promotes it
+        to a one-click Tools toggle with a status line."""
+        from scrape import browser_receiver
+        running = getattr(self, "_receiver_started", False)
+        if running:
+            captured = browser_receiver.capture_count()
+            messagebox.showinfo(
+                "Capture jobs from my browser",
+                "Browser capture is already running on "
+                f"http://127.0.0.1:{browser_receiver.PORT}.\n"
+                f"Jobs captured so far: {captured}.\n\n"
+                "It stays on until you close the app. Load the unpacked extension "
+                "(see Help ▸ the Guide) and click “Send to Tool” while browsing.",
+                parent=self)
+            return
+        slug = workspace.active_slug()
+        try:
+            browser_receiver.start_in_thread(slug)
+        except Exception as e:
+            messagebox.showerror("Capture jobs from my browser",
+                                 f"Could not start the receiver:\n{e}", parent=self)
+            return
+        self._receiver_started = True
+        messagebox.showinfo(
+            "Capture jobs from my browser",
+            "Browser capture is ON, listening on "
+            f"http://127.0.0.1:{browser_receiver.PORT}.\n\n"
+            "Load the unpacked browser extension (Help ▸ the Guide walks you "
+            "through it), browse LinkedIn / Indeed / Glassdoor, and click "
+            "“Send to Tool”. Captured jobs land in this project's Inbox.",
+            parent=self)
+
     def _show_funnel(self):
         """Local application-funnel analytics from status_history (no cloud)."""
         data = analyticsmod.compute()
@@ -3133,8 +3705,16 @@ class App(tk.Tk):
             if not r:
                 return
             from datetime import timedelta
-            update_job(r["id"],
-                       follow_up_date=(date.today() + timedelta(days=7)).isoformat())
+            # Wrap in db_guard like every other mutation: a mid-daily-run write
+            # would otherwise raise sqlite3.Error and crash the callback.
+            ok, _ = db_guard(
+                dlg,
+                lambda: update_job(
+                    r["id"],
+                    follow_up_date=(date.today() + timedelta(days=7)).isoformat()),
+                action="snooze follow-up")
+            if not ok:
+                return
             dlg.destroy()
             self._show_due()
 
@@ -3479,7 +4059,34 @@ def _log_fatal(exc: BaseException) -> str:
     return tb
 
 
+def _run_headless_daily(argv) -> int:
+    """Handle `--daily [--project <slug>]`: run the same ingest as the in-GUI
+    'Update my Inbox now' button and exit, with NO Tk. This is what the shipped
+    single exe runs from the Task Scheduler job (build_package/app.spec build
+    only gui.py, so the exe must serve both the windowed app AND the headless
+    daily run, flag-switched). Prints the pipeline output straight to stdout so
+    the scheduled task's log redirect captures per-source counts / failures."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="JobProgram", add_help=False)
+    ap.add_argument("--daily", action="store_true")
+    ap.add_argument("--project", type=str, default=None)
+    args, _unknown = ap.parse_known_args(argv)
+    slug = args.project or workspace.active_slug()
+    # run_daily_ingest pins/unpins and calls daily_run.run_main(); no on_line so
+    # the pipeline prints straight through to the redirected stdout.
+    return run_daily_ingest(slug)
+
+
 def main() -> int:
+    # Headless daily mode: the single shipped exe serves both the GUI and the
+    # scheduled `--daily` run (app.spec builds only gui.py). Detect the flag
+    # before creating any Tk window.
+    if "--daily" in sys.argv[1:]:
+        try:
+            return _run_headless_daily(sys.argv[1:])
+        except Exception as e:
+            _log_fatal(e)
+            return 1
     try:
         App().mainloop()
         return 0

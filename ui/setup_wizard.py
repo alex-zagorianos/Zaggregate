@@ -394,6 +394,10 @@ class SetupWizard(tk.Toplevel):
             "salary_min": tk.StringVar(),
             "industry": tk.StringVar(),
             "level": tk.StringVar(),
+            # Closing "Keep jobs coming" step (default ON — the whole point of the
+            # app is a self-refilling inbox). Read by the caller after finish.
+            "daily_updates": tk.BooleanVar(value=True),
+            "build_list": tk.BooleanVar(value=True),
         }
         # Pre-populate from existing preferences/config so re-running the wizard
         # to edit one field does not blank-overwrite the rest.
@@ -410,7 +414,7 @@ class SetupWizard(tk.Toplevel):
             self._about_cache = ""
         self._build_chrome()
         self._steps = [self._step_welcome, self._step_roles,
-                       self._step_where, self._step_resume]
+                       self._step_where, self._step_resume, self._step_keep_going]
         self._render()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -586,6 +590,33 @@ class SetupWizard(tk.Toplevel):
         if getattr(self, "_resume_cache", ""):
             self._resume.insert("1.0", self._resume_cache)
 
+    def _step_keep_going(self):
+        self._heading(
+            "Keep jobs coming",
+            "Two quick options so your Inbox stays full. Both are optional and "
+            "free — you can change them any time.")
+        ttk.Checkbutton(
+            self._body,
+            text="Update my inbox automatically every morning",
+            variable=self._vars["daily_updates"]).pack(anchor="w", pady=(6, 2))
+        ttk.Label(
+            self._body,
+            text="Adds a small Windows task (just for you — no administrator "
+                 "needed) that searches your sources each morning and adds fresh "
+                 "matches to your Inbox.",
+            style="Muted.TLabel", wraplength=560, justify="left").pack(
+                anchor="w", padx=(24, 0), pady=(0, 10))
+        ttk.Checkbutton(
+            self._body,
+            text="Build my employer list now",
+            variable=self._vars["build_list"]).pack(anchor="w", pady=(6, 2))
+        ttk.Label(
+            self._body,
+            text="Opens a one-click tool that finds employers in your field and "
+                 "area so “careers” searches cover them. Runs after setup.",
+            style="Muted.TLabel", wraplength=560, justify="left").pack(
+                anchor="w", padx=(24, 0), pady=(0, 6))
+
     def _load_resume_file(self):
         path = filedialog.askopenfilename(
             title="Choose your resume",
@@ -675,6 +706,14 @@ class SetupWizard(tk.Toplevel):
                 "We tidied your pasted resume into sections (Contact, Work "
                 "Experience, and any headings we recognized) so the app can read "
                 "it. You can refine it any time.", parent=self)
+        # Closing-step "Keep jobs coming" choices ride back to the caller (gui),
+        # which owns the daily-updates registration + Build-My-List dialog.
+        self._actions = {
+            "daily_updates": bool(self._vars["daily_updates"].get()),
+            "build_list": bool(self._vars["build_list"].get()),
+            "industry": answers.get("industry", ""),
+            "location": answers.get("location", ""),
+        }
         self._maybe_offer_discovery(answers.get("industry", ""))
         self._finished = True
         self._close(applied=True)
@@ -718,9 +757,23 @@ class SetupWizard(tk.Toplevel):
 
     def _close(self, applied: bool):
         cb = self.on_finish
+        actions = getattr(self, "_actions", None)
         self.grab_release()
         self.destroy()
-        if cb:
+        if not cb:
+            return
+        # Back-compat: call cb(applied) for a 1-arg callback, cb(applied, actions)
+        # for a 2-arg one (so the caller can act on the "Keep jobs coming" step).
+        try:
+            import inspect
+            params = [p for p in inspect.signature(cb).parameters.values()
+                      if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+            takes_two = len(params) >= 2
+        except (TypeError, ValueError):
+            takes_two = False
+        if takes_two:
+            cb(applied, actions)
+        else:
             cb(applied)
 
 

@@ -35,30 +35,92 @@ def _task_name(slug: str) -> str:
     return f"JobSearchDaily_{slug}"
 
 
-def _create_task(slug: str, start_time: str) -> int:
-    """schtasks /Create for one project. Returns the process return code."""
-    task = _task_name(slug)
-    script_dir = str(BASE)
-    # cmd /c cd /d "<dir>" && py daily_run.py --project <slug> >> "<log>" 2>&1
-    # The redirect is essential: without it, every print() the ingest pipeline
-    # emits (per-source counts, a source that 429'd, an expired key, a scraper
-    # schema change) is discarded on the headless scheduled run, so a broken
-    # source is indistinguishable from a genuinely empty one (finding #2). The
-    # app's own log() only captures its own lines, not the engine/clients'.
+# ── shared task-run construction (used by CLI setup AND the GUI toggle) ─────────
+# The GUI's "Turn on daily updates" dialog and this CLI both register the SAME
+# per-user Task Scheduler job, so the command they schedule must be built in ONE
+# place or they drift. When frozen, the shipped .exe supports `--daily` (see
+# gui.main()); in dev the scheduled command is `py daily_run.py`. Neither needs
+# admin: schtasks with no /RU runs the task as the current interactive user.
+
+def _is_frozen() -> bool:
+    return getattr(sys, "frozen", False)
+
+
+def _run_command(slug: str) -> tuple[str, str]:
+    """(working_dir, task-run string) for the daily run of one project.
+
+    Frozen: <exe> --daily --project <slug>, cwd = the exe's folder.
+    Dev:    py daily_run.py --project <slug>, cwd = the repo/data root.
+    A `>> "<log>" 2>&1` redirect is essential either way — without it every
+    print() the ingest pipeline emits (per-source counts, a 429'd source, an
+    expired key, a scraper schema change) is discarded on the headless run, so a
+    broken source is indistinguishable from a genuinely empty one (finding #2).
+    """
     log_name = f"daily_task_{slug}.log"
-    tr = (f'cmd /c cd /d "{script_dir}" && py daily_run.py --project {slug} '
-          f'>> "{log_name}" 2>&1')
-    cmd = ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", start_time,
+    if _is_frozen():
+        exe = Path(sys.executable)
+        work_dir = str(exe.parent)
+        tr = (f'cmd /c cd /d "{work_dir}" && "{exe}" --daily --project {slug} '
+              f'>> "{log_name}" 2>&1')
+    else:
+        work_dir = str(BASE)
+        tr = (f'cmd /c cd /d "{work_dir}" && py daily_run.py --project {slug} '
+              f'>> "{log_name}" 2>&1')
+    return work_dir, tr
+
+
+def register_daily_task(slug: str, start_time: str | None = None) -> int:
+    """Register (idempotently, /F) the per-user daily task for ONE project.
+    Returns the schtasks return code (0 = ok). No admin required. Shared by the
+    GUI 'Turn on daily updates' dialog and the CLI setup() below."""
+    task = _task_name(slug)
+    _, tr = _run_command(slug)
+    st = start_time or _start_time(0)
+    cmd = ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", st,
            "/TN", task, "/TR", tr]
-    print(f"  {task} @ {start_time} -> {tr}")
+    print(f"  {task} @ {st} -> {tr}")
     return subprocess.run(cmd).returncode
+
+
+def unregister_daily_task(slug: str) -> int:
+    """Delete the per-user daily task for one project. Returns the schtasks
+    return code (0 = deleted; nonzero when no such task existed)."""
+    return subprocess.run(
+        ["schtasks", "/Delete", "/TN", _task_name(slug), "/F"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+
+
+def task_status(slug: str) -> dict:
+    """Best-effort state of a project's daily task: {"registered": bool,
+    "next_run": str|"", "raw": str}. Parses `schtasks /Query /FO LIST /V`.
+    Never raises — a missing task or a schtasks failure reports not-registered."""
+    task = _task_name(slug)
+    out = {"registered": False, "next_run": "", "raw": ""}
+    try:
+        r = subprocess.run(
+            ["schtasks", "/Query", "/TN", task, "/FO", "LIST", "/V"],
+            capture_output=True, text=True)
+    except OSError:
+        return out
+    if r.returncode != 0:
+        return out
+    out["registered"] = True
+    out["raw"] = r.stdout or ""
+    for line in (r.stdout or "").splitlines():
+        if "Next Run Time:" in line:
+            out["next_run"] = line.split(":", 1)[1].strip()
+            break
+    return out
+
+
+def _create_task(slug: str, start_time: str) -> int:
+    """schtasks /Create for one project (CLI path). Returns the return code."""
+    return register_daily_task(slug, start_time)
 
 
 def _delete_task(slug: str) -> None:
     """Remove a stale task for a project that's no longer daily (best-effort)."""
-    task = _task_name(slug)
-    subprocess.run(["schtasks", "/Delete", "/TN", task, "/F"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    unregister_daily_task(slug)
 
 
 def setup(projects=None) -> int:
