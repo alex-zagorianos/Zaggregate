@@ -29,9 +29,36 @@ _EXEC_RE = re.compile(
     r"head\s+of|director|executive|manager|management|managing\s+director)\b",
     re.I)
 
+# A "senior" (but non-exec) target: a 15-year senior IC's own tier. Raises the
+# years cap from 8 to 15 so a "10+ years" senior posting still reaches AI ranking
+# instead of being dropped for demanding too many years.
+_SENIOR_RE = re.compile(r"\b(senior|sr\.?|staff|principal|lead|expert)\b", re.I)
+_SENIOR_YEARS_CAP = 15
+
 
 def _has_exec_intent(target_roles) -> bool:
     return any(_EXEC_RE.search(r or "") for r in target_roles)
+
+
+def _has_senior_intent(target_roles) -> bool:
+    return any(_SENIOR_RE.search(r or "") for r in target_roles)
+
+
+def _field_adjust_penalty_roles(base_penalties: list, cfg: dict) -> list:
+    """Drop the penalty role that IS the user's own field's core work (item 10):
+    a maintenance tech (SOC 49) keeps "maintain", a salesperson (SOC 41) keeps
+    "sales". Derived from the project's persisted onet_soc_code (preferred) or its
+    free-text industry, via industry_profile.penalty_role_to_drop. Default (eng /
+    unmapped) is unchanged."""
+    try:
+        import industry_profile
+        drop = industry_profile.penalty_role_to_drop(
+            soc_code=cfg.get("onet_soc_code"), industry=cfg.get("industry"))
+    except Exception:
+        drop = None
+    if not drop:
+        return list(base_penalties)
+    return [r for r in base_penalties if r != drop]
 
 
 def build_rubric(prefs: dict | None = None, cfg: dict | None = None) -> dict:
@@ -60,14 +87,28 @@ def build_rubric(prefs: dict | None = None, cfg: dict | None = None) -> dict:
     # flips the entry-mid IC defaults that would otherwise drop every VP/Director
     # role before the AI ever sees it.
     exec_intent = _has_exec_intent(target_roles)
+    senior_intent = _has_senior_intent(target_roles)
     allow_management = bool(cfg.get("allow_management", exec_intent))
     seniority_target = cfg.get("seniority_target") or (
         "senior-exec" if exec_intent else _DEFAULT_SENIORITY_TARGET)
-    years_cap = int(cfg.get("years_cap", 25 if exec_intent else _DEFAULT_YEARS_CAP))
+    # years cap: exec 25, senior (non-exec) 15, else the default 8. A senior IC's
+    # own tier ("10+ years" postings) must still reach AI ranking (item 9).
+    if exec_intent:
+        default_cap = 25
+    elif senior_intent:
+        default_cap = _SENIOR_YEARS_CAP
+    else:
+        default_cap = _DEFAULT_YEARS_CAP
+    years_cap = int(cfg.get("years_cap", default_cap))
     penalty_roles = cfg.get("penalty_roles")
     if penalty_roles is None:
         # An exec seeker should not be penalized for "manage".
-        penalty_roles = ["sales", "maintain"] if exec_intent else _DEFAULT_PENALTY_ROLES
+        base_penalties = ["sales", "maintain"] if exec_intent else list(_DEFAULT_PENALTY_ROLES)
+        # Field-aware (item 10): a field whose OWN core work is a penalty role
+        # (a maintenance tech's "maintain", a salesperson's "sales") must not have
+        # that role downweighted. Drop the field's core penalty role by SOC major
+        # group; default unchanged.
+        penalty_roles = _field_adjust_penalty_roles(base_penalties, cfg)
 
     return {
         "comp_floor": int(comp_floor) if comp_floor else None,

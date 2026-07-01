@@ -197,6 +197,38 @@ SOC_MAJOR_GROUPS: dict[str, dict] = {
 }
 
 
+# ── SOC major group -> penalty role to DROP (item 10) ─────────────────────────
+# rubric.build_rubric downweights certain generic role_types ("sales", "maintain",
+# "manage") by default. But when the user's OWN field IS one of those roles, that
+# core work must not be penalized: a maintenance tech (SOC 49) should not have
+# "maintain" downweighted, a salesperson (SOC 41) not "sales". This maps a SOC
+# major group to the penalty role rubric should REMOVE for that field. Everything
+# not listed is unchanged (default penalty set intact). Consumed by match/rubric.
+SOC_MAJOR_PENALTY_DROP: dict[str, str] = {
+    "41": "sales",     # Sales and Related Occupations
+    "49": "maintain",  # Installation, Maintenance, and Repair Occupations
+}
+
+
+def penalty_role_to_drop(soc_code: Optional[str] = None,
+                         industry: Optional[str] = None) -> Optional[str]:
+    """The penalty role rubric should DROP for this field, or None (default). Prefer
+    an explicit O*NET-SOC code (its 2-digit major group); else resolve the free-text
+    industry to a SOC and use that. eng/tech fields resolve to None (byte-identical
+    for Alex -- resolve_soc already returns None for eng-like)."""
+    code = (soc_code or "").strip()
+    if not code and industry:
+        try:
+            soc = resolve_soc(industry)
+        except Exception:
+            soc = None
+        code = (soc or {}).get("code", "") if soc else ""
+    if not code:
+        return None
+    major = code.split("-")[0]
+    return SOC_MAJOR_PENALTY_DROP.get(major)
+
+
 def _user_json_path() -> Path:
     import config
     return Path(config.USER_DATA_DIR) / "industry_profiles.json"
