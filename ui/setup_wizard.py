@@ -309,6 +309,14 @@ class SetupWizard(tk.Toplevel):
                        "accountant, HVAC technician, UX designer",
                   style="Muted.TLabel", wraplength=560,
                   justify="left").pack(anchor="w")
+        ttk.Label(self._body,
+                  text="Tip: use broad field terms (e.g. “clinical "
+                       "informatics”) rather than a full senior title (e.g. "
+                       "“VP of Clinical Informatics”) — narrow "
+                       "titles return almost nothing. Set seniority with Career "
+                       "level below, not in the search terms.",
+                  style="Muted.TLabel", wraplength=560,
+                  justify="left").pack(anchor="w", pady=(4, 0))
         # Optional field + career level — tune enumeration + the ranking rubric to
         # any field, not just engineering. Both blank = today's behavior.
         fl = ttk.Frame(self._body)

@@ -16,8 +16,8 @@ APP_NAME = "Job Search Tools"
 # The Guide is a list of (tag, text). Tags map to Text styles set in GuideTab.
 GUIDE = [
     ("h1", "Welcome \N{WAVING HAND SIGN}"),
-    ("body", "This app finds engineering jobs for you, scores how well each one "
-             "fits, and helps you apply faster. You never apply automatically — "
+    ("body", "This app finds jobs that match what you're looking for, scores how "
+             "well each one fits, and helps you apply faster. You never apply automatically — "
              "you stay in control and click submit yourself. There's nothing to "
              "install or configure beyond the quick setup; just follow the three "
              "steps below."),
