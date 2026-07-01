@@ -17,7 +17,12 @@ DB_PATH = None
 # v5 (2026-07-01 storage research): applications.norm_url (+ index) and the
 # inbox_fts FTS5 search index are new schema objects, so DBs already at v4 must
 # re-run the migration to pick them up.
-SCHEMA_VERSION = 5
+# v6 (C1 dedup): inbox.job_key (+ index) - WS-1's stable cross-source identity,
+# persisted per row so inbox_add_many can coalesce the SAME posting surfaced by
+# two overlap sources under different URLs. Old rows backfill NULL (their JobResult
+# is gone and job_key can't be reliably recomputed from a stored row), and the
+# dedup logic treats NULL as "no key" (never coalesces on it).
+SCHEMA_VERSION = 6
 
 
 def current_db_path() -> Path:
@@ -222,7 +227,12 @@ def init_db() -> bool:
         # Inbox columns added after the original schema shipped (same in-place
         # upgrade pattern as _EXTRA_COLUMNS above, but for the inbox table).
         inbox_existing = {r["name"] for r in conn.execute("PRAGMA table_info(inbox)")}
-        for col, decl in {"board_count": "INTEGER DEFAULT -1"}.items():
+        # board_count: post-original column. job_key (v6, C1): NO default - old
+        # rows must read NULL, not '', so cross-source coalescing can tell "no key
+        # recorded" (skip) from a real empty-string key. Never backfilled: a stored
+        # inbox row has lost its JobResult and job_key can't be recomputed reliably.
+        for col, decl in {"board_count": "INTEGER DEFAULT -1",
+                          "job_key": "TEXT"}.items():
             if col not in inbox_existing:
                 _safe_add_column(conn, "inbox", col, decl)
         # Round-robin window orders by company; without this index every render
@@ -231,6 +241,9 @@ def init_db() -> bool:
         # inbox.url is looked up by exact match (inbox_delete_urls' prune path);
         # norm_url already gets an implicit index from its UNIQUE constraint.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_url ON inbox(url)")
+        # job_key coalescing (v6, C1) does an existence probe per candidate; index
+        # it so the anti-join stays cheap as the inbox grows.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_inbox_job_key ON inbox(job_key)")
         # Health beacon: one row per daily_run so the GUI can show a last-run
         # OK/FAILED badge and the run can be diagnosed after the fact.
         conn.execute("""
@@ -668,7 +681,23 @@ def urls_not_seen(norm_urls) -> set[str]:
 
 # ── Inbox (daily-run results awaiting triage) ─────────────────────────────────
 
-def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
+def _inbox_norm_url(job) -> str:
+    """The stable inbox identity URL for a JobResult. A real posting keys on its
+    normalized URL; a URL-LESS posting keys on a synthetic 'keyless:' + its
+    canonical keyless identity (company|title|location bucket) so it (a) can't die
+    silently at the inbox door for want of a UNIQUE norm_url and (b) dedupes
+    against ITSELF across runs. The keyless identity is the SAME string the search
+    engine dedups on (search.search_engine.keyless_identity), so engine dedup and
+    inbox identity agree."""
+    n = normalize_url(getattr(job, "url", "") or "")
+    if n:
+        return n
+    from search.search_engine import keyless_identity
+    return "keyless:" + keyless_identity(job)
+
+
+def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "",
+                   overflow_out: dict | None = None) -> int:
     """Insert JobResults into the inbox; silently skips postings already in the
     inbox, tracker, or dismissed list. Returns how many were actually added.
 
@@ -676,6 +705,21 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
     already at N rows can only take (cap - N) more, so a board can't accrue
     cap rows per run and pile up over many runs. jobs is assumed best-first so
     the surviving rows are each company's top matches. 0 disables the cap.
+
+    overflow_out (optional out-param, C1): when a dict is passed, it is populated
+    IN PLACE with {company_display: n_capped} for companies whose cap was hit this
+    run - so daily_run can log 'capped: Acme 12, SpaceX 9' and store it in the run
+    record. Kept as an out-param (not a changed return type) so every existing
+    caller that ignores overflow keeps its int return unchanged.
+
+    Cross-source coalescing (C1): after the norm_url anti-join, a candidate whose
+    job_key matches an existing inbox row's (non-NULL) job_key is treated as the
+    SAME posting surfaced via a different URL (an overlap source). Instead of a
+    second row it MERGES into the existing one - keeps the earlier date_added,
+    fills in a description the old row lacked, and records the alternate URL under
+    extras['alt_urls']. This is what stops the inbox double-listing once overlap
+    sources (serpapi probe, CareerOneStop vs ATS) go live. NULL job_keys (old rows,
+    or a build without the coverage bundle) never coalesce - treated as no-key.
 
     new_batch (set by daily_run): when truthy, a freshly-inserted job carrying
     is_new=True gets its extras stamped with {"new_batch": new_batch}, so the
@@ -687,30 +731,67 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
     # URLs, instead of materializing the full tracked+dismissed URL sets
     # (seen_urls()) in Python - semantically identical skip decision, but
     # scales with the batch, not with the applications/dismissed table size.
-    norm_by_job = [(j, normalize_url(j.url)) for j in jobs]
-    unseen = urls_not_seen([n for _, n in norm_by_job if n])
+    # URL-less jobs get a synthetic 'keyless:' norm_url and are NOT part of the
+    # tracked/dismissed URL anti-join (those tables key on real URLs); their
+    # dedup is the inbox's own UNIQUE norm_url (self-dedup across runs) plus the
+    # job_key coalescing below.
+    norm_by_job = [(j, _inbox_norm_url(j)) for j in jobs]
+    real_urls = [n for j, n in norm_by_job
+                 if n and not n.startswith("keyless:") and normalize_url(getattr(j, "url", "") or "")]
+    unseen = urls_not_seen(real_urls)
     today = date.today().isoformat()
     # Start the running tally from what's already persisted so the cap spans runs.
     per_company = inbox_company_counts() if per_company_cap > 0 else {}
+    cap_display = inbox_company_display_names() if per_company_cap > 0 else {}
+    overflow: dict[str, int] = {}
+    # Same-run job_key coalescing: two overlap sources in ONE batch surfacing the
+    # same posting must also collapse, not just cross-run. Maps job_key -> the
+    # inbox id we inserted (or merged into) this run.
+    run_keys: dict[str, int] = {}
     added = 0
     with get_conn() as conn:
         for j, norm in norm_by_job:
-            if not norm or norm not in unseen:
+            if not norm:
                 continue
+            is_keyless = norm.startswith("keyless:")
+            # Real-URL jobs must clear the tracked/dismissed anti-join; keyless
+            # jobs skip it (nothing tracks them by URL) and rely on norm_url +
+            # job_key dedup.
+            if not is_keyless and norm not in unseen:
+                continue
+            jk = getattr(j, "job_key", None) or None
+            # -- job_key coalescing (C1) -------------------------------------
+            # A non-NULL job_key that already exists (this run or persisted) means
+            # the same posting via a different URL: merge value into the existing
+            # row and skip the insert. NULL keys never coalesce.
+            if jk:
+                target_id = run_keys.get(jk)
+                if target_id is None:
+                    ex = conn.execute(
+                        "SELECT id FROM inbox WHERE job_key=? LIMIT 1", (jk,)
+                    ).fetchone()
+                    target_id = ex["id"] if ex else None
+                if target_id is not None:
+                    _inbox_coalesce(conn, target_id, j, norm)
+                    run_keys[jk] = target_id
+                    continue
             if per_company_cap > 0:
                 key = (j.company or "").lower().strip()
                 if per_company.get(key, 0) >= per_company_cap:
+                    if key:
+                        disp = cap_display.get(key, j.company or key)
+                        overflow[disp] = overflow.get(disp, 0) + 1
                     continue
             cur = conn.execute(
                 """INSERT OR IGNORE INTO inbox
                    (norm_url, title, company, location, url, salary_text,
                     description, source, score, score_notes, created, date_added,
-                    board_count)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    board_count, job_key)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (norm, j.title, j.company, j.location, j.url,
                  j.salary_display(), (j.description or "")[:5000],
                  j.source_api, j.score, j.score_notes, j.created, today,
-                 getattr(j, "board_count", -1)),
+                 getattr(j, "board_count", -1), jk),
             )
             if cur.rowcount:
                 # Per-job extras: a transient `_extras` dict on the JobResult
@@ -727,13 +808,55 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "") -> int:
                 if extra:
                     conn.execute("UPDATE inbox SET extras=? WHERE id=?",
                                  (json.dumps(extra), cur.lastrowid))
+                if jk:
+                    run_keys[jk] = cur.lastrowid
                 if per_company_cap > 0:
                     per_company[key] = per_company.get(key, 0) + 1
             added += cur.rowcount
         if added:
             _fts_optimize(conn)
         conn.commit()
+    if overflow_out is not None:
+        overflow_out.update(overflow)
     return added
+
+
+def _inbox_coalesce(conn, target_id: int, job, alt_norm: str) -> None:
+    """Merge an overlap-source duplicate into the existing inbox row `target_id`
+    (same posting, different URL): keep the earlier date_added (leave it as-is),
+    fill in a description the old row lacked, and append the alternate URL under
+    extras['alt_urls'] (de-duplicated). Never touches the score/fit (the existing
+    triaged row wins). Best-effort on a missing row - no-op."""
+    import json
+    row = conn.execute(
+        "SELECT description, extras FROM inbox WHERE id=?", (target_id,)
+    ).fetchone()
+    if row is None:
+        return
+    # Prefer whichever row HAS a description: fill the old row's blank from the new.
+    new_desc = (getattr(job, "description", "") or "").strip()
+    if new_desc and not (row["description"] or "").strip():
+        conn.execute("UPDATE inbox SET description=? WHERE id=?",
+                     (new_desc[:5000], target_id))
+    # Record the alternate URL (the merged posting's own URL, else its keyless id)
+    # under extras['alt_urls'] so the coalesced posting's other surface isn't lost.
+    alt = normalize_url(getattr(job, "url", "") or "") or alt_norm
+    current = {}
+    if row["extras"]:
+        try:
+            loaded = json.loads(row["extras"])
+            if isinstance(loaded, dict):
+                current = loaded
+        except (ValueError, TypeError):
+            current = {}
+    alts = current.get("alt_urls")
+    if not isinstance(alts, list):
+        alts = []
+    if alt and alt not in alts:
+        alts.append(alt)
+        current["alt_urls"] = alts
+        conn.execute("UPDATE inbox SET extras=? WHERE id=?",
+                     (json.dumps(current, separators=(",", ":")), target_id))
 
 
 def inbox_all(order: str = "roundrobin") -> list[dict]:

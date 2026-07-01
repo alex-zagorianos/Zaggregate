@@ -20,8 +20,13 @@ Signals (additive, clamped 0..100):
      expiry (JobResult.valid_through / inbox extras) is in the PAST. This is
      attested, not inferred, so it's the strongest single signal.
 
-Repost-count is intentionally NOT implemented: freshness history isn't retained
-yet, so there's nothing to read — the signal abstains rather than guess.
+Repost/evergreen (C1): historically abstained because freshness kept no history.
+search.freshness now persists a per-key presence history and exposes repost_info
+({job_key: {'first_seen', 'repost', 'evergreen'}}). When the caller threads that
+map in (optional; default None = abstain, exactly today's behavior), a job whose
+job_key is flagged repost=True or evergreen=True gets a bump with a clear reason
+('reposted' / 'evergreen listing'). The signal STILL abstains for any job not in
+the map, so a source without history is never penalized.
 
 Levels by final score: <30 fresh, 30-59 aging, >=60 stale. "unknown" is reserved
 for the genuine no-signal case: ``created`` missing/unparseable AND no other
@@ -46,6 +51,12 @@ MISSING_SALARY_BUMP = 12
 EVERGREEN_BUMP = 62       # a perpetual-req title alone reads "stale"
 EXPIRED_BUMP = 80         # publisher-declared validThrough in the past = strongest
                           # single signal; alone it clears "stale" decisively
+
+# Repost/evergreen from persisted freshness history (C1). A history-attested
+# reappearance is a strong staleness signal (the req keeps getting re-listed); a
+# posting whose cumulative presence spans >90 days is a perpetual/evergreen req.
+REPOST_BUMP = 45          # seen -> gone -> seen again: bump but below "expired"
+EVERGREEN_HISTORY_BUMP = 62  # 90+ days of presence reads "stale" on its own
 
 UNKNOWN_BASE = 10         # score for the genuine no-signal case (kept below the
                           # smallest real signal so any fired signal outscores it)
@@ -175,6 +186,31 @@ def _evergreen_signal(job, reasons):
     return 0, False
 
 
+def _repost_signal(job, reasons, repost_info):
+    """History-attested repost/evergreen bump (C1). Abstains unless a repost_info
+    map is threaded in AND this job's job_key is in it. Reads job_key off a
+    JobResult attr or an inbox-row dict."""
+    if not repost_info:
+        return 0, False
+    jk = _get(job, "job_key")
+    if not jk:
+        return 0, False
+    info = repost_info.get(jk)
+    if not isinstance(info, dict):
+        return 0, False
+    pts = 0
+    fired = False
+    if info.get("evergreen"):
+        reasons.append("evergreen listing")
+        pts += EVERGREEN_HISTORY_BUMP
+        fired = True
+    if info.get("repost"):
+        reasons.append("reposted")
+        pts += REPOST_BUMP
+        fired = True
+    return pts, fired
+
+
 def _level_for(score, any_signal):
     """fresh < 30 <= aging < 60 <= stale; 'unknown' only when nothing fired."""
     if not any_signal:
@@ -186,8 +222,14 @@ def _level_for(score, any_signal):
     return "fresh"
 
 
-def ghost_score(job):
+def ghost_score(job, repost_info=None):
     """Offline stale/ghost likelihood for a JobResult OR an inbox-row dict.
+
+    ``repost_info`` (optional; default None = abstain, today's behavior exactly)
+    is search.freshness.repost_info()'s {job_key: {'first_seen','repost',
+    'evergreen'}} map. When passed, a job whose job_key is flagged bumps the score
+    with reasons 'reposted' / 'evergreen listing'. A job absent from the map (or a
+    None map) contributes nothing - the signal abstains, never penalizes.
 
     Returns ``{"score": int 0..100, "level": "fresh"|"aging"|"stale"|"unknown",
     "reasons": list[str]}``. Pure, deterministic, never raises on missing fields.
@@ -198,15 +240,16 @@ def ghost_score(job):
     sal_pts, sal_fired = _missing_salary_signal(job, reasons)
     evg_pts, evg_fired = _evergreen_signal(job, reasons)
     exp_pts, exp_fired = _expired_signal(job, reasons)
+    rep_pts, rep_fired = _repost_signal(job, reasons, repost_info)
 
-    any_signal = age_fired or sal_fired or evg_fired or exp_fired
+    any_signal = age_fired or sal_fired or evg_fired or exp_fired or rep_fired
 
     if not any_signal:
         # No date and no other signal: report the abstain case, not a false fresh.
         return {"score": UNKNOWN_BASE, "level": "unknown",
                 "reasons": ["no staleness signal available"]}
 
-    raw = age_pts + sal_pts + evg_pts + exp_pts
+    raw = age_pts + sal_pts + evg_pts + exp_pts + rep_pts
     score = int(max(0, min(100, round(raw))))
     level = _level_for(score, any_signal=True)
     return {"score": score, "level": level, "reasons": reasons}

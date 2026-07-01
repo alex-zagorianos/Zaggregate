@@ -248,6 +248,14 @@ def main():
     _prev_fresh = freshness.load_prev_keys(fresh_id)
     for r in results:
         r.is_new = r.job_key not in _prev_fresh
+    # Repost/evergreen classification from the persisted presence history (C1),
+    # read BEFORE save_keys advances the baseline. Threaded into match.ghost so a
+    # re-listed/perpetual req reads staler in the view. Best-effort - a fresh
+    # project (no history) yields an empty map = abstain.
+    try:
+        _repost_info = freshness.repost_info(fresh_id)
+    except Exception:
+        _repost_info = {}
 
     qualified = [r for r in results if r.score >= min_score]
 
@@ -262,9 +270,27 @@ def main():
     init_db()
     before = inbox_count()
     new_batch = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    added = inbox_add_many(qualified, per_company_cap=cap, new_batch=new_batch)
+    # cap_overflow (C1): {company: n_capped} for boards whose per-company cap was
+    # hit this run - surfaced so the single-dominant-employer jobs a user actually
+    # wants (e.g. "Cincinnati Children's: 12 more capped") aren't silently lost.
+    cap_overflow: dict = {}
+    added = inbox_add_many(qualified, per_company_cap=cap, new_batch=new_batch,
+                           overflow_out=cap_overflow)
     log(f"daily_run done | {len(results)} found | {len(qualified)} >= {min_score} | "
         f"{added} new -> inbox (inbox now {inbox_count()})")
+    if cap_overflow:
+        top = sorted(cap_overflow.items(), key=lambda kv: kv[1], reverse=True)
+        log("capped: " + ", ".join(f"{c} {n}" for c, n in top))
+
+    # Repost/evergreen visibility (C1): how many of this run's qualified jobs the
+    # persisted history flags as re-listed or perpetual reqs.
+    n_repost = sum(1 for r in qualified
+                   if (_repost_info.get(r.job_key) or {}).get("repost"))
+    n_evergreen = sum(1 for r in qualified
+                      if (_repost_info.get(r.job_key) or {}).get("evergreen"))
+    if n_repost or n_evergreen:
+        log(f"repost/evergreen | {n_repost} reposted, {n_evergreen} evergreen "
+            f"(of {len(qualified)} qualified)")
 
     # Advance the freshness baseline to this run's found set, and report how many
     # of the inboxed jobs are new since the last run.
@@ -339,6 +365,10 @@ def main():
     # counts of what the search returned this run.
     from collections import Counter
     source_counts = dict(Counter((r.source_api or "") for r in results))
+    # Cap overflow rides the same source_counts JSON as a reserved sibling key
+    # (C1) - no schema change. '__capped__' can't collide with a source_api name.
+    if cap_overflow:
+        source_counts["__capped__"] = cap_overflow
     status = "zero" if added == 0 else "ok"
     record_run_finish(run_id, status, source_counts=source_counts)
 

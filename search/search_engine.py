@@ -271,7 +271,7 @@ class SearchEngine:
         # so formatting variants ("Acme, Inc." vs "Acme Inc"; "Cincinnati, OH" vs
         # "Cincinnati"/"Remote") merge while distinct roles/companies stay apart.
         seen_urls: set[str] = set()
-        seen_keyless: set = set()
+        seen_keyless: set[str] = set()
         unique: list[JobResult] = []
         for job in results:
             u = normalize_url(job.url)
@@ -280,7 +280,7 @@ class SearchEngine:
                     continue
                 seen_urls.add(u)
             else:
-                key = _keyless_key(job)
+                key = keyless_identity(job)
                 if key in seen_keyless:
                     continue
                 seen_keyless.add(key)
@@ -288,19 +288,33 @@ class SearchEngine:
         return unique
 
 
-def _keyless_key(job: JobResult):
-    """Canonical identity for a URL-less posting (company + title + location
+def keyless_identity(job) -> str:
+    """Stable STRING identity for a URL-less posting (company + title + location
     bucket). Location IS included so the same title at the same company in two
     different cities (e.g. 'Director of Clinical Informatics' open in Cincinnati
     AND Remote) does not silently collapse to one row — the earlier location-free
-    key over-merged distinct postings. Falls back to a raw string if the coverage
-    entity module isn't importable (e.g. a stripped frozen build)."""
+    key over-merged distinct postings.
+
+    Returns a canonical string (not a tuple) so the SAME value can be stored as an
+    inbox row's synthetic 'keyless:'-prefixed norm_url and compared for engine
+    dedup - engine dedup and inbox identity MUST agree, else a URL-less posting
+    that dedups in the engine would double-list in the inbox (or vice-versa).
+    Falls back to a raw lowercased join if the coverage entity module isn't
+    importable (e.g. a stripped frozen build)."""
     try:
         from coverage import entity
-        return (entity.canonicalize_company(job.company or ""),
-                entity.title_core(job.title or ""),
-                entity.location_token(entity.normalize_location(job.location or "")))
+        parts = (entity.canonicalize_company(job.company or ""),
+                 entity.title_core(job.title or ""),
+                 entity.location_token(entity.normalize_location(job.location or "")))
     except ImportError:
-        return (f"{(job.title or '').lower().strip()}|"
-                f"{(job.company or '').lower().strip()}|"
-                f"{(job.location or '').lower().strip()}")
+        parts = ((job.company or "").lower().strip(),
+                 (job.title or "").lower().strip(),
+                 (job.location or "").lower().strip())
+    return "\x1f".join(parts)
+
+
+# Back-compat alias: some callers/tests reference the original private name. The
+# engine now compares on the string form (keyless_identity); the tuple wrapper is
+# retained so any external caller keeps working, but internal dedup uses the string.
+def _keyless_key(job):
+    return keyless_identity(job)
