@@ -84,7 +84,31 @@ def list_projects() -> list[dict]:
     return _registry().get("projects", [])
 
 
+# Process-local active-project pin. When set, active_slug() returns it and
+# ignores projects.json, so a long operation (a daily_run) resolves EVERY path
+# (db/output/experience/config) to one project even if another process rewrites
+# projects.json 'active' mid-run — a concurrent second run or a GUI project
+# switch. Default None = unpinned = read projects.json as before (no behavior
+# change for the GUI/CLI, tests, or single-run use).
+_PINNED_SLUG: str | None = None
+
+
+def pin_active(slug: str | None) -> None:
+    """Pin the active project for THIS process (see _PINNED_SLUG). Pass a slug to
+    pin; None is a no-op pin (leaves resolution reading projects.json)."""
+    global _PINNED_SLUG
+    _PINNED_SLUG = slug or None
+
+
+def unpin_active() -> None:
+    """Clear the process-local pin (resolution returns to projects.json)."""
+    global _PINNED_SLUG
+    _PINNED_SLUG = None
+
+
 def active_slug() -> str | None:
+    if _PINNED_SLUG is not None:
+        return _PINNED_SLUG
     reg = _registry()
     slug = reg.get("active")
     if slug:

@@ -47,6 +47,13 @@ def main():
     if args.project and not args.user_config:
         workspace.set_active(args.project)
 
+    # Pin this run to ONE project for the whole process, so a concurrent
+    # projects.json write — a second daily_run, or a GUI project switch — can't
+    # redirect our inbox/output/config writes mid-run (DB path is resolved from
+    # the global 'active' on every call). Pin the explicit --project, else
+    # whatever is active now. run_main() unpins in its finally.
+    workspace.pin_active(args.project or workspace.active_slug())
+
     from search.cli import build_clients, load_user_config
     from search.search_engine import SearchEngine
     from match.scorer import score_jobs
@@ -286,6 +293,10 @@ def run_main() -> int:
             except Exception:
                 pass  # beacon bookkeeping must never mask the original failure
         return 1
+    finally:
+        # Always release the process-local project pin set in main(), so an
+        # in-process caller (tests, an embedding host) isn't left pinned.
+        workspace.unpin_active()
 
 
 if __name__ == "__main__":

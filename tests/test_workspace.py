@@ -169,3 +169,29 @@ def test_create_project_does_not_overwrite_existing_config(tmp_base):
     workspace.create_project("Nursing", slug="nursing",
                              config={"industry": "registered nurse"})
     assert workspace.load_config(slug)["onet_soc_code"] == "EDITED"
+
+
+# ── process-local project pin (concurrency isolation) ─────────────────────────
+def test_pin_active_overrides_projects_json(tmp_base):
+    """A pinned slug wins over projects.json 'active', so every path resolves to
+    the pinned project even if another process rewrites 'active' mid-run."""
+    a = workspace.create_project("Project A", make_active=True)
+    b = workspace.create_project("Project B")
+    workspace.pin_active(a)
+    try:
+        # Simulate a concurrent GUI switch / second run flipping the shared pointer.
+        workspace.set_active(b)
+        assert workspace.active_slug() == a          # pin wins, not b
+        assert workspace.db_path().parent.name == a
+        assert workspace.output_dir().parent.name == a
+        assert workspace.config_path().parent.name == a
+    finally:
+        workspace.unpin_active()
+    assert workspace.active_slug() == b              # unpinned -> reads disk again
+
+
+def test_pin_active_none_is_noop(tmp_base):
+    a = workspace.create_project("Project A", make_active=True)
+    workspace.pin_active(None)
+    assert workspace.active_slug() == a              # falls through to projects.json
+    workspace.unpin_active()

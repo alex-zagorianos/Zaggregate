@@ -8,12 +8,12 @@
     "  smartrecruiters: slug = the company id from jobs.smartrecruiters.com/YOUR_SLUG (case-sensitive)",
     "  workday:    slug = 'tenant:N:site'  e.g. 'cat:5:CaterpillarCareers'",
     "  direct:     slug = full careers page URL (best-effort HTML scrape)",
-    "industries: list of tags — used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",
+    "industries: list of tags \u2014 used by --industry filter (e.g. 'health_informatics', 'controls_engineering')",
     "If a company name matches one already in the built-in registry, your entry overrides it."
   ],
   "companies": [
     {
-      "_example": "Greenhouse company — remove _example key when using",
+      "_example": "Greenhouse company \u2014 remove _example key when using",
       "name": "Example Greenhouse Co",
       "ats_type": "greenhouse",
       "slug": "exampleco",
@@ -5271,6 +5271,37 @@
       "slug": "endurance-energy",
       "industries": [
         "controls"
+      ]
+    },
+    {
+      "name": "Cincinnati Children's Hospital",
+      "ats_type": "workday",
+      "slug": "cincinnatichildrens:5:careersatcincinnatichildrens",
+      "industries": [
+        "health_informatics",
+        "ehr",
+        "clinical",
+        "ohio"
+      ]
+    },
+    {
+      "name": "Bon Secours Mercy Health",
+      "ats_type": "workday",
+      "slug": "easyservice:5:BonSecoursMercyHealthCareers",
+      "industries": [
+        "health_informatics",
+        "analytics",
+        "ohio"
+      ]
+    },
+    {
+      "name": "Regard",
+      "ats_type": "ashby",
+      "slug": "regard",
+      "industries": [
+        "health_informatics",
+        "clinical",
+        "ai"
       ]
     }
   ]
