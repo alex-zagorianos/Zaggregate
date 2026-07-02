@@ -823,6 +823,38 @@ def add_status_note(job_id, note: str) -> int | None:
         return cur.lastrowid
 
 
+def entered_status_at(job_id, status: str | None = None) -> str | None:
+    """When the application last ENTERED its current (or the given) status —
+    the ``changed_at`` of the most recent genuine transition (old_status !=
+    new_status) INTO that status. Used by the Board's "days here" badge so it
+    measures time-in-stage, not time-since-applied. Note-only events
+    (old_status == new_status) are ignored so a note doesn't reset the clock.
+    Returns None when there's no such transition (e.g. the row was created
+    directly at its status and never moved) or the table is absent."""
+    with get_conn() as conn:
+        if not _has_table(conn, "status_history"):
+            return None
+        if status is None:
+            row = conn.execute(
+                "SELECT status FROM applications WHERE id=?", (job_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            status = row["status"]
+        r = conn.execute(
+            "SELECT MAX(changed_at) FROM status_history "
+            "WHERE job_id=? AND new_status=? AND old_status != new_status",
+            (job_id, status),
+        ).fetchone()
+    return r[0] if r and r[0] else None
+
+
+def _has_table(conn, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone() is not None
+
+
 def status_timeline(job_id) -> list[dict]:
     """Chronological timeline for one application: every status_history row
     (transitions AND note-only events), oldest first, each a dict with

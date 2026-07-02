@@ -1490,14 +1490,24 @@ class InboxTab(ttk.Frame):
     def _update_reach_badge(self):
         """Best-effort: read the last persisted reach snapshot for the active
         project. Never let a reach/coverage error touch the inbox render."""
-        try:
-            from coverage.reach import badge_line, badge_reason, load_latest
-            snap = load_latest(workspace.active_slug() or "root")
-            self._reach_lbl.config(text=badge_line(snap))
-            self._set_reach_fix(badge_reason(snap))
-        except Exception:
+        # While the first-run SAMPLE inbox is on screen there is no real reach
+        # state to describe — the curated demo rows are location-varied by design,
+        # so a real-reach "Seeing mostly remote/tech jobs…" fix badge would
+        # contradict what the user is looking at. The demo banner already tells
+        # them this is a sample; suppress the reach line + fix affordance until a
+        # real inbox exists.
+        if getattr(self, "_demo_active", False):
             self._reach_lbl.config(text="")
             self._set_reach_fix(None)
+        else:
+            try:
+                from coverage.reach import badge_line, badge_reason, load_latest
+                snap = load_latest(workspace.active_slug() or "root")
+                self._reach_lbl.config(text=badge_line(snap))
+                self._set_reach_fix(badge_reason(snap))
+            except Exception:
+                self._reach_lbl.config(text="")
+                self._set_reach_fix(None)
         info = None
         try:
             import applog
@@ -2249,16 +2259,30 @@ class InboxTab(ttk.Frame):
     def _export_rows(self) -> list[dict]:
         """Rows to hand the AI: the entire inbox by default (so it can judge
         relevance over everything and pick a top-X), or just the current
-        filtered view when chosen."""
-        if self._export_scope.get() == "Current view":
-            return self._filtered()
-        return list(self._all)
+        filtered view when chosen. Fictional sample-inbox rows are never
+        exportable (defense in depth — _export_for_ai also blocks while the demo
+        is active), so they can't reach the AI round-trip via any path."""
+        rows = (self._filtered() if self._export_scope.get() == "Current view"
+                else list(self._all))
+        return [r for r in rows if not r.get("is_demo")]
 
     def _export_for_ai(self):
         """Write the round-trip trio (csv+md+prompt) for the chosen inbox scope
         to a timestamped folder under OUTPUT_DIR/rerank, then open the folder."""
         from datetime import datetime
         from rerank.export import export_inbox
+        # The sample inbox is fictional (source "Demo", negative ids): never hand
+        # it to the user's AI as if it were their real scored inbox. Block export
+        # while the demo is active — the same nudge every triage action shows —
+        # so the round-trip only ever carries real jobs.
+        if getattr(self, "_demo_active", False):
+            messagebox.showinfo(
+                "Sample inbox",
+                "These are example jobs to show you what a scored inbox looks "
+                "like — there's nothing real to export yet. Click “Update my "
+                "Inbox now” to pull in real jobs, then export those.",
+                parent=self)
+            return
         rows = self._export_rows()
         if not rows:
             messagebox.showinfo(
@@ -4140,12 +4164,18 @@ class App(tk.Tk):
             if actions.get("daily_updates"):
                 self._register_daily_updates()
             # Closing-step: open Build-My-List unconditionally when opted in, so a
-            # fresh user's 'careers' searches have employers to scrape.
+            # fresh user's 'careers' searches have employers to scrape. Block on
+            # it (wait_window) so the "Update your Inbox now?" prompt below is
+            # offered AFTER the user finishes Build-My-List, not stacked on top of
+            # its still-open modal (both grab_set() otherwise — a two-modal
+            # collision). BuildCompanyListDialog does its work on threads, so
+            # waiting only holds until the user closes it.
             if actions.get("build_list"):
                 try:
-                    BuildCompanyListDialog(
+                    dlg = BuildCompanyListDialog(
                         self, default_industry=actions.get("industry", ""),
                         default_metro=actions.get("location", ""))
+                    self.wait_window(dlg)
                 except Exception:
                     pass
             # Forced first action (§6.5): the terminal action is "Update my Inbox
@@ -4901,13 +4931,25 @@ class App(tk.Tk):
         self._refresh_projectbar()
         self._rebuild_tabs()
         self._update_title()
-        # Onboard the new person's profile into the now-active project.
+        # Onboard the new person's profile into the now-active project. Use the
+        # SAME 2-arg finish handler as first-run so the wizard's closing "Keep
+        # jobs coming" step is honored here too (daily-updates registration,
+        # Build-My-List, and the forced first Inbox update) — a 1-arg lambda
+        # silently drops those actions (setup_wizard._close arity dispatch).
         try:
             from ui import setup_wizard
-            setup_wizard.run(self, on_finish=lambda applied: (
-                self._rebuild_tabs(), self._update_title()))
+            setup_wizard.run(self, on_finish=self._after_new_person_setup)
         except Exception:
             pass
+
+    def _after_new_person_setup(self, applied: bool, actions: dict | None = None):
+        """New-person finish: keep the title in sync with the freshly-created
+        project, then delegate to the shared closing-step handler so an
+        additional profile gets the same daily-updates / Build-My-List / forced
+        Inbox-update treatment as first-run (finding: New-person wizard silently
+        discarded the closing step)."""
+        self._update_title()
+        self._after_setup(applied, actions)
 
     # ── tabs ───────────────────────────────────────────────────────────────────
     def _build_tabs(self):
@@ -4929,6 +4971,25 @@ class App(tk.Tk):
         self._nb.add(self._board,   text="Board")
         self._nb.add(self._resume,  text="Resume Generator")
         self._nb.add(self._guide,   text="\N{BLACK QUESTION MARK ORNAMENT} Guide")
+        # A Board (Kanban) move mutates the same tracker.db the Tracker + Apply
+        # Queue tabs read; the board fires <<KanbanChanged>> after each move/edit.
+        # Bind it so those sibling views + the tab badges refresh immediately
+        # instead of only on the next tab-switch (previously the event was dead —
+        # nothing listened for it).
+        self._board.bind("<<KanbanChanged>>", self._on_kanban_changed)
+        self._update_badges()
+
+    def _on_kanban_changed(self, _event=None):
+        """A card moved/edited on the Board: keep the other DB-backed views and
+        the tab counts in sync without waiting for a manual tab switch."""
+        try:
+            self._tracker.refresh()
+        except Exception:
+            pass
+        try:
+            self._queue.refresh(keep_selection=True)
+        except Exception:
+            pass
         self._update_badges()
 
     def _rebuild_tabs(self, select_index=None):

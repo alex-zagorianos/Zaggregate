@@ -64,14 +64,19 @@ def forward_targets(status: str) -> list[str]:
     return out
 
 
-def days_in_stage(row: dict, today=None) -> int | None:
-    """Whole days the application has sat in its current status, best-effort from
-    the row's own dates (no DB round-trip): the later of date_applied/date_added is
-    the reference for a fresh row. Returns None when no usable date is present.
+def days_in_stage(row: dict, today=None, entered_at: str | None = None) -> int | None:
+    """Whole days the application has sat in its CURRENT status. Returns None when
+    no usable date is present. ``today`` is injectable for deterministic tests.
 
-    A precise "entered this status at" would need status_history; the board keeps
-    it dependency-free and cheap by reading the row it already has. ``today`` is
-    injectable for deterministic tests.
+    Precedence for the reference date:
+      1. ``entered_at`` — the status_history timestamp of when the card actually
+         entered its current status (passed in by the widget via
+         tracker.service.entered_status_at). This is the true "days here" clock:
+         a card that applied 30 days ago but moved to 'interview' yesterday reads
+         "1 day here", not "30".
+      2. Fallback (no transition history — e.g. a row created directly at its
+         status): the later-of-applied/added heuristic. date_applied is the
+         meaningful clock once applied; before that, date_added.
     """
     from datetime import date
     if today is None:
@@ -81,13 +86,14 @@ def days_in_stage(row: dict, today=None) -> int | None:
             today = date.fromisoformat(today[:10])
         except ValueError:
             return None
-    ref = ""
-    # date_applied is the meaningful clock once applied; before that, date_added.
-    status = (row.get("status") or "")
-    if status not in ("interested",):
-        ref = (row.get("date_applied") or "").strip()
+    ref = (entered_at or "").strip()
     if not ref:
-        ref = (row.get("date_added") or "").strip()
+        # No entered-this-status timestamp: fall back to the row's own dates.
+        status = (row.get("status") or "")
+        if status not in ("interested",):
+            ref = (row.get("date_applied") or "").strip()
+        if not ref:
+            ref = (row.get("date_added") or "").strip()
     if not ref:
         return None
     try:
@@ -221,7 +227,16 @@ class KanbanTab(ttk.Frame):
                  font=theme.FONT_SM, anchor="w", justify="left",
                  wraplength=self._CARD_W - 20).pack(anchor="w")
 
-        dl = days_label(days_in_stage(row))
+        # "days here" measures time in the CURRENT stage: pull the status_history
+        # timestamp for when this card entered `status` (best-effort; None on a
+        # never-moved row falls back to the applied/added heuristic).
+        entered_at = None
+        try:
+            from tracker import service as tracker_service
+            entered_at = tracker_service.entered_status_at(row["id"], status)
+        except Exception:
+            entered_at = None
+        dl = days_label(days_in_stage(row, entered_at=entered_at))
         meta = tk.Frame(inner, bg=theme.SURFACE)
         meta.pack(fill="x", pady=(4, 0))
         if dl:
