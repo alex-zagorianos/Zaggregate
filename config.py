@@ -398,7 +398,8 @@ SEMANTIC_TITLE_VETO_SIM = 0.35
 SEMANTIC_TITLE_CAP = 0.6
 DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
                  "remoteok", "remotive", "jobicy", "himalayas", "hn",
-                 "weworkremotely", "workingnomads", "jooble", "careerjet"]
+                 "weworkremotely", "workingnomads", "jooble", "careerjet",
+                 "higheredjobs", "rnjobsite"]
 # weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
 # risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
 # OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
@@ -407,6 +408,12 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # now in the daily net but ALL THREE self-skip cleanly when their free key is
 # unset (build_clients logs a one-line skip), so a keyless user's daily run is
 # unchanged — they light up the moment a key is pasted into 'Connect job sources'.
+# higheredjobs + rnjobsite (2026-07-01, E2): free/keyless SECTOR RSS feeds
+# (education-family / nursing). They INDUSTRY-GATE at construction — inert (fetch
+# nothing) for any field that doesn't map (an eng/finance/trade/Alex project polls
+# neither), so adding them to the daily net is byte-identical for a non-education,
+# non-nursing user. jobsacuk (UK academic) is deliberately NOT here: it is opt-in
+# (config flag or non-US country) and stays out of a default US run.
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.
@@ -525,6 +532,35 @@ SERPAPI_MONTHLY_LIMIT = 250        # verified real free-tier cap (serpapi.com/pr
 # listing) — it may be legacy/deprecated. serpapi_client.py warns once (stderr)
 # if this engine yields no jobs_results rather than silently returning zero.
 SERPAPI_ENGINE = os.getenv("SERPAPI_ENGINE", "google_jobs")
+
+# SerpApi REACH PROBE (E2 / review P1 Tier A): the daily run's reach % can only be
+# certified when >=2 INDEPENDENT source families OVERLAP (a job seen by two of
+# them). The free families are largely disjoint today (f2=0 -> "cannot certify").
+# A tiny SerpApi Google-Jobs probe (1-2 queries/run, ~30-60/month, well inside the
+# 250/month free tier) issued and MERGED into the run's raw results BEFORE
+# estimate_reach gives capture-recapture the cross-family overlap it needs, so the
+# reach badge finally lights up. The probe jobs are REAL postings and also flow
+# into the normal scored pipeline (job_key dedup handles collisions).
+#
+# Default ON when a SerpApi key is present (Alex has one — intended). It never
+# runs without a key, and the MonthlyQuota inside SerpApiClient still bounds spend.
+# Turn OFF with REACH_PROBE=0 (env) or "reach_probe": false (user_config).
+REACH_PROBE = os.getenv("REACH_PROBE", "1") not in ("", "0", "false", "False", "no")
+# How many broadened-keyword probe queries to issue per run (1-2 recommended;
+# each is one SerpApi search against the monthly quota). Overridable via
+# user_config 'reach_probe_queries'.
+REACH_PROBE_QUERIES = int(os.getenv("REACH_PROBE_QUERIES", "2") or "2")
+
+
+def reach_probe_enabled(cfg: dict | None = None) -> bool:
+    """True when the SerpApi reach probe should run this daily pass: the
+    REACH_PROBE env flag (default ON) AND not explicitly disabled in user_config
+    ('reach_probe': false). Gating on an actual SerpApi key is the caller's job
+    (the probe self-skips without one). Read as a function so a test flipping the
+    config value is honored."""
+    if cfg is not None and "reach_probe" in cfg:
+        return bool(cfg.get("reach_probe"))
+    return REACH_PROBE
 
 # Socrata / SODA municipal job boards — free, no key required. Optional
 # X-App-Token (env SOCRATA_APP_TOKEN) raises the per-IP rate ceiling. City keys

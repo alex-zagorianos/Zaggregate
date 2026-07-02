@@ -37,3 +37,39 @@ def jobicy_industry(industry: Optional[str] = None) -> Optional[str]:
     its slug; unmapped non-eng -> None, which the client treats as 'skip Jobicy' (a
     tech-centric board with nothing for this field)."""
     return industry_profile.resolve(active_industry(industry)).jobicy_industry
+
+
+# ── sector-feed gating (E2) ───────────────────────────────────────────────────
+# The sector RSS clients (higheredjobs/rnjobsite/jobsacuk) are added to the
+# daily net but must be INERT for the wrong field: a welder's project must never
+# poll nursing feeds; an education field gets HigherEd automatically. Each client
+# owns its own industry->activate decision (its module-level helper), so the same
+# knowledge lives with the client. These thin wrappers let daily_run / the CLI
+# ask "does this sector source apply to this field?" without importing each client
+# module directly, mirroring the themuse/jobicy shims above.
+
+
+def higheredjobs_active(industry: Optional[str] = None) -> bool:
+    """True when HigherEdJobs should poll for this field (an education-family
+    industry). Empty/eng industry -> False (inert). Best-effort."""
+    from search.higheredjobs_client import _categories_for_industry
+    return bool(_categories_for_industry(active_industry(industry)))
+
+
+def rnjobsite_active(industry: Optional[str] = None) -> bool:
+    """True when RNJobSite should poll for this field (a nursing/clinical
+    industry). Empty/eng industry -> False (inert). Best-effort."""
+    from search.rnjobsite_client import _should_poll
+    return _should_poll(active_industry(industry))
+
+
+def sector_feed_applies(source: str, industry: Optional[str] = None) -> bool:
+    """Does a sector RSS `source` apply to this field? For sources with no
+    industry gate (or unknown), returns True (no-op). jobsacuk is opt-in (handled
+    at build time, not here) so it always returns True from this gate."""
+    s = (source or "").strip().lower()
+    if s == "higheredjobs":
+        return higheredjobs_active(industry)
+    if s == "rnjobsite":
+        return rnjobsite_active(industry)
+    return True
