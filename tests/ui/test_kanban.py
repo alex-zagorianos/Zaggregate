@@ -60,6 +60,21 @@ def test_days_in_stage_uses_applied_then_added():
         today="2026-07-02") == 0
 
 
+def test_days_in_stage_prefers_entered_at_over_applied_date():
+    # The "days here" clock must measure time IN THE CURRENT STAGE, not time
+    # since applying. A card applied 30 days ago that moved to 'interview'
+    # yesterday reads "1 day here" — the entered_at timestamp wins.
+    row = {"status": "interview", "date_applied": "2026-06-02",
+           "date_added": "2026-06-01"}
+    assert kanban.days_in_stage(row, today="2026-07-02",
+                                entered_at="2026-07-01") == 1
+    # Without an entered_at (no transition history), it falls back to the
+    # applied/added heuristic (unchanged legacy behavior).
+    assert kanban.days_in_stage(row, today="2026-07-02") == 30
+    # A blank/whitespace entered_at is treated as "no timestamp" -> fallback.
+    assert kanban.days_in_stage(row, today="2026-07-02", entered_at="  ") == 30
+
+
 def test_days_label_wording():
     assert kanban.days_label(0) == "today"
     assert kanban.days_label(1) == "1 day"
@@ -78,6 +93,36 @@ def test_group_by_status_buckets_and_drops_unknown():
     # unknown status is not on the board anywhere
     all_ids = [r["id"] for v in g.values() for r in v]
     assert 9 not in all_ids
+
+
+# ── entered_status_at over a real two-transition history (no display) ─────────
+
+def test_entered_status_at_uses_latest_transition_into_current_status(
+        tmp_path, monkeypatch):
+    # A card that moves applied -> phone_screen -> interview records a
+    # status_history row per transition; entered_status_at must return the
+    # timestamp of the transition INTO the current status (interview), not the
+    # older applied one.
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+    db.init_db()
+    from tracker import service as svc
+    jid = db.add_job("Controls Engineer", "Acme", status="applied",
+                     date_applied="2026-06-01")
+    svc.set_status(jid, "phone_screen")
+    svc.set_status(jid, "interview")
+    ts = svc.entered_status_at(jid)          # current status == interview
+    assert ts is not None
+    tl = svc.status_timeline(jid)
+    interview_events = [e for e in tl
+                        if e["new_status"] == "interview" and e["kind"] == "status"]
+    assert ts == interview_events[-1]["changed_at"]
+    # A note added at the current status (old==new) must NOT reset the clock.
+    svc.add_status_note(jid, "recruiter emailed")
+    assert svc.entered_status_at(jid) == ts
+    # A row created directly at a status and never moved has no transition into
+    # it -> None (so the badge falls back to the row's own dates).
+    jid2 = db.add_job("RN", "Mercy", status="interested")
+    assert svc.entered_status_at(jid2) is None
 
 
 # ── Headless widget build + a real move through the service ───────────────────

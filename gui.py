@@ -4929,6 +4929,25 @@ class App(tk.Tk):
         self._nb.add(self._board,   text="Board")
         self._nb.add(self._resume,  text="Resume Generator")
         self._nb.add(self._guide,   text="\N{BLACK QUESTION MARK ORNAMENT} Guide")
+        # A Board (Kanban) move mutates the same tracker.db the Tracker + Apply
+        # Queue tabs read; the board fires <<KanbanChanged>> after each move/edit.
+        # Bind it so those sibling views + the tab badges refresh immediately
+        # instead of only on the next tab-switch (previously the event was dead —
+        # nothing listened for it).
+        self._board.bind("<<KanbanChanged>>", self._on_kanban_changed)
+        self._update_badges()
+
+    def _on_kanban_changed(self, _event=None):
+        """A card moved/edited on the Board: keep the other DB-backed views and
+        the tab counts in sync without waiting for a manual tab switch."""
+        try:
+            self._tracker.refresh()
+        except Exception:
+            pass
+        try:
+            self._queue.refresh(keep_selection=True)
+        except Exception:
+            pass
         self._update_badges()
 
     def _rebuild_tabs(self, select_index=None):

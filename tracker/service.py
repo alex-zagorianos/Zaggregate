@@ -67,6 +67,12 @@ def status_timeline(job_id: int) -> list[dict]:
     return db.status_timeline(job_id)
 
 
+def entered_status_at(job_id: int, status: str | None = None) -> str | None:
+    """When the application last entered its current (or given) status — for the
+    Board's time-in-stage badge. None when it never transitioned into it."""
+    return db.entered_status_at(job_id, status)
+
+
 def add_interview_round(app_id: int, **fields) -> int:
     return db.add_interview_round(app_id, **fields)
 
