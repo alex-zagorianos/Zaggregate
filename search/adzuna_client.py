@@ -63,6 +63,15 @@ class AdzunaClient(JobAPIClient):
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
+                # The _remote_intent flag is stripped before caching (cache stays
+                # API-shaped), so RE-DERIVE it on read from the same `remote`
+                # boolean this search already computed. Without this, a cached
+                # remote-only response loses its (Remote) row tags and those
+                # fan-out metro rows score location=0 against a Remote search and
+                # drop out of Top Picks on every search after the first (24h TTL).
+                if remote:
+                    cached = dict(cached)
+                    cached["_remote_intent"] = True
                 return cached
 
         self.limiter.acquire()
