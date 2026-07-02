@@ -21,12 +21,24 @@ def _companies_file(tmp_path, records):
 
 
 def _stub_probe(monkeypatch, mapping):
-    """Stub probe_count keyed by the slug the entry is probed with. The script
-    binds `probe_count` at import (from scrape.ats_detect import probe_count), so
-    patch the name in the SCRIPT module, not the origin module."""
+    """Stub probe_board keyed by the slug the entry is probed with. The script
+    binds `probe_board` at import (from scrape.ats_detect import probe_board), so
+    patch the name in the SCRIPT module, not the origin module.
+
+    `mapping` values may be a bare int|None (legacy count) or a (count, reachable)
+    tuple. A bare int>0 is reachable; a bare None is unreachable (walled/dead); a
+    bare 0 is reachable-but-empty (a genuinely-live board with 0 open jobs)."""
+    from scrape.ats_detect import ProbeResult
+
     def fake(entry):
-        return mapping.get(entry.slug)
-    monkeypatch.setattr(mig, "probe_count", fake)
+        v = mapping.get(entry.slug)
+        if isinstance(v, tuple):
+            count, reachable = v
+            return ProbeResult(count, reachable)
+        if v is None:
+            return ProbeResult(None, False)          # walled/dead -> unreachable
+        return ProbeResult(v, True)                  # int (incl. 0) -> reachable
+    monkeypatch.setattr(mig, "probe_board", fake)
 
 
 def test_candidates_are_direct_workday_urls_and_legacy_workday(tmp_path):
@@ -101,7 +113,9 @@ def test_dead_or_walled_row_left_untouched(tmp_path, monkeypatch):
          "industries": []},
     ]
     p = _companies_file(tmp_path, records)
-    # 422/dead -> probe returns None; empty board -> 0. Neither may be relabeled.
+    # 422/Cloudflare-walled -> unreachable (count None); genuinely-live-but-empty
+    # board -> reachable, 0 jobs. NEITHER may be relabeled (never relabel a 0-job
+    # board), but the report must say WHICH honestly.
     _stub_probe(monkeypatch, {"fedex:1:careers": None, "empty:5:Ext": 0})
     rep = mig.migrate(p, apply=True)
     assert rep["migrated"] == 0 and rep["wrote"] is False
@@ -109,8 +123,13 @@ def test_dead_or_walled_row_left_untouched(tmp_path, monkeypatch):
                json.loads(p.read_text(encoding="utf-8"))["companies"]}
     assert on_disk["Walled WD"]["ats_type"] == "direct"        # untouched
     assert on_disk["Empty WD"]["ats_type"] == "workday"        # untouched
-    actions = {r["name"]: r["action"] for r in rep["rows"]}
-    assert actions == {"Walled WD": "leave", "Empty WD": "leave"}
+    rows = {r["name"]: r for r in rep["rows"]}
+    assert rows["Walled WD"]["action"] == "leave"
+    assert rows["Empty WD"]["action"] == "leave"
+    # The signal the smoke test wanted: a walled tenant reads as unreachable, not
+    # "empty"; a genuinely-live 0-job board reads as live-but-empty.
+    assert "unreachable" in rows["Walled WD"]["detail"]
+    assert "live-but-empty" in rows["Empty WD"]["detail"]
 
 
 def test_no_probe_never_migrates(tmp_path):

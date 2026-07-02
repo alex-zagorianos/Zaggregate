@@ -71,6 +71,31 @@ def test_clip_unreachable_board_is_failed_not_saved(companies):
     assert "Deadco" not in {e.name for e in get_registry(user_json=companies)}
 
 
+def test_clip_workday_cxs_walled_is_failed_not_saved(companies):
+    """A clip of a 422-walled Workday tenant (probe_board -> reachable=False) is a
+    failure verdict and is NOT written — same bucket as any unreachable board."""
+    from scrape.ats_detect import ProbeResult
+    v = clip_board("https://fedex.wd5.myworkdayjobs.com/en-US/careers", "",
+                   industry="warehouse logistics", json_path=companies,
+                   probe_fn=lambda e: ProbeResult(None, False))
+    assert v["status"] == "failed" and v["reason"] == "unreachable"
+    assert v["ats_type"] == "workday_cxs"
+    assert not companies.exists()
+
+
+def test_clip_workday_cxs_live_empty_is_added(companies):
+    """A clip of a genuinely-live Workday board with 0 open jobs (probe_board ->
+    reachable=True, count 0) verifies and IS saved (live_count 0)."""
+    from scrape.ats_detect import ProbeResult
+    v = clip_board("https://liveco.wd1.myworkdayjobs.com/en-US/External", "",
+                   industry="", json_path=companies,
+                   probe_fn=lambda e: ProbeResult(0, True))
+    assert v["status"] == "added"
+    assert v["ats_type"] == "workday_cxs"
+    assert v["live_count"] == 0
+    assert "Liveco" in {e.name for e in get_registry(user_json=companies)}
+
+
 @pytest.mark.parametrize("url", [
     "https://www.google.com/search?q=jobs",   # off-board search result
     "https://careers.acme.com/openings",       # generic careers page ('direct')

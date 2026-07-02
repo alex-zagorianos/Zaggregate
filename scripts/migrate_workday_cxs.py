@@ -33,7 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from scrape.ats_detect import probe_count
+from scrape.ats_detect import probe_board
 from scrape.company_registry import CompanyEntry
 from scrape.workday_cxs_scraper import derive_slug
 
@@ -106,9 +106,10 @@ def migrate(json_path: Path, *, apply: bool = False, limit: int | None = None,
         if probe:
             entry = CompanyEntry(name=name, ats_type="workday_cxs", slug=target,
                                  industries=list(c.get("industries") or []))
-            n = probe_count(entry)
+            pr = probe_board(entry)
+            n, reachable = pr.count, pr.reachable
         else:
-            n = None
+            n, reachable = None, False
 
         if n and n > 0:
             rows.append({"name": name, "from": ats, "slug": target,
@@ -119,10 +120,19 @@ def migrate(json_path: Path, *, apply: bool = False, limit: int | None = None,
                 c["slug"] = target
                 migrated += 1
         else:
-            why = "0 jobs / probe skipped" if (n == 0 or n is None) else str(n)
+            # Both a walled/dead board and a genuinely-live-but-empty one are LEFT
+            # untouched (never relabel a 0-job board), but say WHICH honestly using
+            # the reachability signal: reachable-but-0 = live-empty; not reachable
+            # = 422/Cloudflare wall or gone; no probe = offline preview.
+            if not probe:
+                why = "probe skipped"
+            elif reachable:
+                why = "reachable, 0 open jobs (live-but-empty)"
+            else:
+                why = "unreachable (422/wall/dead)"
             rows.append({"name": name, "from": ats, "slug": target,
                          "count": n, "action": "leave",
-                         "detail": f"422/dead/empty ({why}) -- untouched"})
+                         "detail": f"{why} -- untouched"})
 
     wrote = False
     if apply and migrated:

@@ -265,6 +265,42 @@ def test_apply_seed_lines_live_probe_verifies(isolated, monkeypatch):
     assert res["verified"] == 1 and res["unverified"] == 0
 
 
+# ── P0-6 verdict fix: walled workday_cxs is UNREACHABLE, live-empty is VERIFIED ─
+def test_apply_seed_lines_workday_cxs_walled_is_unreachable(isolated, monkeypatch):
+    # The exact smoke-test defect: a 422-walled Workday tenant (FedEx/AutoZone/
+    # Nike) must be flagged-unverified (unreachable), NOT saved as "live (0 open
+    # jobs)". probe_board returns reachable=False for a walled tenant.
+    from scrape import ats_detect
+    monkeypatch.setattr(ats_detect, "probe_board",
+                        lambda e: ats_detect.ProbeResult(None, False))
+    lines = "FedEx | https://fedex.wd5.myworkdayjobs.com/en-US/careers\n"
+    res = ai_setup.apply_seed_lines(lines, industry="warehouse logistics", probe=True)
+    v = res["verdicts"][0]
+    assert v["ats_type"] == "workday_cxs"
+    assert v["verdict"] == "unreachable"
+    assert res["verified"] == 0 and res["unverified"] == 1
+    # Saved but flagged so it's excluded from scraping (re-verify upgrade applies).
+    saved = json.loads(config.COMPANIES_JSON.read_text(encoding="utf-8"))
+    by_name = {c["name"]: c for c in saved["companies"] if "_example" not in c}
+    assert by_name["FedEx"]["extra"]["unverified"] is True
+
+
+def test_apply_seed_lines_workday_cxs_live_empty_is_verified(isolated, monkeypatch):
+    # A genuinely-live Workday board with 0 open jobs is REACHABLE -> verified
+    # (live, 0 open jobs), NOT flagged unverified.
+    from scrape import ats_detect
+    monkeypatch.setattr(ats_detect, "probe_board",
+                        lambda e: ats_detect.ProbeResult(0, True))
+    lines = "LiveCo | https://liveco.wd1.myworkdayjobs.com/en-US/External\n"
+    res = ai_setup.apply_seed_lines(lines, industry="engineering", probe=True)
+    v = res["verdicts"][0]
+    assert v["verdict"] == "live" and v["count"] == 0
+    assert res["verified"] == 1 and res["unverified"] == 0
+    saved = json.loads(config.COMPANIES_JSON.read_text(encoding="utf-8"))
+    by_name = {c["name"]: c for c in saved["companies"] if "_example" not in c}
+    assert "extra" not in by_name["LiveCo"] or not by_name["LiveCo"].get("extra")
+
+
 def test_apply_seed_lines_skips_already_registered(isolated, monkeypatch):
     from scrape import company_registry
     from scrape.company_registry import CompanyEntry
