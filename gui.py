@@ -4140,12 +4140,18 @@ class App(tk.Tk):
             if actions.get("daily_updates"):
                 self._register_daily_updates()
             # Closing-step: open Build-My-List unconditionally when opted in, so a
-            # fresh user's 'careers' searches have employers to scrape.
+            # fresh user's 'careers' searches have employers to scrape. Block on
+            # it (wait_window) so the "Update your Inbox now?" prompt below is
+            # offered AFTER the user finishes Build-My-List, not stacked on top of
+            # its still-open modal (both grab_set() otherwise — a two-modal
+            # collision). BuildCompanyListDialog does its work on threads, so
+            # waiting only holds until the user closes it.
             if actions.get("build_list"):
                 try:
-                    BuildCompanyListDialog(
+                    dlg = BuildCompanyListDialog(
                         self, default_industry=actions.get("industry", ""),
                         default_metro=actions.get("location", ""))
+                    self.wait_window(dlg)
                 except Exception:
                     pass
             # Forced first action (§6.5): the terminal action is "Update my Inbox
@@ -4901,13 +4907,25 @@ class App(tk.Tk):
         self._refresh_projectbar()
         self._rebuild_tabs()
         self._update_title()
-        # Onboard the new person's profile into the now-active project.
+        # Onboard the new person's profile into the now-active project. Use the
+        # SAME 2-arg finish handler as first-run so the wizard's closing "Keep
+        # jobs coming" step is honored here too (daily-updates registration,
+        # Build-My-List, and the forced first Inbox update) — a 1-arg lambda
+        # silently drops those actions (setup_wizard._close arity dispatch).
         try:
             from ui import setup_wizard
-            setup_wizard.run(self, on_finish=lambda applied: (
-                self._rebuild_tabs(), self._update_title()))
+            setup_wizard.run(self, on_finish=self._after_new_person_setup)
         except Exception:
             pass
+
+    def _after_new_person_setup(self, applied: bool, actions: dict | None = None):
+        """New-person finish: keep the title in sync with the freshly-created
+        project, then delegate to the shared closing-step handler so an
+        additional profile gets the same daily-updates / Build-My-List / forced
+        Inbox-update treatment as first-run (finding: New-person wizard silently
+        discarded the closing step)."""
+        self._update_title()
+        self._after_setup(applied, actions)
 
     # ── tabs ───────────────────────────────────────────────────────────────────
     def _build_tabs(self):
