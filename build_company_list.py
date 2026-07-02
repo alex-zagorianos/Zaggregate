@@ -13,6 +13,9 @@ four separate scripts. This module orchestrates the EXISTING pieces:
                                                               [discover.dataset_seed]
   4. CLASSIFY         (optional) relevance gate applied to the dataset seed.
                                                                  [discover.classify]
+  4c. SEED MY AREA    (optional, --seed-metro) local employers from the
+                      CareerOneStop Business Finder directory (zero-AI, key-gated),
+                      probe-verified.                          [discover.seed_metro]
   5. REPORT           registry stats + loop-until-dry signal for the field.
                                         [scrape.company_registry / coverage.*]
 
@@ -28,6 +31,7 @@ Examples:
   py build_company_list.py --print-prompt > prompt.txt       # no API key: bridge
   py build_company_list.py --in reply.json                   # feed the pasted reply
   py build_company_list.py --industry nursing --metro "Columbus, OH" --dry-run
+  py build_company_list.py --seed-metro --industry nursing --metro "Boise, ID"  # CareerOneStop dir
 """
 from __future__ import annotations
 
@@ -271,12 +275,31 @@ def _jobhive_stage(industry: str, dry_run: bool, log=print) -> dict:
             "added": result.get("added", 0)}
 
 
+# ── stage: seed-my-area (CareerOneStop Business Finder — zero-AI verified dir) ──
+def _seed_metro_stage(*, metro: str, industry: str, limit: int, dry_run: bool,
+                      log=print) -> dict:
+    """Seed the registry from the CareerOneStop Business Finder directory: local
+    employers -> live-ATS-board probe -> save VERIFIED only (P0-6), field+metro
+    tagged. Key-gated + fail-soft; a keyless user gets an honest one-line skip.
+    Reuses the SAME resolve+verify machinery as the LLM enumerate stage."""
+    print = log
+    try:
+        from discover.seed_metro import seed_my_metro
+    except ImportError:
+        print("[seed-metro] discover/seed_metro.py unavailable -- skipping.")
+        return {"skipped": "module not available"}
+    res = seed_my_metro(industry=industry, metro=metro, limit=limit,
+                        dry_run=dry_run, log=log)
+    return res.as_dict()
+
+
 # ── orchestrator ─────────────────────────────────────────────────────────────────
 def build_company_list(*, project: str | None = None, metro: str | None = None,
                        industry: str | None = None, national: bool = False,
                        dataset: str | None = None, use_inbox: bool = True,
                        print_prompt: bool = False, in_file: str | None = None,
                        classify: bool = False, jobhive: bool = False,
+                       seed_metro: bool = False, seed_limit: int | None = None,
                        dry_run: bool = False,
                        api_key: str | None = None, log=print) -> dict:
     """Build (or grow) a target-company list for the active/named project's field
@@ -360,6 +383,19 @@ def build_company_list(*, project: str | None = None, metro: str | None = None,
     else:
         summary["stages"]["jobhive"] = None
 
+    # 4c ── seed-my-area (CareerOneStop Business Finder — zero-AI verified dir) ────
+    if seed_metro:
+        print("== Seed my area (CareerOneStop) ==")
+        try:
+            summary["stages"]["seed_metro"] = _seed_metro_stage(
+                metro=resolved_metro, industry=resolved_industry,
+                limit=seed_limit or 40, dry_run=dry_run, log=log)
+        except Exception as e:
+            print(f"[seed-metro] unexpected failure ({type(e).__name__}: {e}) -- skipping.")
+            summary["stages"]["seed_metro"] = {"error": str(e)}
+    else:
+        summary["stages"]["seed_metro"] = None
+
     # 5 ── report ────────────────────────────────────────────────────────────────
     print("== Registry report ==")
     try:
@@ -424,6 +460,11 @@ def main(argv=None) -> int:
     ap.add_argument("--jobhive", action="store_true",
                     help="Also bulk-seed from the jobhive open dataset, scoped to this field "
                          "(streamed + byte-bounded + probe-verified)")
+    ap.add_argument("--seed-metro", dest="seed_metro", action="store_true",
+                    help="Seed local employers from the CareerOneStop Business Finder "
+                         "directory (zero-AI; needs a free CareerOneStop key), probe-verified")
+    ap.add_argument("--seed-limit", dest="seed_limit", type=int, default=40,
+                    help="Max employers to probe per --seed-metro run (default 40)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Resolve + verify but never write companies.json")
     ap.add_argument("--json", action="store_true",
@@ -435,7 +476,9 @@ def main(argv=None) -> int:
             project=args.project, metro=args.metro, industry=args.industry,
             national=args.national, dataset=args.dataset, use_inbox=args.use_inbox,
             print_prompt=args.print_prompt, in_file=args.in_file,
-            classify=args.classify, jobhive=args.jobhive, dry_run=args.dry_run)
+            classify=args.classify, jobhive=args.jobhive,
+            seed_metro=args.seed_metro, seed_limit=args.seed_limit,
+            dry_run=args.dry_run)
     except ValueError as e:
         print(f"error: {e}")
         return 2

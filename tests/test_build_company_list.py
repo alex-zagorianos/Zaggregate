@@ -382,3 +382,85 @@ def test_cli_missing_field_returns_error_code(capsys):
     rc = bcl.main([])
     assert rc == 2
     assert "error:" in capsys.readouterr().out
+
+
+# ── seed-my-area stage wiring (CareerOneStop Business Finder) ─────────────────
+def _stub_seed_metro(monkeypatch, fn):
+    """Inject a fake discover.seed_metro (lazily imported by the seed stage)."""
+    mod = types.ModuleType("discover.seed_metro")
+    mod.seed_my_metro = fn
+    monkeypatch.setitem(sys.modules, "discover.seed_metro", mod)
+
+
+class _SeedRes:
+    def __init__(self, **kw):
+        self._d = {"industry": "", "metro": "", "has_key": True, "discovered": 0,
+                   "with_domain": 0, "already_known": 0, "verified": 0, "added": 0,
+                   "drop_reasons": {}, "note": ""}
+        self._d.update(kw)
+
+    def as_dict(self):
+        return dict(self._d)
+
+
+def test_seed_metro_off_by_default(monkeypatch):
+    def fail(*a, **k):
+        raise AssertionError("seed_my_metro must not run unless seed_metro=True")
+
+    _stub_seed_metro(monkeypatch, fail)
+    monkeypatch.setattr(bcl, "enumerate_via_api", lambda *a, **k: [])
+    monkeypatch.setattr(bcl, "resolve_and_verify", lambda *a, **k: ([], []))
+
+    summary = bcl.build_company_list(industry="nursing", metro="Boise",
+                                     use_inbox=False, api_key="sk-fake")
+    assert summary["stages"]["seed_metro"] is None
+
+
+def test_seed_metro_flag_runs_stage(monkeypatch):
+    seen = {}
+
+    def fake_seed(*, industry, metro, limit, dry_run, log):
+        seen["industry"] = industry
+        seen["metro"] = metro
+        seen["limit"] = limit
+        return _SeedRes(industry=industry, metro=metro, discovered=5,
+                        verified=2, added=2)
+
+    _stub_seed_metro(monkeypatch, fake_seed)
+    monkeypatch.setattr(bcl, "enumerate_via_api", lambda *a, **k: [])
+    monkeypatch.setattr(bcl, "resolve_and_verify", lambda *a, **k: ([], []))
+
+    summary = bcl.build_company_list(industry="nursing", metro="Boise, ID",
+                                     use_inbox=False, api_key="sk-fake",
+                                     seed_metro=True, seed_limit=15)
+    assert seen == {"industry": "nursing", "metro": "Boise, ID", "limit": 15}
+    stage = summary["stages"]["seed_metro"]
+    assert stage["added"] == 2 and stage["discovered"] == 5
+
+
+def test_seed_metro_missing_module_is_skipped(monkeypatch):
+    monkeypatch.setitem(sys.modules, "discover.seed_metro", None)
+    monkeypatch.setattr(bcl, "enumerate_via_api", lambda *a, **k: [])
+    monkeypatch.setattr(bcl, "resolve_and_verify", lambda *a, **k: ([], []))
+
+    summary = bcl.build_company_list(industry="nursing", metro="Boise",
+                                     use_inbox=False, api_key="sk-fake",
+                                     seed_metro=True)
+    assert summary["stages"]["seed_metro"] == {"skipped": "module not available"}
+
+
+def test_cli_seed_metro_flag_threads_through(monkeypatch):
+    seen = {}
+
+    def fake_seed(*, industry, metro, limit, dry_run, log):
+        seen["limit"] = limit
+        return _SeedRes(added=1)
+
+    _stub_seed_metro(monkeypatch, fake_seed)
+    monkeypatch.setattr(bcl, "enumerate_via_api", lambda *a, **k: [])
+    monkeypatch.setattr(bcl, "resolve_and_verify", lambda *a, **k: ([], []))
+
+    rc = bcl.main(["--industry", "nursing", "--metro", "Boise", "--no-inbox",
+                   "--seed-metro", "--seed-limit", "7"])
+    assert rc == 0
+    assert seen["limit"] == 7

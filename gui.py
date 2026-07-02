@@ -3846,6 +3846,8 @@ class App(tk.Tk):
                            command=self._show_settings)
         toolsm.add_command(label="Connect job sources…",
                            command=self._show_source_keys)
+        toolsm.add_command(label="Seed my area (find local employers)…",
+                           command=self._show_seed_area)
         toolsm.add_separator()
         toolsm.add_command(label="Enable stealth fetching (downloads browser)…",
                            command=self._enable_stealth)
@@ -4109,6 +4111,26 @@ class App(tk.Tk):
             source_keys.open_dialog(self)
         except Exception as e:
             messagebox.showerror("Connect job sources", str(e), parent=self)
+
+    def _show_seed_area(self):
+        """Open the 'Seed my area' dialog: discover local employers from the
+        CareerOneStop Business Finder directory, probe each for a live ATS board,
+        and add the verified ones to the company list (tagged for this field +
+        metro). The dialog is key-gated and honest when no CareerOneStop key is
+        set (it routes to the keys dialog). Guarded so a missing/failed module
+        degrades gracefully instead of crashing the GUI."""
+        try:
+            from ui import seed_area
+        except ImportError:
+            messagebox.showinfo(
+                "Seed my area",
+                "Local-employer seeding isn't available in this build yet.",
+                parent=self)
+            return
+        try:
+            seed_area.open_dialog(self)
+        except Exception as e:
+            messagebox.showerror("Seed my area", str(e), parent=self)
 
     def _toggle_browser_capture(self):
         """Start/stop the browser-extension receiver (Flask) as a daemon thread
