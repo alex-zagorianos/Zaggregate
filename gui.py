@@ -50,8 +50,8 @@ from claude_bridge import (
     build_fit_prompt, parse_fit_response, profile_summary,
 )
 from match import ghost as ghostmod
-from match import skillgap as skillgapmod
 from match import comp as compmod
+from match import ats_hint as atshintmod
 from match.scorer import score_breakdown, extract_skill_terms
 from tracker import analytics as analyticsmod
 from scrape.inbox_health import prune_inbox
@@ -1756,19 +1756,22 @@ class InboxTab(ttk.Frame):
             lines.append("Captured while browsing: " + summary)
 
         desc = r.get("description") or ""
-        if desc.strip():
-            if self._skill_terms is None:
-                try:
-                    self._skill_terms = extract_skill_terms()
-                except Exception:
-                    self._skill_terms = frozenset()
+        # Free local "ATS match hint" (Jobscan-lite, SB-6): name the ATS the
+        # posting runs on (from its URL) and the local keyword overlap between the
+        # user's skills and the JD — honest guidance, no AI, no network, no fake
+        # "ATS score". ats_hint reuses the same skill-gap machinery as before.
+        if self._skill_terms is None:
             try:
-                gap = skillgapmod.skill_gap(desc, skill_terms=self._skill_terms)
-                if gap["missing"]:
-                    lines.append("Job also wants (not in your skills): "
-                                 + ", ".join(gap["missing"][:8]))
+                self._skill_terms = extract_skill_terms()
             except Exception:
-                pass
+                self._skill_terms = frozenset()
+        try:
+            hint = atshintmod.match_hint(
+                desc, r.get("url", ""), skill_terms=self._skill_terms)
+            for line in atshintmod.hint_lines(hint):
+                lines.append(line)
+        except Exception:
+            pass
 
         try:
             g = ghostmod.ghost_score(r)
@@ -3405,6 +3408,15 @@ class ApplyQueueTab(ttk.Frame):
         bits = []
         if j.get("fit_rationale"):
             bits.append(j["fit_rationale"])
+        # ATS hint (SB-6): naming the applicant-tracking system at apply time lets
+        # the user format their resume for that parser. From the URL only — no
+        # network, no AI. The fuller keyword-overlap read lives in the Inbox detail.
+        try:
+            ats = atshintmod.ats_label(j.get("url", ""))
+            if ats:
+                bits.append(f"Applies through {ats}")
+        except Exception:
+            pass
         # Referral nudge: surface known contacts at this company (highest-
         # conversion channel). contacts_for_company is queried through the service.
         hint = tracker_service.referral_hint(j.get("company", ""))
