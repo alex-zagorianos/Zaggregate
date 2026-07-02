@@ -59,6 +59,7 @@ DEFAULT_MANIFEST_URL = "https://storage.stapply.ai/jobhive/v1/manifest.json"
 # — the only ones worth bulk-seeding from jobhive; the manifest lists ~47 platforms,
 # most of which we have no scraper for (and adding one is a separate, larger task).
 SEEDABLE_ATS = ["greenhouse", "lever", "ashby", "smartrecruiters", "workday",
+                "workday_cxs",   # Workday URLs resolve to the public cxs JSON reader
                 "workable", "recruitee", "personio", "rippling", "bamboohr",
                 # E1 wave-2 small ATSes: subdomain-keyed, scrapable from the
                 # jobhive row's URL alone (detect_ats resolves them), no
