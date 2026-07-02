@@ -9,6 +9,7 @@ from config import (
 from models import JobResult
 from search.base_client import JobAPIClient
 from search.http_util import FileCache, RateLimiter, cache_key, make_session, to_float
+from search.remote_intent import is_remote_only
 
 
 class AdzunaClient(JobAPIClient):
@@ -48,7 +49,17 @@ class AdzunaClient(JobAPIClient):
         salary_min: Optional[int] = None,
         page: int = 1,
     ) -> dict:
-        key = cache_key("adzuna", self.country, keyword, location, salary_min, page)
+        # Remote-only intent: geocoding the literal string "Remote" into `where`
+        # returns 0 (Adzuna resolves it to no place). Per the documented remote
+        # strategy (research-sources §3/§G), instead put "remote" into `what`
+        # (which Adzuna appends to remote postings' title/description) and blank
+        # `where` so the search runs nationwide. Non-remote locations are
+        # UNCHANGED — the branch below is skipped and `where` carries the metro.
+        remote = is_remote_only(location)
+        what = f"remote {keyword}".strip() if remote else keyword
+        where = "" if remote else location
+
+        key = cache_key("adzuna", self.country, what, where, salary_min, page)
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
@@ -60,31 +71,55 @@ class AdzunaClient(JobAPIClient):
         params = {
             "app_id": self.app_id,
             "app_key": self.app_key,
-            "what": keyword,
-            "where": location,
+            "what": what,
             "results_per_page": ADZUNA_RESULTS_PER_PAGE,
             "content-type": "application/json",
         }
+        # Only send `where` when it's a real place — an empty `where` on the
+        # remote path means "nationwide" (omitting it is the compliant way to
+        # avoid the geocode-to-nothing that produced the 0-result bug).
+        if where:
+            params["where"] = where
         if salary_min is not None:
             params["salary_min"] = salary_min
 
         response = self.session.get(url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
+        # Mark the payload so parse_results can tag rows as remote-acceptable
+        # (survive the downstream location gate for a remote_ok user). This key
+        # is stripped before caching so cache contents stay API-shaped.
+        if remote:
+            data = dict(data)
+            data["_remote_intent"] = True
 
         if self.cache_enabled:
-            self.cache.put(key, data)
+            to_cache = {k: v for k, v in data.items() if k != "_remote_intent"}
+            self.cache.put(key, to_cache)
 
         return data
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
+        remote_intent = bool(raw.get("_remote_intent"))
         results = []
         for item in raw.get("results", []):
+            loc = (item.get("location") or {}).get("display_name", "Unknown")
+            # On the remote path, tag a row as remote ONLY when its own
+            # title/description actually says "remote" — Adzuna fan-copies remote
+            # jobs across the 10 largest metros with "remote" appended, so this is
+            # a reliable per-row signal (research-sources §G) and avoids labeling a
+            # non-remote row remote. Keeps the origin metro ("Austin, TX" ->
+            # "Austin, TX (Remote)") so the downstream location gate keeps it for
+            # a remote_ok user while the real city stays visible.
+            if remote_intent and loc and "remote" not in loc.lower():
+                blob = f"{item.get('title', '')} {item.get('description', '')}".lower()
+                if "remote" in blob:
+                    loc = f"{loc} (Remote)"
             results.append(
                 JobResult(
                     title=item.get("title", "Unknown"),
                     company=(item.get("company") or {}).get("display_name", "Unknown"),
-                    location=(item.get("location") or {}).get("display_name", "Unknown"),
+                    location=loc,
                     salary_min=to_float(item.get("salary_min")),
                     salary_max=to_float(item.get("salary_max")),
                     description=item.get("description", ""),

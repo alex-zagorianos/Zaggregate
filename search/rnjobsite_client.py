@@ -145,10 +145,27 @@ class RNJobSiteClient(SingleFeedClient):
                 if link:
                     seen.add(link)
                 items.append(it)
-        return {"items": items}
+        # This is a NATIONAL feed (no location filter); its rows carry real cities
+        # that otherwise die at the metro location gate (244 -> 0 for a metro-bound
+        # nurse). Thread the search location so parse_results can localize to the
+        # user's metro (real locality) or, on a remote-only search, tag rows as
+        # nationwide so they survive per remote_ok. Empty location = no gating.
+        return {"items": items, "_location": location or ""}
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches
+        from search.remote_intent import (
+            is_remote_only, metro_variant_set, remote_region_of,
+            tag_nationwide_remote)
+        location = raw.get("_location", "") or ""
+        remote = is_remote_only(location)
+        region = remote_region_of(location) if remote else None
+        # Localize only when we resolved real metro variants — an unresolvable
+        # location must NOT drop every row (fail open, like the downstream gate).
+        metro_variants = None
+        if location and not remote:
+            mv = metro_variant_set(location)
+            metro_variants = mv or None
         results = []
         for item in raw.get("items", []) or []:
             title = (item.get("title", "") or "").strip()
@@ -157,11 +174,25 @@ class RNJobSiteClient(SingleFeedClient):
             desc = self.strip_html(item.get("description", "") or "")
             if not keyword_matches(source_keyword, f"{title} {desc}"):
                 continue
+            row_loc = (item.get("location", "") or "").strip()
+            if remote:
+                # Genuinely-nationwide search: keep the row, mark it remote/US so
+                # the location gate keeps it per remote_ok (origin city preserved).
+                row_loc = tag_nationwide_remote(row_loc, region)
+            elif metro_variants is not None:
+                # Metro-bound search: localize this national feed to the user's
+                # metro. Drop rows whose stated city is NOT in the target metro
+                # (and NOT already remote) — real localization, no faked locality.
+                low = row_loc.lower()
+                is_remote_row = "remote" in low
+                if row_loc and not is_remote_row and not any(
+                        v in low for v in metro_variants):
+                    continue
             link = item.get("link", "") or ""
             results.append(JobResult(
                 title=title,
                 company=(item.get("company", "") or "Unknown").strip() or "Unknown",
-                location=(item.get("location", "") or "").strip(),
+                location=row_loc,
                 salary_min=None,
                 salary_max=None,
                 description=desc[:3000],

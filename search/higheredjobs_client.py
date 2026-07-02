@@ -177,10 +177,24 @@ class HigherEdJobsClient(SingleFeedClient):
         items: list[dict] = []
         for cat_id in self.cat_ids:
             items.extend(self._fetch_category(cat_id))
-        return {"items": items}
+        # National feed (rows carry real "City, State"): thread the search
+        # location so parse_results can localize to the user's metro or, on a
+        # remote-only search, tag rows nationwide so they survive per remote_ok.
+        return {"items": items, "_location": location or ""}
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches
+        from search.remote_intent import (
+            is_remote_only, metro_variant_set, remote_region_of,
+            tag_nationwide_remote)
+        search_loc = raw.get("_location", "") or ""
+        remote = is_remote_only(search_loc)
+        region = remote_region_of(search_loc) if remote else None
+        # Localize only when we resolved real variants (unresolvable -> fail open).
+        metro_variants = None
+        if search_loc and not remote:
+            mv = metro_variant_set(search_loc)
+            metro_variants = mv or None
         results = []
         for item in raw.get("items", []) or []:
             title = (item.get("title", "") or "").strip()
@@ -191,6 +205,14 @@ class HigherEdJobsClient(SingleFeedClient):
             # not a body, so it isn't useful match text — match the title).
             if not keyword_matches(source_keyword, title):
                 continue
+            if remote:
+                location = tag_nationwide_remote(location, region)
+            elif metro_variants is not None:
+                low = (location or "").lower()
+                is_remote_row = "remote" in low
+                if location and not is_remote_row and not any(
+                        v in low for v in metro_variants):
+                    continue
             link = item.get("link", "") or ""
             results.append(JobResult(
                 title=title,
