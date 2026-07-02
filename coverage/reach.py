@@ -198,10 +198,27 @@ def persist_reach(est: ReachEstimate, *, project: str = "") -> Path:
     return latest
 
 
+def _serpapi_key_present() -> bool:
+    """True if a SerpApi key is configured (env or secrets). Used to decide
+    whether the non-certifiable badge should suggest adding one — the reach probe
+    that unlocks certification needs it. Best-effort; False on any error."""
+    try:
+        import config
+        key = config.SERPAPI_KEY or config.read_secret("serpapi_key")
+        return bool(key)
+    except Exception:
+        return False
+
+
 def badge_line(snap: dict | None) -> str:
     """One-line reach badge from a persisted snapshot dict (see load_latest) —
     for the GUI/CLI. Blank when there's no snapshot; a qualified percentage only
-    when the estimate is certifiable, else an honest 'not yet certifiable'."""
+    when the estimate is certifiable, else an honest 'not yet certifiable'.
+
+    When NOT certifiable and no SerpApi key is configured, the badge names the
+    single action that unlocks certification — a SerpApi key (its Google-Jobs
+    probe gives capture-recapture the cross-source overlap it needs). With a key
+    already present the hint is omitted (adding one wouldn't help)."""
     if not snap:
         return ""
     nd, nf = snap.get("n_distinct"), snap.get("n_families")
@@ -212,7 +229,10 @@ def badge_line(snap: dict | None) -> str:
                 and ci[0] is not None and ci[1] is not None):
             s += f" ({ci[0]:.0f}–{ci[1]:.0f}%)"
         return s + f" · {nd} distinct / {nf} src families"
-    return f"Reach: not yet certifiable · {nd} distinct / {nf} src families"
+    base = f"Reach: not yet certifiable · {nd} distinct / {nf} src families"
+    if not _serpapi_key_present():
+        base += " · add a SerpApi key in Settings to certify coverage"
+    return base
 
 
 def load_latest(project: str = "") -> dict | None:

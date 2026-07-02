@@ -21,6 +21,7 @@ import csv
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from discover.registry import _name_from_slug
@@ -286,3 +287,106 @@ def seed_from_dataset(path, industry="", *, probe=_probe_count, max_workers=12,
         "dropped": dropped,
         "added": added,
     }
+
+
+# ── named dataset specs (E2: Techmap Kaggle dumps) ────────────────────────────
+@dataclass(frozen=True)
+class DatasetSpec:
+    """A named open job-postings dataset used as a COMPANY-DISCOVERY seed (exactly
+    like jobhive): each row's employer + careers/ATS URL is run through the same
+    detect_ats -> probe-verify funnel as any other seed. A DatasetSpec bundles the
+    column mapping (so a file whose columns differ from the auto-detected names
+    still parses) and provenance notes.
+
+    Download is MANUAL — these live on Kaggle, which requires auth, so the file is
+    fetched once by hand (Kaggle UI or `kaggle datasets download`) and passed in
+    via --input. This module never downloads them (keeps the frozen .exe lean and
+    avoids bundling Kaggle credentials).
+    """
+    key: str
+    title: str
+    kaggle_ref: str                       # owner/dataset slug on Kaggle
+    column_map: dict = field(default_factory=dict)
+    license_note: str = ""
+    format_note: str = ""
+
+
+# Techmap's free open job-postings dumps. These are JOB-POSTING datasets (one row
+# per posting: employer + apply/careers URL), NOT ats-slug lists — so they seed the
+# registry through _row_to_board's URL path (detect_ats on the posting/careers URL).
+#
+# LICENSE CHECK REQUIRED before shipping any seeded output: verify the Kaggle
+# license at download time. If it is CC-BY-NC (non-commercial), using the derived
+# company list inside a distributed build is restricted — the maintainer must
+# confirm terms. This code does the mechanical extraction; the license decision is
+# the operator's (surfaced by the CLI and recorded in this module's deviations).
+#
+# COLUMN MAP is PROVISIONAL: derived from Techmap's documented jobdatafeeds schema
+# (name=title, company=employer, url=posting URL, orgAddress/city/region=location,
+# dateCreated=posted). Verify against a real downloaded file's header before a bulk
+# run; _pick_columns auto-detection also covers common aliases if a column differs.
+TECHMAP_DATASETS: dict[str, DatasetSpec] = {
+    "techmap-intl-2021-09": DatasetSpec(
+        key="techmap-intl-2021-09",
+        title="International Job Postings September 2021 (~3.4M records)",
+        kaggle_ref="techmap/international-job-postings-september-2021",
+        column_map={"name": "company", "slug": "", "url": "url",
+                    "ats": "", "industry": ""},
+        license_note="Verify Kaggle license before commercial/distributed use "
+                     "(CC-BY-NC would restrict).",
+        format_note="Large CSV/JSON; convert to CSV/NDJSON offline if needed. "
+                    "Streaming is row-by-row (stdlib), but a 3.4M-row file is best "
+                    "sampled with --limit first.",
+    ),
+    "techmap-us-2023-05-05": DatasetSpec(
+        key="techmap-us-2023-05-05",
+        title="US Job Postings 2023-05-05",
+        kaggle_ref="techmap/us-job-postings-from-2023-05-05",
+        column_map={"name": "company", "slug": "", "url": "url",
+                    "ats": "", "industry": ""},
+        license_note="Verify Kaggle license before commercial/distributed use "
+                     "(CC-BY-NC would restrict).",
+        format_note="CSV/JSON job-posting rows; employer + posting URL per row.",
+    ),
+}
+
+
+def _spec_column_map(spec: DatasetSpec, override: dict | None = None) -> dict:
+    """Merge a DatasetSpec's column_map with a caller override, dropping empty
+    ('') mappings so _pick_columns falls back to auto-detection for those roles.
+    A Techmap posting row has no ats/slug column — the board is derived from the
+    URL column (see _row_to_board's URL fallback)."""
+    merged = dict(spec.column_map or {})
+    merged.update(override or {})
+    return {k: v for k, v in merged.items() if v}
+
+
+def seed_from_techmap(input_path, spec_key: str = "techmap-intl-2021-09", *,
+                      industry="", probe=_probe_count, max_workers=12, limit=None,
+                      ats_filter=None, classify=None, companies_json_path=None,
+                      dry_run=False, existing=None, column_map=None) -> dict:
+    """Seed the company registry from a MANUALLY-DOWNLOADED Techmap Kaggle dump.
+
+    `input_path` is a local CSV/NDJSON/JSON file (download it from Kaggle first —
+    this never fetches it). `spec_key` selects a TECHMAP_DATASETS spec for the
+    column map + provenance. Everything else mirrors seed_from_dataset (the same
+    probe-verify + dedup funnel jobhive uses), so a board that lands in
+    companies.json is provably live today.
+
+    Returns seed_from_dataset's summary dict PLUS a 'spec' block (title, kaggle_ref,
+    license_note) so a caller/CLI can surface the license-check requirement.
+    """
+    spec = TECHMAP_DATASETS.get(spec_key)
+    if spec is None:
+        raise ValueError(
+            f"unknown Techmap dataset {spec_key!r}; known: {sorted(TECHMAP_DATASETS)}")
+    cols = _spec_column_map(spec, column_map)
+    summary = seed_from_dataset(
+        input_path, industry=industry, probe=probe, max_workers=max_workers,
+        limit=limit, ats_filter=ats_filter, column_map=cols, classify=classify,
+        companies_json_path=companies_json_path, dry_run=dry_run, existing=existing)
+    summary["spec"] = {
+        "key": spec.key, "title": spec.title, "kaggle_ref": spec.kaggle_ref,
+        "license_note": spec.license_note, "format_note": spec.format_note,
+    }
+    return summary

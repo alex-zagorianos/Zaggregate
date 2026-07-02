@@ -21,7 +21,8 @@ from search.search_engine import SearchEngine
 ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careeronestop", "careers",
                "themuse", "remoteok", "remotive", "jobicy", "himalayas", "hn",
                "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi",
-               "socrata", "weworkremotely", "workingnomads"]
+               "socrata", "weworkremotely", "workingnomads",
+               "higheredjobs", "rnjobsite", "jobsacuk"]
 
 # Sources that must NOT run unless the user EXPLICITLY opts in (a truthy
 # cfg_sources[<name>]), i.e. the on-by-default fallback `cfg_sources.get(s, True)`
@@ -162,6 +163,40 @@ def build_clients(
         elif source == "workingnomads":
             from search.workingnomads_client import WorkingNomadsClient
             clients.append(WorkingNomadsClient(cache_enabled=cache_enabled))
+
+        elif source == "higheredjobs":
+            # Sector RSS: education/faculty/admin. Self-skips (fetches nothing)
+            # for a non-education field via its industry gate — safe to always
+            # register. industry_filter is the active project's field.
+            from search.higheredjobs_client import HigherEdJobsClient
+            c = HigherEdJobsClient(cache_enabled=cache_enabled,
+                                   industry=industry_filter)
+            if not c.cat_ids:
+                slog.info(f"  [higheredjobs] Inert for industry "
+                          f"{industry_filter or '(none)'!r} — no education categories map.")
+            clients.append(c)
+
+        elif source == "rnjobsite":
+            # Sector RSS: registered-nurse specialties. Self-skips for a
+            # non-nursing field via its industry gate.
+            from search.rnjobsite_client import RNJobSiteClient
+            c = RNJobSiteClient(cache_enabled=cache_enabled,
+                                industry=industry_filter)
+            if not c.active:
+                slog.info(f"  [rnjobsite] Inert for industry "
+                          f"{industry_filter or '(none)'!r} — not a nursing field.")
+            clients.append(c)
+
+        elif source == "jobsacuk":
+            # Sector RSS: UK academic/health. OPT-IN only (config flag or non-US
+            # country); inert in a default US run. PROVISIONAL endpoint.
+            from search.jobsacuk_client import JobsAcUkClient
+            c = JobsAcUkClient(cache_enabled=cache_enabled,
+                               industry=industry_filter)
+            if not c.active:
+                slog.info("  [jobsacuk] Inert — UK academic feeds are opt-in "
+                          "(set 'jobsacuk' in config or a non-US country).")
+            clients.append(c)
 
         elif source == "socrata":
             from search.socrata_client import SocrataClient
