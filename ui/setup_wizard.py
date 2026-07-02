@@ -338,6 +338,60 @@ def prefill_from_existing(prefs: dict | None = None, cfg: dict | None = None) ->
     }
 
 
+# ── field presets (QW-1 / §6.2) ──────────────────────────────────────────────
+# The free-text industry box silently mis-routed: a multi-word field ("mechanical
+# engineering", "data analytics") tripped the P0-1 registry-tag bug and health
+# synonym pollution. A validated preset picker fixes this AT THE SOURCE — each
+# preset emits a CANONICAL industry token that (a) resolves to a non-generic
+# industry_profile (source != 'generic', so Muse/Jobicy routing + query synonyms
+# turn on) AND (b) matches the token-aware registry matcher for its own seeds.
+#
+# Every token here is a regression-tested contract (tests/ui/test_field_presets.py):
+# each must resolve to a non-generic profile and self-match under the registry's
+# _industry_tag_match. The tokens span the eight tested personas + the eng fields
+# Alex uses. The last entry is an "Other" escape hatch that keeps the free-text
+# box for anything unlisted (reach is never reduced — an unlisted field still
+# searches broadly via the generic fallback).
+_OTHER_PRESET = "Other (type your own)…"
+_FIELD_PRESETS: list[tuple[str, str]] = [
+    # (display label shown in the dropdown, canonical industry token emitted)
+    ("Software engineering", "software engineering"),
+    ("Mechanical engineering", "mechanical engineering"),
+    ("Controls / automation engineering", "controls engineering"),
+    ("Data analytics / data science", "data analytics"),
+    ("Consulting", "consulting"),
+    ("Marketing", "marketing"),
+    ("Warehouse / logistics", "warehouse logistics"),
+    ("Teaching / education (K-12)", "education"),
+    ("Nursing / healthcare", "nursing"),
+    ("Finance / accounting", "finance"),
+    (_OTHER_PRESET, ""),
+]
+# display label -> canonical token, and the reverse (token -> label) for prefill.
+_PRESET_TO_TOKEN: dict[str, str] = {label: tok for label, tok in _FIELD_PRESETS}
+_PRESET_LABELS: list[str] = [label for label, _ in _FIELD_PRESETS]
+
+
+def preset_tokens() -> list[str]:
+    """The canonical industry tokens every non-'Other' preset emits (for tests
+    and any caller that wants to enumerate the validated fields)."""
+    return [tok for _label, tok in _FIELD_PRESETS if tok]
+
+
+def _token_to_preset_label(industry: str) -> str:
+    """The dropdown label whose canonical token matches `industry` (case/space-
+    insensitive), or the 'Other' label when it's a custom/unlisted field. Blank
+    industry -> '' (nothing selected). Used to pre-select the picker when the
+    wizard reopens on an already-configured field."""
+    ind = (industry or "").strip().lower()
+    if not ind:
+        return ""
+    for label, tok in _FIELD_PRESETS:
+        if tok and tok.lower() == ind:
+            return label
+    return _OTHER_PRESET
+
+
 # Career-level → rubric config (match.rubric reads these off the search config).
 # Only emitted when a level is chosen, so an unset level leaves defaults intact.
 _LEVELS = ("", "Entry", "Mid", "Senior", "Manager/Exec")
@@ -434,6 +488,11 @@ class SetupWizard(tk.Toplevel):
             "remote_ok": tk.BooleanVar(value=True),
             "salary_min": tk.StringVar(),
             "industry": tk.StringVar(),
+            # The dropdown selection (a display label); the canonical token lands
+            # in "industry" when a preset is picked, or the free-text box feeds it
+            # when "Other" is chosen. Kept separate so reopening the wizard can
+            # re-select the right row.
+            "field_preset": tk.StringVar(),
             "level": tk.StringVar(),
             # Closing "Keep jobs coming" step (default ON — the whole point of the
             # app is a self-refilling inbox). Read by the caller after finish.
@@ -449,6 +508,8 @@ class SetupWizard(tk.Toplevel):
             self._vars["remote_ok"].set(_existing["remote_ok"])
             self._vars["salary_min"].set(_existing["salary_min"])
             self._vars["industry"].set(_existing.get("industry", ""))
+            self._vars["field_preset"].set(
+                _token_to_preset_label(_existing.get("industry", "")))
             self._vars["level"].set(_existing.get("level", ""))
             self._about_cache = _existing["about"]
         except Exception:
@@ -547,25 +608,43 @@ class SetupWizard(tk.Toplevel):
                        "level below, not in the search terms.",
                   style="Muted.TLabel", wraplength=560,
                   justify="left").pack(anchor="w", pady=(4, 0))
-        # Optional field + career level — tune enumeration + the ranking rubric to
-        # any field, not just engineering. Both blank = today's behavior.
+        # Field PICKER (validated presets) + career level — tune enumeration + the
+        # ranking rubric to any field, not just engineering. A preset emits a
+        # canonical token that routes sources & rankings correctly (QW-1 / §6.2);
+        # "Other" reveals a free-text box for an unlisted field. Both blank =
+        # today's behavior.
         fl = ttk.Frame(self._body)
         fl.pack(fill="x", pady=(12, 0))
         ttk.Label(fl, text="Your field / industry (optional)").grid(
             row=0, column=0, sticky="w")
         ttk.Label(fl, text="Career level (optional)").grid(
             row=0, column=1, sticky="w", padx=(12, 0))
-        ttk.Entry(fl, textvariable=self._vars["industry"]).grid(
-            row=1, column=0, sticky="ew", pady=(2, 0))
+        self._field_cb = ttk.Combobox(
+            fl, textvariable=self._vars["field_preset"], values=_PRESET_LABELS,
+            state="readonly")
+        self._field_cb.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self._field_cb.bind("<<ComboboxSelected>>",
+                            lambda _e: self._on_field_preset())
         ttk.Combobox(fl, textvariable=self._vars["level"], values=list(_LEVELS),
                      state="readonly", width=16).grid(
             row=1, column=1, sticky="w", padx=(12, 0), pady=(2, 0))
         fl.columnconfigure(0, weight=1)
-        ttk.Label(self._body,
-                  text="Field examples:  health informatics · nursing · finance · "
-                       "controls engineering",
-                  style="Muted.TLabel", wraplength=560,
-                  justify="left").pack(anchor="w", pady=(4, 0))
+        # Free-text box, only shown for "Other". Packed/forgotten by _sync_field_ui.
+        self._field_other_frame = ttk.Frame(self._body)
+        ttk.Label(self._field_other_frame,
+                  text="Type your field (e.g. legal, hospitality, HR):",
+                  style="Muted.TLabel").pack(anchor="w")
+        ttk.Entry(self._field_other_frame,
+                  textvariable=self._vars["industry"]).pack(fill="x", pady=(2, 0))
+        # The one-line "this is load-bearing" note the research + plan call for.
+        self._field_note = ttk.Label(
+            self._body,
+            text="This drives which job sources you search and how jobs are "
+                 "ranked for you — picking your field turns on the right local "
+                 "sources and tunes scoring. Leave blank and we search broadly.",
+            style="Muted.TLabel", wraplength=560, justify="left")
+        self._field_note.pack(anchor="w", pady=(4, 0))
+        self._sync_field_ui()
         ttk.Label(self._body, text="Anything else the AI should know? (optional)",
                   style="H2.TLabel").pack(anchor="w", pady=(18, 2))
         ttk.Label(self._body,
@@ -587,6 +666,39 @@ class SetupWizard(tk.Toplevel):
         vsb.pack(side="right", fill="y")
         if getattr(self, "_about_cache", ""):
             self._about.insert("1.0", self._about_cache)
+
+    def _on_field_preset(self):
+        """A dropdown selection: map the chosen preset to its canonical industry
+        token (so routing is always correct) and show/hide the free-text 'Other'
+        box. The canonical token is written straight into the 'industry' var; the
+        'Other' path leaves 'industry' driven by the free-text entry."""
+        label = self._vars["field_preset"].get()
+        if label and label != _OTHER_PRESET:
+            self._vars["industry"].set(_PRESET_TO_TOKEN.get(label, ""))
+        elif label == _OTHER_PRESET:
+            # Switching TO Other: don't clobber a token the user might re-pick, but
+            # if the current industry is a known preset token, clear it so the box
+            # starts empty for a genuinely custom field.
+            if _token_to_preset_label(self._vars["industry"].get()) != _OTHER_PRESET:
+                self._vars["industry"].set("")
+        self._sync_field_ui()
+
+    def _sync_field_ui(self):
+        """Show the free-text field box only when 'Other' is selected; keep it
+        packed just above the explanatory note. Guarded so it is a no-op if the
+        step's widgets aren't currently built."""
+        frame = getattr(self, "_field_other_frame", None)
+        note = getattr(self, "_field_note", None)
+        if frame is None or not frame.winfo_exists():
+            return
+        show = self._vars["field_preset"].get() == _OTHER_PRESET
+        if show:
+            if note is not None and note.winfo_exists():
+                frame.pack(fill="x", pady=(6, 0), before=note)
+            else:
+                frame.pack(fill="x", pady=(6, 0))
+        else:
+            frame.pack_forget()
 
     def _step_where(self):
         self._heading(
