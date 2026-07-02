@@ -4,8 +4,10 @@
 //   1. The toolbar badge (count text + amber "!" when a site's capture looks
 //      broken).
 //   2. Auto-send: on the content script's signal, POST the collected jobs to the
-//      receiver's /harvest (open_report:false) and clear storage — with an
-//      in-flight flag so a burst of signals can't double-send.
+//      receiver's /harvest (open_report:false) and remove exactly the sent jobs
+//      from storage (identity-filtered, never a blanket clear — content.js may
+//      have added jobs during the round-trip) — with an in-flight flag so a
+//      burst of signals can't double-send.
 //   3. Per-site selector-rot health, stored so the popup can surface it.
 
 const RECEIVER_URL = "http://localhost:5002";
@@ -60,10 +62,30 @@ async function doAutoSend() {
     }
     if (!resp || !resp.ok) return; // server error — keep jobs, retry later
 
-    // Sent OK: clear storage and reset the auto-send milestone so the counter
-    // restarts cleanly from 0 for the next block of 25.
-    await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
-    await refreshBadge(0);
+    // Sent OK: remove exactly the jobs we sent, by identity (url/external_id) —
+    // NOT `jobs: []`. content.js keeps harvesting in its own context during the
+    // fetch round-trip, and a blanket clear here would clobber any job it added
+    // in that window (and, in the reverse ordering, resurrect the just-sent
+    // batch for a duplicate send). Re-reading and filtering shrinks the race to
+    // the get→set gap below; the residual overlap is harmless because the
+    // receiver inboxes by url-derived job_id, so a rare duplicate send is
+    // idempotent server-side. The milestone re-baselines from what actually
+    // remains instead of resetting to 0.
+    const sentUrls = new Set(jobs.map((j) => j.url).filter(Boolean));
+    const sentIds = new Set(jobs.map((j) => j.external_id).filter(Boolean));
+    const after = await chrome.storage.local.get("jobs");
+    const remaining = (after.jobs || []).filter(
+      (j) =>
+        !(
+          (j.url && sentUrls.has(j.url)) ||
+          (j.external_id && sentIds.has(j.external_id))
+        ),
+    );
+    await chrome.storage.local.set({
+      jobs: remaining,
+      autoSendLastAt: remaining.length - (remaining.length % 25),
+    });
+    await refreshBadge(remaining.length);
   } finally {
     autoSendInFlight = false;
   }

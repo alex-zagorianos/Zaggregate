@@ -336,6 +336,30 @@ def _save_companies_locked(new_entries: list[CompanyEntry], path: Path,
                 existing.clear()
                 existing.update(upgraded)
                 changed += 1
+            elif (upgrade_unverified and is_browser_only(e)
+                    and not is_unverified(e)
+                    and _stored_extra.get(UNVERIFIED_FLAG)
+                    and not _stored_extra.get(BROWSER_ONLY_FLAG)):
+                # Browser-verified RESCUE of a dead-flagged board (S33 review
+                # fix): the stored record failed its add-time probe (unverified,
+                # kept out of scraping, invisible in browser-only surfacing) and
+                # the user has now proven from their own browser that it's real
+                # and live. That's a strict reachability upgrade — dead-unknown
+                # -> confirmed-but-walled — so swap UNVERIFIED for BROWSER_ONLY:
+                # the board finally shows up in browser_only_count / the
+                # scraper-skip readout instead of staying permanently dark, and
+                # the user's "Verify from this tab" click isn't silently
+                # discarded as a duplicate. A stored server-VERIFIED record never
+                # enters here (gated on the stored UNVERIFIED flag), so this can
+                # never demote; a browser-only re-clip of an already-browser-only
+                # board stays a no-op skip below.
+                upgraded = _record_for(e)  # extra carries BROWSER_ONLY_FLAG
+                merged = list(dict.fromkeys(
+                    list(existing.get("industries") or []) + list(e.industries)))
+                upgraded["industries"] = merged
+                existing.clear()
+                existing.update(upgraded)
+                changed += 1
             continue
         record = _record_for(e)
         companies.append(record)

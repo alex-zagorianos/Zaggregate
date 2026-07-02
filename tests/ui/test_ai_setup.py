@@ -364,3 +364,53 @@ def test_apply_seed_lines_allows_legit_direct_page(isolated):
                                     industry="engineering", probe=False)
     assert res["rejected"] == 0
     assert {v["verdict"] for v in res["verdicts"]} == {"direct"}
+
+
+# ── S33 review fix: browser-only boards re-probe on re-seed ────────────────────
+def test_apply_seed_lines_upgrades_browser_only_when_wall_opens(isolated, monkeypatch):
+    """A browser-only board must NOT short-circuit as 'skipped': a re-seed
+    re-probes it, and once the wall has come down the live verdict flows
+    through save_companies' upgrade and the board re-enters the scraped set."""
+    from scrape import ats_detect
+    from scrape.company_registry import (BROWSER_ONLY_FLAG, CompanyEntry,
+                                         get_registry, is_browser_only,
+                                         save_companies)
+    walled = CompanyEntry(name="Acme", ats_type="greenhouse", slug="acme",
+                          industries=["engineering"],
+                          extra={BROWSER_ONLY_FLAG: True})
+    save_companies([walled])
+    monkeypatch.setattr(ats_detect, "probe_board",
+                        lambda e: ats_detect.ProbeResult(12, True))
+    res = ai_setup.apply_seed_lines("Acme | https://boards.greenhouse.io/acme\n",
+                                    industry="engineering", probe=True)
+    v = res["verdicts"][0]
+    assert v["verdict"] == "live"          # NOT 'skipped'
+    acme = next(e for e in get_registry(include_unverified=True)
+                if e.name == "Acme")
+    assert not is_browser_only(acme)       # upgraded into the scraped set
+
+
+def test_apply_seed_lines_still_walled_browser_only_is_kept(isolated, monkeypatch):
+    """A still-walled browser-only board re-seeds honestly: verdict says it's
+    kept browser-only (refresh by browsing), and the stored record is neither
+    demoted to unverified nor duplicated."""
+    from scrape import ats_detect
+    from scrape.company_registry import (BROWSER_ONLY_FLAG, CompanyEntry,
+                                         get_registry, is_browser_only,
+                                         is_unverified, save_companies)
+    walled = CompanyEntry(name="Acme", ats_type="greenhouse", slug="acme",
+                          industries=["engineering"],
+                          extra={BROWSER_ONLY_FLAG: True})
+    save_companies([walled])
+    monkeypatch.setattr(ats_detect, "probe_board",
+                        lambda e: ats_detect.ProbeResult(None, False))
+    res = ai_setup.apply_seed_lines("Acme | https://boards.greenhouse.io/acme\n",
+                                    industry="engineering", probe=True)
+    v = res["verdicts"][0]
+    assert v["verdict"] == "unreachable"
+    assert "browser-only" in v["detail"]
+    entries = [e for e in get_registry(include_unverified=True)
+               if e.name == "Acme"]
+    assert len(entries) == 1               # no duplicate row
+    assert is_browser_only(entries[0])
+    assert not is_unverified(entries[0])

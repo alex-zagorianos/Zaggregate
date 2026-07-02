@@ -303,8 +303,9 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
     host (NEOGOV/governmentjobs, Frontline/AppliTrack, Indeed, LinkedIn, ...)
     that must never be scraped, dropped without saving."""
     from scrape.ats_detect import parse_line, probe_board, is_tos_blocked_host
-    from scrape.company_registry import (UNVERIFIED_FLAG, is_unverified,
-                                         save_companies, get_registry)
+    from scrape.company_registry import (UNVERIFIED_FLAG, is_browser_only,
+                                         is_unverified, save_companies,
+                                         get_registry)
 
     lines = [ln for ln in (text or "").splitlines() if ln.strip()]
     entries = [e for e in (parse_line(ln) for ln in lines) if e]
@@ -317,12 +318,20 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
     # live/direct verdict must flow through to save_companies so the P0-6
     # re-verify upgrade can clear its flag (otherwise a mis-guessed-then-
     # corrected board stays permanently unscraped). Only VERIFIED stored boards
-    # short-circuit as skipped.
+    # short-circuit as skipped. BROWSER-ONLY stored boards (S33) likewise flow
+    # through: a re-seed re-probes them, and if the wall came down the live
+    # verdict reaches save_companies' upgrade and the board re-enters the
+    # scraped set — short-circuiting them as "skipped" would strand a board on
+    # extension-only refresh forever after its wall opened up (S33 review fix).
     try:
         _all = get_registry(include_unverified=True)
-        known = {(c.name or "").lower() for c in _all if not is_unverified(c)}
+        known = {(c.name or "").lower() for c in _all
+                 if not is_unverified(c) and not is_browser_only(c)}
+        _browser_only_names = {(c.name or "").lower() for c in _all
+                               if is_browser_only(c)}
     except Exception:
         known = set()
+        _browser_only_names = set()
 
     verdicts: list[dict] = []
     to_save = []
@@ -363,6 +372,16 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
                              "slug": e.slug, "verdict": "live", "count": n,
                              "detail": f"live ({n} open jobs)"})
             to_save.append(e)
+        elif (e.name or "").lower() in _browser_only_names:
+            # Stored browser-only and STILL walled: nothing to save (an incoming
+            # unverified entry never overwrites the stored record, and demoting
+            # confirmed-real to unverified would be strictly worse). Report the
+            # honest state instead of a misleading "saved unverified".
+            verdicts.append({"name": e.name, "ats_type": e.ats_type,
+                             "slug": e.slug, "verdict": "unreachable",
+                             "detail": "still walled — kept browser-only "
+                                       "(browse it with the extension to "
+                                       "refresh)"})
         else:
             e.extra = dict(getattr(e, "extra", None) or {})
             e.extra[UNVERIFIED_FLAG] = True

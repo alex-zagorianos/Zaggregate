@@ -299,3 +299,74 @@ def test_clip_endpoint_junk_evidence_is_failed(client, monkeypatch, tmp_path):
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "failed"
     assert not p.exists()
+
+
+# ── S33 review fix: evidence RESCUES a stored-unverified board ─────────────────
+
+def test_evidence_rescues_previously_unverified_board(companies):
+    """The review-fleet repro: a walled board saved UNVERIFIED by an earlier
+    '+ Add Companies'/AI-seed probe failure, then re-clipped with browser
+    evidence (server probe still walled), must be UPGRADED to browser-only —
+    not bounced as 'duplicate' while staying permanently dark."""
+    from scrape.ats_detect import resolve_board
+    from scrape.company_registry import UNVERIFIED_FLAG
+    url = "https://fedex.wd5.myworkdayjobs.com/en-US/careers"
+    board = resolve_board(url, "")
+    dead = CompanyEntry(name=board["name"], ats_type=board["ats_type"],
+                        slug=board["slug"], industries=["warehouse logistics"],
+                        extra={UNVERIFIED_FLAG: True})
+    save_companies([dead], json_path=companies)
+    stored = get_registry(include_unverified=True, user_json=companies)
+    assert any(is_unverified(e) for e in stored if e.name == board["name"])
+
+    v = clip_board(
+        url, "", industry="warehouse logistics", json_path=companies,
+        probe_fn=lambda e: ProbeResult(None, False),   # still walled
+        browser_evidence=_evidence(job_count=42),
+    )
+    assert v["status"] == "added"
+    assert v["reason"] == "browser_verified"
+
+    entries = get_registry(user_json=companies)   # default listing — visible
+    rec = next(e for e in entries if e.name == board["name"])
+    assert is_browser_only(rec)
+    assert not is_unverified(rec)
+
+
+def test_registry_browser_only_upgrade_never_demotes_verified(companies):
+    """The rescue is gated on the STORED record being unverified: an incoming
+    browser-only save against a server-VERIFIED stored record is a no-op."""
+    good = CompanyEntry(name="Acme", ats_type="greenhouse", slug="acme",
+                        industries=["engineering"])
+    save_companies([good], json_path=companies)
+
+    walled = CompanyEntry(name="Acme", ats_type="greenhouse", slug="acme",
+                          industries=["engineering"],
+                          extra={BROWSER_ONLY_FLAG: True})
+    added = save_companies([walled], json_path=companies)
+    assert added == 0
+    rec = next(e for e in get_registry(user_json=companies)
+               if e.name == "Acme")
+    assert not is_browser_only(rec)
+    assert not is_unverified(rec)
+
+
+def test_registry_browser_only_rescue_merges_industries(companies):
+    """The unverified->browser-only rescue keeps the prior field tags (union),
+    same as the server-verified upgrade path."""
+    from scrape.company_registry import UNVERIFIED_FLAG
+    dead = CompanyEntry(name="Banner", ats_type="workday_cxs",
+                        slug="banner:1:External", industries=["nursing"],
+                        extra={UNVERIFIED_FLAG: True})
+    save_companies([dead], json_path=companies)
+    resc = CompanyEntry(name="Banner", ats_type="workday_cxs",
+                        slug="banner:1:External",
+                        industries=["health informatics"],
+                        extra={BROWSER_ONLY_FLAG: True})
+    added = save_companies([resc], json_path=companies)
+    assert added == 1
+    rec = next(e for e in get_registry(include_unverified=True,
+                                       user_json=companies)
+               if e.name == "Banner")
+    assert is_browser_only(rec) and not is_unverified(rec)
+    assert set(rec.industries) == {"nursing", "health informatics"}
