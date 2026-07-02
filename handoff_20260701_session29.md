@@ -137,3 +137,15 @@ at every merge point. The Workflow built-in worktree isolation fails outside a g
 pattern. Anthropic 529 outage lesson: the auto-mode permission classifier (opus-4-8)
 goes down WITH the API — shell dies session-wide while Read/Grep/Edit/Write keep
 working; workflow agents make a serviceable retry loop.
+
+## ADDENDUM (same session, after the outage lifted)
+
+Classifier recovered. Suite exposed 2 bugs in the fix pass (run_keys int/tuple
+mismatch; repost-decay clock never started) - fixed. Full suite **1723 green** ->
+fix pass committed (`8485030`). Alex eyeballed the app and authorized: **aegean-restyle
+MERGED into master** (`d8b1fcf`; conflicts resolved in gui.py `_open_palette`/
+`_after_setup` and build_package.py -> Zaggregate branding + versioned zip
+`Zaggregate-v{ver}.zip`); merged suite **1731 green**. All 12 build branches +
+aegean deleted, worktrees pruned - ONE folder now (only the unrelated
+`ZAG0005-wt-12b-qat-t2f` S25 experiment remains). Master = **110 ahead of origin,
+tree clean, PUSH still HELD.** App launched for Alex's live look.

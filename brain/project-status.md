@@ -4,6 +4,17 @@
 
 ---
 
+## Session 29 (2026-07-01) — Deep review → full remediation buildout + Aegean merge ✅
+
+The whole review roadmap (`brain/review-2026-07-01-deep-product-review.md`, P0–P7)
+built in one session: 5 Opus builder waves + post-build adversarial review fleet
+(all confirmed defects fixed) + aegean-restyle merged (Zaggregate branding).
+Suite 1223 → **1731 green**; master **110 ahead, push HELD**; one folder again
+(branches/worktrees pruned). Detail + Needs-Alex: `handoff_20260701_session29.md`.
+Output mode this session: default terse (verbose for the review deliverable).
+
+---
+
 ## Phase 1 — Job Scraper ✅ COMPLETE (2026-05-27)
 
 ### API Sources
