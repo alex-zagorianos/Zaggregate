@@ -2728,15 +2728,21 @@ class AddCompaniesDialog(tk.Toplevel):
                          daemon=True).start()
 
     def _validate_worker(self, entries):
-        from scrape.ats_detect import probe_count
+        from scrape.ats_detect import probe_board
         for i, e in enumerate(entries):
             if e.ats_type == "direct":
                 # A 'direct' page is uncountable, not unreachable — the user
                 # supplied the exact careers URL, so treat it as verified-manual.
                 self.after(0, self._set_status_cell, i, "direct (manual)", "direct")
                 continue
-            n = probe_count(e)
-            if n is not None:
+            # probe_board's `reachable` (not "count is not None") is the verdict:
+            # a genuinely-live board with 0 open jobs is reachable => "live (0)"
+            # (verified), but a CSRF/Cloudflare-walled workday_cxs tenant (HTTP 422)
+            # is unreachable => "unreachable" (flagged-unverified). A bare count
+            # can't tell those apart — both look like 0.
+            pr = probe_board(e)
+            if pr.reachable:
+                n = pr.count if pr.count is not None else 0
                 self.after(0, self._set_status_cell, i, f"live ({n})", "live")
             else:
                 self.after(0, self._set_status_cell, i, "unreachable", "unreachable")

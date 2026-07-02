@@ -302,7 +302,7 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
     'skipped' -> already in the registry; 'rejected' -> a ToS-blocked/aggregator
     host (NEOGOV/governmentjobs, Frontline/AppliTrack, Indeed, LinkedIn, ...)
     that must never be scraped, dropped without saving."""
-    from scrape.ats_detect import parse_line, probe_count, is_tos_blocked_host
+    from scrape.ats_detect import parse_line, probe_board, is_tos_blocked_host
     from scrape.company_registry import (UNVERIFIED_FLAG, is_unverified,
                                          save_companies, get_registry)
 
@@ -350,8 +350,15 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
                              "detail": "saved (direct page)"})
             to_save.append(e)
             continue
-        n = probe_count(e) if probe else None
-        if n is not None:
+        # Verify: a board is 'live' (verified) only when the probe actually READ
+        # it — a live board with 0 open jobs (reachable, count 0) verifies, but a
+        # CSRF/Cloudflare-walled workday_cxs tenant (HTTP 422 -> unreachable) does
+        # NOT: "verified" for a board the scraper can never read is a lie. It lands
+        # in the same flagged-unverified bucket as any unreachable board (saved,
+        # excluded from scraping, re-verify upgrade path applies if it opens up).
+        pr = probe_board(e) if probe else None
+        if pr is not None and pr.reachable:
+            n = pr.count if pr.count is not None else 0
             verdicts.append({"name": e.name, "ats_type": e.ats_type,
                              "slug": e.slug, "verdict": "live", "count": n,
                              "detail": f"live ({n} open jobs)"})

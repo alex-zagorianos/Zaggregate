@@ -116,11 +116,11 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
 
     ``probe_fn`` (defaults to ats_detect.probe_count) and ``json_path`` are
     injectable so tests never touch the network or the real companies.json."""
-    from scrape.ats_detect import resolve_board, probe_count
+    from scrape.ats_detect import resolve_board, probe_board, ProbeResult
     from scrape.company_registry import (CompanyEntry, get_registry,
                                          is_unverified, save_companies)
     if probe_fn is None:
-        probe_fn = probe_count
+        probe_fn = probe_board
 
     url = (url or "").strip()
     if not url or not _safe_http_url(
@@ -163,15 +163,27 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
             verdict.update(status="duplicate", reason="already_in_registry")
             return verdict
 
-    # Verify live at clip time. probe_count returns an int for a reachable
-    # board, None for unreachable/uncountable — a resolvable ATS that can't be
-    # probed is treated as unreachable and NOT saved.
-    count = probe_fn(entry)
-    if count is None:
+    # Verify live at clip time. The default probe (ats_detect.probe_board) returns
+    # a ProbeResult(count, reachable): reachable is True only when the board was
+    # actually READ this probe. A resolvable ATS that can't be read — an
+    # unreachable/uncountable board, OR a CSRF/Cloudflare-walled workday_cxs tenant
+    # (HTTP 422) — is NOT saved: a one-click clip must land the user on a board we
+    # can actually verify, and "verified" for a board the scraper can never read is
+    # the exact dead-slug case this gate exists to keep out. A live board with 0
+    # open jobs is reachable and IS saved.
+    # `probe_fn` is injectable; accept either a ProbeResult or the legacy int|None
+    # count contract so existing callers/tests keep working.
+    result = probe_fn(entry)
+    if isinstance(result, ProbeResult):
+        reachable, count = result.reachable, result.count
+    else:
+        count = result
+        reachable = count is not None
+    if not reachable:
         verdict.update(status="failed", reason="unreachable")
         return verdict
 
-    verdict["live_count"] = count
+    verdict["live_count"] = count if count is not None else 0
     added = save_companies([entry], json_path=json_path)
     # `added` counts a fresh insert OR an unverified->verified upgrade; a
     # re-clip that cleared the flag is a "re-verified" success, not a duplicate.
