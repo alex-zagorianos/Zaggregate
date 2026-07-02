@@ -10,6 +10,10 @@ const clearBtn = document.getElementById("clear-btn");
 const statusEl = document.getElementById("status");
 const clipBtn = document.getElementById("clip-btn");
 const clipStatusEl = document.getElementById("clip-status");
+const autoSendToggle = document.getElementById("autosend-toggle");
+const healthWarnEl = document.getElementById("health-warn");
+const healthBtn = document.getElementById("health-btn");
+const healthOutEl = document.getElementById("health-out");
 
 function setStatus(msg, cls = "") {
   statusEl.textContent = msg;
@@ -97,7 +101,7 @@ sendBtn.addEventListener("click", async () => {
         `Sent ${data.received} jobs${inboxed} - report opening in browser`,
         "ok",
       );
-      await chrome.storage.local.set({ jobs: [] });
+      await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
       chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
       await refreshCount();
     } else {
@@ -192,7 +196,7 @@ trackBtn.addEventListener("click", async () => {
   const { added, failed } = result;
   if (failed === 0 && added > 0) {
     setStatus(`${added} jobs added to tracker`, "ok");
-    await chrome.storage.local.set({ jobs: [] });
+    await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
     chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
     await refreshCount();
   } else if (added > 0) {
@@ -209,7 +213,7 @@ trackBtn.addEventListener("click", async () => {
 });
 
 clearBtn.addEventListener("click", async () => {
-  await chrome.storage.local.set({ jobs: [] });
+  await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
   chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
   await refreshCount();
   setStatus("Cleared.");
@@ -272,6 +276,94 @@ clipBtn.addEventListener("click", async () => {
   clipBtn.disabled = false;
 });
 
+// ─────────────────────────────────────────────
+//  Auto-send toggle (Part 2) — persisted, default OFF
+// ─────────────────────────────────────────────
+async function loadAutoSend() {
+  const { autoSend } = await chrome.storage.local.get("autoSend");
+  autoSendToggle.checked = autoSend === true;
+}
+
+autoSendToggle.addEventListener("change", async () => {
+  await chrome.storage.local.set({ autoSend: autoSendToggle.checked });
+  // Re-baseline the milestone to the current count when turning ON, so flipping
+  // it on with a pile already collected doesn't instantly fire for a block that
+  // was gathered before the user opted in.
+  if (autoSendToggle.checked) {
+    const stored = await chrome.storage.local.get("jobs");
+    const count = (stored.jobs || []).length;
+    await chrome.storage.local.set({ autoSendLastAt: count - (count % 25) });
+  }
+});
+
+// ─────────────────────────────────────────────
+//  Selector-rot health (Part 3b)
+// ─────────────────────────────────────────────
+// If the background worker has flagged a site's capture as broken, warn here and
+// offer a one-click health check. The check injects the SHARED selector registry
+// (selectors.js) plus an audit function into the active tab and renders per-layer
+// pass/fail counts the user can copy to Claude to get selectors patched.
+async function renderHealthWarning() {
+  const { health } = await chrome.storage.local.get("health");
+  const broken = health
+    ? Object.entries(health).filter(([, h]) => h && h.ok === false)
+    : [];
+  if (broken.length === 0) {
+    healthWarnEl.style.display = "none";
+    healthBtn.style.display = "none";
+    return;
+  }
+  const sites = broken.map(([site]) => site).join(", ");
+  healthWarnEl.textContent = `Capture may be broken on ${sites} — run the health check.`;
+  healthWarnEl.style.display = "block";
+  healthBtn.style.display = "block";
+}
+
+healthBtn.addEventListener("click", async () => {
+  healthBtn.disabled = true;
+  healthOutEl.style.display = "block";
+  healthOutEl.textContent = "Running health check on the active tab…";
+  let tab;
+  try {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch (_) {}
+  if (!tab || !tab.id) {
+    healthOutEl.textContent = "Couldn't read the current tab.";
+    healthBtn.disabled = false;
+    return;
+  }
+  try {
+    // Inject the SHARED selector registry (selectors.js) then the audit
+    // (selector_check.js) as two files, in order, into the active tab's isolated
+    // world. selectors.js defines SITES/DETAIL; selector_check.js's IIFE reads
+    // those SAME globals (no duplicated registry -> no drift with the harvester)
+    // and RETURNS the report string, which executeScript surfaces as `result`.
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["selectors.js", "selector_check.js"],
+    });
+    // The last injected file's completion value is the last result entry.
+    const report =
+      results && results.length ? results[results.length - 1].result : null;
+    healthOutEl.textContent =
+      report ||
+      "Health check produced no output. Open a jobs SEARCH results page (LinkedIn/Indeed) and try again.";
+  } catch (e) {
+    healthOutEl.textContent =
+      "Couldn't run the health check on this tab. Open a LinkedIn/Indeed jobs " +
+      "search page — the extension can't audit chrome:// or web-store pages.\n\n" +
+      (e && e.message ? e.message : "");
+  }
+  healthBtn.disabled = false;
+});
+
+// React to background health updates while the popup is open.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.health) renderHealthWarning();
+});
+
 // Init
 refreshCount();
 checkReceiver();
+loadAutoSend();
+renderHealthWarning();

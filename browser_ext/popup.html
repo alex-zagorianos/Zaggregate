@@ -170,6 +170,60 @@
       #status.err {
         color: var(--err);
       }
+      .setting-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.76rem;
+        color: var(--ink);
+        margin: 10px 0 2px;
+        cursor: pointer;
+      }
+      .setting-row input {
+        width: auto;
+        margin: 0;
+        cursor: pointer;
+        flex: none;
+      }
+      .setting-hint {
+        font-size: 0.68rem;
+        color: var(--faint);
+        line-height: 1.4;
+        margin: 0 0 4px 22px;
+      }
+      .health-warn {
+        font-size: 0.72rem;
+        color: var(--err);
+        background: #fff4f4;
+        border: 1px solid #f3caca;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin: 8px 0;
+        line-height: 1.4;
+      }
+      #health-btn {
+        background: var(--surface);
+        color: var(--ink);
+        border: 1px solid var(--border);
+      }
+      #health-btn:hover:not(:disabled) {
+        background: var(--window);
+        border-color: var(--accent);
+      }
+      .health-out {
+        font-family: "Consolas", "Menlo", monospace;
+        font-size: 0.66rem;
+        line-height: 1.35;
+        color: var(--ink);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        margin-bottom: 8px;
+        max-height: 220px;
+        overflow: auto;
+        white-space: pre;
+      }
     </style>
   </head>
   <body>
@@ -189,6 +243,20 @@
     <button id="track-btn" disabled>Track All as Interested</button>
     <button id="clear-btn">Clear collected jobs</button>
     <div id="status"></div>
+
+    <label class="setting-row" id="autosend-row">
+      <input type="checkbox" id="autosend-toggle" />
+      <span>Auto-send to Zaggregate every 25 new jobs</span>
+    </label>
+    <p class="setting-hint" id="autosend-hint">
+      Sends in the background as you browse. The report tab only opens on manual
+      sends. If the receiver isn't running, jobs keep collecting — nothing is
+      lost.
+    </p>
+
+    <div id="health-warn" class="health-warn" style="display: none"></div>
+    <button id="health-btn" style="display: none">Health check</button>
+    <pre id="health-out" class="health-out" style="display: none"></pre>
 
     <div class="divider"></div>
     <div class="section-label">On a company's careers page?</div>
