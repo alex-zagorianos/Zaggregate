@@ -90,7 +90,34 @@ def _active_industry() -> str:
         return ""
 
 
-def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None):
+def _valid_browser_evidence(evidence):
+    """Return a sanitized browser-evidence dict, or None when the evidence is
+    absent/junk. Shape: {"job_count": int>=0|None, "via": "jsonld"|"dom",
+    "page_url": str}. Defensive by contract (S33 SECURITY): evidence only ever
+    upgrades a board's REACHABILITY — it can never influence ats_type/slug/name,
+    which come solely from resolve_board(url). So we validate types strictly and
+    treat anything malformed as 'no evidence' (fall back to today's behavior).
+
+    A present-but-count-None evidence (the counting script ran but honestly
+    couldn't count) is still valid evidence of a live page: `job_count` None is
+    accepted, but a non-int / negative count is rejected as junk."""
+    if not isinstance(evidence, dict):
+        return None
+    jc = evidence.get("job_count")
+    # bool is an int subclass — reject True/False masquerading as a count.
+    if jc is not None and (isinstance(jc, bool) or not isinstance(jc, int) or jc < 0):
+        return None
+    via = evidence.get("via")
+    if via not in ("jsonld", "dom"):
+        via = None
+    page_url = evidence.get("page_url")
+    if not isinstance(page_url, str):
+        page_url = ""
+    return {"job_count": jc, "via": via, "page_url": page_url}
+
+
+def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None,
+               browser_evidence=None):
     """Pure core of the /clip endpoint (HTTP-free, unit-testable).
 
     Resolve a clipped job-posting/board URL to its board root, probe it live,
@@ -99,7 +126,8 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
 
         {"status": "added"|"duplicate"|"failed",
          "ats_type": str, "company": str, "slug": str,
-         "live_count": int|None, "industry": str, "reason": str}
+         "live_count": int|None, "industry": str, "reason": str,
+         "browser_only": bool}   # browser_only present only on a browser-verified add
 
     Verdict paths (P0-6, but stricter — a one-click clip never saves an
     unverified board; the whole value of clip-to-seed is that the user is on the
@@ -108,19 +136,34 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
       * resolvable ATS board, probe live  -> "added"   (saved, tagged)
       * resolvable ATS board, already in registry (dedup by ats_type/slug or
         name) -> "duplicate" (nothing written)
-      * resolvable ATS board, probe fails  -> "failed" reason=unreachable
-        (NOT saved — an unreachable board is exactly the dead slug the gate
-        exists to keep out)
+      * resolvable ATS board, server probe FAILS but the caller supplied
+        ``browser_evidence`` of a live page (S33) -> "added" reason=browser_verified,
+        browser_only=True (saved with BROWSER_ONLY_FLAG: real+live from the user's
+        browser, kept out of server scraping). This is the FedEx/Banner case —
+        Cloudflare/CSRF-walled Workday tenants the server can't read (422) but the
+        user's logged-in browser is looking at a live board full of jobs.
+      * resolvable ATS board, probe fails, NO browser evidence -> "failed"
+        reason=unreachable (NOT saved — exactly as today; an unreachable board
+        with no browser proof is the dead slug the gate exists to keep out)
       * unresolvable page ('direct' fallback / junk / off-board) -> "failed"
         reason=unresolvable (NOT saved)
 
+    SECURITY: server probe wins. A server-REACHABLE board saves normally
+    (verified, scraped) and the browser evidence is ignored — evidence only ever
+    upgrades REACHABILITY of a board whose identity (ats_type/slug/name) came
+    from resolve_board(url); it never overrides resolution.
+
     ``probe_fn`` (defaults to ats_detect.probe_count) and ``json_path`` are
-    injectable so tests never touch the network or the real companies.json."""
+    injectable so tests never touch the network or the real companies.json.
+    ``browser_evidence`` is the sanitized dict from _valid_browser_evidence (the
+    /clip route validates the raw POST body before passing it here)."""
     from scrape.ats_detect import resolve_board, probe_board, ProbeResult
-    from scrape.company_registry import (CompanyEntry, get_registry,
+    from scrape.company_registry import (BROWSER_ONLY_FLAG, CompanyEntry,
+                                         get_registry, is_browser_only,
                                          is_unverified, save_companies)
     if probe_fn is None:
         probe_fn = probe_board
+    evidence = _valid_browser_evidence(browser_evidence)
 
     url = (url or "").strip()
     if not url or not _safe_http_url(
@@ -153,6 +196,13 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
     # so we fall through to the live probe and let save_companies upgrade it
     # (clearing the flag) instead of reporting a misleading "duplicate" that
     # would leave it permanently unscraped.
+    #
+    # A stored BROWSER-ONLY board (S33), by contrast, IS a plain duplicate: it's
+    # already saved as confirmed-real-but-unscrapeable, and a re-clip (even one
+    # carrying fresh browser evidence) is not a SERVER read, so there's nothing to
+    # upgrade — reporting "duplicate" is honest. (If the server-side wall later
+    # comes down, a server-reachable re-clip below upgrades it via save_companies,
+    # which clears BROWSER_ONLY_FLAG.)
     reclip_unverified = False
     for existing in get_registry(include_unverified=True, user_json=json_path):
         if ((existing.ats_type, existing.slug) == (ats, slug)
@@ -180,6 +230,30 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
         count = result
         reachable = count is not None
     if not reachable:
+        # S33 browser-verified fallback: the SERVER can't read this board (a
+        # Cloudflare/CSRF-walled Workday tenant — FedEx/Banner 422 the public
+        # wday/cxs API), but the user's logged-in browser IS on a live board. If
+        # the caller supplied browser evidence of a live page (a plausible
+        # job_count, int >= 0, OR an honest count=None from a page that clearly
+        # had postings), save the board flagged BROWSER_ONLY: a real, live
+        # company kept out of server scraping (the extension refreshes it). The
+        # server probe already failed here, so evidence never overrides a
+        # server-reachable verdict — it only rescues the boards the wall blocks.
+        if evidence is not None:
+            entry.extra = dict(getattr(entry, "extra", None) or {})
+            entry.extra[BROWSER_ONLY_FLAG] = True
+            live_count = evidence["job_count"]
+            verdict["live_count"] = live_count
+            added = save_companies([entry], json_path=json_path)
+            if added:
+                verdict.update(status="added", reason="browser_verified",
+                               browser_only=True)
+            else:
+                # Name/slug already present as a plain (server-verified or
+                # browser-only) record — an honest duplicate, not a new save.
+                verdict.update(status="duplicate", reason="already_in_registry")
+            return verdict
+        # No browser proof -> exactly today's behavior: a dead/unreachable slug.
         verdict.update(status="failed", reason="unreachable")
         return verdict
 
@@ -216,8 +290,14 @@ def clip():
     if not isinstance(data, dict) or not (data.get("url") or "").strip():
         return jsonify({"error": "Expected JSON with a 'url'"}), 400
 
+    # Optional S33 browser evidence: the extension's two-step "Verify from this
+    # tab" re-POSTs with {"evidence": {job_count, via, page_url}} after counting
+    # postings client-side. clip_board sanitizes it defensively (junk -> treated
+    # as absent, so behavior is exactly as before). It only ever upgrades a
+    # board's reachability; the origin gate above already restricts callers.
     verdict = clip_board(data.get("url"), data.get("page_title", ""),
-                         industry=_active_industry())
+                         industry=_active_industry(),
+                         browser_evidence=data.get("evidence"))
     # A failure to resolve/verify is a normal verdict, not a server error —
     # the extension renders {status: failed, reason: ...} the same way it
     # renders success. Keep HTTP 200 so the JS stays thin (no status-code

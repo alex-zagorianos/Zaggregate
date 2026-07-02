@@ -49,6 +49,36 @@ def is_unverified(entry: "CompanyEntry") -> bool:
     return bool((getattr(entry, "extra", None) or {}).get(UNVERIFIED_FLAG))
 
 
+# Key inside CompanyEntry.extra marking a BROWSER-ONLY board (S33): a board that
+# is real and LIVE — verified from the user's own logged-in browser via the
+# extension's "Verify from this tab" step — but that the SERVER cannot read. The
+# exact case is a Cloudflare/CSRF-walled Workday tenant (FedEx, Banner: the
+# public wday/cxs API 422s server-side), so the board fails probe_board() even
+# though the user is looking at a live page full of jobs. Unlike UNVERIFIED_FLAG
+# (a *failed/dead* board kept out of scraping until it proves itself), a
+# browser-only board is a *confirmed-real* company that simply can't be scraped
+# programmatically:
+#   * it MUST survive registry listings and count as a real company (GUI, the
+#     '+ Add Companies' dedup, ai_setup known-set) — so get_registry keeps it by
+#     default, opposite to the unverified default;
+#   * the SERVER-SIDE scraping path (CareersClient) EXCLUDES it, so the scraper
+#     never churns on a wall it can't pass — the user refreshes it by browsing
+#     with the extension instead;
+#   * if a later server-side probe DOES reach it (the wall came down), a verified
+#     re-add/clip UPGRADES it to a normal scraped entry (clears this flag),
+#     mirroring the unverified->verified upgrade in save_companies.
+# The two flags are distinct and independent (a record carries at most one in
+# practice, but neither implies the other).
+BROWSER_ONLY_FLAG = "browser_only"
+
+
+def is_browser_only(entry: "CompanyEntry") -> bool:
+    """True when `entry` is a browser-only board (S33): confirmed live from the
+    user's browser but unreadable server-side, so it's a real registry company
+    that the programmatic careers scraper must SKIP. See BROWSER_ONLY_FLAG."""
+    return bool((getattr(entry, "extra", None) or {}).get(BROWSER_ONLY_FLAG))
+
+
 # ---------------------------------------------------------------------------
 # Health Informatics
 # Greenhouse slugs verified 2026-05-26 against boards-api.greenhouse.io
@@ -222,17 +252,20 @@ def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = 
     Returns the number actually added (fresh inserts + unverified upgrades).
 
     Re-verify path (P0-6): when ``upgrade_unverified`` is True (the default) an
-    incoming VERIFIED entry (i.e. NOT flagged unverified) that matches an
-    existing record by (ats_type, slug) OR name — where the STORED record is
-    currently flagged unverified — UPGRADES it in place: the stored record's
-    fields are replaced with the fresh entry's and the UNVERIFIED_FLAG is
-    cleared (dropping `extra` if it becomes empty). This is what makes a board
-    that failed its first live probe (a transient network blip / rate-limit /
-    ATS outage, then kept-anyway) scrapeable again once the user re-adds,
-    re-clips, or re-seeds it after it verifies — instead of being permanently
-    locked out. A verified board already stored as verified stays a plain
-    duplicate (skipped); an incoming still-unverified entry never overwrites a
-    verified stored record.
+    incoming SERVER-VERIFIED entry (i.e. NOT flagged unverified AND NOT flagged
+    browser-only) that matches an existing record by (ats_type, slug) OR name —
+    where the STORED record is currently flagged unverified OR browser-only —
+    UPGRADES it in place: the stored record's fields are replaced with the fresh
+    entry's and BOTH the UNVERIFIED_FLAG and BROWSER_ONLY_FLAG are cleared
+    (dropping `extra` if it becomes empty). This is what makes a board that
+    failed its first live probe (a transient network blip / rate-limit / ATS
+    outage, then kept-anyway) — OR one that was only browser-verifiable because a
+    Cloudflare/CSRF wall blocked the server (S33), and whose wall later came down
+    — scrapeable again once the user re-adds, re-clips, or re-seeds it after it
+    verifies server-side, instead of being permanently locked out. A verified
+    board already stored as verified stays a plain duplicate (skipped); an
+    incoming still-unverified (or still-browser-only) entry never overwrites a
+    server-verified stored record.
 
     The read-modify-write is serialized by a module lock (_SAVE_LOCK) so
     concurrent writers (the threaded Flask /clip receiver, the GUI add) can't
@@ -281,12 +314,19 @@ def _save_companies_locked(new_entries: list[CompanyEntry], path: Path,
     for e in new_entries:
         existing = by_key.get((e.ats_type, e.slug)) or by_name.get(e.name.lower())
         if existing is not None:
-            # A verified re-add of a board stored as unverified clears the flag
-            # (user-wins-by-identity) so it re-enters the scraped set. Any other
-            # collision (verified<->verified, or an incoming still-unverified
-            # entry) stays a no-op skip — we never demote a verified record.
+            # A SERVER-verified re-add of a board stored as unverified OR
+            # browser-only clears that flag (user-wins-by-identity) so it
+            # re-enters the scraped set. The incoming entry must itself be
+            # server-verified — neither flagged unverified nor browser-only — or
+            # we'd "upgrade" a walled board into the scraper (a browser-only clip
+            # re-clipping a browser-only board is NOT a server read, so it stays a
+            # no-op skip below). Any other collision (verified<->verified) is also
+            # a no-op skip — we never demote a server-verified record.
+            _stored_extra = existing.get("extra") or {}
+            _stored_gated = bool(_stored_extra.get(UNVERIFIED_FLAG)
+                                 or _stored_extra.get(BROWSER_ONLY_FLAG))
             if (upgrade_unverified and not is_unverified(e)
-                    and bool((existing.get("extra") or {}).get(UNVERIFIED_FLAG))):
+                    and not is_browser_only(e) and _stored_gated):
                 upgraded = _record_for(e)
                 # Merge industries (union) so a re-verify with a different active
                 # field doesn't silently drop the board's prior field tags.
@@ -386,6 +426,15 @@ def industry_company_count(industry: str | None, user_json: Optional[Path] = Non
     return len(get_registry(industry=industry, user_json=user_json))
 
 
+def browser_only_count(user_json: Optional[Path] = None) -> int:
+    """How many registry companies are browser-only (S33): real, live boards the
+    server can't scrape, kept fresh by browsing with the extension. Powers a
+    'N boards need browsing' readout so the user knows these exist and how they
+    stay current. Counted from the full listing (include_browser_only=True is the
+    get_registry default)."""
+    return sum(1 for e in get_registry(user_json=user_json) if is_browser_only(e))
+
+
 def registry_stats(user_json: Optional[Path] = None) -> dict[str, int]:
     """Company count per industry TAG across the merged registry. Powers a
     'companies for your field' readout so an empty/eng-only registry is visible
@@ -399,7 +448,8 @@ def registry_stats(user_json: Optional[Path] = None) -> dict[str, int]:
 
 
 def get_registry(industry: str | None = None, user_json: Optional[Path] = None,
-                 include_unverified: bool = False) -> list[CompanyEntry]:
+                 include_unverified: bool = False,
+                 include_browser_only: bool = True) -> list[CompanyEntry]:
     """Return companies filtered by industry key or tag, merged with user companies.json.
 
     User entries override hardcoded ones by name (case-insensitive match).
@@ -409,10 +459,21 @@ def get_registry(industry: str | None = None, user_json: Optional[Path] = None,
     (failed its live probe at add-time, P0-6) is EXCLUDED — this is what keeps
     dead/junk boards from being scraped and re-throwing soft errors every run.
     Pass include_unverified=True to see them too (e.g. a prune/manage UI).
+
+    Browser-only entries (S33) invert that default: they are CONFIRMED-real
+    companies (verified from the user's browser) that merely can't be scraped
+    server-side, so they must stay VISIBLE in listings/dedup/GUI counts and are
+    kept by default (include_browser_only=True). Only the programmatic careers
+    SCRAPER passes include_browser_only=False, so it silently skips a wall it
+    could never read — the user keeps those fresh by browsing with the extension.
+    A later server-side re-verify upgrades such a board back into the scraped set
+    (save_companies clears BROWSER_ONLY_FLAG).
     """
     user_entries = _load_user_companies(user_json)
     if not include_unverified:
         user_entries = [e for e in user_entries if not is_unverified(e)]
+    if not include_browser_only:
+        user_entries = [e for e in user_entries if not is_browser_only(e)]
 
     # Build base list: hardcoded registry filtered by industry
     if industry is None:

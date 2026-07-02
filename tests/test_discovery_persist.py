@@ -189,6 +189,108 @@ def test_concurrent_save_companies_loses_no_write(tmp_path):
     assert slugs == {f"slug{i}" for i in range(N)}   # not one write lost
 
 
+# ── S33: browser-only boards persist, count, but are excluded from scraping ────
+from scrape.company_registry import (BROWSER_ONLY_FLAG, is_browser_only,  # noqa: E402
+                                     browser_only_count)
+
+
+def test_browser_only_flag_round_trips_through_save_and_load(tmp_path):
+    p = tmp_path / "companies.json"
+    e = CompanyEntry("Fedex", "workday_cxs", "fedex:5:careers",
+                     ["warehouse logistics"], {BROWSER_ONLY_FLAG: True})
+    assert save_companies([e], p) == 1
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    rec = [c for c in raw["companies"] if c["name"] == "Fedex"][0]
+    assert rec["extra"] == {BROWSER_ONLY_FLAG: True}        # persisted in extra
+    loaded = _load_user_companies(p)
+    assert is_browser_only(loaded[0]) is True               # and reads back
+
+
+def test_get_registry_keeps_browser_only_but_scraper_excludes_it(tmp_path):
+    p = tmp_path / "companies.json"
+    save_companies([
+        CompanyEntry("Live Co", "greenhouse", "liveco", ["controls_engineering"]),
+        CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                     ["controls_engineering"], {BROWSER_ONLY_FLAG: True}),
+    ], p)
+    # Browser-only is a REAL company: visible in the default listing (GUI count,
+    # dedup) — unlike an unverified board, which is hidden by default.
+    listed = {c.name for c in get_registry("controls_engineering", user_json=p)}
+    assert {"Live Co", "Walled Co"} <= listed
+    # But the SCRAPER view (include_browser_only=False) drops it.
+    scraped_view = {c.name for c in get_registry("controls_engineering",
+                                                 user_json=p, include_browser_only=False)}
+    assert "Live Co" in scraped_view
+    assert "Walled Co" not in scraped_view
+    assert browser_only_count(p) == 1
+
+
+def test_browser_only_is_not_unverified(tmp_path):
+    # The two flags are distinct: a browser-only board is NOT 'unverified'.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                                 ["controls_engineering"], {BROWSER_ONLY_FLAG: True})], p)
+    e = _load_user_companies(p)[0]
+    assert is_browser_only(e) and not is_unverified(e)
+    # Included even with include_unverified=False (it's not unverified).
+    assert "Walled Co" in {c.name for c in get_registry("controls_engineering", user_json=p)}
+
+
+def test_server_reverify_clears_browser_only_flag(tmp_path):
+    # The wall came down: a SERVER-verified re-add upgrades a browser-only board
+    # in place, clearing BROWSER_ONLY_FLAG so it re-enters the scraped set.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                                 ["controls_engineering"], {BROWSER_ONLY_FLAG: True})], p)
+    scraped_view = {c.name for c in get_registry("controls_engineering", user_json=p,
+                                                 include_browser_only=False)}
+    assert "Walled Co" not in scraped_view                  # excluded from scraping
+    upgraded = save_companies(
+        [CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                      ["controls_engineering"])], p)         # now server-verified
+    assert upgraded == 1
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    rec = [c for c in raw["companies"] if c["name"] == "Walled Co"][0]
+    assert not (rec.get("extra") or {}).get(BROWSER_ONLY_FLAG)   # flag cleared
+    assert sum(1 for c in raw["companies"] if c.get("slug") == "walled:5:ext") == 1
+    # And it's back in the scraper view.
+    assert "Walled Co" in {c.name for c in get_registry("controls_engineering", user_json=p,
+                                                        include_browser_only=False)}
+
+
+def test_incoming_browser_only_never_upgrades_stored_flag(tmp_path):
+    # A browser-only re-save (not a server read) never clears a stored flag and
+    # never demotes a server-verified record.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                                 ["controls_engineering"], {BROWSER_ONLY_FLAG: True})], p)
+    added = save_companies([CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                                         ["controls_engineering"], {BROWSER_ONLY_FLAG: True})], p)
+    assert added == 0                                       # still a no-op dup
+    e = _load_user_companies(p)[0]
+    assert is_browser_only(e)                               # flag intact
+
+
+def test_careers_client_does_not_scrape_browser_only(tmp_path, monkeypatch):
+    # End-to-end: the scraper reads get_registry(include_browser_only=False), so a
+    # browser-only board never reaches _scrape_one (S33). Discovery off.
+    p = tmp_path / "companies.json"
+    save_companies([
+        CompanyEntry("Live Co", "greenhouse", "liveco", ["controls_engineering"]),
+        CompanyEntry("Walled Co", "workday_cxs", "walled:5:ext",
+                     ["controls_engineering"], {BROWSER_ONLY_FLAG: True}),
+    ], p)
+    client = CareersClient(cache_dir=tmp_path, cache_enabled=False,
+                           industry_filter="controls_engineering", top_n=0,
+                           discovery_enabled=False, companies_file=p)
+    scraped = []
+    monkeypatch.setattr(client, "_scrape_one",
+                        lambda company, keyword: scraped.append(company.name) or [])
+    client.search_and_parse("controls engineer")
+    assert "Live Co" in scraped
+    assert "Walled Co" not in scraped
+
+
 def test_careers_client_does_not_scrape_unverified(tmp_path, monkeypatch):
     # End-to-end: the scraper reads get_registry, so a flagged board never
     # reaches _scrape_one (P0-6). Discovery off so only the base registry is seen.
