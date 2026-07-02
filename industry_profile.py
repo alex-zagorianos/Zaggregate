@@ -89,17 +89,36 @@ _RULES: list[tuple[set[str], dict]] = [
       "ai", "ml", "applied"},
      {"muse": _ENG_MUSE, "jobicy": "engineering", "syn": [],
       "titles": ["engineer", "engineering", "technician"]}),
+    # Marketing BEFORE health so "digital marketing" is not captured by the
+    # health rule's "digital" token, and BEFORE the O*NET tier so
+    # "demand generation manager" no longer mis-resolves to the O*NET
+    # "Hydroelectric Production Managers" (11-3051.06) collision. jobicy="marketing"
+    # keeps marketing as knowledge work (tech-skewed boards stay on).
+    ({"marketing", "advertising", "pr", "communications", "brand", "content",
+      "digital-marketing", "seo", "sem", "demand", "growth-marketing", "social",
+      "campaigns", "martech"},
+     {"muse": ["Advertising and Marketing"], "jobicy": "marketing",
+      "syn": ["digital marketing", "demand generation", "growth marketing",
+              "content marketing", "brand marketing"],
+      "titles": ["marketing", "brand", "content", "communications", "digital",
+                 "demand", "growth", "seo", "social"]}),
     ({"health", "healthcare", "clinical", "medical", "informatics", "ehr", "emr",
-      "hospital", "patient", "pharma", "pharmacy", "biomedical", "digital"},
+      "hospital", "patient", "pharma", "pharmacy", "biomedical"},
      {"muse": ["Healthcare", "Data and Analytics"], "jobicy": None,
       "syn": ["clinical informatics", "healthcare analytics", "health data",
               "electronic health record", "epic"],
       "titles": ["clinical", "informatics", "health", "analyst", "epic", "ehr",
                  "nurse", "physician", "director", "vp", "chief"]}),
-    ({"nursing", "nurse", "rn", "lpn", "caregiver", "care"},
+    # Nursing / clinical healthcare: broadened synonyms + titles so RN/LPN and
+    # bedside clinical roles route here (jobicy=None keeps it OFF the tech-only
+    # Jobicy board and out of the tech-skewed source set -- it's hands-on work).
+    ({"nursing", "nurse", "rn", "lpn", "cna", "caregiver", "care", "bedside",
+      "clinician", "practitioner"},
      {"muse": ["Healthcare"], "jobicy": None,
-      "syn": ["registered nurse", "patient care"],
-      "titles": ["nurse", "nursing", "rn", "clinical", "care"]}),
+      "syn": ["registered nurse", "patient care", "clinical nurse",
+              "staff nurse", "charge nurse"],
+      "titles": ["nurse", "nursing", "rn", "lpn", "clinical", "care", "bedside",
+                 "practitioner", "unit"]}),
     ({"data", "analytics", "analyst", "science", "bi"},
      {"muse": ["Data and Analytics"], "jobicy": "data-science",
       "syn": ["data analyst", "business intelligence"],
@@ -112,13 +131,18 @@ _RULES: list[tuple[set[str], dict]] = [
     ({"sales", "account", "business-development"},
      {"muse": ["Sales", "Account Management"], "jobicy": "sales",
       "syn": [], "titles": ["sales", "account", "representative"]}),
-    ({"marketing", "advertising", "pr", "communications", "brand", "content"},
-     {"muse": ["Advertising and Marketing"], "jobicy": "marketing",
-      "syn": [], "titles": ["marketing", "brand", "content", "communications"]}),
+    # Education / K-12: "instructional" and "curriculum" added so those route
+    # here (BEFORE the fitness rule, whose "coach" token would otherwise grab
+    # "instructional coach"). Ordered before fitness in this list. jobicy=None
+    # (K-12 teaching is not a remote-tech field).
     ({"education", "teacher", "teaching", "school", "academic", "professor",
-      "instructor", "tutor"},
+      "instructor", "tutor", "instructional", "curriculum", "k12", "k-12",
+      "elementary", "secondary", "paraprofessional", "educator", "faculty",
+      "principal", "counselor"},
      {"muse": ["Education"], "jobicy": None,
-      "syn": ["teacher", "instructor"], "titles": ["teacher", "instructor", "education", "professor"]}),
+      "syn": ["teacher", "instructor", "instructional coach", "curriculum specialist"],
+      "titles": ["teacher", "instructor", "education", "professor", "instructional",
+                 "curriculum", "coach", "educator", "faculty"]}),
     ({"legal", "law", "attorney", "paralegal", "compliance", "counsel"},
      {"muse": ["Legal Services"], "jobicy": "legal",
       "syn": [], "titles": ["legal", "attorney", "counsel", "paralegal", "compliance"]}),
@@ -129,8 +153,23 @@ _RULES: list[tuple[set[str], dict]] = [
      {"muse": ["Management", "Business Operations"], "jobicy": "business",
       "syn": ["management consulting", "strategy consulting", "advisory services"],
       "titles": ["consultant", "consulting", "advisory", "engagement manager", "principal"]}),
-    ({"operations", "ops", "admin", "administrative", "office", "logistics",
-      "supply", "procurement"},
+    # Warehouse / logistics / distribution / supply-chain: a dedicated on-site
+    # rule placed BEFORE operations (whose "logistics"/"supply" tokens would
+    # otherwise capture these with jobicy="business" -> wrongly counted as
+    # knowledge work, running the tech-skewed boards for an on-site worker) and
+    # BEFORE transportation (whose "warehouse" token has empty synonyms). jobicy=None
+    # keeps it OFF the tech-only boards; the transportation Muse pair is reused.
+    ({"warehouse", "warehousing", "logistics", "distribution", "fulfillment",
+      "supply-chain", "supply", "procurement", "inventory", "3pl", "picker",
+      "packer", "forklift"},
+     {"muse": ["Business Operations", "Installation, Maintenance, and Repairs"],
+      "jobicy": None,
+      "syn": ["warehouse associate", "material handler", "distribution",
+              "forklift operator", "supply chain"],
+      "titles": ["warehouse", "logistics", "distribution", "material handler",
+                 "picker", "packer", "forklift", "associate", "operations"]}),
+    ({"operations", "ops", "admin", "administrative", "office",
+      "procurement-ops"},
      {"muse": ["Business Operations", "Project Management", "Management"], "jobicy": "business",
       "syn": [], "titles": ["operations", "coordinator", "administrator", "manager", "logistics"]}),
     ({"design", "ux", "ui", "graphic", "product-design"},

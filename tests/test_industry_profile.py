@@ -64,6 +64,177 @@ def test_consulting_is_knowledge_work_keeps_tech_sources():
     assert gate_tech_sources(src, "management consulting") == src
 
 
+# ── S32 taxonomy breadth: marketing / nursing / warehouse / education ─────────
+# New _RULES entries. Each set: (a) routing, (b) placement/ordering (a token that
+# an EARLIER rule would otherwise capture now lands on the right rule), and (c)
+# knowledge-work gating. Regression guards for engineering + consulting live at
+# the bottom; bare-ambiguous-word guards are inlined per family.
+
+# -- marketing --
+def test_marketing_profile_routes_and_beats_health_digital_token():
+    # "digital marketing" must route to marketing, NOT the health rule (whose
+    # "digital" token previously captured it). Marketing rule now precedes health.
+    p = ip.resolve("digital marketing")
+    assert p.source == "seed"
+    assert p.muse_categories == ["Advertising and Marketing"]
+    assert p.jobicy_industry == "marketing"
+    assert "digital marketing" in p.query_synonyms
+    assert "marketing" in p.title_terms and "demand" in p.title_terms
+
+
+def test_marketing_catches_demand_generation_before_onet_hydroelectric():
+    # "demand generation manager" previously mis-resolved through the O*NET tier to
+    # "Hydroelectric Production Managers" (11-3051.06). The marketing rule now
+    # catches it BEFORE the O*NET fallback tier runs.
+    for q in ("demand generation manager", "growth marketing manager",
+              "seo specialist"):
+        ip.clear_cache()
+        p = ip.resolve(q)
+        assert p.source == "seed"
+        assert p.jobicy_industry == "marketing"
+
+
+def test_marketing_is_knowledge_work_and_does_not_capture_bare_digital():
+    # Marketing is desk/knowledge work -> tech-skewed boards stay on.
+    from search.keyword_strategy import is_knowledge_work
+    assert is_knowledge_work("digital marketing") is True
+    # bare "digital" is NOT a marketing trigger (only "digital-marketing" is);
+    # it must fall through to generic full-reach, not the marketing rule.
+    ip.clear_cache()
+    assert ip.resolve("digital").source == "generic"
+
+
+# -- nursing / clinical --
+def test_nursing_profile_routes_clinical_roles():
+    p = ip.resolve("nursing")
+    assert p.source == "seed"
+    assert p.muse_categories == ["Healthcare"]
+    assert p.jobicy_industry is None                 # Jobicy is tech-only -> skip
+    assert "registered nurse" in p.query_synonyms
+    for t in ("nurse", "nursing", "rn", "lpn", "clinical"):
+        assert t in p.title_terms
+
+
+def test_nursing_triggers_scope_to_clinical_tokens():
+    # RN/LPN/bedside all reach the nursing rule (Healthcare, jobicy None).
+    for q in ("rn", "lpn", "bedside", "registered nurse"):
+        ip.clear_cache()
+        p = ip.resolve(q)
+        assert p.jobicy_industry is None
+        assert "Healthcare" in p.muse_categories
+
+
+def test_nursing_is_not_knowledge_work():
+    # Clinical/bedside nursing is hands-on -> tech-skewed boards gated OFF.
+    from search.keyword_strategy import is_knowledge_work
+    assert is_knowledge_work("nursing") is False
+    assert is_knowledge_work("registered nurse") is False
+
+
+# -- warehouse / logistics / distribution / supply chain --
+def test_warehouse_profile_routes_and_widens_recall():
+    p = ip.resolve("warehouse logistics")
+    assert p.source == "seed"
+    assert p.jobicy_industry is None
+    assert "Business Operations" in p.muse_categories
+    assert p.query_synonyms                          # was [] before -> now widens
+    assert "warehouse associate" in p.query_synonyms
+    for t in ("warehouse", "logistics", "distribution"):
+        assert t in p.title_terms
+
+
+def test_warehouse_wins_over_operations_for_logistics_tokens():
+    # "logistics"/"supply chain"/"distribution" previously fell to the operations
+    # rule (jobicy="business" -> wrongly knowledge work). The warehouse rule now
+    # precedes operations and claims them with jobicy=None.
+    for q in ("logistics", "supply chain", "distribution", "fulfillment"):
+        ip.clear_cache()
+        p = ip.resolve(q)
+        assert p.jobicy_industry is None, q
+        assert "Installation, Maintenance, and Repairs" in p.muse_categories, q
+
+
+def test_warehouse_is_not_knowledge_work():
+    # On-site warehouse/logistics must NOT run the tech-skewed remote boards
+    # (coverage §7: these were mis-gated as knowledge work via operations).
+    from search.keyword_strategy import is_knowledge_work
+    for q in ("warehouse", "warehouse logistics", "logistics", "supply chain"):
+        ip.clear_cache()
+        assert is_knowledge_work(q) is False, q
+
+
+# -- education / K-12 --
+def test_education_profile_routes_instructional_and_curriculum():
+    p = ip.resolve("education")
+    assert p.source == "seed"
+    assert p.muse_categories == ["Education"]
+    assert p.jobicy_industry is None
+    for t in ("teacher", "instructional", "curriculum"):
+        assert t in p.title_terms
+
+
+def test_education_wins_over_fitness_for_instructional_coach():
+    # "instructional coach"/"curriculum" previously mis-routed to the fitness rule
+    # (its "coach" token). Education precedes fitness AND now carries those tokens.
+    for q in ("instructional coach", "curriculum", "k-12 teaching"):
+        ip.clear_cache()
+        p = ip.resolve(q)
+        assert p.muse_categories == ["Education"], q
+        assert p.source == "seed", q
+    # bare "coach" alone is still (correctly) a fitness role, not education.
+    ip.clear_cache()
+    assert ip.resolve("coach").muse_categories == ["Sports, Fitness, and Recreation"]
+
+
+def test_education_all_muse_categories_valid():
+    for q in ("education", "teacher", "instructional coach", "curriculum"):
+        ip.clear_cache()
+        for c in ip.resolve(q).muse_categories:
+            assert c in ip.MUSE_CATEGORIES_ALL
+
+
+# -- regression guards: engineering + consulting (S30) unchanged --
+def test_s32_engineering_profile_byte_identical():
+    for q in ("", "engineering", "mechanical engineering", "controls engineering",
+              "software", "robotics", "embedded"):
+        ip.clear_cache()
+        p = ip.resolve(q)
+        assert p.eng_like is True
+        assert p.muse_categories == ["Software Engineering", "Science and Engineering"]
+        assert p.jobicy_industry == "engineering"
+        assert p.title_terms == ["engineer", "engineering"]
+        assert p.query_synonyms == []
+
+
+def test_s32_consulting_profile_unchanged():
+    p = ip.resolve("management consulting")
+    assert p.source == "seed"
+    assert p.muse_categories == ["Management", "Business Operations"]
+    assert p.jobicy_industry == "business"
+    assert "advisory services" in p.query_synonyms
+    assert "engagement manager" in p.title_terms
+    for q in ("consultant", "advisory", "strategy-consulting"):
+        ip.clear_cache()
+        assert ip.resolve(q).jobicy_industry == "business"
+
+
+def test_s32_bare_ambiguous_words_not_captured_by_new_entries():
+    # None of the new marketing/warehouse/education entries may swallow these
+    # ambiguous bare words (they must keep their prior resolution).
+    cases = {
+        "strategy": "generic",       # not consulting, not marketing
+        "management": "business",    # the management rule, unchanged
+        "health": None,              # health rule (jobicy None), unchanged
+    }
+    ip.clear_cache()
+    assert ip.resolve("strategy").source == cases["strategy"]
+    ip.clear_cache()
+    assert ip.resolve("management").jobicy_industry == cases["management"]
+    ip.clear_cache()
+    hp = ip.resolve("health")
+    assert hp.jobicy_industry == cases["health"] and "Healthcare" in hp.muse_categories
+
+
 def test_unknown_genre_is_generic_full_reach():
     p = ip.resolve("underwater basket weaving")
     assert p.source == "generic"
