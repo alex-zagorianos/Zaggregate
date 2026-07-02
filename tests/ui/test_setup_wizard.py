@@ -184,3 +184,83 @@ def test_prefill_about_not_contaminated_by_other_sections():
     out = sw.prefill_from_existing(prefs=prefs, cfg={})
     assert "Just the about text here." in out["about"]
     assert "Target roles" not in out["about"]
+
+
+# ── P0-2b: wizard keys step ───────────────────────────────────────────────────
+
+@pytest.fixture
+def no_source_keys(monkeypatch, tmp_path):
+    """Isolate credential resolution: no env vars, secrets in an empty temp dir,
+    so connected_source_labels() sees a truly keyless machine."""
+    monkeypatch.setattr(config, "SECRETS_DIR", tmp_path / "secrets")
+    for var in ("ADZUNA_APP_ID", "ADZUNA_APP_KEY", "USAJOBS_API_KEY",
+                "USAJOBS_EMAIL", "USAJOBS_USER_AGENT", "JOOBLE_API_KEY",
+                "CAREERJET_AFFID", "CAREERONESTOP_USER_ID", "CAREERONESTOP_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    return tmp_path
+
+
+def test_connected_source_labels_empty_when_keyless(no_source_keys):
+    assert sw.connected_source_labels() == []
+
+
+def test_connected_source_labels_impact_ranked(no_source_keys, monkeypatch):
+    """Adzuna must sort before CareerOneStop before the rest, and a source counts
+    as connected only when ALL its credentials are present."""
+    from ui import settings
+    monkeypatch.setattr(settings.config, "SECRETS_DIR", no_source_keys / "secrets")
+    # CareerOneStop needs BOTH id+token; only one -> not connected yet.
+    settings.set_api_key("careeronestop_user_id", "u123")
+    assert "CareerOneStop" not in sw.connected_source_labels()
+    settings.set_api_key("careeronestop_token", "t456")
+    # Adzuna both parts.
+    settings.set_api_key("adzuna_app_id", "id")
+    settings.set_api_key("adzuna_app_key", "key")
+    settings.set_api_key("jooble_api_key", "j")
+    labels = sw.connected_source_labels()
+    assert labels[:3] == ["Adzuna", "CareerOneStop", "Jooble"]   # impact order
+
+
+def test_connected_source_labels_honors_usajobs_user_agent_fallback(
+        no_source_keys, monkeypatch):
+    """USAJobs email resolves from the USAJOBS_USER_AGENT env fallback (what the
+    client actually reads), not only USAJOBS_EMAIL."""
+    monkeypatch.setenv("USAJOBS_API_KEY", "abc")
+    monkeypatch.setenv("USAJOBS_USER_AGENT", "me@example.com")
+    assert "USAJobs" in sw.connected_source_labels()
+
+
+def test_wizard_has_keys_step_and_completes_with_zero_keys(no_source_keys,
+                                                           isolated, monkeypatch):
+    """The wizard must expose a keys step AND remain fully completable with no
+    keys connected (the whole flow must never require a key)."""
+    import tkinter as tk
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip("no display")
+    import gui  # noqa: F401  (ensures theme is importable in the same way GUI does)
+    from ui import theme
+    theme.apply_theme(root)
+    try:
+        w = sw.SetupWizard(root)
+        # The new step is present, positioned before the closing 'keep going' step.
+        names = [s.__name__ for s in w._steps]
+        assert "_step_keys" in names
+        assert names.index("_step_keys") < names.index("_step_keep_going")
+        w._vars["roles"].set("registered nurse")
+        # Walk forward with the real Next handler from step 0; the keys step must
+        # NOT block advancing (no key required). Stop before the final Finish so
+        # apply()/messageboxes (tested elsewhere) don't fire.
+        w._step = 0
+        w._render()
+        for _ in range(len(w._steps) - 1):
+            before = w._step
+            w._next()
+            w.update_idletasks()
+            assert w._step == before + 1        # advanced past every step, incl. keys
+        assert w._steps[w._step].__name__ == "_step_keep_going"   # reached the end
+        w.destroy()
+    finally:
+        root.destroy()
