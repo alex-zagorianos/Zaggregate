@@ -101,6 +101,66 @@ def test_write_last_run_redacts_errors(tmp_path, monkeypatch):
     assert "TOPSECRET123" not in json.dumps(data)
 
 
+# -- S32d: the value-substitution backstop is actually armed --------------------
+
+def test_known_secret_values_reads_configured_env(monkeypatch):
+    """applog._known_secret_values() must return CONFIGURED credential values so
+    redact() can scrub them in any shape (S32d root cause: the old call passed
+    resolve_secret ONE arg -> TypeError swallowed -> always []). Uses a planted
+    fake value, never a real .env secret."""
+    import applog
+    monkeypatch.setenv("CAREERONESTOP_USER_ID", "PLANTEDUSERID_ZZZ9")
+    monkeypatch.setenv("ADZUNA_APP_KEY", "PLANTED_ADZUNA_KEY_LONG_9999")
+    monkeypatch.setattr(applog, "_SECRET_VALUES", None)  # bust the per-proc cache
+    vals = applog._known_secret_values()
+    assert "PLANTEDUSERID_ZZZ9" in vals
+    assert "PLANTED_ADZUNA_KEY_LONG_9999" in vals
+
+
+def test_redact_scrubs_configured_value_in_any_shape(monkeypatch):
+    """A configured key VALUE must be scrubbed even in a non-URL shape the three
+    regex layers don't match (e.g. an 'X-Api-Key: <key>' header prose) — proving
+    the value backstop, not just the URL regexes, is live."""
+    import applog
+    monkeypatch.setenv("ADZUNA_APP_KEY", "PLANTED_ADZUNA_KEY_LONG_9999")
+    monkeypatch.setattr(applog, "_SECRET_VALUES", None)
+    out = applog.redact("outbound header X-Api-Key: PLANTED_ADZUNA_KEY_LONG_9999 sent")
+    assert "PLANTED_ADZUNA_KEY_LONG_9999" not in out
+    assert "[redacted]" in out
+
+
+def test_redact_scrubs_careeronestop_path_userid_by_shape():
+    """The bare-path-segment userId in a CareerOneStop error URL must be scrubbed
+    even with NO credential configured (fresh install / stale log line) — the
+    _C1_PATH_RE shape layer, independent of the value backstop."""
+    import applog
+    leak = ("401 Client Error: Unauthorized for url: https://api.careeronestop.org"
+            "/v1/jobsearch/UNCONFIGUREDUSERID_7777/nurse/Cincinnati%2C%20OH/25/0/0/1/50/30")
+    out = applog.redact(leak)
+    assert "UNCONFIGUREDUSERID_7777" not in out
+    assert "jobsearch/[redacted]/" in out
+
+
+def test_last_run_and_zip_scrub_configured_userid(tmp_path, monkeypatch):
+    """End-to-end: a configured userId leaked in an error string is scrubbed on
+    the way into last_run.json (and, since ui/help reuses applog.redact, the
+    report-a-problem zip). Planted fake value only."""
+    import applog
+    import workspace
+    monkeypatch.setenv("CAREERONESTOP_USER_ID", "PLANTEDUSERID_ZZZ9")
+    monkeypatch.setattr(applog, "_SECRET_VALUES", None)
+    monkeypatch.setattr(workspace, "project_dir", lambda slug=None: tmp_path)
+    err = ("careeronestop: 401 Client Error for url: https://api.careeronestop.org"
+           "/v1/jobsearch/PLANTEDUSERID_ZZZ9/nurse/0/25/0/0/1/50/30")
+    p = applog.write_last_run({"errors": [err], "added": 0}, project_slug=None)
+    assert p is not None
+    persisted = p.read_text(encoding="utf-8")
+    assert "PLANTEDUSERID_ZZZ9" not in persisted
+    # ui/help.py's zip stage calls applog.redact on the same content, so the same
+    # scrub applies to the report-a-problem deliverable.
+    assert "PLANTEDUSERID_ZZZ9" not in applog.redact(err)
+
+
 # -- rescore keyword parity (industry-only projects) ------------------------------
 
 def test_rescore_derives_effective_keywords(tmp_db, monkeypatch):
