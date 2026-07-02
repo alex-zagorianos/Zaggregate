@@ -1167,7 +1167,13 @@ class InboxTab(ttk.Frame):
         self.refresh()
 
     def _build(self):
-        hdr = theme.header_bar(self, "Inbox", "Fresh matches from the daily search.")
+        # "Jobs For You" curated-feed framing (SB-4): the free scorer is now
+        # trustworthy (Wave-1 seniority/remote/salary fixes), so present the daily
+        # inbox as a matched, ranked feed — not a raw dump. Copy/framing only; the
+        # ranking engine (round-robin over Fit-else-Score) is unchanged.
+        hdr = theme.header_bar(
+            self, "Jobs For You",
+            "Your daily matched feed — ranked for you, best matches first.")
         # Close the daily loop in-GUI: run the same pipeline the scheduled task
         # runs, right now, without a Python install or a terminal (P0 #2).
         self._update_btn = theme.tip(
@@ -1184,6 +1190,14 @@ class InboxTab(ttk.Frame):
         self._reach_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
                                    fg=theme.MUTED, font=theme.FONT_SM)
         self._reach_lbl.pack(side="right", padx=14)
+        # Actionable reach (§6.8 / SB-6): when reach is low/uncertifiable because a
+        # headline free key (Adzuna/CareerOneStop) is missing, name the reason and
+        # offer a one-click fix that opens the same 'Connect job sources' dialog.
+        # Blank (and unpacked) when nothing is actionable.
+        self._reach_fix_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                       fg=theme.ACCENT, font=theme.FONT_SM,
+                                       cursor="hand2")
+        self._reach_fix_lbl.bind("<Button-1>", lambda _e: self._open_source_keys())
         # Last-update stamp from the run beacon (applog.last_run_info), so a user
         # can tell "no new jobs" from "updates stopped running" at a glance.
         self._lastrun_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
@@ -1199,9 +1213,16 @@ class InboxTab(ttk.Frame):
         self._keyless_lbl.pack(side="right", padx=14)
         self._keyless_lbl.bind("<Button-1>", lambda _e: self._open_source_keys())
         theme.tip_strip(
-            self, "Your shortlist. Pick jobs you like and click "
+            self, "Jobs matched to you, ranked best-first. Score is our free "
+                  "match; Fit is your AI grade. Pick jobs you like and click "
                   "“Track ▸ Interested” — they move to Apply Queue. "
                   "Tip: click a row and press T (track), D (dismiss), O (open).")
+        # Sample-inbox banner (§6.1): shown ONLY while the demo rows are on screen,
+        # so a first-run user knows these are illustrative and how to get real ones.
+        self._demo_banner = tk.Label(
+            self, text="", bg=theme.ACCENT, fg="#ffffff", font=theme.FONT_SM,
+            anchor="w", justify="left", padx=12, pady=6)
+        # Not packed yet — _render packs/forgets it based on self._demo_active.
 
         # Filter bar — applied client-side over the cached snapshot, so
         # typing in a filter never hits the database.
@@ -1437,6 +1458,22 @@ class InboxTab(ttk.Frame):
                 self._f_location.set("All locations")
         self._skill_terms = None   # project may have changed -> reparse on demand
         self._all = list(inbox_all())
+        # Bundled sample inbox (§6.1): a first-run user with a genuinely empty
+        # inbox sees ~20 pre-scored DEMO rows so the aha (a scored, Score-vs-Fit
+        # inbox) lands before anything is connected. Read-only: demo rows never
+        # touch the DB, are hidden the moment a real inbox exists, and are retired
+        # permanently once the user has seen a real inbox / run a real update.
+        self._demo_active = False
+        try:
+            import config
+            import demo_data
+            if self._all:
+                demo_data.retire_demo(config.USER_DATA_DIR)  # real inbox -> retire
+            elif demo_data.should_show_demo(config.USER_DATA_DIR, len(self._all)):
+                self._all = demo_data.demo_inbox_rows()
+                self._demo_active = bool(self._all)
+        except Exception:
+            self._demo_active = False
         # Normalize disclosed pay once per load (not per filter keystroke) so the
         # Salary column and the pay-floor filter are cheap to render.
         for r in self._all:
@@ -1454,11 +1491,13 @@ class InboxTab(ttk.Frame):
         """Best-effort: read the last persisted reach snapshot for the active
         project. Never let a reach/coverage error touch the inbox render."""
         try:
-            from coverage.reach import badge_line, load_latest
+            from coverage.reach import badge_line, badge_reason, load_latest
             snap = load_latest(workspace.active_slug() or "root")
             self._reach_lbl.config(text=badge_line(snap))
+            self._set_reach_fix(badge_reason(snap))
         except Exception:
             self._reach_lbl.config(text="")
+            self._set_reach_fix(None)
         info = None
         try:
             import applog
@@ -1476,6 +1515,21 @@ class InboxTab(ttk.Frame):
             self._keyless_lbl.config(text=self._keyless_badge_text(info))
         except Exception:
             self._keyless_lbl.config(text="")
+
+    def _set_reach_fix(self, reason):
+        """Show/hide the clickable '[Connect a free key]' reach-fix affordance.
+        `reason` is the plain-English cause (from coverage.reach.badge_reason) or
+        None to hide it entirely."""
+        lbl = getattr(self, "_reach_fix_lbl", None)
+        if lbl is None or not lbl.winfo_exists():
+            return
+        if reason:
+            lbl.config(text=f"Seeing {reason} \N{EM DASH} [Connect a free key]")
+            if not lbl.winfo_ismapped():
+                lbl.pack(side="right", padx=6)
+        else:
+            lbl.config(text="")
+            lbl.pack_forget()
 
     @staticmethod
     def _keyless_badge_text(last_run_info: dict | None) -> str:
@@ -1517,6 +1571,14 @@ class InboxTab(ttk.Frame):
         if self._update_running:
             return
         slug = workspace.active_slug()
+        # The user chose to fetch real jobs: retire the sample inbox now so it
+        # never returns, even if this run happens to add zero rows (§6.1).
+        try:
+            import config
+            import demo_data
+            demo_data.retire_demo(config.USER_DATA_DIR)
+        except Exception:
+            pass
         self._update_running = True
         self._update_before = inbox_count()
         try:
@@ -1580,6 +1642,15 @@ class InboxTab(ttk.Frame):
 
     def _filtered(self) -> list[dict]:
         rows = self._all
+        # Sample inbox (§6.1): show every demo row as-is. Its varied locations
+        # ARE the demo (they teach the location-clean, Score-vs-Fit split), so the
+        # user's configured local-focus filter must not whittle it down before
+        # they've even run a real search. Gate on the rows ACTUALLY being demo
+        # rows (not just the flag) so a caller that swaps in real rows isn't
+        # accidentally left unfiltered.
+        if (getattr(self, "_demo_active", False) and rows
+                and all(r.get("is_demo") for r in rows)):
+            return list(rows)
         try:
             min_score = int(self._f_minscore.get().strip())
         except ValueError:
@@ -1663,12 +1734,32 @@ class InboxTab(ttk.Frame):
                 (r.get("_comp") or {}).get("display") or r["salary_text"],
                 r["source"], r["date_added"]))
         total = len(self._all)
-        label = (f"{len(rows)} of {total} awaiting triage"
-                 if len(rows) != total else f"{total} awaiting triage")
-        if not getattr(self, "_has_home", True):
-            label += "  •  All locations (set your location in Setup to enable local focus)"
+        if getattr(self, "_demo_active", False):
+            # Demo mode: don't call these "awaiting triage" (they're not real).
+            label = f"Sample inbox — {total} example jobs"
+        else:
+            label = (f"{len(rows)} of {total} awaiting triage"
+                     if len(rows) != total else f"{total} awaiting triage")
+            if not getattr(self, "_has_home", True):
+                label += "  •  All locations (set your location in Setup to enable local focus)"
         self._count_lbl.config(text=label)
+        self._toggle_demo_banner()
         self._update_empty(rows)
+
+    def _toggle_demo_banner(self):
+        """Show the sample-inbox banner only while demo rows are on screen."""
+        banner = getattr(self, "_demo_banner", None)
+        if banner is None or not banner.winfo_exists():
+            return
+        if getattr(self, "_demo_active", False):
+            banner.config(
+                text="DEMO — this is a sample inbox to show you what scored "
+                     "matches look like (Score = our free match; Fit = an AI "
+                     "grade). Click “Update my Inbox now” to replace it with real "
+                     "jobs from your sources.")
+            banner.pack(fill="x", before=self._tf)
+        else:
+            banner.pack_forget()
 
     def _update_empty(self, rows):
         """Overlay a friendly empty state on the table: distinguish a genuinely
@@ -1723,6 +1814,19 @@ class InboxTab(ttk.Frame):
     def _selected(self) -> list[dict]:
         return [self._rows[iid] for iid in self._tree.selection()
                 if iid in self._rows]
+
+    def _block_if_demo(self, sel) -> bool:
+        """Guard triage on the read-only sample inbox: demo rows have no DB row,
+        so tracking/dismissing them is meaningless. Returns True (and nudges the
+        user toward a real update) when any selected row is a demo row."""
+        if any(r.get("is_demo") for r in sel):
+            messagebox.showinfo(
+                "Sample inbox",
+                "These are example jobs to show you what a scored inbox looks "
+                "like — you can't track or dismiss them. Click “Update my Inbox "
+                "now” to pull in real jobs you can act on.", parent=self)
+            return True
+        return False
 
     def _show_detail(self, _event=None):
         sel = self._selected()
@@ -1853,6 +1957,8 @@ class InboxTab(ttk.Frame):
         if not sel:
             messagebox.showinfo("No selection", "Select inbox row(s) first.")
             return
+        if self._block_if_demo(sel):
+            return
         idx = self._focus_index()
         # Dup-guard (Search already has one): skip rows whose URL is already
         # tracked or dismissed, so a posting can't be double-added.
@@ -1891,6 +1997,8 @@ class InboxTab(ttk.Frame):
         sel = self._selected()
         if not sel:
             return
+        if self._block_if_demo(sel):
+            return
         idx = self._focus_index()
         ok, _ = db_guard(
             self, lambda: [tracker_service.dismiss_job(r["id"]) for r in sel],
@@ -1912,6 +2020,8 @@ class InboxTab(ttk.Frame):
         sel = self._selected()
         if not sel:
             messagebox.showinfo("No selection", "Select a row first.")
+            return
+        if self._block_if_demo(sel):
             return
         companies = {(r["company"] or "") for r in sel}
         targets = [r for r in self._rows.values()
@@ -1955,6 +2065,8 @@ class InboxTab(ttk.Frame):
         if not targets:
             messagebox.showinfo("Dismiss all shown",
                                 "There are no rows to dismiss.", parent=self)
+            return
+        if self._block_if_demo(targets):
             return
         if not messagebox.askyesno(
                 "Dismiss all shown",
@@ -4036,16 +4148,20 @@ class App(tk.Tk):
                         default_metro=actions.get("location", ""))
                 except Exception:
                     pass
-            # Close the loop: don't strand a fresh user on an empty app — offer to
-            # run their first search right now so they SEE scored results.
+            # Forced first action (§6.5): the terminal action is "Update my Inbox
+            # now" — the SAME S29 in-GUI pipeline the Inbox button + scheduled task
+            # run — so a fresh user's very first result is a populated, scored
+            # Inbox (not a Search tab they have to drive). We land on the Inbox and
+            # kick the existing update-now machinery; its own progress/empty-state
+            # takes over from there. No second run mechanism is introduced.
             if messagebox.askyesno(
                     "You're all set",
-                    "Your preferences are saved.\n\nFind your first jobs now?",
-                    parent=self):
-                self._nb.select(self._search)
+                    "Your preferences are saved.\n\nUpdate your Inbox now to pull "
+                    "in your first real jobs?", parent=self):
+                self._nb.select(self._inbox)
                 self.update_idletasks()
                 try:
-                    self._search._search()   # threaded; no-op if keywords are blank
+                    self._inbox._update_inbox_now()   # threaded; existing machinery
                 except Exception:
                     pass
                 return

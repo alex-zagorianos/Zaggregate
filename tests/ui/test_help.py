@@ -19,8 +19,9 @@ def test_guide_explains_fit_vs_score_and_day_one():
     blob = " ".join(text for _, text in uihelp.GUIDE)
     # Score vs Fit is the UI's most confusing pair — the Guide must distinguish them.
     assert "Score" in blob and "Fit grade" in blob
-    # And a brand-new user must learn the Inbox starts empty on day one.
-    assert "starts empty" in blob
+    # And a brand-new user must learn how the Inbox behaves on day one — it now
+    # shows a SAMPLE feed first (§6.1), replaced by real jobs on the first update.
+    assert "SAMPLE" in blob and "Update my Inbox now" in blob
 
 
 def test_guide_goes_deep_on_using_ai():

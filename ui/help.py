@@ -62,13 +62,16 @@ GUIDE = [
              "click “Mark Applied ▸ Next” and it jumps to the next one."),
 
     ("h1", "What each tab does"),
-    ("h2", "Inbox"),
-    ("body", "Your daily shortlist of fresh matches. Triage it: Track the ones "
-             "you like, Dismiss the rest. Tip: click a row and press T (track), "
-             "D (dismiss), or O (open) to fly through it with the keyboard."),
-    ("body", "New here? Your Inbox starts empty — click “Update my Inbox now” "
-             "and it begins filling up. Turn on daily updates (Tools ▸ “Turn on "
-             "daily updates”) and it then refreshes on its own each morning."),
+    ("h2", "Inbox — “Jobs For You”"),
+    ("body", "Your daily matched feed, ranked best-first: Score is our free match "
+             "grade, Fit is your AI grade. Triage it: Track the ones you like, "
+             "Dismiss the rest. Tip: click a row and press T (track), D (dismiss), "
+             "or O (open) to fly through it with the keyboard."),
+    ("body", "New here? Your Inbox first shows a short SAMPLE of example jobs so "
+             "you can see what scored matches look like. Click “Update my Inbox "
+             "now” to replace it with real jobs from your sources. Turn on daily "
+             "updates (Tools ▸ “Turn on daily updates”) and it then refreshes on "
+             "its own each morning."),
     ("h2", "Search"),
     ("body", "Search many job boards at once for keywords in a location. Results "
              "are scored and you can Track or Dismiss each one. “+ Add "

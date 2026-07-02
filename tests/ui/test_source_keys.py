@@ -64,6 +64,46 @@ def test_open_dialog_builds(secrets):
         root.destroy()
 
 
+# ── §6.6: Adzuna paste-split ──────────────────────────────────────────────────
+
+def test_split_adzuna_paste_labeled_blob():
+    blob = "Application ID: 1a2b3c4d\nApplication Key: " + "f" * 32
+    app_id, app_key = source_keys.split_adzuna_paste(blob)
+    assert app_id == "1a2b3c4d"
+    assert app_key == "f" * 32
+
+
+def test_split_adzuna_paste_space_separated():
+    app_id, app_key = source_keys.split_adzuna_paste("deadbeef " + "a" * 32)
+    assert app_id == "deadbeef"
+    assert app_key == "a" * 32
+
+
+def test_split_adzuna_paste_id_not_confused_with_key_prefix():
+    """The first 8 chars of the 32-hex key must NOT be picked up as the app id."""
+    key = "0123456789abcdef0123456789abcdef"
+    app_id, app_key = source_keys.split_adzuna_paste(key)   # ONLY a key present
+    assert app_key == key
+    assert app_id == ""                                     # no separate id token
+
+
+def test_split_adzuna_paste_only_id():
+    app_id, app_key = source_keys.split_adzuna_paste("App ID abcd1234")
+    assert app_id == "abcd1234"
+    assert app_key == ""
+
+
+def test_split_adzuna_paste_junk_yields_empty():
+    assert source_keys.split_adzuna_paste("no credentials here") == ("", "")
+    assert source_keys.split_adzuna_paste("") == ("", "")
+
+
+def test_looks_like_adzuna_paste():
+    assert source_keys.looks_like_adzuna_paste("abcd1234") is True
+    assert source_keys.looks_like_adzuna_paste("e" * 32) is True
+    assert source_keys.looks_like_adzuna_paste("hello world") is False
+
+
 def test_open_dialog_seeds_from_secrets(secrets):
     from ui import settings
     settings.set_api_key("adzuna_app_id", "seeded-id")

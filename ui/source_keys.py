@@ -74,6 +74,49 @@ def _in_pytest() -> bool:
     return bool(os.getenv("PYTEST_CURRENT_TEST"))
 
 
+# --- paste helpers (§6.6) ------------------------------------------------------
+# Adzuna's developer page hands the user an Application ID (an 8-hex-digit string)
+# and an Application Key (a 32-hex-digit string) on ONE screen. A user copying
+# "both" (or copying the page region) lands a blob with both values; splitting it
+# client-side turns two error-prone copies into one paste. Pure + regex-only so
+# it is unit-testable without a Tk root.
+import re as _re
+
+# App ID: exactly 8 hex chars; App Key: exactly 32 hex chars. Anchored on token
+# boundaries so they don't match substrings of a longer run.
+_ADZUNA_ID_RE = _re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{8}(?![0-9a-fA-F])")
+_ADZUNA_KEY_RE = _re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{32}(?![0-9a-fA-F])")
+
+
+def split_adzuna_paste(text: str) -> tuple[str, str]:
+    """Best-effort extraction of (app_id, app_key) from a pasted blob that may
+    contain both Adzuna values (labeled or not). Returns ('', '') for either part
+    it can't find. Never raises.
+
+    Recognizes the two by SHAPE (8-hex id, 32-hex key) so it works whether the
+    user pasted 'Application ID: xxxx  Application Key: yyyy', two lines, or the
+    two tokens space-separated. If only one shape is present, only that slot is
+    filled."""
+    s = text or ""
+    key_m = _ADZUNA_KEY_RE.search(s)
+    app_key = key_m.group(0) if key_m else ""
+    # Find an 8-hex id that is NOT the first 8 chars of the 32-hex key we matched.
+    app_id = ""
+    for m in _ADZUNA_ID_RE.finditer(s):
+        if key_m and key_m.start() <= m.start() < key_m.end():
+            continue  # inside the key token
+        app_id = m.group(0)
+        break
+    return app_id, app_key
+
+
+def looks_like_adzuna_paste(text: str) -> bool:
+    """True when a pasted blob plausibly contains Adzuna credentials (a 32-hex key,
+    or an 8-hex id) — used to decide whether to offer the split. Cheap/pure."""
+    app_id, app_key = split_adzuna_paste(text)
+    return bool(app_id or app_key)
+
+
 def test_source(source_key: str) -> tuple[bool, str]:
     """Do ONE tiny live probe for a source and report (ok, message). Guarded:
     returns a benign 'skipped' result under pytest or when the source's key is
@@ -189,9 +232,17 @@ def open_dialog(parent=None):
         box = ttk.LabelFrame(body, text=src["title"])
         box.pack(fill="x", expand=True, padx=6, pady=6)
 
-        link = ttk.Label(box, text="Get a free key: " + src["url"],
+        # Deep-link: a real button (not just link text) straight to the FREE
+        # registration page, so the user lands on the exact form (§6.6 / Pattern
+        # 1a). Adzuna + CareerOneStop are the two headline keys, but every source
+        # gets its own button for consistency.
+        reg_row = ttk.Frame(box)
+        reg_row.grid(row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(6, 2))
+        ttk.Button(reg_row, text="Register (free) \N{RIGHTWARDS ARROW}",
+                   command=lambda u=src["url"]: webbrowser.open(u)).pack(side="left")
+        link = ttk.Label(reg_row, text="  " + src["url"],
                          foreground="#0d5eaf", cursor="hand2")
-        link.grid(row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(6, 2))
+        link.pack(side="left")
         link.bind("<Button-1>", lambda e, u=src["url"]: webbrowser.open(u))
 
         for i, (secret_name, label) in enumerate(src["fields"], start=1):
@@ -205,26 +256,80 @@ def open_dialog(parent=None):
         status = ttk.Label(box, text="", wraplength=320, justify="left")
         status.grid(row=99, column=0, columnspan=3, sticky="w", padx=8, pady=(2, 6))
 
+        # Green/red inline feedback colors (§6.6 / Clerk instant-validity pattern).
+        _OK_FG, _BAD_FG, _NEUTRAL_FG = "#1a7f37", "#b3261e", ""
+
         def _save(s=src, st=status):
             ok = True
             for secret_name, _ in s["fields"]:
                 if not settings.set_api_key(secret_name, entries[secret_name].get()):
                     ok = False
             st.config(
-                text="Saved." if ok else "Could not save (check folder permissions).")
+                text="Saved." if ok else "Could not save (check folder permissions).",
+                foreground=(_OK_FG if ok else _BAD_FG))
 
-        def _test(s=src, st=status):
+        def _run_test(s=src, st=status):
+            """Save the current field values, run the ONE live probe, and show a
+            green OK / red failure inline. Shared by the Test button and the
+            auto-test-on-paste path."""
             for secret_name, _ in s["fields"]:
                 settings.set_api_key(secret_name, entries[secret_name].get())
-            st.config(text="Testing...")
+            st.config(text="Testing...", foreground=_NEUTRAL_FG)
             st.update_idletasks()
             ok, msg = test_source(s["key"])
-            st.config(text=("Test: " + msg))
+            st.config(text=("OK - " + msg if ok else "Check your key - " + msg),
+                      foreground=(_OK_FG if ok else _BAD_FG))
+
+        # Auto-run the live test shortly after a paste/edit settles, so the user
+        # sees green/red without hunting for a button (§6.6). Debounced per source
+        # so rapid keystrokes fire only one probe; guarded so it never raises into
+        # the Tk callback. Under pytest test_source() self-skips, so this is inert.
+        _pending = {"job": None}
+
+        def _schedule_autotest(s=src, st=status, pend=_pending):
+            job = pend["job"]
+            if job is not None:
+                try:
+                    box.after_cancel(job)
+                except Exception:
+                    pass
+            # Only probe once every required field has some content.
+            if all(entries[n].get().strip() for n, _ in s["fields"]):
+                pend["job"] = box.after(600, lambda: _run_test(s, st))
+
+        for secret_name, _ in src["fields"]:
+            entries[secret_name].trace_add(
+                "write", lambda *_a, s=src, st=status: _schedule_autotest(s, st))
 
         btns = ttk.Frame(box)
         btns.grid(row=100, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 6))
         ttk.Button(btns, text="Save", command=_save).pack(side="left", padx=(0, 6))
-        ttk.Button(btns, text="Test", command=_test).pack(side="left")
+        ttk.Button(btns, text="Test", command=_run_test).pack(side="left")
+
+        # Adzuna hands out App ID + App Key on one page: a single "Paste both"
+        # splits a clipboard blob into the two fields (§6.6 / Pattern 1c).
+        if src["key"] == "adzuna":
+            def _paste_both(st=status):
+                try:
+                    blob = win.clipboard_get()
+                except Exception:
+                    st.config(text="Clipboard is empty.", foreground=_BAD_FG)
+                    return
+                app_id, app_key = split_adzuna_paste(blob)
+                if not (app_id or app_key):
+                    st.config(
+                        text="Couldn't find Adzuna values in the clipboard - "
+                             "paste the App ID / App Key manually.",
+                        foreground=_BAD_FG)
+                    return
+                if app_id:
+                    entries["adzuna_app_id"].set(app_id)
+                if app_key:
+                    entries["adzuna_app_key"].set(app_key)
+                # The trace on the entries auto-schedules a test when both are set.
+                st.config(text="Pasted from clipboard.", foreground=_OK_FG)
+            ttk.Button(btns, text="Paste both from clipboard",
+                       command=_paste_both).pack(side="left", padx=(6, 0))
 
     def _save_all_and_close():
         saved = 0
