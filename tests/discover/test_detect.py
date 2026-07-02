@@ -19,8 +19,9 @@ def test_empty_returns_none():
     assert detect_ats("") is None
 
 def test_workday_public_url_resolves():
+    # Public Workday URLs now resolve to the wday/cxs JSON reader (workday_cxs).
     assert detect_ats("https://pg.wd5.myworkdayjobs.com/en-US/PGCareers") == \
-        ("workday", "pg:5:PGCareers")
+        ("workday_cxs", "pg:5:PGCareers")
 
 def test_enterprise_jsonld_boards_pass_through():
     # icims/taleo/successfactors slugs are URLs (dots/slashes) — they must NOT be

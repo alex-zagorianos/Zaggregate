@@ -19,6 +19,7 @@ from scrape.smartrecruiters_scraper import scrape_smartrecruiters
 from scrape.lever_scraper import scrape_lever
 from scrape.direct_scraper import scrape_direct
 from scrape.workday_scraper import scrape_workday
+from scrape.workday_cxs_scraper import fetch as scrape_workday_cxs
 from scrape.workable_scraper import fetch as scrape_workable
 from scrape.recruitee_scraper import fetch as scrape_recruitee
 from scrape.rippling_scraper import fetch as scrape_rippling
@@ -186,6 +187,11 @@ class CareersClient(JobAPIClient):
             return scrape_smartrecruiters(company, keyword, self.cache_dir, self.cache_enabled)
         elif company.ats_type == "workday":
             return scrape_workday(company, keyword, self.cache_dir, self.cache_enabled)
+        elif company.ats_type == "workday_cxs":
+            # tenant:N:site slug; public wday/cxs JSON path (whole-board cache).
+            return scrape_workday_cxs(company.slug, keyword=keyword,
+                                      cache_dir=self.cache_dir, cache_enabled=self.cache_enabled,
+                                      company_name=company.name)
         elif company.ats_type == "workable":
             return scrape_workable(company.slug, keyword=keyword,
                                    cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)

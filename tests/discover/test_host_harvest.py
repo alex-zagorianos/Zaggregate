@@ -53,7 +53,8 @@ def test_enterprise_host_captures_workday_tenant(monkeypatch):
         return ['{"url": "https://acme.wd5.myworkdayjobs.com/en-US/External/job/x"}']
 
     out = H.harvest_host_index(["myworkdayjobs.com"], fetch=fake_fetch)
-    assert out.get("workday") == {"acme:5:External"}
+    # Public Workday URLs fold under the cxs reader type now.
+    assert out.get("workday_cxs") == {"acme:5:External"}
 
 
 def test_funnel_host_level_and_enterprise_wiring(monkeypatch):

@@ -25,7 +25,10 @@ def test_smartrecruiters():
 
 
 def test_workday_public_locale_and_cxs():
-    expect = ("workday", "cat:5:CaterpillarCareers")
+    # Newly-pasted Workday URLs now resolve to the public wday/cxs JSON reader
+    # (workday_cxs), which POSTs the JSON search body to dodge the HTML/CSRF wall
+    # the legacy GET-prime "workday" path hit with HTTP 422. Slug format unchanged.
+    expect = ("workday_cxs", "cat:5:CaterpillarCareers")
     assert detect_ats("https://cat.wd5.myworkdayjobs.com/CaterpillarCareers/job/X_R1") == expect
     assert detect_ats("https://cat.wd5.myworkdayjobs.com/en-US/CaterpillarCareers") == expect
     assert detect_ats("https://cat.wd5.myworkdayjobs.com/wday/cxs/cat/CaterpillarCareers/jobs") == expect
@@ -47,9 +50,10 @@ def test_enterprise_ats_icims_taleo_successfactors():
 
 
 def test_workday_public_pg_tenant():
-    # A big-employer public careers URL resolves to a scrapable tenant:N:site slug.
+    # A big-employer public careers URL resolves to a scrapable tenant:N:site slug
+    # via the public cxs JSON reader.
     assert detect_ats("https://pg.wd5.myworkdayjobs.com/en-US/PGCareers") == \
-        ("workday", "pg:5:PGCareers")
+        ("workday_cxs", "pg:5:PGCareers")
 
 
 def test_parse_line_bare_url_derives_name():

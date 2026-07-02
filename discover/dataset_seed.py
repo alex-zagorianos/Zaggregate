@@ -36,6 +36,9 @@ _ATS_VOCAB = {
     "lever": "lever", "lever.co": "lever",
     "ashby": "ashby", "ashbyhq": "ashby", "ashby_hq": "ashby",
     "smartrecruiters": "smartrecruiters", "smart_recruiters": "smartrecruiters",
+    # Dataset rows labeled with a Workday platform name map to the legacy
+    # "workday" type (CSRF-primed scraper); a Workday *URL* on a row resolves via
+    # detect_ats to "workday_cxs" (the public JSON reader) instead — both probe.
     "workday": "workday", "workdayjobs": "workday", "myworkdayjobs": "workday",
     "workable": "workable",
     "recruitee": "recruitee",
@@ -48,7 +51,7 @@ _ATS_VOCAB = {
 
 # The ATS types probe_count can actually count (so the verify gate is meaningful).
 PROBEABLE = {"greenhouse", "lever", "ashby", "smartrecruiters", "workday",
-             "icims", "taleo", "successfactors", "jsonld"}
+             "workday_cxs", "icims", "taleo", "successfactors", "jsonld"}
 
 # Column-name candidates for auto-detection (lowercased match). Order = priority.
 _COLS = {

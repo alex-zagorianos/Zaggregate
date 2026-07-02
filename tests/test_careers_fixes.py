@@ -441,11 +441,11 @@ def test_discoverer_extracts_entries_for_each_ats():
     out = _extract_entries(data, "jobs.smartrecruiters.com")
     assert out and out[0][0] == "smartrecruiters" and out[0][1] == "AcmeCorp"
 
-    # Workday public URL -> tenant:N:site slug.
+    # Workday public URL -> tenant:N:site slug, now via the public cxs reader.
     data = {"web": {"results": [
         {"url": "https://cat.wd5.myworkdayjobs.com/CaterpillarCareers/job/x_R1"}]}}
     out = _extract_entries(data, "myworkdayjobs.com")
-    assert out and out[0][0] == "workday"
+    assert out and out[0][0] == "workday_cxs"
     assert out[0][1] == "cat:5:CaterpillarCareers"
 
 

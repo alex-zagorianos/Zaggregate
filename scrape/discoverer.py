@@ -119,5 +119,5 @@ def _extract_entries(data: dict, site: str) -> list[tuple[str, str, str]]:
 
 def _name_from_slug(ats_type: str, slug: str) -> str:
     # Workday slug is 'tenant:N:site' — derive the display name from the tenant.
-    core = slug.split(":")[0] if ats_type == "workday" else slug
+    core = slug.split(":")[0] if ats_type in ("workday", "workday_cxs") else slug
     return core.replace("-", " ").replace("_", " ").title()

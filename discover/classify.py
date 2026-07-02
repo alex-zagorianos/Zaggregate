@@ -184,7 +184,7 @@ def sample_titles_for(entry, *, timeout=None, limit=8):
                              timeout=timeout)
             if r.ok:
                 return [j.get("name", "") for j in r.json().get("content", [])[:limit]]
-        elif t == "workday" and slug.count(":") == 2:
+        elif t in ("workday", "workday_cxs") and slug.count(":") == 2:
             tenant, n, site = slug.split(":")
             r = requests.post(
                 f"https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs",
