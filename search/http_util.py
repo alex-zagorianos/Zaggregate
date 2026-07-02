@@ -5,6 +5,7 @@ limiter/cache logic lives in exactly one place.
 """
 import hashlib
 import json
+import re
 import threading
 import time
 from collections import deque
@@ -200,15 +201,23 @@ class FileCache:
     """Thin JSON file cache for one source subdir, using the atomic
     read/write helpers (TTL enforced by ``cache_helpers``)."""
 
+    # Windows-illegal filename characters (a ':' makes NTFS treat the name as an
+    # alternate data stream — os.replace then fails with WinError 87), plus the
+    # path separators. Mapped to '_' so any client key is a valid filename.
+    _UNSAFE_FS = re.compile(r'[<>:"/\\|?*]')
+
     def __init__(self, subdir: str, cache_dir: Optional[Path] = None):
         self.dir = (cache_dir or CACHE_DIR) / subdir
         self.dir.mkdir(parents=True, exist_ok=True)
 
+    def _file(self, key: str) -> Path:
+        return self.dir / f"{self._UNSAFE_FS.sub('_', key)}.json"
+
     def get(self, key: str) -> Optional[Any]:
-        return read_cache(self.dir / f"{key}.json")
+        return read_cache(self._file(key))
 
     def put(self, key: str, data: Any) -> None:
-        write_cache(self.dir / f"{key}.json", data)
+        write_cache(self._file(key), data)
 
 
 def to_float(value: Any) -> Optional[float]:

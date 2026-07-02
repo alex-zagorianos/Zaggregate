@@ -105,7 +105,8 @@ def _site_of(company_or_slug, extra: Optional[dict]) -> str:
 
 
 def fetch(slug: str, *, keyword: str = "", site: str = "",
-          cache_dir: Optional[Path] = None, cache_enabled: bool = False) -> list[JobResult]:
+          cache_dir: Optional[Path] = None, cache_enabled: bool = False,
+          company_name: str = "") -> list[JobResult]:
     host = (slug or "").strip().lower()
     if not host:
         return []
@@ -128,7 +129,7 @@ def fetch(slug: str, *, keyword: str = "", site: str = "",
             return []
         cached = read_cache(cache_file)
         if cached is not None:
-            return _map(cached, host, site, keyword)
+            return _map(cached, host, site, keyword, company_name)
 
     # Fetch the FULL board (no server-side keyword) so one cached snapshot serves
     # every keyword in a run; keyword filtering is applied locally in _map. This
@@ -142,7 +143,7 @@ def fetch(slug: str, *, keyword: str = "", site: str = "",
     data = {"total": total, "requisitionList": reqs}
     if cache_enabled and cache_file is not None:
         write_cache(cache_file, data)
-    return _map(data, host, site, keyword)
+    return _map(data, host, site, keyword, company_name)
 
 
 def _finder(site: str, keyword: str, limit: int, offset: int) -> str:
@@ -220,11 +221,14 @@ def _location(req: dict) -> str:
     return ""
 
 
-def _map(data: dict, host: str, site: str, keyword: str) -> list[JobResult]:
+def _map(data: dict, host: str, site: str, keyword: str,
+         company_name: str = "") -> list[JobResult]:
     reqs = data.get("requisitionList") or []
     total = data.get("total")
     board_count = int(total) if isinstance(total, int) and total >= 0 else len(reqs)
-    company = host.split(".")[0].replace("-", " ").title()
+    # Registry display name first: the tenant host is an opaque Oracle id
+    # ("fa-evly-saasfaprod1" -> "Fa Evly Saasfaprod1"), not the employer.
+    company = (company_name or "").strip() or host.split(".")[0].replace("-", " ").title()
     out: list[JobResult] = []
     for req in reqs:
         if not isinstance(req, dict):

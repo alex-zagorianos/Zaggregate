@@ -215,7 +215,8 @@ class CareersClient(JobAPIClient):
             # host in slug; siteNumber cached in extra["site"] (discovered once).
             return scrape_oracle_orc(company.slug, keyword=keyword,
                                      site=(company.extra or {}).get("site", ""),
-                                     cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+                                     cache_dir=self.cache_dir, cache_enabled=self.cache_enabled,
+                                     company_name=company.name)
         elif company.ats_type == "phenom":
             # careers domain in slug; refNum cached in extra["refNum"].
             return scrape_phenom(company.slug, keyword=keyword,

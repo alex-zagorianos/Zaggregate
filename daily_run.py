@@ -448,9 +448,12 @@ def main():
     # Advance the freshness baseline to this run's found set, and report how many
     # of the inboxed jobs are new since the last run.
     freshness.save_keys(fresh_id, {r.job_key for r in results})
+    # n_new is counted over the QUALIFIED set (is_new is per-result); `added` is
+    # the smaller post-cap/post-dedup insert count — don't mix them in one ratio
+    # (a blank-canvas run logged "1162 of 685 newly-inboxed").
     n_new = sum(1 for r in qualified if r.is_new)
-    log(f"freshness | {n_new} of {added} newly-inboxed are new since last run "
-        f"(baseline '{fresh_id}' now {len(results)} keys)")
+    log(f"freshness | {n_new} of {len(qualified)} qualified are new since last run; "
+        f"{added} inboxed (baseline '{fresh_id}' now {len(results)} keys)")
 
     # Re-score the whole inbox for this project with the current config so edited
     # keywords/salary don't leave stale, incomparable scores on older rows.
