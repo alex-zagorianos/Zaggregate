@@ -234,11 +234,15 @@ def seed_companies(lines: str, industry: str = "") -> dict:
     P0-6 gate semantics: a board that verifies live (or a 'direct' careers page
     the user supplied exactly) is saved and scraped; a board that fails its live
     probe is saved flagged-UNVERIFIED and EXCLUDED from scraping until it
-    verifies, so a wrong guess can't quietly break future runs. `industry` tags
-    the imports so field-gating works.
+    verifies, so a wrong guess can't quietly break future runs. A re-seed of a
+    board that previously failed (stored unverified) but now verifies UPGRADES
+    it in place, clearing the flag. `industry` tags the imports so field-gating
+    works. ToS-blocked/aggregator hosts (NEOGOV/governmentjobs, Frontline/
+    AppliTrack, Indeed, LinkedIn, ...) are REJECTED, never saved — so this
+    AI-drivable tool can't seed an arbitrary unprobed fetch target.
 
-    Returns per-line verdicts (live/direct/unreachable/skipped) plus counts:
-    {parsed, added, verified, unverified, skipped, verdicts}."""
+    Returns per-line verdicts (live/direct/unreachable/skipped/rejected) plus
+    counts: {parsed, added, verified, unverified, skipped, rejected, verdicts}."""
     from ui.ai_setup import apply_seed_lines
     return apply_seed_lines(lines, industry=industry, probe=True)
 

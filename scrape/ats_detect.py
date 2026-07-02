@@ -33,6 +33,34 @@ def _split(url: str):
     return host, segs, u
 
 
+# Hosts we must NEVER fetch/scrape (ToS-blocked or aggregator/off-board). A
+# board on one of these can never legitimately enter the scraped registry — the
+# direct scraper would issue a plain requests.get() against them with no per-host
+# allowlist. The GUI '+ Add Companies' dialog and (especially) the AI-drivable
+# MCP seed_companies path both save 'direct' entries UNPROBED, so an arbitrary
+# caller could otherwise seed a fetch target here. Substring-matched against the
+# host (so 'www.governmentjobs.com' and 'agency.governmentjobs.com' both hit).
+# NEOGOV = governmentjobs.com; Frontline/AppliTrack = applitrack.com/frontline
+# (see config.py §Education row, reap_client/edjoin_client module docs).
+_TOS_BLOCKED_HOST_SUBSTRINGS = (
+    "indeed.com", "governmentjobs.com", "neogov.com", "applitrack.com",
+    "frontlineeducation.com", "linkedin.com", "glassdoor.com", "ziprecruiter.com",
+    "monster.com",
+)
+
+
+def is_tos_blocked_host(url: str) -> bool:
+    """True when *url*'s host is a ToS-blocked or aggregator host we must never
+    scrape (NEOGOV/governmentjobs, Frontline/AppliTrack, Indeed, LinkedIn, etc.).
+    Used to reject such a URL at parse/save time in the programmatic seed paths
+    (apply_seed_lines / MCP seed_companies) so a 'direct' entry can't silently
+    become a daily fetch target for one of these hosts."""
+    host, _segs, _u = _split(url)
+    if not host:
+        return False
+    return any(b in host for b in _TOS_BLOCKED_HOST_SUBSTRINGS)
+
+
 def _workday_site(segs: list[str]) -> str:
     # host/wday/cxs/{tenant}/{site}/jobs  (the CXS API URL)
     if len(segs) >= 4 and segs[0] == "wday" and segs[1] == "cxs":
