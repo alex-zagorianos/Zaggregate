@@ -19,6 +19,7 @@ _DEFAULT_HARD = {
     "salary_min": None,        # int annual floor; None = no floor
     "locations": [],           # acceptable location substrings (city/state); [] = any
     "remote_ok": True,         # keep remote postings even if location doesn't match
+    "remote_regions_ok": False,  # user can take NON-US-only remote (skip the country cap)
     "work_auth": "",           # informational (surfaced to the AI), not gated here
     "dealbreakers": [],        # title substrings that disqualify (e.g. "clearance")
     "seniority_exclude": [],   # title substrings to exclude (e.g. "principal")
@@ -127,6 +128,16 @@ def hard_gate(jobs, hard: dict, *, counts: Optional[dict] = None) -> list:
         if smin and isinstance(top, (int, float)) and top > 0 and top < smin:
             tally["salary"] += 1
             continue
+        # Sub-floor comp in the JD BODY (review #5): when API salary fields are
+        # empty, the gate used to keep a "US$1,500 per Month" (~$18k) role past a
+        # $90k floor. Parse the description (parse_comp annualizes hourly/weekly/
+        # monthly) and drop ONLY on a CONFIDENT sub-floor read -- a single clearly
+        # periodized figure or a full range whose top is below floor. An ambiguous
+        # / no-comp body leaves the row in (the wide net is never over-cut).
+        elif smin and (top is None or not isinstance(top, (int, float)) or top <= 0):
+            if _body_comp_below_floor(getattr(j, "description", "") or "", smin):
+                tally["salary"] += 1
+                continue
         if any(b in title for b in blockers):
             tally["title"] += 1
             continue
@@ -142,6 +153,25 @@ def hard_gate(jobs, hard: dict, *, counts: Optional[dict] = None) -> list:
                 continue
         out.append(j)
     return out
+
+
+def _body_comp_below_floor(description: str, floor: int) -> bool:
+    """True only when the description body carries a CONFIDENT compensation signal
+    whose annualized top is below `floor` (review #5). Uses scorer.parse_comp
+    (annualizes hourly/weekly/monthly, skips stipend/401k/relocation contexts).
+    Conservative: an empty/None parse, or a comp at/above floor, returns False so
+    the wide net is never over-cut on a fuzzy mention."""
+    if not description or not floor:
+        return False
+    try:
+        from match.scorer import parse_comp
+        comp = parse_comp(description)
+    except Exception:
+        return False
+    if not comp:
+        return False
+    top = comp.get("max") or comp.get("min")
+    return bool(isinstance(top, (int, float)) and top > 0 and top < floor)
 
 
 def _employment_type_of(job) -> Optional[str]:
