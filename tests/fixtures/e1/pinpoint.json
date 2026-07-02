@@ -1,0 +1,38 @@
+{
+  "data": [
+    {
+      "id": "507634",
+      "title": "Senior Account Executive",
+      "url": "https://workwithus.pinpointhq.com/en/postings/1ecbb6af-51bf-49fa-826f-285bffa71370",
+      "path": "/en/postings/1ecbb6af-51bf-49fa-826f-285bffa71370",
+      "description": "<div><!--block-->Hi ????&nbsp; I'm Cara, VP of Sales at Pinpoint.<br><br></div><div><!--block-->We're a high-growth HR tech company building and selling software that helps in-house recruitment teams ",
+      "location": {
+        "id": "5495",
+        "city": "London",
+        "name": "United Kingdom",
+        "postal_code": "",
+        "province": "London",
+        "street_address": ""
+      },
+      "employment_type_text": "Full Time",
+      "workplace_type_text": "Fully remote"
+    },
+    {
+      "id": "520855",
+      "title": "Product Reliability Engineer ",
+      "url": "https://workwithus.pinpointhq.com/en/postings/0e968d34-78ce-4d50-bc33-1f3f28e816c6",
+      "path": "/en/postings/0e968d34-78ce-4d50-bc33-1f3f28e816c6",
+      "description": "<div><!--block-->Hi ???? I'm Anca, Head of Developer Support.<br><br></div><div><!--block-->We're a high-growth HR tech company building and selling software that helps in-house recruitment teams attr",
+      "location": {
+        "id": "283",
+        "city": "London",
+        "name": "Remote",
+        "postal_code": null,
+        "province": "London",
+        "street_address": null
+      },
+      "employment_type_text": "Full Time",
+      "workplace_type_text": "Fully remote"
+    }
+  ]
+}

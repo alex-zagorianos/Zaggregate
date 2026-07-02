@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>Acme Careers</title>
+    <description>Current job openings</description>
+    <link>https://acme.teamtailor.com/jobs</link>
+    <item>
+      <title>Senior Controls Engineer</title>
+      <description>&lt;p&gt;Own the PLC and SCADA architecture for our automation line.&lt;/p&gt;</description>
+      <pubDate>Mon, 30 Jun 2026 09:00:00 +0000</pubDate>
+      <link>https://acme.teamtailor.com/jobs/1-senior-controls-engineer</link>
+      <guid>https://acme.teamtailor.com/jobs/1-senior-controls-engineer</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Cincinnati, OH</tt:name>
+          <tt:city>Cincinnati</tt:city>
+          <tt:country>United States</tt:country>
+        </tt:location>
+      </tt:locations>
+    </item>
+    <item>
+      <title>Recruiter</title>
+      <description>&lt;p&gt;Hire great people.&lt;/p&gt;</description>
+      <pubDate>Tue, 01 Jul 2026 09:00:00 +0000</pubDate>
+      <link>https://acme.teamtailor.com/jobs/2-recruiter</link>
+      <guid>https://acme.teamtailor.com/jobs/2-recruiter</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Remote</tt:name>
+        </tt:location>
+      </tt:locations>
+    </item>
+  </channel>
+</rss>

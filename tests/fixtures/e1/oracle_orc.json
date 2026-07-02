@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "TotalJobsCount": 382,
+      "SiteNumber": "CX_1",
+      "requisitionList": [
+        {
+          "Title": "Anesthesia Technician Assistant, Operating Room, Full-time, Second Shift",
+          "Id": "21593",
+          "PrimaryLocation": "Cincinnati, OH, United States",
+          "PostedDate": "2026-06-30",
+          "secondaryLocations": [],
+          "ShortDescriptionStr": "Location: UC Medical Center\nDepartment: Operating Room\nHours: Full-time / 40hrs\nShift: First Shift / 8hr"
+        },
+        {
+          "Title": "Patient Care Assistant (PCA), Same Day Surgery Outpatient, Full-time, First Shift",
+          "Id": "21929",
+          "PrimaryLocation": "West Chester, OH, United States",
+          "PostedDate": "2026-07-01",
+          "secondaryLocations": [],
+          "ShortDescriptionStr": "Location: West Chester Hospital\nDepartment: Same Day Surgery - Outpatient\nHours: Full-time / 40hrs\nShift: First Shift / 8hrs"
+        }
+      ]
+    }
+  ],
+  "count": 2,
+  "hasMore": false
+}

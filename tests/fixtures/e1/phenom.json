@@ -1,0 +1,33 @@
+{
+  "refineSearch": {
+    "data": {
+      "totalHits": 3,
+      "jobs": [
+        {
+          "title": "Refrigeration engineer",
+          "cityState": "Cheltenham, Gloucestershire",
+          "jobId": "R5027659",
+          "reqId": "R5027659",
+          "descriptionTeaser": "Job Description Summary. Job Description. We are looking for an experienced refrigeration engineer to work within our busy and dynamic facilities and management team at our 64-acre Cheltenham campu...",
+          "postedDate": "2026-02-05T00:00:00.000+0000",
+          "applyUrl": "https://geaerospace.wd5.myworkdayjobs.com/GE_ExternalSite/job/Cheltenham/Refrigeration-engineer_R5027659-1/apply",
+          "category": "Manufacturing & Logistics",
+          "location": "Cheltenham, Gloucestershire, United Kingdom",
+          "cityStateCountry": "Cheltenham, Gloucestershire, United Kingdom"
+        },
+        {
+          "title": "Military DoD SkillBridge Program - Field Service Engineer",
+          "cityState": "Evendale, Ohio",
+          "jobId": "R5029145",
+          "reqId": "R5029145",
+          "descriptionTeaser": "Job Description Summary. The Military DoD SkillBridge program is an opportunity for Service Members to gain valuable civilian work experience through specific industry training, apprenticeships, or...",
+          "postedDate": "2026-02-20T00:00:00.000+0000",
+          "applyUrl": "https://geaerospace.wd5.myworkdayjobs.com/GE_ExternalSite/job/Evendale/Military-DoD-SkillBridge-Program---Field-Service-Engineer_R5029145-1/apply",
+          "category": "Business Development / Management",
+          "location": "Evendale, Ohio, United States of America",
+          "cityStateCountry": "Evendale, Ohio, United States of America"
+        }
+      ]
+    }
+  }
+}

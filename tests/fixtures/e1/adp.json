@@ -1,0 +1,50 @@
+{
+  "jobRequisitions": [
+    {
+      "itemID": "9202853024961_1",
+      "requisitionTitle": "Anti-Harassment and Discrimination Investigator ",
+      "postDate": "2026-06-10T15:13:00.000-04:00",
+      "clientRequisitionID": "1560",
+      "requisitionLocations": [
+        {
+          "aliasNames": [],
+          "address": {
+            "cityName": "Rockville Centre",
+            "countrySubdivisionLevel1": {
+              "codeValue": "NY"
+            },
+            "postalCode": "11570"
+          },
+          "nameCode": {
+            "shortName": "Molloy University Main Campus, Rockville Centre, NY, US"
+          }
+        }
+      ]
+    },
+    {
+      "itemID": "9202852757267_1",
+      "requisitionTitle": "Associate Director,Head of Library Electronic & Digital Services",
+      "postDate": "2026-06-10T09:11:00.000-04:00",
+      "clientRequisitionID": "1559",
+      "requisitionLocations": [
+        {
+          "aliasNames": [],
+          "address": {
+            "cityName": "Rockville Centre",
+            "countrySubdivisionLevel1": {
+              "codeValue": "NY"
+            },
+            "postalCode": "11570"
+          },
+          "nameCode": {
+            "shortName": "Molloy University Main Campus, Rockville Centre, NY, US"
+          }
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "totalNumber": 17,
+    "startSequence": 1
+  }
+}

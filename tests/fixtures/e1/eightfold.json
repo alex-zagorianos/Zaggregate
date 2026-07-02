@@ -1,0 +1,31 @@
+{
+  "count": 50,
+  "positions": [
+    {
+      "id": 1099554463102,
+      "name": "Procurement Manager ? U.S. Ground Transportation & Warehousing",
+      "location": "Charlotte, North Carolina, United States of America",
+      "locations": [
+        "Charlotte, North Carolina, United States of America"
+      ],
+      "department": "Supply Chain",
+      "t_create": 1782172800,
+      "display_job_id": "REQ-30997",
+      "job_description": "",
+      "canonicalPositionUrl": "https://albemarle.eightfold.ai/careers/job/1099554463102"
+    },
+    {
+      "id": 1099554129678,
+      "name": "E&I Project Specialist",
+      "location": "Kings Mountain, North Carolina, United States of America",
+      "locations": [
+        "Kings Mountain, North Carolina, United States of America"
+      ],
+      "department": "Engineering",
+      "t_create": 1781481600,
+      "display_job_id": "REQ-30943",
+      "job_description": "",
+      "canonicalPositionUrl": "https://albemarle.eightfold.ai/careers/job/1099554129678"
+    }
+  ]
+}
