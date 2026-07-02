@@ -60,6 +60,7 @@ from ui import chrome
 from ui import help as uihelp
 from ui import setup_wizard
 from ui import settings as uisettings
+from ui.kanban import KanbanTab
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -4329,6 +4330,8 @@ class App(tk.Tk):
         try:
             if getattr(self, "_tracker", None) is not None:
                 self._tracker.refresh()
+            if getattr(self, "_board", None) is not None:
+                self._board.refresh()
             if getattr(self, "_queue", None) is not None:
                 self._queue.refresh(keep_selection=True)
         except (tk.TclError, AttributeError):
@@ -4650,6 +4653,7 @@ class App(tk.Tk):
                                    open_guide_cb=lambda: self._nb.select(self._guide))
         self._queue    = ApplyQueueTab(self._nb)
         self._tracker  = TrackerTab(self._nb)
+        self._board    = KanbanTab(self._nb)
         self._resume   = ResumeTab(self._nb)
         self._guide    = uihelp.GuideTab(self._nb, app=self)
         self._nb.add(self._inbox,    text="Inbox")
@@ -4657,13 +4661,14 @@ class App(tk.Tk):
         self._nb.add(self._search,   text="Search")
         self._nb.add(self._queue,   text="Apply Queue")
         self._nb.add(self._tracker, text="Job Tracker")
+        self._nb.add(self._board,   text="Board")
         self._nb.add(self._resume,  text="Resume Generator")
         self._nb.add(self._guide,   text="\N{BLACK QUESTION MARK ORNAMENT} Guide")
         self._update_badges()
 
     def _rebuild_tabs(self, select_index=None):
         for tab in (self._inbox, self._toppicks, self._search, self._queue,
-                    self._tracker, self._resume, self._guide):
+                    self._tracker, self._board, self._resume, self._guide):
             tab.destroy()
         self._build_tabs()
         if select_index is not None:
@@ -4768,6 +4773,8 @@ class App(tk.Tk):
             self._queue.refresh(keep_selection=True)
         elif current is self._tracker:
             self._tracker.refresh()
+        elif current is self._board:
+            self._board.refresh()
         elif current is self._toppicks:
             self._toppicks.refresh()
         elif current is self._inbox:
