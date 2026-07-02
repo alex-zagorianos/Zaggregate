@@ -62,6 +62,60 @@ GUIDE = [
     ("body", "Paste any job posting and generate a resume + cover letter tailored "
              "to it, even for a job that didn't come from this app."),
 
+    ("h1", "Set up your sources — the 10 minutes that matters most"),
+    ("body", "Out of the box the app searches a set of free, no-signup job feeds "
+             "plus a built-in list of company career pages. That's a real start, "
+             "but the free feeds lean toward remote tech jobs. Two free sign-ups "
+             "transform the app into a wide net for YOUR city and YOUR field — "
+             "in our live testing, they found the local jobs the built-in feeds "
+             "missed entirely. Open Tools ▸ “Connect job sources…”; each source "
+             "there links straight to its free-key page."),
+    ("h2", "The two keys that matter most"),
+    ("bullet", "•  Adzuna — a broad aggregator covering millions of postings "
+               "across ~19 countries. This is the single biggest unlock for "
+               "local, on-site jobs in any field: office, trades, healthcare, "
+               "retail, engineering. Free key, ~5 minutes."),
+    ("bullet", "•  CareerOneStop — the U.S. Department of Labor's feed of the "
+               "National Labor Exchange (~3.5 million active postings a day from "
+               "all 50 state job banks). The best free source for teachers, "
+               "nurses, government, trades, and every other job that never shows "
+               "up on tech boards. Free key, ~5 minutes."),
+    ("h2", "Worth adding when you want more"),
+    ("bullet", "•  Jooble and Careerjet — two more free aggregators; each adds "
+               "postings the others miss."),
+    ("bullet", "•  USAJobs — every U.S. federal opening (free key)."),
+    ("bullet", "•  SerpApi — powers the Inbox “reach” badge, which estimates "
+               "what percentage of your local market the app is actually seeing "
+               "instead of guessing. A small free quota is plenty."),
+    ("h2", "Add your local employers — the biggest quality jump"),
+    ("body", "Aggregators cast wide, but the app is at its best when it watches "
+             "the career pages of the employers you actually want. That's how "
+             "specific hospitals, manufacturers, school systems, and firms in "
+             "your area end up in your Inbox on day one of a posting. Use "
+             "“+ Add Companies” (Search tab) and paste career-page links, one "
+             "per line — plain links work, and “Name | link” works too. The app "
+             "verifies each one live and tells you what it could add."),
+    ("body", "Don't know your area's employers offhand? Let an AI build the "
+             "list. Ask your AI assistant (a free tier is fine): “List the 25 "
+             "largest employers of [your kind of work] in [your city], with a "
+             "link to each one's careers page, one per line as Name | link.” "
+             "Paste its answer straight into “+ Add Companies”. Anything the AI "
+             "got wrong simply fails verification — nothing bad can sneak in. "
+             "Ten minutes of this gives you a watch-list no job board offers."),
+    ("h2", "Tell the app your field"),
+    ("body", "In the Setup Wizard, the “What kind of work?” answer does more "
+             "than fill a label: it routes which categories are fetched from "
+             "each source, turns field-specific feeds on or off (nursing and "
+             "higher-education feeds exist today), tunes how job titles are "
+             "scored, and filters the company watch-list to your industry. If "
+             "your results feel off-field, re-run the wizard and sharpen that "
+             "answer first."),
+    ("h2", "Make it automatic"),
+    ("body", "Once sources are connected, turn on Tools ▸ “Turn on daily "
+             "updates” and the whole pipeline — every feed, every company page, "
+             "scoring, and freshness flags — runs each morning before you sit "
+             "down. The Inbox header shows when it last ran and what it found."),
+
     ("h1", "Working with AI — the heart of this app"),
     ("body", "This app is built to be used *with* an AI assistant, and it pays "
              "off most when you lean on one. The instant Score is a fast "
@@ -116,6 +170,11 @@ GUIDE = [
                "better than “engineer”."),
     ("bullet", "•  Keep your resume current — the AI leans on it for both "
                "ranking and tailoring."),
+    ("bullet", "•  Put your AI on setup duty too: have it build your local "
+               "employer watch-list (see “Add your local employers” above), "
+               "suggest search keywords people in your field actually use, and "
+               "critique your “Anything else?” text. Setup is where an AI "
+               "assistant pays off first."),
     ("h2", "Pick a capable model, and iterate"),
     ("bullet", "•  Any chat AI works, but a stronger model gives sharper "
                "judgment. Free tiers are plenty to start."),
@@ -130,7 +189,10 @@ GUIDE = [
                "text and your profile sent to your own API key). The app never "
                "uploads anything on its own."),
     ("muted", "Power users: Claude Code can rank jobs directly through the "
-              "included MCP server — see the claude-code folder in your install."),
+              "included MCP server — see the claude-code folder in your install. "
+              "The hands-off AI features can also point at a local or "
+              "alternative Anthropic-compatible endpoint (e.g. Ollama) via a "
+              "base URL instead of a paid key."),
 
     ("h1", "Capture jobs from your browser (optional)"),
     ("body", "Some big boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice) "
@@ -158,8 +220,10 @@ GUIDE = [
              "Wizard…” to update your roles, location, salary, and "
              "resume with simple forms — no files to edit."),
     ("h2", "Do I need to pay for anything?"),
-    ("body", "No. The app works with several free job sources out of the box. "
-             "Some optional sources need a free API key; you can add those later."),
+    ("body", "No. The app works with several free job sources out of the box, "
+             "and every source in Tools ▸ “Connect job sources…” has a free "
+             "tier — the keys cost time (a few minutes each), not money. See "
+             "“Set up your sources” above for which ones matter most."),
     ("muted", "You can reopen this Guide any time from the Help menu."),
 ]
 

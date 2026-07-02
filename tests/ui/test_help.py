@@ -34,6 +34,22 @@ def test_guide_goes_deep_on_using_ai():
         assert phrase in blob, phrase
 
 
+def test_guide_goes_deep_on_source_setup():
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    headings = [text for tag, text in uihelp.GUIDE if tag in ("h1", "h2")]
+    # The Guide must teach the source-key setup and local-employer seeding —
+    # live testing (2026-07-01) showed the keyless out-of-box tier contributed
+    # ~1% of inbox rows; the free keys + the registry carried everything else.
+    assert any("Set up your sources" in h for h in headings)
+    for phrase in ["Connect job sources", "Adzuna", "CareerOneStop",
+                   "Add Companies", "Name | link", "fails verification",
+                   "daily updates"]:
+        assert phrase in blob, phrase
+    # The AI-assisted employer-list flow is documented (manual precursor of the
+    # held "Seed My Area" plan — brain/plan-2026-07-01-ai-assisted-setup-seeding.md).
+    assert "largest employers" in blob
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 
