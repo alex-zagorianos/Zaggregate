@@ -412,17 +412,22 @@ def _created_from_age(days):
 
 
 # ── in-process embedding (GUI Tools toggle) ────────────────────────────────────
-# The receiver was `py -m scrape.browser_receiver` only — dead in the frozen exe
-# and unpinned (a project switch could misroute its inbox writes, the S27 class).
+# The receiver was `py -m scrape.browser_receiver` only — dead in the frozen exe.
 # start_in_thread() runs the SAME Flask app as a daemon thread inside the GUI
-# process, PINNED to one project so every harvested job lands in that project's
-# inbox regardless of a later GUI project switch. capture_count() surfaces how
+# process. IN-PROCESS RULE (review-fleet critical): the embedded receiver must
+# NEVER take the process-wide workspace pin — the GUI owns that process, and a
+# receiver pin silently overrides the project switcher for EVERY tab (the exact
+# S27 cross-project misrouting it meant to prevent). Embedded captures therefore
+# resolve per-request and land in the CURRENTLY ACTIVE project — i.e. the one
+# the user is looking at, which is also the least surprising behavior. The
+# standalone `py -m scrape.browser_receiver` process (which owns its whole
+# process) pins at startup in __main__ instead. capture_count() surfaces how
 # many jobs have been received so the GUI can show a live count.
+import socket as _socket
 import threading as _threading
 
 _SERVER_THREAD = None
 _CAPTURE_COUNT = 0
-_PINNED_SLUG = None
 
 
 def capture_count() -> int:
@@ -440,21 +445,17 @@ def _bump_capture(n: int) -> None:
 
 
 def start_in_thread(project_slug=None):
-    """Start the receiver as a daemon thread pinned to *project_slug* (the active
-    project when None). Idempotent: a second call while already running is a
-    no-op. Pinning happens in a before_request hook so EVERY harvest request
-    resolves the inbox/output path to this project, never the global 'active'
-    that a GUI switch may have moved. Returns the server thread."""
-    global _SERVER_THREAD, _PINNED_SLUG
+    """Start the receiver as a daemon thread INSIDE the GUI process. Idempotent:
+    a second call while already running is a no-op. Embedded captures resolve
+    per-request to the CURRENTLY ACTIVE project (see the module comment — the
+    embedded receiver must never take the process-wide pin, or it hijacks the
+    GUI's project switcher). *project_slug* is accepted for signature stability
+    but only informs the caller's UI copy. Returns the server thread."""
+    global _SERVER_THREAD
     if is_running():
         return _SERVER_THREAD
-    _PINNED_SLUG = project_slug or workspace.active_slug()
 
     def _serve():
-        # Pin on this thread so the harvest handler's workspace.output_dir() /
-        # inbox writes always resolve to the receiver's project. Pinning is
-        # process-wide (module global), so also pin per-request below as a guard.
-        workspace.pin_active(_PINNED_SLUG)
         app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
 
     t = _threading.Thread(target=_serve, name="browser-receiver", daemon=True)
@@ -463,16 +464,28 @@ def start_in_thread(project_slug=None):
     return t
 
 
-@app.before_request
-def _pin_project():
-    # Re-assert the pin on every request thread: Flask may service requests on
-    # worker threads that never ran _serve()'s pin, and a concurrent GUI project
-    # switch must not redirect a harvest write.
-    if _PINNED_SLUG:
-        workspace.pin_active(_PINNED_SLUG)
+def wait_until_listening(timeout: float = 3.0) -> bool:
+    """True once the receiver socket accepts connections, False after *timeout*.
+    Lets the GUI distinguish 'capture is ON' from 'the daemon thread died on a
+    port bind failure' (e.g. a second GUI instance already holds the port)."""
+    import time as _time
+    deadline = _time.monotonic() + timeout
+    while _time.monotonic() < deadline:
+        try:
+            with _socket.create_connection((HOST, PORT), timeout=0.25):
+                return True
+        except OSError:
+            if _SERVER_THREAD is not None and not _SERVER_THREAD.is_alive():
+                return False  # thread already died (bind failure) — no point waiting
+            _time.sleep(0.1)
+    return False
 
 
 if __name__ == "__main__":
+    # Standalone process: the receiver OWNS this process, so pin once at startup
+    # (the mcp_server/daily_run pattern) — a GUI project switch in another
+    # process must not redirect this receiver's inbox writes mid-session.
+    workspace.pin_active(workspace.active_slug())
     print(f"Job Harvester receiver running on http://{HOST}:{PORT}")
     print("Load the browser extension, browse LinkedIn/Indeed, then click 'Send to Tool'.\n")
     app.run(host=HOST, port=PORT, debug=False)

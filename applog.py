@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
@@ -34,6 +35,88 @@ import config
 _ROOT_NAME = "jobscout"
 # Guard so handlers are attached exactly once per process (logging is global).
 _CONFIGURED = False
+
+
+# ── secret redaction ──────────────────────────────────────────────────────────
+# Several source clients carry their credential in the request URL (Jooble: URL
+# path; Adzuna/Careerjet: query params). An HTTP error's message includes the
+# full URL, and those strings flow into app.log, last_run.json, and from there
+# the "Report a problem" zip — which promises to contain NO keys. Everything
+# that persists an error string must pass it through redact() (a logging.Filter
+# below covers the log file wholesale). Review-fleet critical finding.
+
+_URL_CRED_RE = re.compile(
+    r"(?i)\b(app_key|app_id|api_key|apikey|affid|access_token|token|key)"
+    r"=([^&\s\"']+)")
+_JOOBLE_PATH_RE = re.compile(r"(?i)(jooble\.org/api/)[A-Za-z0-9._%-]+")
+# URL userinfo (https://user:token@host/...) — a BYO base_url can carry a
+# credential this way (proxy tokens), and it would ride HTTPError messages.
+_URL_USERINFO_RE = re.compile(r"(?i)(://)[^/@\s\"']+@")
+_SECRET_VALUES: list[str] | None = None
+
+
+def _known_secret_values() -> list[str]:
+    """Best-effort: the actual configured credential values, so redact() can
+    scrub them wherever they appear (not just in URL shapes). Cached per
+    process; never raises."""
+    global _SECRET_VALUES
+    if _SECRET_VALUES is not None:
+        return _SECRET_VALUES
+    vals: list[str] = []
+    try:
+        names = list(getattr(config, "SOURCE_SECRET_FILES", {}) or {})
+        names += ["ANTHROPIC_API_KEY", "SERPAPI_KEY", "ANTHROPIC_BASE_URL"]
+        for n in names:
+            try:
+                v = config.resolve_secret(n) if hasattr(config, "resolve_secret") \
+                    else None
+            except Exception:
+                v = None
+            # Only scrub substantial values; short strings would over-redact.
+            # Plain URLs (a bare base_url like https://api.anthropic.com) are
+            # skipped, but a CREDENTIAL-BEARING url (userinfo or query token)
+            # is scrubbed whole — a BYO base_url may embed a proxy token.
+            if not (v and isinstance(v, str) and len(v) >= 8):
+                continue
+            if "://" in v and not ("@" in v or "?" in v):
+                continue
+            vals.append(v)
+    except Exception:
+        pass
+    _SECRET_VALUES = vals
+    return vals
+
+
+def redact(text) -> str:
+    """Scrub credentials from a string destined for a persisted surface
+    (app.log via the filter, last_run.json errors, diagnostic zips)."""
+    if not text:
+        return text
+    s = str(text)
+    s = _URL_CRED_RE.sub(lambda m: f"{m.group(1)}=[redacted]", s)
+    s = _JOOBLE_PATH_RE.sub(r"\1[redacted]", s)
+    s = _URL_USERINFO_RE.sub(r"\1[redacted]@", s)
+    for v in _known_secret_values():
+        if v in s:
+            s = s.replace(v, "[redacted]")
+    return s
+
+
+class _RedactFilter(logging.Filter):
+    """Applies redact() to every record before any handler formats it, so a
+    credential embedded in an exception message can never reach app.log or the
+    console scrollback a user screenshots."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+            scrubbed = redact(msg)
+            if scrubbed != msg:
+                record.msg = scrubbed
+                record.args = ()
+        except Exception:
+            pass  # redaction must never block logging
+        return True
 
 
 class _BareMessageFormatter(logging.Formatter):
@@ -117,6 +200,7 @@ def _configure_root() -> logging.Logger:
         return root
     root.setLevel(logging.DEBUG)
     root.propagate = False  # don't double-log through the stdlib root
+    root.addFilter(_RedactFilter())  # no credential ever reaches a handler
     fh = _file_handler()
     if fh is not None:
         root.addHandler(fh)
@@ -182,6 +266,13 @@ def write_last_run(info: dict, project_slug: str | None = None) -> Path | None:
     them. Best-effort — returns the path on success, None if the write failed
     (status reporting must never crash a run)."""
     payload = dict(info)
+    # Error strings may embed request URLs (and thus URL-borne credentials);
+    # last_run.json ships in the report-a-problem zip, so scrub here too.
+    if payload.get("errors"):
+        try:
+            payload["errors"] = [redact(e) for e in payload["errors"]]
+        except Exception:
+            pass
     payload.setdefault(
         "timestamp",
         datetime.now(timezone.utc).replace(microsecond=0).isoformat())

@@ -328,12 +328,28 @@ def build_report_zip(dest_dir=None) -> str:
         # 1. redaction-safe metadata
         (stage / "report_meta.json").write_text(
             _json.dumps(_report_meta(), indent=2), encoding="utf-8")
-        # 2. logs/ (rotating app.log family) — support's primary evidence
+        # 2. logs/ (rotating app.log family) — support's primary evidence.
+        # CONTENT-SCRUBBED on copy: the live logger already redacts, but lines
+        # written before the redaction filter existed (or by older versions)
+        # may carry URL-borne credentials — never ship them verbatim.
+        from applog import redact as _redact
+
+        def _copy_scrubbed(fsrc: Path, fdst: Path):
+            try:
+                fdst.write_text(
+                    _redact(fsrc.read_text(encoding="utf-8", errors="replace")),
+                    encoding="utf-8")
+            except OSError:
+                pass
+
         logs_src = src / config.LOG_DIR_NAME
         if logs_src.is_dir():
-            shutil.copytree(logs_src, stage / "logs")
+            (stage / "logs").mkdir(parents=True, exist_ok=True)
+            for f in sorted(logs_src.iterdir()):
+                if f.is_file():
+                    _copy_scrubbed(f, stage / "logs" / f.name)
         # 3. every last_run.json (root + per project). Machine-readable run summary
-        # with NO secrets — added by daily_run.
+        # (scrubbed on copy, same rationale) — added by daily_run.
         seen = set()
         candidates = [src]
         try:
@@ -351,7 +367,7 @@ def build_report_zip(dest_dir=None) -> str:
                 seen.add(lr.resolve())
                 # Flatten to a unique name so multiple projects don't collide.
                 name = "last_run.json" if i == 0 else f"last_run.{i}.json"
-                shutil.copyfile(lr, stage / name)
+                _copy_scrubbed(lr, stage / name)
         out = shutil.make_archive(str(base), "zip", root_dir=str(stage))
     return out
 

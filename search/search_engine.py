@@ -190,7 +190,8 @@ class SearchEngine:
                         agg_err[source] = unit_err
                 except Exception as e:
                     if source not in agg_err:
-                        agg_err[source] = str(e)
+                        from applog import redact
+                        agg_err[source] = redact(str(e))
                     _log.info(f"[{source}] failed: {e}")
                 # A source is "done" once its LAST unit resolves; a multi-unit
                 # source reports once, when the final unit lands.
@@ -264,8 +265,12 @@ class SearchEngine:
                 except Exception as e:
                     # Transient errors are already retried in the session; a
                     # failure here stops paging this keyword but not the run.
+                    # redact(): HTTPError messages embed the full request URL,
+                    # which for Jooble/Adzuna/Careerjet carries the credential —
+                    # this string flows to last_run.json + the source-health UI.
                     if not first_error:
-                        first_error = str(e)
+                        from applog import redact
+                        first_error = redact(str(e))
                     _log.info(f"  [{source}] {keyword!r} page {page} error: {e}")
                     break
                 if not results:

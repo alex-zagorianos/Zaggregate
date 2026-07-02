@@ -987,6 +987,17 @@ def urls_not_seen(norm_urls) -> set[str]:
 
 # ── Inbox (daily-run results awaiting triage) ─────────────────────────────────
 
+def _url_host(url: str) -> str:
+    """Lowercased netloc of a URL ('' when absent/unparseable). Used to keep
+    job_key coalescing cross-source-only: same-host distinct URLs are distinct
+    requisitions on one board, never duplicates."""
+    try:
+        from urllib.parse import urlparse
+        return (urlparse(url or "").netloc or "").lower()
+    except Exception:
+        return ""
+
+
 def _inbox_norm_url(job) -> str:
     """The stable inbox identity URL for a JobResult. A real posting keys on its
     normalized URL; a URL-LESS posting keys on a synthetic 'keyless:' + its
@@ -1053,7 +1064,7 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "",
     # Same-run job_key coalescing: two overlap sources in ONE batch surfacing the
     # same posting must also collapse, not just cross-run. Maps job_key -> the
     # inbox id we inserted (or merged into) this run.
-    run_keys: dict[str, int] = {}
+    run_keys: dict[str, tuple] = {}  # job_key -> (inbox id, url host)
     added = 0
     with get_conn() as conn:
         for j, norm in norm_by_job:
@@ -1067,20 +1078,34 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "",
                 continue
             jk = getattr(j, "job_key", None) or None
             # -- job_key coalescing (C1) -------------------------------------
-            # A non-NULL job_key that already exists (this run or persisted) means
-            # the same posting via a different URL: merge value into the existing
-            # row and skip the insert. NULL keys never coalesce.
+            # A non-NULL job_key match via a DIFFERENT host means the same
+            # posting reached us through two routes (aggregator vs ATS): merge
+            # into the existing row and skip the insert. NULL keys never
+            # coalesce. CROSS-SOURCE ONLY: two DISTINCT URLs on the SAME host
+            # are distinct requisitions (hospitals post many identically-titled
+            # reqs on one board) and must NOT merge — coalescing them silently
+            # drops real openings (review-fleet critical finding).
             if jk:
-                target_id = run_keys.get(jk)
-                if target_id is None:
+                cand_host = _url_host(getattr(j, "url", "") or "")
+                hit = run_keys.get(jk)
+                if hit is None:
                     ex = conn.execute(
-                        "SELECT id FROM inbox WHERE job_key=? LIMIT 1", (jk,)
+                        "SELECT id, url FROM inbox WHERE job_key=? LIMIT 1", (jk,)
                     ).fetchone()
-                    target_id = ex["id"] if ex else None
-                if target_id is not None:
-                    _inbox_coalesce(conn, target_id, j, norm)
-                    run_keys[jk] = target_id
-                    continue
+                    if ex is not None:
+                        hit = (ex["id"], _url_host(ex["url"] or ""))
+                if hit is not None:
+                    target_id, ex_host = hit
+                    same_board = bool(cand_host) and cand_host == ex_host
+                    if not same_board:
+                        _inbox_coalesce(conn, target_id, j, norm)
+                        run_keys[jk] = hit
+                        continue
+                    # Same-host distinct req: keep it as its own row. Later
+                    # same-run candidates with this key still compare against
+                    # the FIRST row (good enough — an ambiguous cross-source
+                    # dup of one-of-N identical reqs is unresolvable by key).
+                    run_keys.setdefault(jk, hit)
             if per_company_cap > 0:
                 key = (j.company or "").lower().strip()
                 if per_company.get(key, 0) >= per_company_cap:
@@ -1115,7 +1140,8 @@ def inbox_add_many(jobs, per_company_cap: int = 0, new_batch: str = "",
                     conn.execute("UPDATE inbox SET extras=? WHERE id=?",
                                  (json.dumps(extra), cur.lastrowid))
                 if jk:
-                    run_keys[jk] = cur.lastrowid
+                    # (id, host) tuple — same shape as the coalesce branch reads.
+                    run_keys.setdefault(jk, (cur.lastrowid, cand_host))
                 if per_company_cap > 0:
                     per_company[key] = per_company.get(key, 0) + 1
             added += cur.rowcount

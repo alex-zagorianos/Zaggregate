@@ -265,9 +265,16 @@ def get_application(app_id: int) -> dict:
 
 @mcp.tool()
 def set_status(app_id: int, status: str) -> dict:
-    """Advance an application to a new pipeline stage. Recording status='applied'
-    stamps date_applied + arms the follow-up engine (via db.update_job). Returns
-    the applied status."""
+    """Advance an application to a new pipeline stage. Valid statuses (only):
+    interested, applied, phone_screen, interview, offer, accepted, rejected,
+    withdrawn, ghosted. Recording status='applied' stamps date_applied + arms
+    the follow-up engine (via db.update_job). Returns the applied status, or
+    {'error': ...} for an unknown status (nothing is written)."""
+    status = (status or "").strip().lower()
+    if status not in db.STATUSES:
+        return {"error": f"unknown status {status!r}; valid: {list(db.STATUSES)}"}
+    if not db.get_job(int(app_id)):
+        return {"error": f"no application {app_id}"}
     db.update_job(int(app_id), status=status)
     return {"id": int(app_id), "status": status}
 
@@ -275,7 +282,10 @@ def set_status(app_id: int, status: str) -> dict:
 @mcp.tool()
 def set_follow_up(app_id: int, date: str) -> dict:
     """Set/clear the next-action date on an application (ISO YYYY-MM-DD; ''
-    clears). Surfaces the app in followups_due once the date arrives."""
+    clears). Surfaces the app in followups_due once the date arrives. Returns
+    {'error': ...} for an unknown app_id (nothing is written)."""
+    if not db.get_job(int(app_id)):
+        return {"error": f"no application {app_id}"}
     db.update_job(int(app_id), follow_up_date=date)
     return {"id": int(app_id), "follow_up_date": date}
 

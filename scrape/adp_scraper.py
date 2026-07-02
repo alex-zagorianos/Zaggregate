@@ -65,7 +65,7 @@ def _location(req: dict) -> str:
 
 
 def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
-          cache_enabled: bool = False) -> list[JobResult]:
+          cache_enabled: bool = False, company_name: str = "") -> list[JobResult]:
     cid = (slug or "").strip()
     if not cid:
         return []
@@ -79,7 +79,7 @@ def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
             return []
         cached = read_cache(cache_file)
         if cached is not None:
-            return _map(cached, cid, keyword)
+            return _map(cached, cid, keyword, company_name)
 
     reqs, total, permanent = _fetch_all(cid)
     if reqs is None:
@@ -89,7 +89,7 @@ def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
     data = {"jobRequisitions": reqs, "meta": {"totalNumber": total}}
     if cache_enabled and cache_file is not None:
         write_cache(cache_file, data)
-    return _map(data, cid, keyword)
+    return _map(data, cid, keyword, company_name)
 
 
 def _fetch_all(cid: str):
@@ -137,7 +137,7 @@ def _fetch_all(cid: str):
     return all_reqs, (total if total >= 0 else len(all_reqs)), saw_permanent
 
 
-def _map(data: dict, cid: str, keyword: str) -> list[JobResult]:
+def _map(data: dict, cid: str, keyword: str, company_name: str = "") -> list[JobResult]:
     reqs = data.get("jobRequisitions") or []
     total = (data.get("meta") or {}).get("totalNumber")
     board_count = int(total) if isinstance(total, int) and total >= 0 else len(reqs)
@@ -152,9 +152,13 @@ def _map(data: dict, cid: str, keyword: str) -> list[JobResult]:
             if not keyword_matches(keyword, title):
                 continue
         item = req.get("itemID", "") or ""
+        # Real employer name (registry) beats the cid: the slug is an ADP UUID,
+        # and title-casing it produced a mangled pseudo-name that also skewed
+        # the per-company inbox cap (review finding).
+        company = (company_name or "").strip() or cid.replace("-", " ").title()
         out.append(JobResult(
             title=title,
-            company=cid.replace("-", " ").title(),
+            company=company,
             location=_location(req),
             salary_min=None,
             salary_max=None,

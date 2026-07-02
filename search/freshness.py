@@ -27,10 +27,22 @@ import config
 
 FORMAT_VERSION = 2
 EVERGREEN_DAYS = 90  # cumulative presence longer than this = evergreen listing
+# 'reposted' decays: cleared after this many continuously-present runs following
+# the reappearance (a once-reposted listing must not read 'reposted' forever).
+REPOST_DECAY_RUNS = 5
+# Records not seen for this long are evicted so per-source files stop growing
+# unboundedly. Long enough to preserve evergreen classification (> EVERGREEN_DAYS).
+RETENTION_DAYS = 120
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _days_ago_iso(days: int) -> str:
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) - timedelta(days=days)) \
+        .replace(microsecond=0).isoformat()
 
 
 def _parse_iso(value):
@@ -145,6 +157,19 @@ def save_keys(source_id: str, keys, base_dir=None) -> None:
             # back: mark it a repost. (prev_seq is the last run it was PRESENT.)
             if this_seq - prev_seq > 1:
                 rec["was_absent"] = True
+                rec["repost_seq"] = this_seq  # when the reappearance happened
+            elif rec.get("was_absent"):
+                # Present again after a flagged absence: the repost signal
+                # DECAYS. Without this a single historical gap flagged the
+                # listing 'reposted' forever (review finding). The decay clock
+                # starts at the FIRST present run after the gap (absent runs
+                # don't advance the seq, so the gap-branch above may not fire).
+                rs = rec.get("repost_seq")
+                if rs is None:
+                    rec["repost_seq"] = this_seq  # start the decay clock
+                elif this_seq - int(rs) > REPOST_DECAY_RUNS:
+                    rec["was_absent"] = False
+                    rec.pop("repost_seq", None)
             rec["last_seen"] = now
             rec["runs_present"] = int(rec.get("runs_present", 0)) + 1
             rec["run_seq"] = this_seq
@@ -154,6 +179,15 @@ def save_keys(source_id: str, keys, base_dir=None) -> None:
     for k, rec in state.items():
         if k not in keys:
             rec["was_absent"] = True
+    # Retention: evict records not seen for RETENTION_DAYS. Without eviction the
+    # per-source file accumulates every key ever seen and is fully re-serialized
+    # each run (review finding: unbounded growth). Anything gone this long is no
+    # longer useful for repost/evergreen classification.
+    cutoff = _days_ago_iso(RETENTION_DAYS)
+    stale = [k for k, rec in state.items()
+             if (rec.get("last_seen") or now) < cutoff]
+    for k in stale:
+        del state[k]
     _write_state(source_id, state, base_dir)
 
 

@@ -33,7 +33,13 @@ def _remote_ok() -> bool:
 def rescore(db_path=None, cfg=None, dry_run=False):
     db_path = db_path or current_db_path()
     cfg = cfg or _cfg()
-    kws, loc, floor = cfg.get("keywords", []), cfg.get("location", ""), cfg.get("salary_min")
+    # Scoring keywords MUST match daily_run's: it scores with effective_keywords
+    # (which derives a real set from `industry` when cfg['keywords'] is empty).
+    # Reading cfg['keywords'] raw here made this pass title-blind for
+    # industry-only projects and wiped the just-inserted scores every run.
+    from search.keyword_strategy import effective_keywords
+    kws = effective_keywords(cfg)
+    loc, floor = cfg.get("location", ""), cfg.get("salary_min")
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM inbox").fetchall()

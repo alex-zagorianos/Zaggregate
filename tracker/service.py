@@ -248,8 +248,12 @@ def restore_dismissed_rows(rows: list[dict]) -> int:
             cur = conn.execute(
                 f"INSERT OR IGNORE INTO inbox ({','.join(_INBOX_RESTORE_COLS)}) "
                 f"VALUES ({placeholders})", vals)
+            # ALWAYS clear the dismissed marker — even when the INSERT was a
+            # no-op because a fresh copy of the same URL was re-inboxed in the
+            # dismiss->undo window (else that visible row stays suppressed on
+            # every future run; review finding).
+            conn.execute("DELETE FROM dismissed WHERE url=?", (norm,))
             if cur.rowcount:
-                conn.execute("DELETE FROM dismissed WHERE url=?", (norm,))
                 restored += 1
         conn.commit()
     return restored

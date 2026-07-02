@@ -236,6 +236,13 @@ def unpin_active() -> None:
     _PINNED_SLUG = None
 
 
+def pinned() -> str | None:
+    """The process-local pin, or None. The GUI uses this to refuse a project
+    switch while a pinned run (Update-now) is in flight — switching would show
+    project B while every DB call still resolves to pinned A (review finding)."""
+    return _PINNED_SLUG
+
+
 def active_slug() -> str | None:
     if _PINNED_SLUG is not None:
         return _PINNED_SLUG

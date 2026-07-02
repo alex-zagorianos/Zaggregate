@@ -209,7 +209,8 @@ class CareersClient(JobAPIClient):
                                     cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type == "adp":
             return scrape_adp(company.slug, keyword=keyword,
-                              cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+                              cache_dir=self.cache_dir, cache_enabled=self.cache_enabled,
+                              company_name=company.name)
         elif company.ats_type == "oracle_orc":
             # host in slug; siteNumber cached in extra["site"] (discovered once).
             return scrape_oracle_orc(company.slug, keyword=keyword,

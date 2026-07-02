@@ -265,13 +265,14 @@ def test_jobhive_off_skips_stage(monkeypatch):
     assert out["stages"]["jobhive"] is None
 
 
-# ── browser-receiver embedding pin ────────────────────────────────────────────
+# ── browser-receiver embedding: must NOT take the process-wide pin ────────────
+# (Review-fleet critical: an embedded receiver pin silently overrides the GUI
+#  project switcher for the whole process — the exact S27 misrouting class.)
 
-def test_receiver_start_in_thread_pins_project(monkeypatch):
+def test_receiver_start_in_thread_never_pins_process(monkeypatch):
     from scrape import browser_receiver as br
     pins = []
     monkeypatch.setattr(br.workspace, "pin_active", lambda slug: pins.append(slug))
-    monkeypatch.setattr(br.workspace, "active_slug", lambda: "fallback")
 
     started = {}
 
@@ -293,31 +294,20 @@ def test_receiver_start_in_thread_pins_project(monkeypatch):
     monkeypatch.setattr(br, "_SERVER_THREAD", None, raising=False)
 
     br.start_in_thread("proj-x")
-    assert "proj-x" in pins                 # pinned to the requested project
+    assert pins == []                       # embedded mode NEVER pins the process
     assert started.get("ran") is True
 
 
-def test_receiver_start_in_thread_defaults_to_active(monkeypatch):
+def test_receiver_wait_until_listening_false_when_thread_dead(monkeypatch):
     from scrape import browser_receiver as br
-    pins = []
-    monkeypatch.setattr(br.workspace, "pin_active", lambda slug: pins.append(slug))
-    monkeypatch.setattr(br.workspace, "active_slug", lambda: "the-active")
-    monkeypatch.setattr(br.app, "run", lambda *a, **k: None)
 
-    class _T:
-        def __init__(self, target, **k):
-            self._target = target
-        def start(self):
-            self._target()
+    class _Dead:
         def is_alive(self):
-            return True
+            return False
 
-    monkeypatch.setattr(br._threading, "Thread", _T)
-    monkeypatch.setattr(br, "_SERVER_THREAD", None, raising=False)
-    monkeypatch.setattr(br, "_PINNED_SLUG", None, raising=False)
-
-    br.start_in_thread(None)
-    assert pins and pins[-1] == "the-active"
+    monkeypatch.setattr(br, "_SERVER_THREAD", _Dead(), raising=False)
+    # Nothing is listening on the port and the thread is dead -> fast False.
+    assert br.wait_until_listening(timeout=0.5) is False
 
 
 def test_receiver_capture_count_bumps():

@@ -63,8 +63,14 @@ def _maybe_auto_rank(cfg: dict) -> None:
         return
     try:
         from tracker import db, service
-        top_k = int(cfg.get("auto_rank_top_k", config.AUTO_RANK_TOP_K) or 0) \
-            or config.AUTO_RANK_TOP_K
+        # Respect an explicit 0 (= rank nothing this run) instead of silently
+        # falling back to the default (review finding). Only absent/None uses
+        # the default; negatives are treated as 0.
+        _raw_k = cfg.get("auto_rank_top_k", None)
+        top_k = config.AUTO_RANK_TOP_K if _raw_k is None else max(0, int(_raw_k))
+        if top_k == 0:
+            log("auto-rank: auto_rank_top_k=0 — nothing to rank this run")
+            return
         # Highest-local-score unscored rows first, capped at top_k.
         unscored = [r for r in db.inbox_all() if (r.get("fit", -1) or -1) < 0]
         unscored.sort(key=lambda r: -(r.get("score", 0) or 0))

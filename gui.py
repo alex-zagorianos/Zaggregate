@@ -1754,6 +1754,8 @@ class InboxTab(ttk.Frame):
 
     def _clean_dead_links_done(self, dead, err):
         self._cleaning = False
+        if not self.winfo_exists():
+            return  # tab torn down while the worker ran (GUI-7 pattern)
         self._status.config(text="")
         if err is not None:
             messagebox.showerror("Clean dead links", f"Could not check links:\n{err}")
@@ -1983,6 +1985,15 @@ class InboxTab(ttk.Frame):
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         # API auto-route: when a key is present, rank directly without paste step.
         if _ranker_mod.has_api_key():
+            # Single-flight: a second click during the multi-second round-trip
+            # would mint a SECOND score_history batch over overlapping rows and
+            # break one-click Undo (review-fleet major finding).
+            if getattr(self, "_api_ranking", False):
+                set_status(self._status,
+                           "An AI ranking is already running - wait for it to "
+                           "finish.", "work")
+                return
+            self._api_ranking = True
             n = len(jobs)
             suffix = (f"; auto-filtered {len(dropped)}" if dropped else "")
             set_status(self._status, f"Ranking {n} job(s) via API{suffix}...", "work")
@@ -2003,18 +2014,21 @@ class InboxTab(ttk.Frame):
         try:
             reply = _call_prompt_via_api(prompt)
         except Exception as exc:
+            self._api_ranking = False
             self.after(0, lambda: set_status(self._status, f"API error: {exc}", "err"))
             return
         try:
             applied, missed = tracker_service.score_inbox_from_reply(
                 jobs, reply, source="api")
         except Exception as exc:
+            self._api_ranking = False
             self.after(0, lambda: set_status(
                 self._status, f"Parse error: {exc}", "err"))
             return
         self.after(0, self._api_rank_done, applied, len(jobs), missed)
 
     def _api_rank_done(self, applied, asked, missed):
+        self._api_ranking = False
         if not self.winfo_exists():
             return
         set_status(self._status, _scored_status(applied, asked, missed),
@@ -3540,6 +3554,14 @@ class ApplyQueueTab(ttk.Frame):
         self._fit_order = [r["id"] for r in rows]  # legacy/back-compat
         # API auto-route: when a key is present, rank directly without paste step.
         if _ranker_mod.has_api_key():
+            # Single-flight guard (mirrors the Inbox tab): overlapping ranks
+            # mint multiple batches and break one-click Undo.
+            if getattr(self, "_api_ranking", False):
+                set_status(self._status,
+                           "An AI ranking is already running - wait for it to "
+                           "finish.", "work")
+                return
+            self._api_ranking = True
             n = len(jobs)
             suffix = (f"; auto-filtered {len(dropped)}" if dropped else "")
             set_status(self._status, f"Ranking {n} job(s) via API{suffix}...", "work")
@@ -3560,17 +3582,20 @@ class ApplyQueueTab(ttk.Frame):
         try:
             reply = _call_prompt_via_api(prompt)
         except Exception as exc:
+            self._api_ranking = False
             self.after(0, lambda: set_status(self._status, f"API error: {exc}", "err"))
             return
         try:
             applied = tracker_service.score_applications_from_reply(jobs, reply)
         except Exception as exc:
+            self._api_ranking = False
             self.after(0, lambda: set_status(
                 self._status, f"Parse error: {exc}", "err"))
             return
         self.after(0, self._api_rank_done, applied)
 
     def _api_rank_done(self, applied):
+        self._api_ranking = False
         if not self.winfo_exists():
             return
         set_status(self._status, f"Ranked {applied} job(s) via API.", "ok")
@@ -3939,9 +3964,10 @@ class App(tk.Tk):
 
     def _toggle_browser_capture(self):
         """Start/stop the browser-extension receiver (Flask) as a daemon thread
-        INSIDE this GUI process, pinned to the active project. The receiver was
-        `py -m` only (dead in the exe) and unpinned (S27 class); this promotes it
-        to a one-click Tools toggle with a status line."""
+        INSIDE this GUI process. Captures land in whichever project is ACTIVE
+        when each job arrives (the embedded receiver must never take the
+        process-wide pin — it would hijack the project switcher for every tab;
+        review-fleet critical). The `py -m` standalone mode still pins itself."""
         from scrape import browser_receiver
         running = getattr(self, "_receiver_started", False)
         if running:
@@ -3955,12 +3981,19 @@ class App(tk.Tk):
                 "(see Help ▸ the Guide) and click “Send to Tool” while browsing.",
                 parent=self)
             return
-        slug = workspace.active_slug()
         try:
-            browser_receiver.start_in_thread(slug)
+            browser_receiver.start_in_thread()
         except Exception as e:
             messagebox.showerror("Capture jobs from my browser",
                                  f"Could not start the receiver:\n{e}", parent=self)
+            return
+        if not browser_receiver.wait_until_listening():
+            self._receiver_started = False
+            messagebox.showerror(
+                "Capture jobs from my browser",
+                f"The receiver could not listen on port {browser_receiver.PORT} "
+                "(is another copy of the app already running?). "
+                "Browser capture is OFF.", parent=self)
             return
         self._receiver_started = True
         messagebox.showinfo(
@@ -3969,7 +4002,8 @@ class App(tk.Tk):
             f"http://127.0.0.1:{browser_receiver.PORT}.\n\n"
             "Load the unpacked browser extension (Help ▸ the Guide walks you "
             "through it), browse LinkedIn / Indeed / Glassdoor, and click "
-            "“Send to Tool”. Captured jobs land in this project's Inbox.",
+            "“Send to Tool”. Captured jobs land in the project you're viewing "
+            "when they arrive.",
             parent=self)
 
     def _show_funnel(self):
@@ -4344,6 +4378,17 @@ class App(tk.Tk):
         if not (0 <= idx < len(slugs)):
             return
         slug = slugs[idx]
+        # While a pinned run (Update my Inbox now) is in flight, every DB call
+        # resolves to the PINNED project — switching the dropdown would show
+        # project B over project A's data (review-fleet major). Refuse until
+        # the run finishes, and snap the dropdown back.
+        if workspace.pinned() and slug != workspace.pinned():
+            messagebox.showinfo(
+                "Project switch",
+                "An inbox update is still running for the current project.\n"
+                "Wait for it to finish, then switch.", parent=self)
+            self._refresh_projectbar()  # snap the dropdown back to the pinned project
+            return
         if slug and slug != workspace.active_slug():
             workspace.set_active(slug)
             self._rebuild_tabs()
