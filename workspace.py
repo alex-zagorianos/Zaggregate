@@ -68,6 +68,44 @@ _EXPERIENCE_STUB = """# Experience
 ## NOTES FOR RESUME GENERATION
 """
 
+# The empty preferences.md profile a new project ships with, so the AI-ranking
+# routes (bridge/API/MCP/file) always find a real profile file rather than an
+# empty/absent contract. Mirrors setup_wizard.build_preferences' header so a
+# scaffolded project reads identically to a wizard-completed one until the user
+# fills it in.
+_PREFERENCES_MD_STUB = """# My Job Preferences
+
+> Describe the roles you want in plain English. The AI reads this to rank
+> and sort jobs to your taste. Be specific about what you love and avoid.
+"""
+
+# The permissive default hard-filter contract a new project ships with. Kept in
+# sync with preferences._DEFAULT_HARD (imported lazily to avoid a workspace ->
+# preferences import cycle); if that import fails we fall back to this literal so
+# scaffolding never crashes project creation.
+_PREFERENCES_HARD_STUB = {
+    "salary_min": None,
+    "locations": [],
+    "remote_ok": True,
+    "remote_regions_ok": False,
+    "work_auth": "",
+    "dealbreakers": [],
+    "seniority_exclude": [],
+    "target_roles": [],
+    "employment_types": [],
+}
+
+
+def _default_hard() -> dict:
+    """The permissive default hard-filter dict, preferring preferences._DEFAULT_HARD
+    (the single source of truth) and falling back to the local literal so a
+    scaffold can never fail on an import hiccup."""
+    try:
+        import preferences
+        return dict(preferences._DEFAULT_HARD)
+    except Exception:
+        return dict(_PREFERENCES_HARD_STUB)
+
 
 # ── path helpers (read BASE_DIR at call-time so tests can monkeypatch it) ──────
 def _projects_dir() -> Path:
@@ -321,6 +359,35 @@ def preferences_paths(slug=None) -> tuple[Path, Path]:
     return base / "preferences.json", base / "preferences.md"
 
 
+def scaffold_preferences(slug=None, *, hard: dict | None = None,
+                         profile_md: str | None = None,
+                         overwrite: bool = False) -> tuple[Path, Path]:
+    """Ensure this project's preferences.{json,md} exist, writing a valid empty
+    contract when they don't (or `hard`/`profile_md` when supplied). Returns the
+    (json, md) paths.
+
+    The single scaffold helper both the setup wizard's apply() and the
+    AI-assisted-setup path share, so a programmatic/AI-created project can never
+    hit an empty/absent preferences contract (onboarding §2.1). Non-destructive
+    by default: an existing file is left untouched unless `overwrite=True`, so
+    calling this at project creation can't clobber a project the user already
+    configured. Writing content (hard/profile_md) implies overwrite for the file
+    that content is given for."""
+    pj, pm = preferences_paths(slug)
+    pj.parent.mkdir(parents=True, exist_ok=True)
+
+    if hard is not None or overwrite or not pj.exists():
+        payload = dict(_default_hard())
+        if hard:
+            payload.update(hard)
+        pj.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    if profile_md is not None or overwrite or not pm.exists():
+        pm.write_text(profile_md if profile_md is not None else _PREFERENCES_MD_STUB,
+                      encoding="utf-8")
+    return pj, pm
+
+
 def load_config(slug=None) -> dict:
     p = config_path(slug)
     if p.exists():
@@ -437,6 +504,12 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
                     src = _projects_dir() / str(copy_resume_from) / "experience.md"
             exp.write_text(src.read_text(encoding="utf-8") if src and src.exists()
                            else _EXPERIENCE_STUB, encoding="utf-8")
+
+        # Scaffold the preferences contract too (persona finding: create_project
+        # seeded config + experience but NOT preferences, so a programmatic/AI
+        # path hit an empty/absent contract). Non-destructive: only writes files
+        # that don't already exist.
+        scaffold_preferences(slug)
 
         if slug not in existing:
             entry = {"slug": slug, "name": name,
