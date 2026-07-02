@@ -132,9 +132,12 @@ def harvest():
         cfg = load_user_config()
         try:
             import preferences
-            remote_ok = bool(preferences.load().get("hard", {}).get("remote_ok", True))
+            _hard = preferences.load().get("hard", {})
+            remote_ok = bool(_hard.get("remote_ok", True))
+            remote_regions_ok = bool(_hard.get("remote_regions_ok", False))
         except Exception:
             remote_ok = True
+            remote_regions_ok = False
         scored = score_jobs(
             results,
             # Use the project's EFFECTIVE keywords (industry-derived for a non-eng
@@ -148,6 +151,10 @@ def harvest():
             title_miss_penalty=cfg.get("title_miss_penalty"),
             seniority_exclude=cfg.get("seniority_exclude"),
             remote_ok=remote_ok,
+            seniority_target=cfg.get("seniority_target"),
+            years_cap=cfg.get("years_cap"),
+            remote_regions_ok=remote_regions_ok,
+            title_context_required=cfg.get("title_context_required"),
         )
         init_db()
         inboxed = inbox_add_many(scored)

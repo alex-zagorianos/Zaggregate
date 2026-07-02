@@ -1,3 +1,4 @@
+import re
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -36,8 +37,40 @@ _STATE_ABBREVS = {
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
+# A remote LABEL that names a non-US region ("Remote - Czech Republic", "Remote,
+# EMEA", "UK only"). Country-blind remote credit (returning full marks for ANY
+# 'remote' string) let a Czech/UK/Canada-only remote outrank a real local US job
+# (review #2 / QW-2). When the target is a US metro and no US signal is present,
+# such a row gets REDUCED remote credit instead of full marks. Conservative +
+# word-bounded so a plain "Remote" or a US label ("Remote - US", "Remote, TX") is
+# never capped. Mirrors match.facts._NON_US_REMOTE_LABEL / _US_SIGNAL.
+_NON_US_REMOTE_RE = re.compile(
+    r"\bczech(?:ia|\s*republic)?\b|\bemea\b|\blatam\b|\bapac\b|"
+    r"\buk\b|united kingdom|\beu\b|\beurope(?:an)?\b|\bcanada\b|\bcanadian\b|"
+    r"\baustralia\b|\bindia\b|\bgermany\b|\bmexico\b|\bbrazil\b|\bireland\b|"
+    r"\bnetherlands\b|\bpoland\b|\bportugal\b|\bspain\b|\bfrance\b|\blatin america\b",
+    re.I)
+_US_SIGNAL_RE = re.compile(
+    r"\bu\.?s\.?a?\b|\bunited states\b|\bus[- ]?based\b|\bus only\b|\bnorth america\b",
+    re.I)
 
-def _location_score(job_location: str, target: str, *, remote_ok: bool = True) -> int:
+
+def _target_is_us(target: str) -> bool:
+    """Best-effort: is the search target a US metro? True when the target names a US
+    state (full name or 2-letter abbrev). A bare city / empty target -> False (so we
+    don't cap remote for a user whose target we can't place in the US)."""
+    tl = (target or "").lower()
+    if not tl.strip():
+        return False
+    toks = [t.strip().rstrip(",.") for t in tl.replace(",", " ").split()]
+    for full, ab in _STATE_ABBREVS.items():
+        if ab in toks or full in tl:
+            return True
+    return False
+
+
+def _location_score(job_location: str, target: str, *, remote_ok: bool = True,
+                    remote_regions_ok: bool = False) -> int:
     """Score how closely a job's location matches the search target. Higher = closer.
 
     A pure-remote posting (one carrying 'remote' but not the target metro) used to
@@ -45,11 +78,22 @@ def _location_score(job_location: str, target: str, *, remote_ok: bool = True) -
     When remote is acceptable (``remote_ok``), credit it as a full match instead:
     the location component means 'somewhere I'd take the job' = local OR
     acceptable-remote. With ``remote_ok=False`` a remote-only role still scores 0,
-    so local-only users are unaffected."""
+    so local-only users are unaffected.
+
+    Country-blind remote (review #2): a remote row whose label names a non-US region
+    (and no US signal), when the target is a US metro, gets REDUCED credit (1 not 3)
+    instead of full marks -- unless ``remote_regions_ok`` (the user genuinely can work
+    those regions). A plain "Remote" or a US-signal label is unaffected."""
     jl = (job_location or "").lower()
     tl = target.lower().strip()
     if "remote" in jl and tl not in jl:
-        return 3 if remote_ok else 0   # acceptable-remote -> full marks (l=1.0)
+        if not remote_ok:
+            return 0
+        # Country-blind cap: a non-US-only remote label for a US target seeker.
+        if (not remote_regions_ok and _target_is_us(target)
+                and not _US_SIGNAL_RE.search(jl) and _NON_US_REMOTE_RE.search(jl)):
+            return 1   # reduced remote credit (l≈0.33) -- non-US-only remote
+        return 3       # acceptable-remote -> full marks (l=1.0)
     target_tokens = [t.strip().rstrip(",") for t in tl.replace(",", " ").split()]
     score = 0
     for token in target_tokens:

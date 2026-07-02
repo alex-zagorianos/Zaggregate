@@ -27,15 +27,22 @@ _SENIORITY = [
     ("senior",   re.compile(r"\bsenior\b|\bsr\.?\b", re.I)),
     ("entry",    re.compile(r"\bentry[- ]?level\b|\bjunior\b|\bjr\.?\b|\bassociate\b|new ?grad|\blevel\s*1\b|\bl1\b", re.I)),
 ]
-# Roman-numeral job level in a title: "Engineer I/II/III".
-_ROMAN = re.compile(r"(?:^|\s|-)\s*(I{1,3})\s*(?:$|\s|-|,)")
-_ROMAN_MAP = {"I": "entry", "II": "mid", "III": "senior"}
+# Roman-numeral job level in a title: "Engineer I/II/III/IV". IV needs no trailing
+# boundary (a title often ends "…Engineer IV"); it maps to the senior tier (a IV is
+# above a III senior-band role for target-fit purposes).
+_ROMAN = re.compile(r"(?:^|\s|-)\s*(IV|I{1,3})\s*(?:$|\s|-|,)")
+_ROMAN_MAP = {"I": "entry", "II": "mid", "III": "senior", "IV": "senior"}
 
 # A number of years counts as a REQUIREMENT only when an experience qualifier is
 # nearby; "over 25 years in business / serving / founded" is company tenure, not
-# a requirement, and must NOT gate the job.
+# a requirement, and must NOT gate the job. The trailing "of experience" / "YOE"
+# form ("8+ years of experience", "8+ YOE") is also accepted so a title/body that
+# spells the requirement that way is caught (the leading-qualifier form already
+# handles "minimum 8 years").
 _YEARS_EXP = re.compile(
     r"(\d{1,2})\s*\+?\s*(?:years|yrs)(?=[^.\n]{0,30}?\b(?:experience|exp|background)\b)"
+    r"|(\d{1,2})\s*\+?\s*(?:years|yrs)?\s*\byoe\b"
+    r"|(\d{1,2})\s*\+?\s*(?:years|yrs)\s+of\s+experience"
     r"|\b(?:experience|exp|minimum|at least|min\.?)\b[^.\n]{0,30}?(\d{1,2})\s*\+?\s*(?:years|yrs)",
     re.I)
 
@@ -153,7 +160,7 @@ def _detect_seniority(title: str, desc: str) -> str:
 def _detect_required_years(text: str) -> Optional[int]:
     yrs = []
     for m in _YEARS_EXP.finditer(text):
-        g = m.group(1) or m.group(2)
+        g = next((grp for grp in m.groups() if grp), None)
         if g and int(g) <= 30:
             yrs.append(int(g))
     return max(yrs) if yrs else None
@@ -207,6 +214,40 @@ def _detect_restriction(text: str) -> Optional[str]:
     return None
 
 
+# A bare location LABEL that carries a remote posting's non-US region ("Remote -
+# Czech Republic", "Remote, EMEA", "Remote (UK only)"). The body-phrasing
+# _RESTRICTIONS above only fire on prose ("must reside in Canada"); a label-only
+# region is invisible to them, so a country-blind remote row sails through both the
+# local score and the AI gate. This closes that hole: it returns a "Non-US location
+# required" restriction the existing gate._FOREIGN_RESTRICTION already recognizes.
+# Conservative + word-bounded so a US label ("Remote - US", "Remote, TX") is never
+# flagged. A US signal anywhere in the label suppresses it (a "Remote - US/Canada"
+# role is open to a US worker).
+_NON_US_REMOTE_LABEL = re.compile(
+    r"\bczech(?:ia|\s*republic)?\b|\bemea\b|\blatam\b|\bapac\b|\bee?a\b|"
+    r"\buk\b|united kingdom|\beu\b|\beurope(?:an)?\b|\bcanada\b|\bcanadian\b|"
+    r"\baustralia\b|\bindia\b|\bgermany\b|\bmexico\b|\bbrazil\b|\bireland\b|"
+    r"\bnetherlands\b|\bpoland\b|\bportugal\b|\bspain\b|\bfrance\b|\blatin america\b",
+    re.I)
+_US_SIGNAL = re.compile(
+    r"\bu\.?s\.?a?\b|\bunited states\b|\bus[- ]?based\b|\bus only\b|\bnorth america\b",
+    re.I)
+
+
+def _detect_restriction_label(location: str) -> Optional[str]:
+    """A remote posting whose LOCATION LABEL names a non-US region (and no US
+    signal) -> a Non-US location restriction. None for plain 'Remote', a US label,
+    or a non-remote label. Label-only; the body detector stays separate."""
+    loc = location or ""
+    if "remote" not in loc.lower():
+        return None
+    if _US_SIGNAL.search(loc):
+        return None
+    if _NON_US_REMOTE_LABEL.search(loc):
+        return "Non-US location required"
+    return None
+
+
 def _detect_role_type(title: str, desc: str, role_map: dict | None = None) -> str:
     role_map = role_map or _ROLE_KEYWORDS
     tl, dl = title.lower(), desc.lower()
@@ -233,7 +274,8 @@ def _detect_skills(desc: str, limit: int = 6, terms=None) -> list[str]:
     return hits
 
 
-def extract_facts(job, *, skill_terms=None, industry: str = "") -> dict:
+def extract_facts(job, *, skill_terms=None, industry: str = "",
+                  remote_regions_ok: bool = False) -> dict:
     """Pure deterministic extraction of structured facts from a JobResult.
 
     Returns a JobFacts dict:
@@ -244,6 +286,11 @@ def extract_facts(job, *, skill_terms=None, industry: str = "") -> dict:
     merges universal role buckets; `skill_terms` (profile-derived) replaces the
     engineering skill vocab. Defaults ('' / None) reproduce the original output
     byte-for-byte, so an engineering seeker is unaffected.
+
+    `remote_regions_ok` (default False = US-target assumption, matching the app's
+    existing gate._FOREIGN_RESTRICTION posture): when True, a non-US remote LABEL
+    ("Remote - Czechia") does NOT surface a restriction, so a user who genuinely
+    can work those regions keeps the row in the AI batch.
     """
     title = job.title or ""
     desc = job.description or ""
@@ -260,13 +307,20 @@ def extract_facts(job, *, skill_terms=None, industry: str = "") -> dict:
     if seniority in ("manager", "director"):
         role_type = "manage"
 
+    # Body-phrasing restriction first; fall back to a non-US remote LABEL so a bare
+    # "Remote - Czechia" (no prose) still surfaces a restriction for the gate. The
+    # label fallback is suppressed when the user opted into remote regions.
+    restriction = _detect_restriction(text)
+    if restriction is None and not remote_regions_ok:
+        restriction = _detect_restriction_label(job.location or "")
+
     return {
         "seniority": seniority,
         "required_years": _detect_required_years(text),
         "role_type": role_type,
         "clearance_required": _detect_clearance(text),
         "location_type": _detect_location_type(job.location or "", desc[:600]),
-        "restriction": _detect_restriction(text),
+        "restriction": restriction,
         "comp_min": int(comp_min) if comp_min else None,
         "comp_max": int(comp_max) if comp_max else None,
         "top_skills": _detect_skills(desc, terms=skill_terms),
@@ -308,7 +362,8 @@ def _cache_dir() -> Path:
     return d
 
 
-def _profile_sig(industry: str, skill_terms, soc_code: str | None = None) -> str | None:
+def _profile_sig(industry: str, skill_terms, soc_code: str | None = None,
+                 remote_regions_ok: bool = False) -> str | None:
     """A short cache-key suffix when facts depend on a profile/field, so a health
     seeker's facts can't be served from an engineering seeker's cache (the trap:
     the cache is keyed by job_key only). None for the default tech/no-skills/
@@ -317,36 +372,44 @@ def _profile_sig(industry: str, skill_terms, soc_code: str | None = None) -> str
     optional extra entropy only — it can only make the key MORE specific than
     industry+skill_terms alone, never less, so it cannot reintroduce a leak;
     omitted entirely from the payload when falsy so passing soc_code=None (every
-    caller before item 25 wired it up) hashes byte-identically to before."""
-    if is_tech_industry(industry) and not skill_terms and not soc_code:
+    caller before item 25 wired it up) hashes byte-identically to before.
+    `remote_regions_ok` likewise only ADDS entropy when True (it changes the
+    label-restriction output), so the default-False path is byte-identical."""
+    if (is_tech_industry(industry) and not skill_terms and not soc_code
+            and not remote_regions_ok):
         return None
     import hashlib
     payload = f"{(industry or '').lower()}|{','.join(sorted(skill_terms or []))}"
     if soc_code:
         payload += f"|{soc_code}"
+    if remote_regions_ok:
+        payload += "|rro"
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:8]
 
 
 def facts_for(job, *, use_cache: bool = True, skill_terms=None, industry: str = "",
-             soc_code: str | None = None) -> dict:
+             soc_code: str | None = None, remote_regions_ok: bool = False) -> dict:
     """Cached extraction keyed by job_key (+ a profile signature when facts depend
     on the active field/profile, so they never leak across people/projects).
     Deterministic today; the cache is what makes a future model-backed extractor
     near-free on re-runs — only net-new postings are ever extracted."""
     if not use_cache:
-        return extract_facts(job, skill_terms=skill_terms, industry=industry)
+        return extract_facts(job, skill_terms=skill_terms, industry=industry,
+                             remote_regions_ok=remote_regions_ok)
     from scrape.cache_helpers import read_cache, write_cache
     try:
         key = job.job_key
     except Exception:
-        return extract_facts(job, skill_terms=skill_terms, industry=industry)
-    sig = _profile_sig(industry, skill_terms, soc_code)
+        return extract_facts(job, skill_terms=skill_terms, industry=industry,
+                             remote_regions_ok=remote_regions_ok)
+    sig = _profile_sig(industry, skill_terms, soc_code, remote_regions_ok)
     fname = f"{key}.json" if sig is None else f"{key}.{sig}.json"
     path = _cache_dir() / fname
     cached = read_cache(path)
     if isinstance(cached, dict) and "seniority" in cached:
         return cached
-    facts = extract_facts(job, skill_terms=skill_terms, industry=industry)
+    facts = extract_facts(job, skill_terms=skill_terms, industry=industry,
+                          remote_regions_ok=remote_regions_ok)
     try:
         write_cache(path, facts)
     except OSError:

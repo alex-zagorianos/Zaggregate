@@ -62,6 +62,17 @@ _LEVEL_ORD = {"intern": 0, "entry": 1, "mid": 2, "senior": 3, "lead": 3,
               "manager": 4, "director": 5}
 _MANAGEMENT_MIN = 4  # target must be manager+ for the adjustment to engage
 
+# The config's explicit `seniority_target` string (from the wizard / project
+# config) mapped onto the SAME ordinal scale as _LEVEL_ORD, so a below-target
+# posting can be down-nudged for a no-AI user. This is the honesty fix for P0-3:
+# without it "Sr."/"II·III"/"8+ YOE" tie a plain entry title in the local Score.
+# The wizard emits entry/mid/senior/senior-exec; the rubric also uses entry-mid.
+# Only engages when the user set a seniority_target -> unset profiles unchanged.
+_SENIORITY_TARGET_ORD = {
+    "intern": 0, "entry": 1, "entry-mid": 2, "mid": 2, "senior": 3, "lead": 3,
+    "manager": 4, "senior-exec": 4, "exec": 5, "director": 5,
+}
+
 
 def _level_of(title: str, desc: str = "") -> int:
     """Ordinal seniority of a title (0 intern … 5 director/VP/chief). Lazy import
@@ -113,6 +124,65 @@ def _seniority_fit_adj(job_title: str, target_level: Optional[int]) -> int:
     if job_level >= _MANAGEMENT_MIN:
         return -10             # manager -- above an IC target
     return 0
+
+
+def _target_ord_of(seniority_target: Optional[str]) -> Optional[int]:
+    """Ordinal for the config's explicit seniority_target string, or None when the
+    user set no target (feature OFF -> byte-identical). Unknown strings -> None."""
+    if not seniority_target:
+        return None
+    return _SENIORITY_TARGET_ORD.get(str(seniority_target).strip().lower())
+
+
+# Seniority buckets that come from an EXPLICIT marker in the title/desc (Sr./Roman/
+# manager/director/lead...). "mid" is the DEFAULT for an unmarked title, so it must
+# NOT trigger the over-target nudge -- otherwise an entry seeker would penalize every
+# plain title (which reads as "mid"). Only an explicit over-level marker down-nudges.
+_EXPLICIT_LEVELS = frozenset({"senior", "lead", "manager", "director"})
+
+
+def _seniority_target_adj(job_title: str, desc: str, target_ord: Optional[int],
+                          years_cap: Optional[int]) -> tuple[int, Optional[str]]:
+    """Bounded down-nudge (0..-12) for a posting that OVERSHOOTS the user's stated
+    seniority_target -- the honesty fix so a keyless user's 'Sr.'/'II·III'/'IV'/
+    '8+ YOE' rows stop tying a plain entry title. Returns (delta, level_label).
+
+    Reuses match.facts._detect_seniority (handles Sr./Roman/8+; correct) and
+    _detect_required_years. ONLY engages when target_ord is not None (the user set
+    a seniority_target); an unset profile passes None -> (0, None) -> byte-identical.
+
+    Crucially the nudge fires ONLY on an EXPLICIT over-level marker (senior/lead/
+    manager/director/Roman III·IV) or a required-years-over-cap read -- NOT on the
+    unmarked 'mid' default, so a plain 'Software Engineer' is untouched for an entry
+    seeker (it would otherwise read as 'mid' and be penalized). A same/below-target
+    posting is untouched (delta 0)."""
+    if target_ord is None:
+        return 0, None
+    from match.facts import _detect_seniority, _detect_required_years
+    # TITLE-ONLY seniority for the nudge: the over-leveling markers that matter
+    # ("Sr."/"III"/"IV"/"Manager") live in the title. Reading the description
+    # mis-fires on incidental prose ("join our team of senior engineers",
+    # "reports to a director"), so pass an empty desc here. Required YEARS, by
+    # contrast, legitimately live in the body, so that check reads the full text.
+    level = _detect_seniority(job_title or "", "")
+    job_ord = _LEVEL_ORD.get(level, 2)
+    delta = 0
+    over = job_ord - target_ord
+    if level in _EXPLICIT_LEVELS and over >= 1:
+        if over == 1:
+            delta = -8        # one tier over (e.g. senior for a mid target)
+        elif over == 2:
+            delta = -10       # two tiers over (manager for an entry target)
+        else:
+            delta = -12       # far above (director+ for an entry target)
+    # A posting demanding more years than the cap is also over-leveled; add a small
+    # extra nudge, bounded so the total never exceeds -12. This catches an explicit
+    # '8+ YOE' even when the title carries no seniority word.
+    if years_cap:
+        yrs = _detect_required_years(f"{job_title or ''}\n{desc or ''}")
+        if yrs and yrs > years_cap:
+            delta = max(-12, delta - 8)
+    return delta, (level if delta else None)
 
 # ── Auto-strict relevance — downrank off-target titles, never hide ────────────
 # A title that satisfies none of the search queries (positive miss, or a NOT
@@ -459,6 +529,83 @@ def _title_blocklist_penalty(tl: str, terms) -> tuple[int, list[str]]:
     return len(hits), hits
 
 
+def _title_context_cap(t: float, tl: str, desc: str, queries,
+                       context_required) -> tuple[float, bool]:
+    """Item 5 (opt-in title-family disambiguation): when a whole-query title match
+    is on an ambiguous head term ("engagement manager" -> consulting vs AWS/CSM),
+    require a domain-context token (e.g. "consulting","strategy","advisory") to
+    co-occur in the title or description; otherwise cap title credit to 0.6.
+
+    Returns (title_score, capped?). Only ever LOWERS a full match; a match that has
+    context, or a profile with no context_required list, is untouched. This is the
+    cheap local half-measure from review-ranking.md §4 -- the real fix stays the
+    BYO-AI Fit pass, but a keyless consultant no longer sees 5 unrelated 94s."""
+    ctx = [c.lower().strip() for c in (context_required or []) if c and c.strip()]
+    if not ctx:
+        return t, False
+    blob = f"{tl} {(desc or '').lower()}"
+    if any(_term_pattern(c).search(blob) for c in ctx):
+        return t, False   # domain context present -> genuine match, full credit
+    return min(t, 0.6), True
+
+
+# First "City, ST" (US 2-letter state) named in free text -> the ST, uppercased.
+_CITY_STATE_RE = re.compile(r"\b[A-Z][A-Za-z.\-]+(?:\s+[A-Z][A-Za-z.\-]+)*,\s*([A-Z]{2})\b")
+_US_STATES_UP = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+    "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+    "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+    "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC",
+})
+
+
+def _first_us_state(text: str) -> Optional[str]:
+    """The 2-letter US state of the first 'City, ST' in text, or None."""
+    for m in _CITY_STATE_RE.finditer(text or ""):
+        st = m.group(1).upper()
+        if st in _US_STATES_UP:
+            return st
+    return None
+
+
+def _all_us_states(text: str) -> set:
+    """Every distinct 2-letter US state named as 'City, ST' in text."""
+    out = set()
+    for m in _CITY_STATE_RE.finditer(text or ""):
+        st = m.group(1).upper()
+        if st in _US_STATES_UP:
+            out.add(st)
+    return out
+
+
+def _location_contradicts(label: str, desc: str, target: str) -> bool:
+    """Item 4: True when the source LABEL state is contradicted by the body -- the
+    Adzuna 'stamp the query metro' family (a Butte, MT role labeled 'Seattle, King
+    County'). Deliberately conservative to protect the wide net:
+
+    - the label must carry a US state AND echo the search target's state (a query
+      echo is exactly the mislabel we distrust);
+    - the body must name a state, that state must differ from the label, AND the
+      label's own state must appear NOWHERE in the body. A posting whose body
+      confirms the label metro anywhere (multi-office / 'HQ in X supports this Y
+      role') is trusted -> False.
+
+    A remote label or an un-parseable body -> False (kept). Never hard-drops -- the
+    caller only caps the 15%-weight location component."""
+    if "remote" in (label or "").lower():
+        return False
+    label_st = _first_us_state(label)
+    if not label_st:
+        return False
+    target_st = _first_us_state(target) or ""
+    if target_st and label_st != target_st:
+        return False   # label doesn't echo the query metro -> don't distrust it
+    body_states = _all_us_states(desc)
+    if not body_states or label_st in body_states:
+        return False   # body confirms the label state somewhere -> trust it
+    return True        # body names only OTHER state(s) -> contradiction
+
+
 def score_job(
     job: JobResult,
     *,
@@ -474,12 +621,25 @@ def score_job(
     queries: Optional[list] = None,
     target_level: Optional[int] = None,
     semantic_profile: Optional[str] = None,
+    seniority_target: Optional[str] = None,
+    years_cap: Optional[int] = None,
+    remote_regions_ok: bool = False,
+    title_context_required: Optional[Iterable[str]] = None,
 ) -> tuple[int, str]:
     """Return (score 0-100, short breakdown string).
 
     `queries` may be pre-parsed (score_jobs parses once and reuses across the
     batch); when None they are parsed from `keywords` as before — identical
     result, just avoids re-parsing the same keywords for every job.
+
+    `seniority_target`/`years_cap` (from the project config) drive a bounded local
+    down-nudge on postings that OVERSHOOT the target (P0-3 honesty fix). Both
+    default None -> a profile that set no seniority_target scores byte-identical.
+    `remote_regions_ok` (default False) is the escape hatch for a user who can
+    genuinely take non-US-only remote roles -> the country-blind-remote location
+    cap is skipped. `title_context_required` (default None/empty) is an opt-in
+    per-profile disambiguation list; when set, an ambiguous title head term keeps
+    full credit only if a context token co-occurs -> unset profiles unchanged.
     """
     if skill_terms is None:
         skill_terms = extract_skill_terms()
@@ -505,10 +665,26 @@ def score_job(
         queries = [query.parse(kw) for kw in keywords if kw]
     title_hit = any(q.matches(tl) for q in queries)  # full boolean (honors NOT)
     t = _title_score(queries, tl)                     # graded positive overlap
+    # Item 5 (opt-in): an ambiguous title head term ("engagement manager") keeps
+    # full title credit only if a required context token co-occurs in title/desc.
+    # Default (no title_context_required) -> byte-identical.
+    title_ctx_capped = False
+    if title_context_required and t >= 1.0:
+        t, title_ctx_capped = _title_context_cap(
+            t, tl, job.description or "", queries, title_context_required)
     k = _skill_score(job.description, skill_terms)
     s = _salary_score(job, salary_floor)
-    loc_raw = _location_score(job.location, location, remote_ok=remote_ok)
+    loc_raw = _location_score(job.location, location, remote_ok=remote_ok,
+                              remote_regions_ok=remote_regions_ok)
     l = min(loc_raw / 3.0, 1.0)  # 3+ token hits = full marks
+    # Item 4 (location-label distrust): Adzuna stamps the query metro on postings,
+    # so an out-of-state role is labeled the target and earns full location credit.
+    # When the label's state and a DIFFERENT state named in the body confidently
+    # contradict, cap location credit + flag. Never hard-drops (best-effort parse).
+    loc_unverified = False
+    if l > 0.5 and _location_contradicts(job.location or "", job.description or "", location):
+        l = min(l, 0.34)
+        loc_unverified = True
     r = _recency_score(job.created)
 
     # Optional local semantic-similarity component (match/semantic.py). Compares
@@ -592,6 +768,10 @@ def score_job(
     notes_extra = []
     if title_capped:
         notes_extra.append("sem-title-cap")
+    if title_ctx_capped:
+        notes_extra.append("title-context-cap")
+    if loc_unverified:
+        notes_extra.append("loc-unverified")
 
     # Target-level fit: nudge roles toward the user's target seniority when they
     # are explicitly targeting management/exec. Neutral for IC/senior searches.
@@ -599,6 +779,18 @@ def score_job(
     if sen_adj:
         score += sen_adj
         notes_extra.append(f"level {sen_adj:+d}")
+
+    # P0-3 honesty: down-nudge a posting that OVERSHOOTS the config's explicit
+    # seniority_target (Sr./II·III/IV/8+ YOE), so a keyless user's inbox stops
+    # tying an over-leveled role with a plain entry title. OFF (byte-identical)
+    # unless seniority_target is set. Applied after (and independent of) the
+    # exec-branch adjustment above.
+    target_ord = _target_ord_of(seniority_target)
+    st_adj, st_level = _seniority_target_adj(
+        job.title or "", job.description or "", target_ord, years_cap)
+    if st_adj:
+        score += st_adj
+        notes_extra.append(f"over-target({st_level}) {st_adj:+d}")
 
     # Relevance gate: the title satisfies no search query (positive miss, or a
     # NOT term present). Penalty scales with the graded overlap t -- a true zero
@@ -716,8 +908,16 @@ def score_jobs(
     title_miss_penalty: Optional[int] = None,
     seniority_exclude: Optional[Iterable[str]] = None,
     remote_ok: bool = True,
+    seniority_target: Optional[str] = None,
+    years_cap: Optional[int] = None,
+    remote_regions_ok: bool = False,
+    title_context_required: Optional[Iterable[str]] = None,
 ) -> list[JobResult]:
-    """Score in place and return the same list sorted best-first."""
+    """Score in place and return the same list sorted best-first.
+
+    `seniority_target`/`years_cap`/`remote_regions_ok`/`title_context_required` are
+    the S32 honesty levers; all default to their neutral values so a profile that
+    sets none of them scores byte-identically to before (proved in tests)."""
     terms = extract_skill_terms()
     kws = list(keywords)
     # Parse the queries once for the whole batch instead of re-parsing the same
@@ -727,6 +927,9 @@ def score_jobs(
     # to every score_job so target-level roles can outrank clearly-below ones.
     # None / below-manager => no adjustment (IC + engineering searches unchanged).
     target_level = _target_level(kws)
+    # Freeze the context list once so every job sees the same (avoids re-iterating a
+    # generator to empty after the first job).
+    ctx_req = list(title_context_required) if title_context_required else None
     # Resolve the candidate profile text ONCE (only when semantic ranking is
     # actually available), so the model is warmed once and the profile embedding
     # is cached across the batch. None -> the semantic component abstains.
@@ -745,6 +948,8 @@ def score_jobs(
             title_miss_penalty=title_miss_penalty, seniority_exclude=seniority_exclude,
             remote_ok=remote_ok, queries=queries, target_level=target_level,
             semantic_profile=semantic_profile,
+            seniority_target=seniority_target, years_cap=years_cap,
+            remote_regions_ok=remote_regions_ok, title_context_required=ctx_req,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs

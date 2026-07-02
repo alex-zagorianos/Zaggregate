@@ -638,6 +638,11 @@ def main():
     # the floor. Scoring happens after the tracked/dismissed filter so the
     # skill-extraction work isn't spent on jobs that will be hidden anyway.
     from match.scorer import score_jobs
+    try:
+        import preferences as _prefs
+        _remote_regions_ok = bool(_prefs.load().get("hard", {}).get("remote_regions_ok", False))
+    except Exception:
+        _remote_regions_ok = False
     results = score_jobs(
         results,
         keywords=keywords,
@@ -647,6 +652,10 @@ def main():
         exclude_titles=user_cfg.get("exclude_titles"),
         title_miss_penalty=user_cfg.get("title_miss_penalty"),
         seniority_exclude=user_cfg.get("seniority_exclude"),
+        seniority_target=user_cfg.get("seniority_target"),
+        years_cap=user_cfg.get("years_cap"),
+        remote_regions_ok=_remote_regions_ok,
+        title_context_required=user_cfg.get("title_context_required"),
     )
     min_score = args.min_score
     if min_score is None:
