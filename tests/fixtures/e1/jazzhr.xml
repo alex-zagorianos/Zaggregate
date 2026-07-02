@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jobs>
+  <job>
+    <id>abc123</id>
+    <internalcode>ENG-01</internalcode>
+    <title>Automation Engineer</title>
+    <department>Engineering</department>
+    <city>Cincinnati</city>
+    <state>OH</state>
+    <country>United States</country>
+    <description>&lt;p&gt;Build and maintain factory automation.&lt;/p&gt;</description>
+    <url>https://acme.applytojob.com/apply/abc123/automation-engineer</url>
+    <createdon>2026-06-15</createdon>
+  </job>
+  <job>
+    <id>def456</id>
+    <internalcode>OPS-02</internalcode>
+    <title>Operations Coordinator</title>
+    <department>Operations</department>
+    <city>Blue Ash</city>
+    <state>OH</state>
+    <description>&lt;p&gt;Coordinate daily operations.&lt;/p&gt;</description>
+    <url>https://acme.applytojob.com/apply/def456/operations-coordinator</url>
+    <createdon>2026-06-16</createdon>
+  </job>
+</jobs>

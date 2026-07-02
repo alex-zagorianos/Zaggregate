@@ -24,6 +24,15 @@ from scrape.recruitee_scraper import fetch as scrape_recruitee
 from scrape.rippling_scraper import fetch as scrape_rippling
 from scrape.personio_scraper import fetch as scrape_personio
 from scrape.bamboohr_scraper import fetch as scrape_bamboohr
+from scrape.paylocity_scraper import fetch as scrape_paylocity
+from scrape.eightfold_scraper import fetch as scrape_eightfold
+from scrape.adp_scraper import fetch as scrape_adp
+from scrape.oracle_orc_scraper import fetch as scrape_oracle_orc
+from scrape.phenom_scraper import fetch as scrape_phenom
+from scrape.breezy_scraper import fetch as scrape_breezy
+from scrape.pinpoint_scraper import fetch as scrape_pinpoint
+from scrape.teamtailor_scraper import fetch as scrape_teamtailor
+from scrape.jazzhr_scraper import fetch as scrape_jazzhr
 from scrape.jsonld_scraper import scrape_jsonld
 
 
@@ -192,6 +201,37 @@ class CareersClient(JobAPIClient):
         elif company.ats_type == "bamboohr":
             return scrape_bamboohr(company.slug, keyword=keyword,
                                    cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "paylocity":
+            return scrape_paylocity(company.slug, keyword=keyword,
+                                    cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "eightfold":
+            return scrape_eightfold(company.slug, keyword=keyword,
+                                    cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "adp":
+            return scrape_adp(company.slug, keyword=keyword,
+                              cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "oracle_orc":
+            # host in slug; siteNumber cached in extra["site"] (discovered once).
+            return scrape_oracle_orc(company.slug, keyword=keyword,
+                                     site=(company.extra or {}).get("site", ""),
+                                     cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "phenom":
+            # careers domain in slug; refNum cached in extra["refNum"].
+            return scrape_phenom(company.slug, keyword=keyword,
+                                 ref_num=(company.extra or {}).get("refNum", ""),
+                                 cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "breezy":
+            return scrape_breezy(company.slug, keyword=keyword,
+                                 cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "pinpoint":
+            return scrape_pinpoint(company.slug, keyword=keyword,
+                                   cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "teamtailor":
+            return scrape_teamtailor(company.slug, keyword=keyword,
+                                     cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
+        elif company.ats_type == "jazzhr":
+            return scrape_jazzhr(company.slug, keyword=keyword,
+                                 cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)
         elif company.ats_type in ("jsonld", "icims", "taleo", "successfactors"):
             # Enterprise/custom boards with no JSON API — extract schema.org/
             # JobPosting structured data from the career page.

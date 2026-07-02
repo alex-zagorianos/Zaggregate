@@ -10,6 +10,14 @@ class CompanyEntry:
     ats_type: str       # "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workday" | "direct"
     slug: str           # ATS slug for GH/Lever/Ashby/SmartRecruiters; "tenant:N:site" for workday; full careers URL for direct
     industries: list[str] = field(default_factory=list)
+    # Per-board scraper metadata that isn't part of the slug identity: e.g. an
+    # Oracle Recruiting Cloud siteNumber ("CX_1") or a Phenom refNum, each
+    # normally scraped once from the tenant's careers-page HTML and then cached
+    # here so subsequent runs skip that discovery request. Empty for the ATSes
+    # that need no side-channel metadata (greenhouse/lever/workday/...). Kept off
+    # the (ats_type, slug) dedup key so a re-onboard can't duplicate a board that
+    # only differs by a re-discovered extra.
+    extra: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +172,13 @@ def _load_user_companies(json_path: Optional[Path] = None) -> list[CompanyEntry]
         for item in raw.get("companies", []):
             if "_example" in item or not item.get("name"):
                 continue
+            extra = item.get("extra") or {}
             entries.append(CompanyEntry(
                 name=item["name"],
                 ats_type=item.get("ats_type", "direct"),
                 slug=item.get("slug", ""),
                 industries=item.get("industries", []),
+                extra=dict(extra) if isinstance(extra, dict) else {},
             ))
         return entries
     except Exception as e:
@@ -199,12 +209,18 @@ def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = 
     for e in new_entries:
         if (e.ats_type, e.slug) in seen_keys or e.name.lower() in seen_names:
             continue
-        companies.append({
+        record = {
             "name": e.name,
             "ats_type": e.ats_type,
             "slug": e.slug,
             "industries": list(e.industries),
-        })
+        }
+        # Only persist `extra` when non-empty so byte-identical output is
+        # preserved for the vast majority of boards that carry no side-channel
+        # metadata (a bare {} would gratuitously churn every existing entry).
+        if getattr(e, "extra", None):
+            record["extra"] = dict(e.extra)
+        companies.append(record)
         seen_keys.add((e.ats_type, e.slug))
         seen_names.add(e.name.lower())
         added += 1

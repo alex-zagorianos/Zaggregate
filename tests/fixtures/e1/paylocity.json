@@ -1,0 +1,39 @@
+{
+  "displayName": "Acme Manufacturing",
+  "jobs": [
+    {
+      "jobId": "1001",
+      "title": "Controls Engineer",
+      "description": "<p>Design and commission PLC control systems.</p>",
+      "requirements": "<ul><li>Allen-Bradley</li><li>SCADA</li></ul>",
+      "companyName": "Acme Manufacturing",
+      "hiringDepartment": "Engineering",
+      "jobLocation": {
+        "name": "HQ",
+        "city": "Cincinnati",
+        "state": "OH",
+        "zip": "45202",
+        "locationDisplayName": "Cincinnati, OH"
+      },
+      "jobTypes": "fulltime",
+      "applyUrl": "https://recruiting.paylocity.com/recruiting/jobs/Apply/1001/Acme/Controls-Engineer",
+      "displayUrl": "https://recruiting.paylocity.com/recruiting/jobs/Details/1001/Acme/Controls-Engineer",
+      "createdUtc": "2026-06-01T12:00:00Z",
+      "publishedDate": "2026-06-02T09:00:00Z"
+    },
+    {
+      "jobId": "1002",
+      "title": "Warehouse Associate",
+      "description": "<p>Pick and pack orders.</p>",
+      "requirements": "",
+      "hiringDepartment": "Operations",
+      "jobLocation": {
+        "city": "Dayton",
+        "state": "OH",
+        "locationDisplayName": ""
+      },
+      "displayUrl": "https://recruiting.paylocity.com/recruiting/jobs/Details/1002/Acme/Warehouse-Associate",
+      "publishedDate": "2026-06-03T09:00:00Z"
+    }
+  ]
+}

@@ -59,7 +59,20 @@ DEFAULT_MANIFEST_URL = "https://storage.stapply.ai/jobhive/v1/manifest.json"
 # — the only ones worth bulk-seeding from jobhive; the manifest lists ~47 platforms,
 # most of which we have no scraper for (and adding one is a separate, larger task).
 SEEDABLE_ATS = ["greenhouse", "lever", "ashby", "smartrecruiters", "workday",
-                "workable", "recruitee", "personio", "rippling", "bamboohr"]
+                "workable", "recruitee", "personio", "rippling", "bamboohr",
+                # E1 wave-2 small ATSes: subdomain-keyed, scrapable from the
+                # jobhive row's URL alone (detect_ats resolves them), no
+                # side-channel metadata needed. These are the ones present in the
+                # jobhive manifest that our scrapers can seed cleanly.
+                "breezy", "pinpoint", "teamtailor", "jazzhr"]
+
+# E1 wave-2 ATSes that ARE in the jobhive manifest but are DELIBERATELY NOT
+# bulk-seedable: eightfold (needs the employer corp-domain query param), oracle
+# (needs the CX_N siteNumber scraped from the tenant page), and phenom (needs the
+# refNum scraped from the page). None of those side-channel values are carried in
+# a jobhive CSV row, so a row alone can't produce a scrapable board — they're
+# onboarded explicitly via build_company_list / the power paste form instead.
+_UNSEEDABLE_WAVE2_ATS = ("eightfold", "oracle", "phenom", "paylocity", "adp")
 
 # jobhive requires a real User-Agent on every request (an unset/blank UA 403s).
 _UA = "JobSearchTool/1.0 (personal use)"

@@ -13,6 +13,12 @@ from scrape.company_registry import CompanyEntry
 
 _LOCALE = re.compile(r"^[a-z]{2}[-_][A-Za-z]{2}$")
 _WD_HOST = re.compile(r"^([^.]+)\.wd(\d+)\.myworkdayjobs\.com$")
+_GUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+def _looks_guid(s: str) -> bool:
+    """True for a UUID/GUID (Paylocity company id, ADP cid)."""
+    return bool(_GUID_RE.match((s or "").strip()))
 
 
 def _split(url: str):
@@ -98,6 +104,64 @@ def detect_ats(url: str) -> tuple[str, str]:
     # api.rippling.com/platform/api/ats/v1/board/{slug}/jobs.
     if host == "ats.rippling.com" and segs:
         return ("rippling", segs[0])
+
+    # --- E1: ATS scraper wave 2 ---------------------------------------------
+    # Paylocity: recruiting.paylocity.com/recruiting/jobs/All/{guid}/... — the
+    # GUID (a long id after /All/ or /jobs/) is the feed key.
+    if host == "recruiting.paylocity.com" and segs:
+        for i, s in enumerate(segs):
+            if s.lower() == "all" and i + 1 < len(segs):
+                return ("paylocity", segs[i + 1])
+        # Fall back to the last path segment that looks like a GUID.
+        for s in reversed(segs):
+            if _looks_guid(s):
+                return ("paylocity", s)
+
+    # Eightfold: {tenant}.eightfold.ai/careers?domain={corpdomain}. slug encodes
+    # BOTH as "tenant:domain" because the domain query param is required.
+    if host.endswith(".eightfold.ai"):
+        sub = host[: -len(".eightfold.ai")]
+        if sub and sub not in ("www", "api", "app"):
+            from urllib.parse import parse_qs, urlsplit as _us
+            q = parse_qs(_us(u).query)
+            dom = (q.get("domain") or [""])[0].strip()
+            return ("eightfold", f"{sub}:{dom}" if dom else f"{sub}:{sub}.com")
+
+    # ADP Workforce Now: workforcenow.adp.com/...?cid={uuid}. slug = the cid.
+    if host == "workforcenow.adp.com":
+        from urllib.parse import parse_qs, urlsplit as _us
+        cid = (parse_qs(_us(u).query).get("cid") or [""])[0].strip()
+        if cid:
+            return ("adp", cid)
+
+    # Oracle Recruiting Cloud (Fusion CandidateExperience): {host}/hcmUI/
+    # CandidateExperience/.../sites/{CX_N}/... slug = the host; the CX_N site is
+    # carried separately (CompanyEntry.extra["site"]), scraped once from the URL.
+    if "oraclecloud.com" in host and "/candidateexperience/" in u.lower():
+        return ("oracle_orc", host)
+
+    # Small ATS quartet (subdomain-keyed).
+    if host.endswith(".breezy.hr"):
+        sub = host[: -len(".breezy.hr")]
+        if sub and sub not in ("www", "api"):
+            return ("breezy", sub)
+    if host.endswith(".pinpointhq.com"):
+        sub = host[: -len(".pinpointhq.com")]
+        if sub and sub not in ("www", "api"):
+            return ("pinpoint", sub)
+    if host.endswith(".teamtailor.com"):
+        sub = host[: -len(".teamtailor.com")]
+        if sub and sub not in ("www", "api"):
+            return ("teamtailor", sub)
+    if host.endswith(".applytojob.com"):
+        sub = host[: -len(".applytojob.com")]
+        if sub and sub not in ("www", "api"):
+            return ("jazzhr", sub)
+
+    # Phenom: careers.{company}.com search-results page. There is no ATS-owned
+    # apex host to fingerprint from a URL alone, so Phenom boards are onboarded
+    # explicitly (power form 'Name | phenom | careers.co.com'), not auto-detected
+    # here — a bare careers.*.com is far too ambiguous to claim as Phenom.
 
     # Enterprise ATSes with no open public job-board API (the Cincinnati
     # industrials run these). We can't hit a JSON API, but their career pages
@@ -210,6 +274,34 @@ def probe_count(entry: CompanyEntry) -> int | None:
             if r.ok:
                 d = r.json()
                 return len(d if isinstance(d, list) else d.get("items", []) or [])
+        elif t == "paylocity":
+            from scrape.paylocity_scraper import fetch as _f
+            return len(_f(slug))
+        elif t == "eightfold":
+            from scrape.eightfold_scraper import fetch as _f
+            return len(_f(slug))
+        elif t == "adp":
+            from scrape.adp_scraper import fetch as _f
+            return len(_f(slug))
+        elif t == "oracle_orc":
+            # host in slug; siteNumber in entry.extra (discovered once if absent).
+            from scrape.oracle_orc_scraper import fetch as _f
+            return len(_f(slug, site=(entry.extra or {}).get("site", "")))
+        elif t == "phenom":
+            from scrape.phenom_scraper import fetch as _f
+            return len(_f(slug, ref_num=(entry.extra or {}).get("refNum", "")))
+        elif t == "breezy":
+            from scrape.breezy_scraper import fetch as _f
+            return len(_f(slug))
+        elif t == "pinpoint":
+            from scrape.pinpoint_scraper import fetch as _f
+            return len(_f(slug))
+        elif t == "teamtailor":
+            from scrape.teamtailor_scraper import fetch as _f
+            return len(_f(slug))
+        elif t == "jazzhr":
+            from scrape.jazzhr_scraper import fetch as _f
+            return len(_f(slug))
         elif t in ("icims", "taleo", "successfactors", "jsonld"):
             # JSON-LD-backed boards (no count API): count schema.org/JobPosting
             # entries on the career page. 0 when the page hides them behind
