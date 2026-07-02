@@ -549,7 +549,8 @@ def show_quick_start(parent=None) -> None:
         "Quick Start",
         "Getting started takes three steps:\n\n"
         "1.  FIND JOBS\n"
-        "     Open Search and click Search, or check your Inbox.\n"
+        "     Open your Inbox and click “Update my Inbox now”, or\n"
+        "     use the Search tab to search on demand.\n"
         "     Every job is scored 0–100 for how well it fits you.\n\n"
         "2.  KEEP THE GOOD ONES\n"
         "     Select a job and click “Track ▸ Interested”.\n"
