@@ -309,7 +309,20 @@ class ReapClient(SingleFeedClient):
         # Single page per category; page>1 has nothing more. Inert (non-education
         # or uncovered state) returns empty. robots.txt is honored before any
         # search fetch — a disallowing/unverifiable portal yields 0 rows, silently.
-        if page > 1 or not self.active or not self.portal:
+        if page > 1:
+            return {"rows": []}
+        # Defense in depth: if construction-time location was omitted (e.g. a caller
+        # that didn't thread `location` into build_clients), lazily resolve the
+        # portal from the location passed into search() so the education field still
+        # gets its state's portal. The industry gate still applies — a non-education
+        # project stays inert. Also backfill self.location so downstream tagging has
+        # the search location.
+        if self.portal is None and location and _is_education(self.industry):
+            self.portal = portal_for_location(location)
+            self.active = self.portal is not None
+            if location and not self.location:
+                self.location = location
+        if not self.active or not self.portal:
             return {"rows": []}
         if not self._portal_allows(self.portal):
             return {"rows": []}

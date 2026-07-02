@@ -3302,7 +3302,8 @@ class SearchTab(ttk.Frame):
             # unfiltered 627-board scrape (P6). No-op for a blank industry.
             clients = build_clients(_sources, cache_enabled=True,
                                     industry_filter=_ind or None,
-                                    tiered_careers=True)
+                                    tiered_careers=True,
+                                    location=location)
             # Broaden the QUERY keywords for API recall (search broad, score
             # narrow); the original `keywords` stay the scoring set below. No-op
             # for eng IC titles. Opt out with "broaden_keywords": false in config.

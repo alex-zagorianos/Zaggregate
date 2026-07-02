@@ -180,6 +180,32 @@ def test_reap_remote_only_tags_nationwide(tmp_path):
     assert out and "remote" in out[0].location.lower()
 
 
+def test_reap_lazy_portal_resolves_from_search_location(tmp_path):
+    """S32d finding-1 regression: a caller that builds ReapClient WITHOUT a
+    construction-time location (the GUI/MCP build_clients path used to omit it)
+    must still resolve its portal from the location passed into search()."""
+    # Build exactly like the GUI/MCP path did: education industry, NO location.
+    c = _client(ReapClient, tmp_path, industry="teacher", location=None)
+    # Inert at construction (no location -> no portal).
+    assert c.active is False and c.portal is None
+    # search() with a covered-state location lazily resolves the portal and the
+    # client becomes active (self-fetch is stubbed so no network is touched).
+    c._portal_allows = lambda portal: True
+    c._fetch_category = lambda portal, srch: []
+    out = c.search("teacher", location="Columbus, OH", page=1)
+    assert c.portal == "ohreap.net"
+    assert c.active is True
+    assert out["_portal"] == "ohreap.net"
+    # An uncovered-state search location stays inert (no portal, empty rows).
+    c2 = _client(ReapClient, tmp_path, industry="teacher", location=None)
+    assert c2.search("teacher", location="Austin, TX", page=1) == {"rows": []}
+    assert c2.portal is None
+    # A non-education field never lazily activates even with a covered location.
+    c3 = _client(ReapClient, tmp_path, industry="welding", location=None)
+    assert c3.search("welder", location="Columbus, OH", page=1) == {"rows": []}
+    assert c3.portal is None
+
+
 def test_reap_robots_allows_helper():
     # No robots.txt content (empty) -> allowed.
     assert _robots_allows("", "/jobsrch.php") is True
@@ -308,6 +334,53 @@ def test_edjoin_target_state_is_ca():
 
 def test_edjoin_per_keyword():
     assert EdjoinClient.parallel_keywords is True
+
+
+def test_edjoin_uses_honest_ua_no_browser_spoof(tmp_path):
+    """S32d finding-4: EdJoin must use the app's honest User-Agent (the endpoint
+    works with it — verified live) and NOT spoof a browser UA or the site's XHR
+    header."""
+    c = _client(EdjoinClient, tmp_path, industry="education", location="Los Angeles, CA")
+    ua = c.session.headers.get("User-Agent", "")
+    assert ua == "JobSearchTool/1.0 (personal use)"
+    assert "Mozilla" not in ua and "Chrome" not in ua
+    # No XHR-impersonation header (we are not pretending to be the site's own AJAX).
+    assert "X-Requested-With" not in c.session.headers
+
+
+def test_edjoin_robots_fail_closed(tmp_path, monkeypatch):
+    """S32d finding-4: EdJoin now enforces robots.txt at fetch time like REAP and
+    fails CLOSED — a disallowing/unverifiable robots.txt yields 0 rows and no
+    LoadJobs fetch. 404 (the live state) = allowed."""
+    c = _client(EdjoinClient, tmp_path, industry="education", location="Los Angeles, CA")
+
+    class _Resp:
+        def __init__(self, status, text=""):
+            self.status_code, self.text = status, text
+
+    # A disallow of the LoadJobs path -> _endpoint_allows False.
+    monkeypatch.setattr(c.session, "get",
+                        lambda url, **kw: _Resp(200, "User-agent: *\nDisallow: /Home/LoadJobs"))
+    assert c._endpoint_allows() is False
+    # And search() then fetches nothing (0 rows) — verified by making the LoadJobs
+    # GET blow up if it were ever reached.
+    def _boom(url, **kw):
+        if "robots" in url:
+            return _Resp(200, "User-agent: *\nDisallow: /Home/LoadJobs")
+        raise AssertionError("LoadJobs must not be fetched when robots disallows")
+    monkeypatch.setattr(c.session, "get", _boom)
+    assert c.search("teacher", location="Los Angeles, CA", page=1)["data"] == []
+
+    # 404 robots (the live state) -> allowed.
+    monkeypatch.setattr(c.session, "get", lambda url, **kw: _Resp(404))
+    assert c._endpoint_allows() is True
+
+    # A network error fails CLOSED.
+    import requests
+    def _raise(url, **kw):
+        raise requests.RequestException("boom")
+    monkeypatch.setattr(c.session, "get", _raise)
+    assert c._endpoint_allows() is False
 
 
 # ── source_taxonomy shims ─────────────────────────────────────────────────────
