@@ -385,13 +385,22 @@ def main():
         _remote_ok = bool(preferences.load().get("hard", {}).get("remote_ok", True))
     except Exception:
         _remote_ok = True
+    try:
+        import preferences as _prefs_mod
+        _remote_regions_ok = bool(_prefs_mod.load().get("hard", {}).get("remote_regions_ok", False))
+    except Exception:
+        _remote_regions_ok = False
     score_jobs(_lang_scored, keywords=keywords, location=location,
                salary_floor=salary_min,
                exclude_keywords=cfg.get("exclude_keywords", []),
                exclude_titles=cfg.get("exclude_titles"),
                title_miss_penalty=cfg.get("title_miss_penalty"),
                seniority_exclude=cfg.get("seniority_exclude"),
-               remote_ok=_remote_ok)
+               remote_ok=_remote_ok,
+               seniority_target=cfg.get("seniority_target"),
+               years_cap=cfg.get("years_cap"),
+               remote_regions_ok=_remote_regions_ok,
+               title_context_required=cfg.get("title_context_required"))
 
     # Freshness deltas: mark jobs new since the last daily run for THIS project
     # (manual GUI/CLI searches don't move this baseline). Non-destructive — just

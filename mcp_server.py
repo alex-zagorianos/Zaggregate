@@ -67,12 +67,21 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
         max_pages_per_keyword=max_pages)
     found = len(results)
     results = ranker.gate(results)                     # preferences hard-gate
+    try:
+        import preferences as _prefs
+        _remote_regions_ok = bool(_prefs.load().get("hard", {}).get("remote_regions_ok", False))
+    except Exception:
+        _remote_regions_ok = False
     score_jobs(results, keywords=kws, location=loc,
                salary_floor=cfg.get("salary_min"),
                exclude_keywords=cfg.get("exclude_keywords", []),
                exclude_titles=cfg.get("exclude_titles"),
                title_miss_penalty=cfg.get("title_miss_penalty"),
-               seniority_exclude=cfg.get("seniority_exclude"))
+               seniority_exclude=cfg.get("seniority_exclude"),
+               seniority_target=cfg.get("seniority_target"),
+               years_cap=cfg.get("years_cap"),
+               remote_regions_ok=_remote_regions_ok,
+               title_context_required=cfg.get("title_context_required"))
     db.init_db()
     added = db.inbox_add_many(
         results, per_company_cap=int(cfg.get("max_per_company", 15) or 0))

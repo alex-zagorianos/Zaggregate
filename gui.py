@@ -2970,16 +2970,23 @@ class SearchTab(ttk.Frame):
             if results:
                 try:
                     import preferences as _prefs
-                    _remote_ok = bool(_prefs.load().get("hard", {}).get("remote_ok", True))
+                    _hard = _prefs.load().get("hard", {})
+                    _remote_ok = bool(_hard.get("remote_ok", True))
+                    _remote_regions_ok = bool(_hard.get("remote_regions_ok", False))
                 except Exception:
                     _remote_ok = True
+                    _remote_regions_ok = False
                 score_jobs(results, keywords=keywords, location=location,
                            salary_floor=salary_min,
                            exclude_keywords=self._user_cfg.get("exclude_keywords", []),
                            exclude_titles=self._user_cfg.get("exclude_titles"),
                            title_miss_penalty=self._user_cfg.get("title_miss_penalty"),
                            seniority_exclude=self._user_cfg.get("seniority_exclude"),
-                           remote_ok=_remote_ok)
+                           remote_ok=_remote_ok,
+                           seniority_target=self._user_cfg.get("seniority_target"),
+                           years_cap=self._user_cfg.get("years_cap"),
+                           remote_regions_ok=_remote_regions_ok,
+                           title_context_required=self._user_cfg.get("title_context_required"))
             self.after(0, self._on_done, results, bool(clients))
         except Exception as exc:
             self.after(0, self._on_error, str(exc))
