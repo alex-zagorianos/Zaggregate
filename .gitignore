@@ -91,3 +91,6 @@ legacy/candidates.json
 legacy/flatten_candidates.py
 legacy/verify_and_add.py
 /legacy/job search/
+
+# graphify knowledge graph (local artifact, rebuild via graphify update .)
+graphify-out/
