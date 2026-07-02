@@ -20,6 +20,52 @@ def test_badge_line_none_and_uncertifiable_and_certified():
     assert t2.startswith("Reach ~62%") and "(55–71%)" in t2 and "3 src families" in t2
 
 
+# ── §6.8 / SB-6: actionable reach badge ───────────────────────────────────────
+
+def _patch_connected(monkeypatch, labels):
+    """Force setup_wizard.connected_source_labels() to a known set so
+    badge_reason's missing-key logic is deterministic."""
+    from ui import setup_wizard
+    monkeypatch.setattr(setup_wizard, "connected_source_labels", lambda: list(labels))
+
+
+def test_badge_reason_none_when_certifiable(monkeypatch):
+    _patch_connected(monkeypatch, [])   # even with keys missing
+    cert = {"certifiable": True, "coverage_pct": 80.0}
+    assert reach.badge_reason(cert) is None
+
+
+def test_badge_reason_names_missing_headline_keys(monkeypatch):
+    _patch_connected(monkeypatch, [])   # neither Adzuna nor CareerOneStop
+    unc = {"certifiable": False, "coverage_pct": None,
+           "n_distinct": 8, "n_families": 1}
+    reason = reach.badge_reason(unc)
+    assert reason and "Adzuna" in reason and "CareerOneStop" in reason
+    assert "are not connected" in reason
+
+
+def test_badge_reason_partial_missing(monkeypatch):
+    _patch_connected(monkeypatch, ["Adzuna"])   # only CareerOneStop missing
+    unc = {"certifiable": False, "coverage_pct": None,
+           "n_distinct": 8, "n_families": 1}
+    reason = reach.badge_reason(unc)
+    assert reason and "CareerOneStop" in reason and "Adzuna" not in reason
+    assert "is not connected" in reason      # singular
+
+
+def test_badge_reason_none_when_both_headline_keys_present(monkeypatch):
+    _patch_connected(monkeypatch, ["Adzuna", "CareerOneStop", "Jooble"])
+    unc = {"certifiable": False, "coverage_pct": None,
+           "n_distinct": 8, "n_families": 1}
+    assert reach.badge_reason(unc) is None
+
+
+def test_badge_reason_nudges_before_first_run(monkeypatch):
+    """No snapshot yet but headline keys missing -> still nudge (first-run value)."""
+    _patch_connected(monkeypatch, [])
+    assert reach.badge_reason(None) is not None
+
+
 def mk(title, company, source, loc="Cincinnati, OH", url=""):
     return JobResult(title=title, company=company, location=loc,
                      salary_min=None, salary_max=None, description="",

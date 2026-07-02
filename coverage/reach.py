@@ -210,6 +210,44 @@ def _serpapi_key_present() -> bool:
         return False
 
 
+# The two headline free keys that most widen LOCAL reach (plan §6.8 / coverage
+# monopoly finding). Named in the actionable badge when they're missing.
+_HEADLINE_LOCAL_KEYS = ("Adzuna", "CareerOneStop")
+
+
+def _missing_headline_keys() -> list[str]:
+    """Which of the headline local-reach keys (Adzuna, CareerOneStop) are NOT
+    connected. Best-effort ([] on any error) so the badge never crashes the GUI."""
+    try:
+        from ui.setup_wizard import connected_source_labels
+        connected = set(connected_source_labels())
+    except Exception:
+        return []
+    return [k for k in _HEADLINE_LOCAL_KEYS if k not in connected]
+
+
+def badge_reason(snap: dict | None) -> str | None:
+    """The single actionable reason a reach badge is weak, or None when it's fine.
+
+    Returns a short "…because <keys> aren't connected — Connect a free key" note
+    when reach is low/uncertifiable AND a headline local key (Adzuna/CareerOneStop)
+    is missing. This is what turns the honest-but-dead-end badge into an actionable
+    one (§6.8 / Pattern 4a): the GUI shows it as a clickable "[Connect a free key]"
+    that opens the keys dialog. None when the estimate is certifiable or nothing
+    actionable is missing."""
+    if snap is None:
+        # No run yet — still worth nudging if the headline keys are missing.
+        missing = _missing_headline_keys()
+    elif snap.get("certifiable") and snap.get("coverage_pct") is not None:
+        return None
+    else:
+        missing = _missing_headline_keys()
+    if not missing:
+        return None
+    return (f"mostly remote/tech jobs because {' + '.join(missing)} "
+            f"{'is' if len(missing) == 1 else 'are'} not connected")
+
+
 def badge_line(snap: dict | None) -> str:
     """One-line reach badge from a persisted snapshot dict (see load_latest) —
     for the GUI/CLI. Blank when there's no snapshot; a qualified percentage only
