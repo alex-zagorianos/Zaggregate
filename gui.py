@@ -3038,9 +3038,20 @@ class BuildCompanyListDialog(tk.Toplevel):
             return
         stats = (summary or {}).get("registry_stats") or {}
         total = sum(stats.values()) if stats else 0
+        # S33: browser-only boards (Cloudflare/CSRF-walled — verified from the
+        # extension) are real companies but the server can't scrape them, so call
+        # them out: the user keeps them fresh by browsing with the extension, not
+        # by a 'careers' run. One cheap count() call, one readout — no new state.
+        try:
+            from scrape.company_registry import browser_only_count
+            bo = browser_only_count()
+        except Exception:
+            bo = 0
+        bo_note = (f" ({bo} are browser-only — refresh those by visiting them "
+                   "with the extension)") if bo else ""
         self._status.config(text=f"Done — registry now has {total} companies.")
         self._append(f"\nDone. Registry now has {total} companies across "
-                     f"{len(stats)} tag(s). They're searched on your next "
+                     f"{len(stats)} tag(s){bo_note}. They're searched on your next "
                      f"'careers' run.\n")
 
     def _set_running(self, running):

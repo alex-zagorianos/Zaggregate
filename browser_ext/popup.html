@@ -138,6 +138,13 @@
       #capture-status.err {
         color: var(--err);
       }
+      #verify-tab-btn {
+        background: var(--accent);
+        color: #fff;
+      }
+      #verify-tab-btn:hover:not(:disabled) {
+        background: var(--accent-dk);
+      }
       .clip-hint {
         font-size: 0.68rem;
         color: var(--faint);
@@ -225,6 +232,13 @@
       it. Verified at click time — nothing is applied or submitted.
     </p>
     <div id="clip-status"></div>
+    <!-- S33: shown only when the server couldn't reach a walled board (FedEx/
+         Banner-style Cloudflare/CSRF Workday). One click counts the postings the
+         user's logged-in browser can see and re-clips with that evidence, saving
+         the board browser-verified. Assisted, never auto. -->
+    <button id="verify-tab-btn" style="display: none">
+      Verify from this tab
+    </button>
 
     <!-- generic_capture.js defines extractGenericJob, which popup.js injects
          into the active tab via chrome.scripting.executeScript. Loaded FIRST so

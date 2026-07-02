@@ -11,7 +11,8 @@ from models import JobResult
 # level keeps the console text byte-identical to the old print() lines.
 _log = applog.get_logger("careers")
 from search.base_client import JobAPIClient
-from scrape.company_registry import CompanyEntry, get_registry, save_companies
+from scrape.company_registry import (CompanyEntry, get_registry, is_browser_only,
+                                     save_companies)
 from scrape.discoverer import discover_companies
 from scrape.ashby_scraper import scrape_ashby
 from scrape.greenhouse_scraper import scrape_greenhouse
@@ -54,7 +55,26 @@ class CareersClient(JobAPIClient):
         self.cache_enabled = cache_enabled
         self.top_n = top_n
         self.discovery_enabled = discovery_enabled
-        self._base_companies = get_registry(industry_filter, user_json=companies_file)
+        # Browser-only boards (S33) are real, live companies that the SERVER can't
+        # read (Cloudflare/CSRF-walled Workday tenants — FedEx, Banner). They are
+        # kept in every registry listing/dedup/GUI count, but the programmatic
+        # careers scraper must SKIP them (include_browser_only=False) so it never
+        # churns on a wall it can't pass — the user refreshes those by browsing
+        # with the extension. One aggregate log line (not per-board spam) so the
+        # daily-run output surfaces that N boards are browse-to-refresh.
+        self._base_companies = get_registry(industry_filter, user_json=companies_file,
+                                            include_browser_only=False)
+        _browser_only = [
+            e for e in get_registry(industry_filter, user_json=companies_file,
+                                    include_browser_only=True)
+            if is_browser_only(e)
+        ]
+        if _browser_only:
+            _log.info(
+                f"  [careers] skipping {len(_browser_only)} browser-only board(s) "
+                "the server can't read (browse them with the extension to refresh): "
+                + ", ".join(e.name for e in _browser_only[:8])
+                + ("" if len(_browser_only) <= 8 else f" (+{len(_browser_only) - 8} more)"))
         # Opt-in tiered scheduling: scrape only the registry companies that are
         # "due" this run (active boards every run, quiet/dead ones less often), so
         # a large registry doesn't make the daily run O(N). Off by default -> the
