@@ -264,3 +264,121 @@ def test_wizard_has_keys_step_and_completes_with_zero_keys(no_source_keys,
         w.destroy()
     finally:
         root.destroy()
+
+
+# ── S32c: wizard ↔ AI-setup express-lane (§6.3) ───────────────────────────────
+
+_AI_GOOD_PAYLOAD = {
+    "field": "Data Analytics",
+    "target_titles": ["Data Analyst", "BI Analyst"],
+    "location": "Phoenix, AZ",
+    "remote_ok": True,
+    "radius_miles": 40,
+    "salary_floor": 85000,
+    "seniority": "mid",
+    "preferences_md": "I want data analyst roles. I love SQL.",
+}
+_AI_GOOD_BLOCK = "Here you go!\n```json\n" + json.dumps(_AI_GOOD_PAYLOAD) + "\n```\n"
+
+
+def _fresh_wizard(monkeypatch):
+    """Build a real SetupWizard on a hidden root, or skip if there's no display.
+    Isolates prefill so an already-configured machine can't seed the vars."""
+    import tkinter as tk
+    monkeypatch.setattr(sw, "prefill_from_existing",
+                        lambda *a, **k: {"roles": "", "location": "",
+                                         "remote_ok": True, "salary_min": "",
+                                         "about": "", "industry": "", "level": ""})
+    try:
+        root = tk.Tk()
+        root.withdraw()
+    except tk.TclError:
+        pytest.skip("no display")
+    import gui  # noqa: F401  (same theme-import path the real GUI uses)
+    from ui import theme
+    theme.apply_theme(root)
+    return root, sw.SetupWizard(root)
+
+
+def test_wizard_has_ai_step_first_and_optional(monkeypatch):
+    """The AI express-lane is present, sits right after Welcome and before the
+    manual roles step, and does NOT block advancing when nothing is pasted."""
+    root, w = _fresh_wizard(monkeypatch)
+    try:
+        names = [s.__name__ for s in w._steps]
+        assert "_step_ai" in names
+        assert names.index("_step_ai") == 1                     # right after welcome
+        assert names.index("_step_ai") < names.index("_step_roles")
+        # Render the AI step and advance with an EMPTY reply box: must not block.
+        w._step = names.index("_step_ai")
+        w._render()
+        before = w._step
+        w._next()
+        w.update_idletasks()
+        assert w._step == before + 1                            # advanced past it
+    finally:
+        root.destroy()
+
+
+def test_wizard_ai_prefill_populates_subsequent_steps(monkeypatch):
+    """Pasting a valid AI config block prefills the wizard vars (roles/location/
+    salary/industry/level/about) so the following steps open pre-populated — the
+    steps are NOT skipped; the user still reviews them."""
+    root, w = _fresh_wizard(monkeypatch)
+    try:
+        w._step = [s.__name__ for s in w._steps].index("_step_ai")
+        w._render()
+        w._ai_reply.insert("1.0", _AI_GOOD_BLOCK)
+        w._prefill_from_ai()
+        assert w._vars["roles"].get() == "Data Analyst, BI Analyst"
+        assert w._vars["location"].get() == "Phoenix, AZ"
+        assert w._vars["salary_min"].get() == "85000"
+        assert w._vars["industry"].get() == "data analytics"    # canonical token
+        assert w._vars["level"].get() == "Mid"                  # seniority -> level
+        # The field preset picker reflects the token (so the roles step shows it).
+        assert w._vars["field_preset"].get() == "Data analytics / data science"
+        # 'about' feeds the free-text cache the roles step reads.
+        assert "SQL" in w._about_cache
+        # And _collect() (what Finish applies) now carries the prefilled answers.
+        collected = w._collect()
+        assert collected["roles"] == ["Data Analyst", "BI Analyst"]
+        assert collected["industry"] == "data analytics"
+    finally:
+        root.destroy()
+
+
+def test_wizard_ai_prefill_bad_block_leaves_manual_path_intact(monkeypatch):
+    """A garbage / unparseable reply must NOT crash or mutate the vars — the
+    manual path is untouched and the wizard stays completable by hand."""
+    root, w = _fresh_wizard(monkeypatch)
+    try:
+        w._step = [s.__name__ for s in w._steps].index("_step_ai")
+        w._render()
+        # Pre-set a manual value; a bad AI paste must not clobber it.
+        w._vars["roles"].set("welder")
+        w._ai_reply.insert("1.0", "sorry, I couldn't help with that")
+        import tkinter.messagebox as mb
+        monkeypatch.setattr(mb, "showwarning", lambda *a, **k: None)
+        w._prefill_from_ai()                                    # must not raise
+        assert w._vars["roles"].get() == "welder"              # manual value intact
+        assert w._vars["industry"].get() == ""                 # nothing applied
+    finally:
+        root.destroy()
+
+
+def test_wizard_completes_with_zero_ai(monkeypatch):
+    """The whole wizard must be walkable start-to-finish without ever touching the
+    AI step (parity with the zero-keys guarantee)."""
+    root, w = _fresh_wizard(monkeypatch)
+    try:
+        w._vars["roles"].set("registered nurse")
+        w._step = 0
+        w._render()
+        for _ in range(len(w._steps) - 1):
+            before = w._step
+            w._next()
+            w.update_idletasks()
+            assert w._step == before + 1
+        assert w._steps[w._step].__name__ == "_step_keep_going"
+    finally:
+        root.destroy()

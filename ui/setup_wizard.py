@@ -516,12 +516,15 @@ class SetupWizard(tk.Toplevel):
         except Exception:
             self._about_cache = ""
         self._build_chrome()
-        # Keys step sits AFTER roles/where/resume (value-first) and BEFORE the
+        # The optional AI express-lane sits right after Welcome (before the manual
+        # data steps) so a user with an AI can prefill everything in one paste and
+        # then just review — while a user without one clicks straight past it. The
+        # keys step sits AFTER roles/where/resume (value-first) and BEFORE the
         # closing step: the user has felt what they're setting up before the one
         # moment of real friction (research-onboarding-ux motivated-friction /
-        # value-first sequencing). It is fully skippable — the wizard completes
-        # with zero keys.
-        self._steps = [self._step_welcome, self._step_roles,
+        # value-first sequencing). Every step here is fully skippable — the wizard
+        # completes with zero AI and zero keys.
+        self._steps = [self._step_welcome, self._step_ai, self._step_roles,
                        self._step_where, self._step_resume, self._step_keys,
                        self._step_keep_going]
         self._render()
@@ -588,6 +591,111 @@ class SetupWizard(tk.Toplevel):
         ttk.Label(self._body,
                   text="Let's set up your profile. It takes about a minute.",
                   wraplength=560, justify="left").pack(anchor="w", pady=(16, 0))
+
+    def _step_ai(self):
+        # Optional BYO-AI express lane (§6.3): the user pastes a prompt into THEIR
+        # own AI (with their résumé + one sentence of intent), pastes the reply
+        # back, and we prefill the SUBSEQUENT steps from it. The following steps are
+        # NOT skipped — the user still reviews/adjusts every prefilled field. This
+        # step is entirely optional: Next advances with nothing pasted, and the
+        # whole wizard remains completable with zero AI.
+        from ui import ai_setup
+        self._heading(
+            "Have an AI assistant? Let it set you up (optional)",
+            "If you use Claude, ChatGPT, Gemini, or Copilot (a free tier is fine), "
+            "it can fill in the next few steps for you. Copy the prompt below, "
+            "paste it into your AI along with your résumé and one sentence about "
+            "the job you want, then paste its reply back here. You'll still review "
+            "every field. Prefer to do it by hand? Just click Next.")
+        ttk.Label(self._body, text="1.  Copy this prompt into your AI:",
+                  style="H2.TLabel").pack(anchor="w", pady=(4, 2))
+        pbox = ttk.Frame(self._body)
+        pbox.pack(fill="x")
+        self._ai_prompt = theme.text_widget(pbox, height=5, wrap="word")
+        self._ai_prompt.insert("1.0", ai_setup.build_setup_prompt())
+        self._ai_prompt.configure(state="disabled")
+        self._ai_prompt.pack(side="left", fill="both", expand=True)
+        pvsb = ttk.Scrollbar(pbox, orient="vertical", command=self._ai_prompt.yview)
+        self._ai_prompt.configure(yscrollcommand=pvsb.set)
+        pvsb.pack(side="right", fill="y")
+        theme.btn(self._body, "Copy prompt", self._copy_ai_prompt, "ghost").pack(
+            anchor="w", pady=(4, 10))
+        ttk.Label(self._body, text="2.  Paste your AI's reply here:",
+                  style="H2.TLabel").pack(anchor="w", pady=(0, 2))
+        rbox = ttk.Frame(self._body)
+        rbox.pack(fill="both", expand=True)
+        self._ai_reply = theme.text_widget(rbox, height=6, wrap="word")
+        self._ai_reply.pack(side="left", fill="both", expand=True)
+        rvsb = ttk.Scrollbar(rbox, orient="vertical", command=self._ai_reply.yview)
+        self._ai_reply.configure(yscrollcommand=rvsb.set)
+        rvsb.pack(side="right", fill="y")
+        theme.btn(self._body, "Fill in my answers from this", self._prefill_from_ai,
+                  "accent").pack(anchor="w", pady=(6, 2))
+        self._ai_status = ttk.Label(self._body, text="", style="Muted.TLabel",
+                                    wraplength=560, justify="left")
+        self._ai_status.pack(anchor="w", pady=(2, 0))
+
+    def _copy_ai_prompt(self):
+        """Copy the setup prompt to the clipboard (classic tk clipboard, like
+        source_keys). Best-effort; never raises out of the wizard."""
+        from ui import ai_setup
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(ai_setup.build_setup_prompt())
+            if getattr(self, "_ai_status", None) is not None and \
+                    self._ai_status.winfo_exists():
+                self._ai_status.config(text="Prompt copied — paste it into your AI.")
+        except Exception:
+            pass
+
+    def _prefill_from_ai(self):
+        """Parse the pasted config block and prefill the wizard's answers so the
+        subsequent steps open pre-populated (the user still reviews/edits them).
+        On any parse/validation problem, show the actionable message and leave the
+        manual path completely untouched — nothing is applied here (apply happens
+        on Finish like any other run)."""
+        from ui import ai_setup
+        reply = getattr(self, "_ai_reply", None)
+        text = reply.get("1.0", "end-1c").strip() if (
+            reply is not None and reply.winfo_exists()) else ""
+        if not text:
+            if getattr(self, "_ai_status", None) is not None:
+                self._ai_status.config(
+                    text="Paste your AI's reply above first, or click Next to fill "
+                         "everything in by hand.")
+            return
+        try:
+            parsed = ai_setup.parse_setup_block(text)
+        except ai_setup.SetupBlockError as e:
+            messagebox.showwarning("Couldn't read that reply", str(e), parent=self)
+            if getattr(self, "_ai_status", None) is not None:
+                self._ai_status.config(text=str(e))
+            return
+        answers = parsed["answers"]
+        extras = parsed["extras"]
+        # Prefill the wizard vars from the parsed answers. roles/keywords are a
+        # comma-joined string in the wizard; the industry token drives the field
+        # preset picker (falling back to the free-text 'Other' box for a custom
+        # token); level maps 1:1 to the wizard's level labels.
+        self._vars["roles"].set(", ".join(answers.get("roles", [])))
+        self._vars["location"].set(answers.get("location", ""))
+        self._vars["remote_ok"].set(bool(answers.get("remote_ok", True)))
+        salary = answers.get("salary_min")
+        self._vars["salary_min"].set(str(salary) if salary else "")
+        industry = answers.get("industry", "")
+        self._vars["industry"].set(industry)
+        self._vars["field_preset"].set(_token_to_preset_label(industry))
+        self._vars["level"].set(answers.get("level", ""))
+        self._about_cache = answers.get("about", "") or self._about_cache
+        # Report what landed so the user knows the next steps are pre-filled.
+        titles = ", ".join(answers.get("roles", [])[:4])
+        where = "Remote" if extras.get("remote_only") else (answers.get("location")
+                                                            or "—")
+        if getattr(self, "_ai_status", None) is not None:
+            self._ai_status.config(
+                text=f"Filled in — Field: {extras.get('field_token') or 'general'} "
+                     f"· Titles: {titles or '—'} · Where: {where}. Click Next to "
+                     "review and adjust each step.")
 
     def _step_roles(self):
         self._heading(
@@ -908,7 +1016,12 @@ class SetupWizard(tk.Toplevel):
                     "No roles yet",
                     "You haven't entered any job titles, so searches won't have "
                     "much to go on. Finish setup anyway?", parent=self):
-                self._step = 1
+                # Jump back to the roles step (index is not hard-coded, so it stays
+                # correct as steps are added/reordered — e.g. the AI express-lane).
+                try:
+                    self._step = self._steps.index(self._step_roles)
+                except ValueError:
+                    self._step = 1
                 self._render()
                 return
         # Derive the field from the roles when the optional industry box is blank,
