@@ -4,6 +4,31 @@
 
 ---
 
+## Session 31 (2026-07-02 overnight) — Repo reorg + 8-persona general-user tests → improvement plan ✅
+
+Fable 5 orchestrating an Opus fleet while Alex slept. (1) Repo-root reorg
+(`ecddfa7`): 27 handoffs → `docs/handoffs/`, one-off scripts → `scripts/`
+(bootstraps fixed), legacy quarantined; suite exactly 1744/1. (2) **8 blank-slate
+general-user personas** (SWE new-grad Austin, RN Boise, teacher Columbus,
+consultant Chicago, warehouse Memphis, remote-only marketer, mecheng Seattle,
+data career-changer Phoenix) each ran the FULL journey — wizard-equivalent setup,
+ask-your-AI seeding via the real + Add Companies pipeline, live `daily_run`,
+BYO-AI top-10, tracked apply→interview→offer/rejected/ghosted — zero crashes,
+verdicts 6-7/10, 7/8 beats-manual (remote-only marketer the exception: 8 rows).
+(3) 4 code-verifying review lenses + 3 web research agents → synthesized
+**`brain/improvement-plan-2026-07-02-general-user.md`**. Headline confirmed P0s:
+`_industry_tag_match` space/underscore one-liner zeroes the careers path for ALL
+multi-word industries (warehouse 17 seeds→0 searched); Adzuna is 48-100% of every
+metro inbox with CareerOneStop unkeyed+silently dark; Adzuna/USAJobs return 0 for
+location="Remote"; raw Score is seniority-/country-blind (facts.py logic never
+wired into scorer/hard-gate); probe-advisory seeding + Workday/CSRF walls (fix:
+public `wday/cxs` JSON API — top strategic bet); `daily_run --project` flips the
+global active project. Corpus: `brain/general-user-tests-2026-07/` (commit
+`ba0482d`). **No app code changed — fix wave held.** ~118 ahead, push HELD.
+Detail: `docs/handoffs/handoff_20260702_session31.md`.
+
+---
+
 ## Session 30 (2026-07-01, same day) — Live blank-canvas test runs + setup depth ✅
 
 Proved the S29 overhaul live: cloned both profiles into fresh test projects
