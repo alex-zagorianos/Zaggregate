@@ -155,18 +155,25 @@ class RNJobSiteClient(SingleFeedClient):
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches
         from search.remote_intent import (
-            is_remote_only, metro_variant_set, remote_region_of,
-            tag_nationwide_remote)
+            is_remote_only, metro_state_set, metro_variant_set,
+            national_row_locality, remote_region_of, tag_nationwide_remote)
         location = raw.get("_location", "") or ""
         remote = is_remote_only(location)
         region = remote_region_of(location) if remote else None
         # Localize only when we resolved real metro variants — an unresolvable
         # location must NOT drop every row (fail open, like the downstream gate).
         metro_variants = None
+        metro_states: set[str] = set()
         if location and not remote:
             mv = metro_variant_set(location)
             metro_variants = mv or None
-        results = []
+            metro_states = metro_state_set(location)
+        # Metro-bound: collect true-metro rows and same-state (commutable) rows
+        # separately, then fail open to same-state if the strict metro filter would
+        # empty the feed — mirroring reap/edjoin. A same-name out-of-state city
+        # ("Columbus, GA" for a "Columbus, OH" seeker) is rejected by the state gate.
+        metro_rows: list[JobResult] = []
+        state_rows: list[JobResult] = []
         for item in raw.get("items", []) or []:
             title = (item.get("title", "") or "").strip()
             if not title:
@@ -175,21 +182,17 @@ class RNJobSiteClient(SingleFeedClient):
             if not keyword_matches(source_keyword, f"{title} {desc}"):
                 continue
             row_loc = (item.get("location", "") or "").strip()
+            bucket = "metro"
             if remote:
                 # Genuinely-nationwide search: keep the row, mark it remote/US so
                 # the location gate keeps it per remote_ok (origin city preserved).
                 row_loc = tag_nationwide_remote(row_loc, region)
             elif metro_variants is not None:
-                # Metro-bound search: localize this national feed to the user's
-                # metro. Drop rows whose stated city is NOT in the target metro
-                # (and NOT already remote) — real localization, no faked locality.
-                low = row_loc.lower()
-                is_remote_row = "remote" in low
-                if row_loc and not is_remote_row and not any(
-                        v in low for v in metro_variants):
-                    continue
+                bucket = national_row_locality(row_loc, metro_variants, metro_states)
+                if bucket == "other":
+                    continue                  # out-of-area / wrong-state same-name city
             link = item.get("link", "") or ""
-            results.append(JobResult(
+            job = JobResult(
                 title=title,
                 company=(item.get("company", "") or "Unknown").strip() or "Unknown",
                 location=row_loc,
@@ -201,5 +204,15 @@ class RNJobSiteClient(SingleFeedClient):
                 created=item.get("pubDate", "") or "",
                 job_id=f"rnjobsite_{link}" if link else "",
                 source_api="rnjobsite",
-            ))
-        return results
+            )
+            if bucket == "state":
+                state_rows.append(job)
+            else:                             # 'metro' or 'remote'
+                metro_rows.append(job)
+        # Keep true-metro rows AND in-state (CBSA member-state) rows — metro_variants
+        # only holds the CBSA principal city, so genuine in-metro SUBURBS (Edgewood
+        # KY / Hamilton OH for a Cincinnati seeker) land in the state bucket and must
+        # survive to scoring (where _location_score ranks true-metro higher) rather
+        # than be dropped. Only 'other' (out-of-state, incl. a same-name city like
+        # Columbus GA for a Columbus OH seeker) was already filtered. Metro rows lead.
+        return metro_rows + state_rows

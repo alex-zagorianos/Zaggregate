@@ -185,17 +185,23 @@ class HigherEdJobsClient(SingleFeedClient):
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches
         from search.remote_intent import (
-            is_remote_only, metro_variant_set, remote_region_of,
-            tag_nationwide_remote)
+            is_remote_only, metro_state_set, metro_variant_set,
+            national_row_locality, remote_region_of, tag_nationwide_remote)
         search_loc = raw.get("_location", "") or ""
         remote = is_remote_only(search_loc)
         region = remote_region_of(search_loc) if remote else None
         # Localize only when we resolved real variants (unresolvable -> fail open).
         metro_variants = None
+        metro_states: set[str] = set()
         if search_loc and not remote:
             mv = metro_variant_set(search_loc)
             metro_variants = mv or None
-        results = []
+            metro_states = metro_state_set(search_loc)
+        # Metro-first with a same-state fail-open (mirrors reap/edjoin): keep the
+        # true-metro rows, else fall back to in-state suburb rows rather than 0.
+        # The state gate rejects a same-name out-of-state city ("Columbus, GA").
+        metro_rows: list[JobResult] = []
+        state_rows: list[JobResult] = []
         for item in raw.get("items", []) or []:
             title = (item.get("title", "") or "").strip()
             if not title:
@@ -205,16 +211,15 @@ class HigherEdJobsClient(SingleFeedClient):
             # not a body, so it isn't useful match text — match the title).
             if not keyword_matches(source_keyword, title):
                 continue
+            bucket = "metro"
             if remote:
                 location = tag_nationwide_remote(location, region)
             elif metro_variants is not None:
-                low = (location or "").lower()
-                is_remote_row = "remote" in low
-                if location and not is_remote_row and not any(
-                        v in low for v in metro_variants):
+                bucket = national_row_locality(location, metro_variants, metro_states)
+                if bucket == "other":
                     continue
             link = item.get("link", "") or ""
-            results.append(JobResult(
+            job = JobResult(
                 title=title,
                 company=company,
                 location=location,
@@ -226,5 +231,13 @@ class HigherEdJobsClient(SingleFeedClient):
                 created=item.get("pubDate", "") or "",
                 job_id=f"higheredjobs_{link}" if link else "",
                 source_api="higheredjobs",
-            ))
-        return results
+            )
+            if bucket == "state":
+                state_rows.append(job)
+            else:
+                metro_rows.append(job)
+        # Keep true-metro AND in-state (CBSA member-state) rows: metro_variants holds
+        # only the principal city, so genuine in-metro suburbs land in the state
+        # bucket and must survive to scoring rather than be dropped. Only 'other'
+        # (out-of-state same-name cities like Columbus GA) was filtered. Metro leads.
+        return metro_rows + state_rows
