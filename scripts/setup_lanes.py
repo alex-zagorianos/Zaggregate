@@ -6,10 +6,10 @@ experience.md. Non-destructive: leaves mechdesign / controls-cincinnati intact.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import workspace
 
-ROOT_EXP = Path(__file__).resolve().parent / "experience.md"
+ROOT_EXP = Path(__file__).resolve().parent.parent / "experience.md"
 
 # Sources: protect the jsearch 200/month free tier — use it only for manual
 # targeted pulls, not these broad lane sweeps.

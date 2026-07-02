@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import date
 
 BASE = Path(r"E:\ClaudeWork\ZAG0005 - Job Search App\projects")
-OUT = Path(r"E:\ClaudeWork\ZAG0005 - Job Search App\job search\SHORTLIST-2026-06-19.md")
+OUT = Path(r"E:\ClaudeWork\ZAG0005 - Job Search App\legacy\job search\SHORTLIST-2026-06-19.md")
 LANES = ["controls", "software", "applied-ai"]
 
 def g(d, *names):

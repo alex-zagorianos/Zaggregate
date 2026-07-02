@@ -17,7 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from coverage.registry_coverage import (domain_identity, estimate_coverage,
                                         name_identity)

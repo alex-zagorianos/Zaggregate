@@ -51,7 +51,7 @@ desktop.ini
 tracker.db
 
 # === PERSONAL CONFIG (sanitized template lives in config.example.json) ===
-config_dad.json
+legacy/config_dad.json
 /user_config.json
 # User data scaffolded from data_templates/ (root only; keep the templates tracked)
 /preferences.md
@@ -80,7 +80,7 @@ last_run.json
 coverage/reach/
 
 # === LOCAL SCAFFOLDING & PERSONAL STRATEGY (kept local; not part of the distributable) ===
-candidates.json
-flatten_candidates.py
-verify_and_add.py
-/job search/
+legacy/candidates.json
+legacy/flatten_candidates.py
+legacy/verify_and_add.py
+/legacy/job search/
