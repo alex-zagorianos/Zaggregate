@@ -4,6 +4,24 @@
 
 ---
 
+## Session 30 (2026-07-01, same day) — Live blank-canvas test runs + setup depth ✅
+
+Proved the S29 overhaul live: cloned both profiles into fresh test projects
+(kept, active = `test-controls`), ran the full pipeline, delivered top-10s
+(controls 685-row inbox; Dad 19 = supply-bound, seeds delivered). Measured the
+reliance answer: careers registry 85%/58% of the two inboxes, Adzuna carried all
+non-seeded local wins, keyless tier ~1%/0 top-10 slots. Runs caught + fixed 3
+bugs (FileCache `:`-filename → jobicy never cached on Windows; Oracle tenant-slug
+company names; freshness log counts). Guide gained a deep source-setup/seeding
+section (incl. ask-your-own-AI employer-list flow that works today); Seed-My-Area
+plan written + **HELD** (`brain/plan-2026-07-01-ai-assisted-setup-seeding.md`);
+Opus subagent added the consulting taxonomy entry + live-validated/hardened the
+(already-existing) SmartRecruiters fetcher. Suite **1744 green**; **~115 ahead,
+push HELD**. OPEN: company-name canonicalization for cross-board dedup (design
+pass first). Detail: `handoff_20260701_session30.md`. Output mode: terse.
+
+---
+
 ## Session 29 (2026-07-01) — Deep review → full remediation buildout + Aegean merge ✅
 
 The whole review roadmap (`brain/review-2026-07-01-deep-product-review.md`, P0–P7)
