@@ -8,10 +8,17 @@ const sendBtn = document.getElementById("send-btn");
 const trackBtn = document.getElementById("track-btn");
 const clearBtn = document.getElementById("clear-btn");
 const statusEl = document.getElementById("status");
+const clipBtn = document.getElementById("clip-btn");
+const clipStatusEl = document.getElementById("clip-status");
 
 function setStatus(msg, cls = "") {
   statusEl.textContent = msg;
   statusEl.className = cls;
+}
+
+function setClipStatus(msg, cls = "") {
+  clipStatusEl.textContent = msg;
+  clipStatusEl.className = cls;
 }
 
 async function refreshCount() {
@@ -46,11 +53,15 @@ async function checkReceiver() {
     });
     if (r.ok) {
       setStatus("Receiver running ✓", "ok");
+      // Clip-to-seed only needs the receiver (not collected jobs), so it's
+      // enabled purely on receiver reachability.
+      clipBtn.disabled = false;
       return true;
     }
   } catch (_) {}
   setStatus("Start receiver: py -m scrape.browser_receiver", "err");
   sendBtn.disabled = true;
+  clipBtn.disabled = true;
   return false;
 }
 
@@ -146,6 +157,63 @@ clearBtn.addEventListener("click", async () => {
   chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
   await refreshCount();
   setStatus("Cleared.");
+});
+
+// Clip-to-seed: add the CURRENT tab's careers board to the registry. All the
+// real work (resolve board root, probe live, P0-6 gate, dedup, industry tag)
+// is server-side; the JS just forwards the active tab's URL + title and renders
+// the verdict. Assisted, never auto — this only ADDS A BOARD to the registry.
+function renderClipVerdict(v) {
+  const company = v.company || "this board";
+  if (v.status === "added") {
+    const cnt = v.live_count != null ? ` (${v.live_count} open jobs)` : "";
+    const tag = v.industry ? ` — tagged "${v.industry}"` : "";
+    setClipStatus(`Added ${company} — ${v.ats_type}${cnt}${tag}`, "ok");
+  } else if (v.status === "duplicate") {
+    setClipStatus(`Already in your registry: ${company}`, "ok");
+  } else if (v.reason === "unreachable") {
+    setClipStatus(
+      `Couldn't verify ${company} (${v.ats_type}) as live — not added.`,
+      "err",
+    );
+  } else {
+    // unresolvable / junk / off-board
+    setClipStatus(
+      "This page isn't a recognized live job board — open the employer's " +
+        "actual careers/ATS page, then try again.",
+      "err",
+    );
+  }
+}
+
+clipBtn.addEventListener("click", async () => {
+  clipBtn.disabled = true;
+  setClipStatus("Checking this page…");
+  let tab;
+  try {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch (_) {}
+  if (!tab || !tab.url) {
+    setClipStatus("Couldn't read the current tab.", "err");
+    clipBtn.disabled = false;
+    return;
+  }
+  try {
+    const resp = await fetch(`${RECEIVER_URL}/clip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: tab.url, page_title: tab.title || "" }),
+    });
+    const v = await resp.json();
+    if (resp.ok) {
+      renderClipVerdict(v);
+    } else {
+      setClipStatus(`Error: ${v.error || resp.statusText}`, "err");
+    }
+  } catch (_) {
+    setClipStatus("Could not reach receiver. Is it running?", "err");
+  }
+  clipBtn.disabled = false;
 });
 
 // Init

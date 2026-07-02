@@ -101,6 +101,48 @@
         background: var(--window);
         border-color: var(--accent);
       }
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 8px 0 12px;
+      }
+      .section-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      #clip-btn {
+        background: var(--surface);
+        color: var(--ink);
+        border: 1px solid var(--border);
+      }
+      #clip-btn:hover:not(:disabled) {
+        background: var(--window);
+        border-color: var(--accent);
+      }
+      .clip-hint {
+        font-size: 0.68rem;
+        color: var(--faint);
+        text-align: center;
+        margin: -4px 0 8px;
+        line-height: 1.4;
+      }
+      #clip-status {
+        font-size: 0.74rem;
+        min-height: 16px;
+        color: var(--muted);
+        text-align: center;
+        margin-bottom: 6px;
+      }
+      #clip-status.ok {
+        color: var(--ok);
+      }
+      #clip-status.err {
+        color: var(--err);
+      }
       button:disabled {
         opacity: 0.5;
         cursor: default;
@@ -147,6 +189,18 @@
     <button id="track-btn" disabled>Track All as Interested</button>
     <button id="clear-btn">Clear collected jobs</button>
     <div id="status"></div>
+
+    <div class="divider"></div>
+    <div class="section-label">On a company's careers page?</div>
+    <button id="clip-btn" disabled>
+      Add this employer's board to my registry
+    </button>
+    <p class="clip-hint" id="clip-hint">
+      Adds the live job board of the page you're on so future searches include
+      it. Verified at click time — nothing is applied or submitted.
+    </p>
+    <div id="clip-status"></div>
+
     <script src="popup.js"></script>
   </body>
 </html>
