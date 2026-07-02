@@ -12,8 +12,40 @@ def test_server_and_tools_exist():
                  "list_applications", "get_application", "set_status",
                  "set_follow_up", "followups_due", "funnel",
                  "draft_followup_context", "get_resume_prompt", "save_resume",
-                 "skill_gap", "export_inbox", "import_scores"):
+                 "skill_gap", "export_inbox", "import_scores", "seed_companies"):
         assert callable(getattr(mcp_server, name))
+
+
+# ── seed_companies (item 4: URL-only seeding via the MCP channel) ─────────────
+def test_seed_companies_verifies_and_gates(monkeypatch, tmp_path):
+    import config
+    from scrape import ats_detect
+    monkeypatch.setattr(config, "COMPANIES_JSON", tmp_path / "companies.json")
+    # Live probe: Acme is reachable, DeadCo is not (None -> unverified/P0-6).
+    monkeypatch.setattr(ats_detect, "probe_count",
+                        lambda e: 7 if "acme" in e.slug.lower() else None)
+    lines = ("Acme | https://boards.greenhouse.io/acme\n"
+             "DeadCo | https://boards.greenhouse.io/deadco\n"
+             "Direct | https://direct.example/careers/\n")
+    out = mcp_server.seed_companies(lines, industry="engineering")
+    assert out["parsed"] == 3
+    assert out["verified"] == 2          # Acme (live) + Direct (direct page)
+    assert out["unverified"] == 1        # DeadCo failed its probe
+    kinds = {v["name"]: v["verdict"] for v in out["verdicts"]}
+    assert kinds == {"Acme": "live", "DeadCo": "unreachable", "Direct": "direct"}
+
+
+def test_seed_companies_bare_url_and_empty(monkeypatch, tmp_path):
+    import config
+    from scrape import ats_detect
+    monkeypatch.setattr(config, "COMPANIES_JSON", tmp_path / "companies.json")
+    monkeypatch.setattr(ats_detect, "probe_count", lambda e: 3)
+    # A bare careers URL (no "Name |") is accepted; name is derived.
+    out = mcp_server.seed_companies("https://jobs.lever.co/acme\n")
+    assert out["parsed"] == 1 and out["added"] == 1
+    # Empty input is a clean no-op.
+    out2 = mcp_server.seed_companies("")
+    assert out2["parsed"] == 0 and out2["verdicts"] == []
 
 
 def test_list_inbox_compact_returns_facts(monkeypatch):

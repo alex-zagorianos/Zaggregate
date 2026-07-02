@@ -310,6 +310,66 @@ class _OnetMatch:
         self.soc_title = soc_title
 
 
+# ── curated SOC aliases (item 5 / ranking #7) — EXACT match only ───────────────
+# The O*NET alt-title table is a deliberately LITERAL lookup (see
+# _onet_table_lookup): it will not resolve the natural field words a wizard/AI
+# user types ("nursing", "consulting", "warehouse", "data analytics",
+# "digital marketing", "education"/"teaching"), so resolve_soc returns None for
+# them and the SOC-major-group routing + facts-cache SOC isolation never engage.
+# A FUZZY bridge is explicitly rejected here (the Wave-1 taxonomy caution + the
+# _onet_table_lookup docstring: fuzzy hands out confidently-WRONG SOCs — e.g.
+# "registered nurse" -> "Health Education Specialists"). So this is a small,
+# HAND-CURATED, EXACT-match table: each natural phrase (normalized to
+# space-joined lowercase tokens) maps to a SOC code/title VERIFIED to exist in
+# the bundled O*NET dataset (probed 2026-07-02). It is consulted BEFORE the
+# literal alt-title lookup, so it only ever ADDS resolutions the literal table
+# misses; every phrase the literal table already resolves is untouched.
+#
+# `education`/`teaching`/`math teacher` map to SECONDARY (25-2031.00), not the
+# postsecondary code the literal table hands `teacher`/`math teacher` — the
+# K-12 default is the correct level for the general user (ranking #7:
+# "math teacher -> Postsecondary" is the wrong level).
+_SOC_ALIASES: dict[str, tuple[str, str]] = {
+    # nursing (literal table resolves "nurse"/"registered nurse" but not "nursing")
+    "nursing": ("29-1141.00", "Registered Nurses"),
+    # consulting / management consulting -> Management Analysts
+    "consulting": ("13-1111.00", "Management Analysts"),
+    "management consulting": ("13-1111.00", "Management Analysts"),
+    "business consulting": ("13-1111.00", "Management Analysts"),
+    "strategy consulting": ("13-1111.00", "Management Analysts"),
+    # warehouse / logistics -> Laborers and Freight, Stock, and Material Movers
+    "warehouse": ("53-7062.00", "Laborers and Freight, Stock, and Material Movers, Hand"),
+    "warehousing": ("53-7062.00", "Laborers and Freight, Stock, and Material Movers, Hand"),
+    "warehouse logistics": ("53-7062.00", "Laborers and Freight, Stock, and Material Movers, Hand"),
+    "logistics": ("53-7062.00", "Laborers and Freight, Stock, and Material Movers, Hand"),
+    # data analytics -> Data Scientists (15-2051.00); the literal table maps the
+    # bare "data analyst" title to a FINANCIAL quant SOC, so the field phrasing
+    # needs its own curated anchor.
+    "data analytics": ("15-2051.00", "Data Scientists"),
+    "data analyst": ("15-2051.00", "Data Scientists"),
+    # digital marketing / marketing -> Market Research Analysts and Marketing
+    # Specialists (13-1161.00); guards against the demand-generation collision.
+    "digital marketing": ("13-1161.00", "Market Research Analysts and Marketing Specialists"),
+    "marketing": ("13-1161.00", "Market Research Analysts and Marketing Specialists"),
+    # education / teaching -> Secondary School Teachers (K-12 default level).
+    "education": ("25-2031.00", "Secondary School Teachers, Except Special and Career/Technical Education"),
+    "teaching": ("25-2031.00", "Secondary School Teachers, Except Special and Career/Technical Education"),
+    "math teacher": ("25-2031.00", "Secondary School Teachers, Except Special and Career/Technical Education"),
+}
+
+# ── curated NEGATIVE guard (item 5) — block a known O*NET-data mis-resolution ──
+# "demand generation manager" DOES literally appear in the O*NET alt-title table
+# and maps to "Hydroelectric Production Managers" (11-3051.06) — a genuine
+# data collision, not a fuzzy error (ranking #7). A marketing field resolving to
+# an energy SOC is incoherent, so this exact phrase (normalized) is blocked from
+# the literal lookup and returns None (the marketing seed profile still routes it
+# correctly via resolve()'s _RULES tier). Kept as an EXACT set, never a pattern,
+# so it can never over-block a legitimate occupation.
+_SOC_MISRESOLUTION_BLOCK: frozenset = frozenset({
+    "demand generation manager",
+})
+
+
 def _normalize_for_onet(industry: str) -> str:
     """'health_informatics' -> 'health informatics' — coverage.entity's title
     matching only collapses whitespace, not underscores/hyphens."""
@@ -377,12 +437,25 @@ def _onet_table_lookup(core: str, table: dict) -> Optional[tuple]:
 
 def _match_onet(industry: str) -> Optional[_OnetMatch]:
     """Deterministic O*NET-SOC match for free-text `industry` (see
-    _onet_table_lookup). None when it doesn't resolve to a real occupation."""
+    _onet_table_lookup). None when it doesn't resolve to a real occupation.
+
+    Order: curated exact aliases (item 5) FIRST so natural field words the
+    literal table misses ("nursing", "consulting", "warehouse", ...) resolve and
+    so the curated K-12 override beats the literal postsecondary hit; the exact
+    negative-guard set blocks the one known incoherent collision; then the
+    literal alt-title lookup for everything else (byte-identical to before for
+    any phrase not in the curated tables)."""
     if not industry or not industry.strip():
         return None
+    norm = _normalize_for_onet(industry)          # space-joined lowercase tokens
+    if norm in _SOC_MISRESOLUTION_BLOCK:
+        return None
+    alias = _SOC_ALIASES.get(norm)
+    if alias is not None:
+        return _OnetMatch(alias[0], alias[1])
     try:
         from coverage.entity import _onet as _onet_table, title_core
-        core = title_core(_normalize_for_onet(industry))
+        core = title_core(norm)
         table = _onet_table()
     except Exception:
         return None

@@ -222,6 +222,27 @@ def import_scores(path: str, policy: str = "overwrite") -> dict:
             "errors": res.errors}
 
 
+@mcp.tool()
+def seed_companies(lines: str, industry: str = "") -> dict:
+    """Seed the company registry from `Name | careers-URL` lines (or bare careers
+    URLs), the way a user pastes them after asking an AI for their metro's
+    employers. Per the persona evidence, ask your AI for careers-PAGE URLs ONLY
+    (AIs get those right; ATS tenant/slug strings they guess ~50% wrong) — the
+    app's own ATS detector resolves the slug (Greenhouse/Lever/Ashby/
+    SmartRecruiters/Workday), and each board is probed live.
+
+    P0-6 gate semantics: a board that verifies live (or a 'direct' careers page
+    the user supplied exactly) is saved and scraped; a board that fails its live
+    probe is saved flagged-UNVERIFIED and EXCLUDED from scraping until it
+    verifies, so a wrong guess can't quietly break future runs. `industry` tags
+    the imports so field-gating works.
+
+    Returns per-line verdicts (live/direct/unreachable/skipped) plus counts:
+    {parsed, added, verified, unverified, skipped, verdicts}."""
+    from ui.ai_setup import apply_seed_lines
+    return apply_seed_lines(lines, industry=industry, probe=True)
+
+
 # ── Application cycle (vision #4: help doesn't end when a job is tracked) ──────
 
 def _days_since(iso_date: str) -> int | None:

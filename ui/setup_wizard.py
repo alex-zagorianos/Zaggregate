@@ -391,10 +391,11 @@ def apply(answers: dict) -> dict:
     pasted resume is ALWAYS run through structure_resume_text() first so it can
     never crash later scoring/generation (P0 #1)."""
     prefs = build_preferences(answers)
-    pj, pm = workspace.preferences_paths()   # beside this project's config/resume
-    pj.parent.mkdir(parents=True, exist_ok=True)
-    pj.write_text(json.dumps(prefs["hard"], indent=2), encoding="utf-8")
-    pm.write_text(prefs["profile_md"], encoding="utf-8")
+    # Write the contract through the shared scaffold helper (the same one
+    # create_project + the AI-assisted-setup path use) so all three paths agree
+    # on the preferences shape. Supplying hard/profile_md overwrites both files.
+    workspace.scaffold_preferences(hard=prefs["hard"],
+                                   profile_md=prefs["profile_md"])
 
     workspace.save_config(_search_config(answers, workspace.load_config()))
 

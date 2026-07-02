@@ -424,3 +424,107 @@ def test_penalty_role_to_drop_eng_is_none():
     # An eng/tech field must keep the default penalty set (byte-identical for Alex).
     assert ip.penalty_role_to_drop(industry="controls engineer") is None
     assert ip.penalty_role_to_drop(industry="") is None
+
+
+# ── item 5 / ranking #7: curated SOC aliases (EXACT match only) ──────────────
+# The literal O*NET alt-title table misses the natural field words a wizard/AI
+# user types; a small hand-curated exact-alias table bridges them WITHOUT a
+# fuzzy match (which would hand out confidently-wrong SOCs). Every alias code is
+# verified to exist in the bundled O*NET dataset.
+def test_soc_alias_resolves_natural_field_words():
+    ip.clear_cache()
+    cases = {
+        "nursing": ("29-1141.00", "Registered Nurses"),
+        "consulting": ("13-1111.00", "Management Analysts"),
+        "management consulting": ("13-1111.00", "Management Analysts"),
+        "warehouse": ("53-7062.00",
+                      "Laborers and Freight, Stock, and Material Movers, Hand"),
+        "warehouse logistics": ("53-7062.00",
+                                "Laborers and Freight, Stock, and Material Movers, Hand"),
+        "logistics": ("53-7062.00",
+                      "Laborers and Freight, Stock, and Material Movers, Hand"),
+        "data analytics": ("15-2051.00", "Data Scientists"),
+        "digital marketing": ("13-1161.00",
+                              "Market Research Analysts and Marketing Specialists"),
+        "education": ("25-2031.00",
+                      "Secondary School Teachers, Except Special and Career/Technical Education"),
+        "teaching": ("25-2031.00",
+                     "Secondary School Teachers, Except Special and Career/Technical Education"),
+    }
+    for field, (code, title) in cases.items():
+        ip.clear_cache()
+        soc = ip.resolve_soc(field)
+        assert soc is not None, f"{field!r} should resolve to a SOC"
+        assert soc["code"] == code, f"{field!r} -> {soc['code']}, want {code}"
+        assert soc["title"] == title
+
+
+def test_soc_alias_normalizes_separators():
+    # Underscore / hyphen / mixed-case phrasings all hit the same alias.
+    for field in ("warehouse_logistics", "warehouse-logistics",
+                  "Warehouse Logistics", "  WAREHOUSE   LOGISTICS "):
+        ip.clear_cache()
+        soc = ip.resolve_soc(field)
+        assert soc is not None and soc["code"] == "53-7062.00"
+
+
+def test_soc_alias_math_teacher_is_secondary_not_postsecondary():
+    # ranking #7: "math teacher" mis-resolved to a POSTSECONDARY math SOC; the
+    # curated K-12 override maps it to Secondary School Teachers instead.
+    ip.clear_cache()
+    soc = ip.resolve_soc("math teacher")
+    assert soc is not None
+    assert soc["code"] == "25-2031.00"
+    assert "Secondary" in soc["title"]
+
+
+def test_soc_alias_education_teaching_default_to_k12():
+    for field in ("education", "teaching"):
+        ip.clear_cache()
+        soc = ip.resolve_soc(field)
+        assert soc is not None and soc["code"] == "25-2031.00"
+
+
+def test_soc_negative_guard_blocks_demand_generation_hydroelectric():
+    # ranking #7: "demand generation manager" literally matches an O*NET alt
+    # title mapping to "Hydroelectric Production Managers" (11-3051.06) — an
+    # incoherent energy SOC for a marketing field. The exact negative guard
+    # blocks it so resolve_soc returns None (resolve()'s marketing seed still
+    # routes the field correctly).
+    ip.clear_cache()
+    assert ip.resolve_soc("demand generation manager") is None
+    # The marketing SEED profile still catches the field for routing.
+    ip.clear_cache()
+    assert ip.resolve("demand generation manager").jobicy_industry == "marketing"
+
+
+def test_soc_alias_does_not_disturb_existing_literal_resolutions():
+    # Regression guard: phrases NOT in the curated tables must resolve exactly as
+    # before (the literal O*NET alt-title lookup is unchanged).
+    ip.clear_cache()
+    assert ip.resolve_soc("nurse")["code"] == "29-1141.00"
+    ip.clear_cache()
+    assert ip.resolve_soc("registered nurse")["code"] == "29-1141.00"
+    ip.clear_cache()
+    # bare "teacher" is NOT a curated alias -> still the literal-table hit.
+    assert ip.resolve_soc("teacher")["code"] == "25-1011.00"
+    ip.clear_cache()
+    # "secondary teacher" literally resolves already; unchanged.
+    assert ip.resolve_soc("secondary teacher")["code"] == "25-2031.00"
+
+
+def test_soc_alias_still_none_for_eng_and_unmatched():
+    # eng-like fields and true non-occupations stay None (byte-identical guard).
+    for q in ("software engineer", "mechanical engineering", "controls engineer",
+              "", "underwater basket weaving"):
+        ip.clear_cache()
+        assert ip.resolve_soc(q) is None
+
+
+def test_soc_alias_codes_exist_in_bundled_onet_dataset():
+    # Every curated alias code must be a REAL SOC present in the bundled O*NET
+    # data (guards against a typo silently persisting a nonexistent code).
+    from coverage.entity import _onet
+    real_codes = {soc for soc, _title in _onet().values()}
+    for _phrase, (code, _title) in ip._SOC_ALIASES.items():
+        assert code in real_codes, f"{code} not in bundled O*NET dataset"

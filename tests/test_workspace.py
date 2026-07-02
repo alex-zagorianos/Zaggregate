@@ -195,3 +195,69 @@ def test_pin_active_none_is_noop(tmp_base):
     workspace.pin_active(None)
     assert workspace.active_slug() == a              # falls through to projects.json
     workspace.unpin_active()
+
+
+# ── scaffold_preferences (item 2: shared preferences scaffold helper) ─────────
+import json as _json
+
+
+def test_create_project_scaffolds_preferences(tmp_base):
+    # Persona finding: create_project seeded config + experience but NOT
+    # preferences, so a programmatic/AI path hit an empty contract. It must now
+    # scaffold preferences.{json,md} beside the project.
+    slug = workspace.create_project("Nurse Boise", make_active=True)
+    pj, pm = workspace.preferences_paths(slug)
+    assert pj.exists() and pm.exists()
+    hard = _json.loads(pj.read_text(encoding="utf-8"))
+    # A valid, permissive default contract (matches preferences._DEFAULT_HARD).
+    assert hard["remote_ok"] is True
+    assert hard["target_roles"] == []
+    assert hard["salary_min"] is None
+    assert "My Job Preferences" in pm.read_text(encoding="utf-8")
+
+
+def test_scaffolded_preferences_load_cleanly(tmp_base):
+    # A freshly-scaffolded project must round-trip through preferences.load()
+    # without falling back to defaults on a malformed file.
+    import preferences
+    slug = workspace.create_project("Data Phoenix", make_active=True)
+    loaded = preferences.load()          # bare -> active project
+    assert loaded["hard"]["target_roles"] == []
+    assert loaded["hard"]["remote_ok"] is True
+
+
+def test_scaffold_preferences_is_non_destructive(tmp_base):
+    slug = workspace.create_project("Keep Me", make_active=True)
+    pj, pm = workspace.preferences_paths(slug)
+    pj.write_text('{"salary_min": 123456, "target_roles": ["x"]}', encoding="utf-8")
+    pm.write_text("MY CUSTOM PROFILE", encoding="utf-8")
+    # Default (overwrite=False, no content) must leave existing files untouched.
+    workspace.scaffold_preferences(slug)
+    assert _json.loads(pj.read_text(encoding="utf-8"))["salary_min"] == 123456
+    assert pm.read_text(encoding="utf-8") == "MY CUSTOM PROFILE"
+
+
+def test_scaffold_preferences_writes_supplied_content(tmp_base):
+    slug = workspace.create_project("Marketing Remote", make_active=True)
+    pj, pm = workspace.scaffold_preferences(
+        slug, hard={"salary_min": 90000, "target_roles": ["seo"]},
+        profile_md="# custom\n\nremote marketer")
+    hard = _json.loads(pj.read_text(encoding="utf-8"))
+    assert hard["salary_min"] == 90000
+    assert hard["target_roles"] == ["seo"]
+    # Supplied hard MERGES over the permissive defaults, so absent keys are still
+    # present and permissive.
+    assert hard["remote_ok"] is True
+    assert hard["dealbreakers"] == []
+    assert pm.read_text(encoding="utf-8") == "# custom\n\nremote marketer"
+
+
+def test_scaffold_preferences_overwrite_flag(tmp_base):
+    slug = workspace.create_project("Overwrite Me", make_active=True)
+    pj, pm = workspace.preferences_paths(slug)
+    pj.write_text('{"salary_min": 1}', encoding="utf-8")
+    pm.write_text("OLD", encoding="utf-8")
+    workspace.scaffold_preferences(slug, overwrite=True)
+    # overwrite=True with no content resets both to the permissive default.
+    assert _json.loads(pj.read_text(encoding="utf-8"))["salary_min"] is None
+    assert "My Job Preferences" in pm.read_text(encoding="utf-8")
