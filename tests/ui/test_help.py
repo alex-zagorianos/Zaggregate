@@ -73,6 +73,21 @@ def test_guide_aligns_with_wizard_keys_step_and_silent_zero_line():
     assert "sources skipped (no key)" in blob
 
 
+def test_guide_leads_with_own_your_data_and_no_auto_apply(tmp_path):
+    """QW-7 positioning: the Guide must carry the own-your-data + assisted-not-auto
+    story with the researched stats, framed exactly as evidenced (no overclaim)."""
+    headings = [text for tag, text in uihelp.GUIDE if tag in ("h1", "h2")]
+    assert any("Why Zaggregate" in h for h in headings)
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    # The two headline stats, stated as the research doc evidences them.
+    assert "90%" in blob                       # data-selling prevalence
+    assert "0.01%" in blob and "4" in blob     # auto-apply vs tailored success
+    # The core posture words.
+    for phrase in ("account", "sold", "auto-apply", "you always click submit",
+                   "reach"):
+        assert phrase in blob, phrase
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 

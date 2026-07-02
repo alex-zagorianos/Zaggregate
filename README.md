@@ -9,6 +9,32 @@ Nothing is uploaded on its own: your resume, preferences, scores, and tracker
 live in a local data folder. The app never applies for you — you always click
 submit.
 
+## Why Zaggregate — own your data, apply on purpose
+
+Every other job tool is cloud SaaS that ingests your résumé. Zaggregate is
+local-first by design, and that turns two industry-wide problems into features:
+
+- **Own your data.** A 2025 study found **90% of job platforms sell user data**
+  (8 of 9 investigated sell it under CCPA; ZipRecruiter, Monster, and LinkedIn
+  ranked most invasive). Zaggregate has no account, no cloud, and no telemetry —
+  your résumé, preferences, scores, and tracker never leave your machine. This is
+  a moat no SaaS rival can answer.
+  ([inc](https://www.inc.com/bruce-crumley/90-percent-of-job-platforms-sell-user-data-study-finds-here-are-the-biggest-offenders/91358104),
+  [incogni](https://blog.incogni.com/are-job-search-platforms-exploiting-job-seekers-for-their-personal-data/))
+- **Assisted, not auto-apply.** Bulk auto-apply bots succeed at roughly
+  **0.01% per application (1 in 10,000)** versus **4–6% for a tailored
+  application** — and recruiters are actively AI-filtering the spam (Greenhouse's
+  CEO calls it a hiring "doom loop"; Wonsulting shut its bulk-send feature in
+  Aug 2025). Zaggregate aggregates, de-dupes, scores, and helps you tailor — then
+  **you** click submit. Tailored, not sprayed.
+  ([forbes](https://www.forbes.com/sites/robinryan/2025/09/22/ai-auto-apply-job-tools-recruiters-warning/),
+  [cnn](https://www.cnn.com/2025/12/21/economy/ai-hiring-complication))
+- **Honest reach, not ghost-job opacity.** Zaggregate tells you what fraction of
+  your local market it can actually see (a "reach" badge) and flags when top
+  results may be poor fits — the opposite of the outdated/ghost postings and
+  résumé hallucinations reviewers hit with the auto-apply "agents."
+  ([flashfire](https://www.flashfirejobs.com/blog/is-jobright-ai-legit))
+
 ## What it does
 
 - **Wide-net aggregation, any field.** Pulls postings from free public sources
