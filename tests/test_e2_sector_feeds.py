@@ -9,6 +9,7 @@ import industry_profile
 from search.higheredjobs_client import (
     HigherEdJobsClient,
     _categories_for_industry,
+    _parse_feed,
     _split_company_location,
 )
 from search.rnjobsite_client import RNJobSiteClient, _should_poll
@@ -164,6 +165,91 @@ def test_rnjobsite_dedup_across_base_and_specialty(tmp_path):
     payload = c.search("nursing", page=1)
     links = [it["link"] for it in payload["items"]]
     assert len(links) == len(set(links))  # no dup links
+
+
+# ── S32d finding-2: state-aware metro localization (false-drop / false-keep) ──
+# A metro-bound national-feed search must (1) KEEP legitimate in-metro suburb rows
+# in a CBSA member state (fail open to same-state), and (2) REJECT a same-name
+# out-of-state city that only matched the bare-city substring ("Columbus, GA" for
+# a "Columbus, OH" seeker).
+def _rn_feed(*rows):
+    items = b"".join(
+        b'<item><title><![CDATA[Registered Nurse - ' + t.encode() + b']]></title>'
+        b'<link>https://www.rnjobsite.com/registered-nurse/jobs/' + str(i).encode() + b'</link>'
+        b'<hiringOrganization><![CDATA[Health System]]></hiringOrganization>'
+        b'<jobLocation><![CDATA[' + loc.encode() + b']]></jobLocation>'
+        b'<pubDate>Thu, 25 Jun 2026 15:18:17 EST</pubDate>'
+        b'<description><![CDATA[A nursing role.]]></description></item>'
+        for i, (t, loc) in enumerate(rows)
+    )
+    return (b'<?xml version="1.0"?><rss version="2.0"><channel><title>RN</title>'
+            + items + b'</channel></rss>')
+
+
+def test_rnjobsite_metro_keeps_in_state_suburb_drops_out_of_state_samename(tmp_path):
+    from search.rnjobsite_client import _parse_feed
+    c = _client(RNJobSiteClient, tmp_path, industry="nursing")
+    xml = _rn_feed(
+        ("A", "Edgewood, KY"),       # genuine Cincinnati-metro suburb (KY member state)
+        ("B", "Hamilton, OH"),       # genuine Cincinnati-metro suburb (OH)
+        ("C", "Columbus, GA"),       # same-name OUT-of-state city -> must be dropped
+        ("D", "Cincinnati, OH"),     # true metro
+    )
+    out = c.parse_results({"items": _parse_feed(xml), "_location": "Cincinnati, OH"},
+                          "nurse")
+    locs = {j.location for j in out}
+    assert "Cincinnati, OH" in locs               # metro row kept
+    assert "Edgewood, KY" in locs                 # in-state suburb kept (was false-dropped)
+    assert "Hamilton, OH" in locs                 # in-state suburb kept
+    assert "Columbus, GA" not in locs             # out-of-state same-name rejected
+
+
+def test_rnjobsite_metro_false_keep_rejected_for_columbus(tmp_path):
+    from search.rnjobsite_client import _parse_feed
+    c = _client(RNJobSiteClient, tmp_path, industry="nursing")
+    xml = _rn_feed(("A", "Columbus, GA"), ("B", "Columbus, OH"))
+    out = c.parse_results({"items": _parse_feed(xml), "_location": "Columbus, OH"},
+                          "nurse")
+    assert [j.location for j in out] == ["Columbus, OH"]   # GA row gone
+
+
+def test_rnjobsite_metro_fail_open_when_no_exact_metro(tmp_path):
+    # Only in-state (non-metro) rows exist -> fail open to same-state, not 0.
+    from search.rnjobsite_client import _parse_feed
+    c = _client(RNJobSiteClient, tmp_path, industry="nursing")
+    xml = _rn_feed(("A", "Toledo, OH"), ("B", "Columbus, GA"))
+    out = c.parse_results({"items": _parse_feed(xml), "_location": "Cincinnati, OH"},
+                          "nurse")
+    # Toledo (OH, in-state, not Cincinnati-metro) survives; the GA row does not.
+    assert [j.location for j in out] == ["Toledo, OH"]
+
+
+def _highered_feed(*rows):
+    items = b"".join(
+        b'<item><title>Professor of Nursing</title>'
+        b'<description>' + f"{comp} ({loc})".encode() + b'</description>'
+        b'<link>https://www.higheredjobs.com/details.cfm?JobCode=' + str(i).encode() + b'</link>'
+        b'<pubDate>Wed, 10 Jun 2026 17:04:44 EDT</pubDate></item>'
+        for i, (comp, loc) in enumerate(rows)
+    )
+    return (b'<?xml version="1.0"?><rss version="2.0"><channel><title>H</title>'
+            + items + b'</channel></rss>')
+
+
+def test_higheredjobs_metro_state_aware_keep_suburb_drop_out_of_state(tmp_path):
+    from search.higheredjobs_client import _parse_feed
+    c = _client(HigherEdJobsClient, tmp_path, industry="education")
+    xml = _highered_feed(
+        ("Edgewood College", "Edgewood, KY"),
+        ("Hamilton U", "Hamilton, OH"),
+        ("Columbus State GA", "Columbus, GA"),
+        ("UC", "Cincinnati, OH"),
+    )
+    out = c.parse_results({"items": _parse_feed(xml), "_location": "Cincinnati, OH"},
+                          "professor")
+    locs = {j.location for j in out}
+    assert {"Cincinnati, OH", "Edgewood, KY", "Hamilton, OH"} <= locs
+    assert "Columbus, GA" not in locs
 
 
 # ── jobs.ac.uk (PROVISIONAL, opt-in) ──────────────────────────────────────────

@@ -22,7 +22,13 @@ ROBOTS/ToS: edjoin.org serves NO robots.txt (HTTP 404 on both hosts, checked
 live 2026-07-02) → no crawl restrictions declared. The listings are public with
 no login wall, and LoadJobs is the site's own published-jobs read path. We query
 it politely: one server-side-filtered request per keyword, rows-capped, cached
-once per cycle.
+once per cycle. Like the sibling REAP client we ENFORCE robots.txt at fetch time
+(see _endpoint_allows) and fail CLOSED — if a robots.txt ever appears and
+disallows the LoadJobs path, or we can't verify it, we skip rather than fetch.
+We use our own honest User-Agent (JobSearchTool/1.0) — verified live 2026-07-02
+that the LoadJobs endpoint returns a full 200 JSON payload with the honest UA and
+NO browser/XHR spoofing (9,271 records for keywords=teacher), so no impersonation
+is needed to read this public endpoint.
 
 CALIFORNIA-CENTRIC: EdJoin is overwhelmingly California (the "location" query
 param does NOT filter — filtering is by stateID/regionID or client-side on the
@@ -41,13 +47,18 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
+import requests
+
 from models import JobResult
 from search.higheredjobs_client import _EDUCATION_TOKENS
 from search.http_util import cache_key
+from search.reap_client import _robots_allows
 from search.single_feed_client import SingleFeedClient
 
 EDJOIN_LOADJOBS_URL = "https://www.edjoin.org/Home/LoadJobs"
 EDJOIN_JOB_URL = "https://www.edjoin.org/Home/JobPosting/{posting_id}"
+EDJOIN_ROBOTS_URL = "https://www.edjoin.org/robots.txt"
+EDJOIN_LOADJOBS_PATH = "/Home/LoadJobs"
 EDJOIN_RATE_LIMIT = 5
 EDJOIN_ROWS = 25  # per-keyword result cap (polite; the endpoint returns ~this many)
 
@@ -125,10 +136,10 @@ class EdjoinClient(SingleFeedClient):
     rate_limit = EDJOIN_RATE_LIMIT
     # LoadJobs filters server-side per keyword, so query it once per keyword.
     parallel_keywords = True
-    # EdJoin is behind an IIS app that 500s a bare/unbrowser-like request; use a
-    # browser-ish UA + XHR header like its own client does.
-    user_agent = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+    # Honest User-Agent (the SingleFeedClient default). Verified live 2026-07-02:
+    # the public LoadJobs endpoint returns a full 200 JSON payload with this UA and
+    # no browser/XHR impersonation, so we do NOT spoof a browser (that was a ToS
+    # gray area with no functional need).
 
     def __init__(self, cache_dir=None, cache_enabled: bool = True,
                  industry: Optional[str] = None, location: Optional[str] = None):
@@ -142,8 +153,25 @@ class EdjoinClient(SingleFeedClient):
         self.industry = industry or ""
         self.location = location or ""
         self.active = _is_education(self.industry)
-        self.session.headers["X-Requested-With"] = "XMLHttpRequest"
+        # Request JSON (an honest content negotiation, not an XHR/browser spoof).
         self.session.headers["Accept"] = "application/json, text/javascript, */*"
+
+    def _endpoint_allows(self) -> bool:
+        """Honor edjoin.org's robots.txt live before any LoadJobs fetch (mirrors
+        ReapClient._portal_allows). 404 = no restrictions declared → allowed. A
+        disallow of the LoadJobs path for the default UA, a non-404/200 status, or a
+        network error all fail CLOSED (return False) — we never fetch a path we
+        couldn't first verify as allowed."""
+        try:
+            self.limiter.acquire()
+            resp = self.session.get(EDJOIN_ROBOTS_URL, timeout=15)
+        except requests.RequestException:
+            return False
+        if resp.status_code == 404:
+            return True
+        if resp.status_code != 200:
+            return False
+        return _robots_allows(resp.text, EDJOIN_LOADJOBS_PATH)
 
     def _params(self, keyword: str) -> dict:
         # The endpoint NPEs on missing params, so send the full set the site's own
@@ -171,6 +199,11 @@ class EdjoinClient(SingleFeedClient):
         key = cache_key("edjoin", keyword)
 
         def fetch():
+            # Honor robots.txt live and fail closed before touching LoadJobs. Only
+            # runs on a cache MISS (inside the fetch closure), so a warm cache never
+            # re-checks robots — same politeness/cost profile as REAP.
+            if not self._endpoint_allows():
+                return {"data": []}
             self.limiter.acquire()
             resp = self.session.get(EDJOIN_LOADJOBS_URL, params=self._params(keyword),
                                     timeout=30)

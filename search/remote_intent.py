@@ -98,6 +98,129 @@ def metro_variant_set(location: str | None) -> set[str]:
     return {v for v in out if v}
 
 
+# "City, ST" (2-letter US state) at the END of a row location, e.g. "Hamilton, OH".
+_ROW_STATE_RE = re.compile(r",\s*([A-Za-z]{2})\b\s*$")
+
+
+def metro_state_set(location: str | None) -> set[str]:
+    """Lowercased 2-letter US state codes a metro-bound search spans, for the
+    state-aware national-feed filter. A CBSA can span several states (Cincinnati =
+    OH-KY-IN), so this returns EVERY member state, not just the principal city's.
+
+    Sources, unioned: (a) the target's own explicit state token (via
+    search_engine's abbrev table — "Columbus, OH" -> {"oh"}); (b) every state in
+    the CBSA title's multi-state suffix for the matched metro ("Cincinnati, OH-KY-IN
+    Metro Area" -> {"oh","ky","in"}). Empty/remote/unresolvable -> empty set (the
+    caller then falls open, never state-filtering)."""
+    loc = (location or "").strip()
+    if not loc:
+        return set()
+    low = loc.lower()
+    states: set[str] = set()
+    target_st: str | None = None
+    # (a) the target's own state token — this ANCHORS which same-name CBSA we pick.
+    try:
+        from search.search_engine import _STATE_ABBREVS
+        toks = {t.strip().rstrip(",.") for t in low.replace(",", " ").split()}
+        abbrevs = set(_STATE_ABBREVS.values())
+        for t in toks:
+            if t in abbrevs:
+                target_st = t
+        for full, ab in _STATE_ABBREVS.items():
+            if full in low:
+                target_st = ab
+    except Exception:
+        target_st = None
+    if target_st:
+        states.add(target_st)
+    # (b) the matched CBSA's member states. A bare city name repeats across states
+    # (Columbus OH/GA/IN/MS/NE), so anchor on the target's own state: pick the CBSA
+    # whose principal city matches AND whose title suffix INCLUDES the target state.
+    # Without a target state (bare "Cincinnati") fall back to the single best
+    # principal-city title match.
+    try:
+        from coverage.geography import _rows
+        city = low.split(",")[0].strip()
+
+        def _suffix_states(title: str) -> set[str]:
+            # "cincinnati, oh-ky-in metro area" -> {"oh","ky","in"}.
+            suffix = title.split(",")[-1].strip()
+            suffix = re.sub(r"\b(metro|micro)\s+area\b", "", suffix).strip()
+            return {p.strip() for p in suffix.split("-")
+                    if len(p.strip()) == 2 and p.strip().isalpha()}
+
+        for r in _rows():
+            title = (r.get("cbsa_title") or "").lower()
+            pc = (r.get("principal_city") or "").lower()
+            if not (city and city == pc):
+                continue
+            sfx = _suffix_states(title)
+            if target_st:
+                # Only the CBSA whose title actually spans the target's state.
+                if target_st in sfx:
+                    states |= sfx
+            else:
+                # Bare-city target (no state): any principal-city match contributes
+                # (best-effort — we can't disambiguate same-name metros).
+                states |= sfx
+    except Exception:
+        pass
+    return states
+
+
+def row_state_of(row_location: str | None) -> str | None:
+    """The lowercased 2-letter US state a national-feed row's location ends with
+    ("Hamilton, OH" -> "oh", "Edgewood, KY" -> "ky"), or None when the row carries
+    no trailing "City, ST" (bare city / remote / malformed). Pure, no network."""
+    m = _ROW_STATE_RE.search((row_location or "").strip())
+    return m.group(1).lower() if m else None
+
+
+def national_row_locality(
+    row_location: str,
+    metro_variants: set[str] | None,
+    metro_states: set[str] | None,
+) -> str:
+    """Classify a national-feed row for a metro-bound search, STATE-AWARE:
+
+      'metro'  — the row is in the user's metro (a variant substring hit whose
+                 row state, when present, is one of the metro's member states);
+      'state'  — the row is out-of-metro but in a metro member state (a real,
+                 commutable/in-state locality worth keeping on fail-open);
+      'other'  — the row is elsewhere (different state, or a same-name city in a
+                 non-member state — the "Columbus, GA" for a "Columbus, OH" seeker
+                 false-keep this fixes);
+      'remote' — the row is itself remote (always kept).
+
+    metro_variants None (unresolvable target) => everything is 'metro' (fail open,
+    unchanged from the old no-filter behavior). metro_states empty (no resolvable
+    state) => the variant substring test alone decides metro vs other (degrades to
+    the old bare-substring behavior rather than dropping everything)."""
+    low = (row_location or "").lower().strip()
+    if not low:
+        return "metro"                       # no location -> don't drop (fail open)
+    if "remote" in low:
+        return "remote"
+    if metro_variants is None:
+        return "metro"                       # unresolvable target -> keep all
+    rs = row_state_of(row_location)
+    variant_hit = any(v in low for v in metro_variants)
+    if variant_hit:
+        # A bare-city variant substring hit is only trusted when the row's state
+        # (if it names one) is a member state — this rejects "Columbus, GA" for a
+        # "Columbus, OH" seeker while keeping "Columbus, OH". No row state / no
+        # resolved metro states -> trust the substring (old behavior).
+        if not rs or not metro_states or rs in metro_states:
+            return "metro"
+        # variant matched but the row's state is NOT a member state -> a same-name
+        # out-of-area city (e.g. "Columbus, GA" for a "Columbus, OH" seeker).
+        return "other"
+    # Not a metro variant: keep it only if it's in a metro member state.
+    if rs and metro_states and rs in metro_states:
+        return "state"
+    return "other"
+
+
 def tag_nationwide_remote(loc: str | None, region: str | None = "us") -> str:
     """Tag a national-feed row so the location gate treats it per ``remote_ok``.
 

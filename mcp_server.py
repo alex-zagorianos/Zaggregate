@@ -58,7 +58,7 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
     sources = gate_tech_sources(config.DAILY_SOURCES, cfg.get("industry") or "",
                                 cfg.get("sources", {}) or {})
     clients = build_clients(sources, cache_enabled=True,
-                            industry_filter=cfg.get("industry"))
+                            industry_filter=cfg.get("industry"), location=loc)
     if not clients:
         return {"error": "no sources could be initialized — check API keys."}
 

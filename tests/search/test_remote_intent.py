@@ -8,7 +8,8 @@ gate). Non-remote behavior must stay byte-identical.
 import pytest
 
 from search.remote_intent import (
-    is_remote_only, metro_variant_set, remote_region_of, tag_nationwide_remote)
+    is_remote_only, metro_state_set, metro_variant_set, national_row_locality,
+    remote_region_of, row_state_of, tag_nationwide_remote)
 
 
 # ── is_remote_only ────────────────────────────────────────────────────────────
@@ -67,6 +68,58 @@ def test_metro_variants_include_bare_city():
 def test_metro_variants_empty_for_empty():
     assert metro_variant_set("") == set()
     assert metro_variant_set(None) == set()
+
+
+# ── S32d finding-2: state-aware national-feed localization helpers ─────────────
+def test_metro_state_set_multi_state_cbsa():
+    # Cincinnati's CBSA spans OH-KY-IN -> all three member states.
+    assert metro_state_set("Cincinnati, OH") == {"oh", "ky", "in"}
+    # Bare-city target still resolves the CBSA member states.
+    assert metro_state_set("Cincinnati") == {"oh", "ky", "in"}
+
+
+def test_metro_state_set_anchors_on_target_state():
+    # "Columbus" repeats across OH/GA/IN/MS/NE — the target's own state anchors it
+    # so a Columbus, OH seeker gets ONLY {oh}, never the GA/AL suffix.
+    assert metro_state_set("Columbus, OH") == {"oh"}
+    assert metro_state_set("Boise, ID") == {"id"}
+
+
+def test_metro_state_set_empty_for_remote_or_blank():
+    assert metro_state_set("") == set()
+    assert metro_state_set(None) == set()
+    assert metro_state_set("Remote") == set()
+
+
+def test_row_state_of():
+    assert row_state_of("Hamilton, OH") == "oh"
+    assert row_state_of("Edgewood, KY") == "ky"
+    assert row_state_of("Cincinnati, OH 45202") is None   # trailing ZIP -> no match
+    assert row_state_of("Remote") is None
+    assert row_state_of("") is None
+
+
+def test_national_row_locality_state_aware():
+    mv = metro_variant_set("Cincinnati, OH")
+    ms = metro_state_set("Cincinnati, OH")
+    assert national_row_locality("Cincinnati, OH", mv, ms) == "metro"
+    assert national_row_locality("Edgewood, KY", mv, ms) == "state"   # in-metro suburb, kept
+    assert national_row_locality("Hamilton, OH", mv, ms) == "state"
+    assert national_row_locality("Chicago, IL", mv, ms) == "other"    # out-of-area
+    assert national_row_locality("Remote", mv, ms) == "remote"
+    # Same-name out-of-state city that only matched the bare-city substring.
+    mvc = metro_variant_set("Columbus, OH")
+    msc = metro_state_set("Columbus, OH")
+    assert national_row_locality("Columbus, GA", mvc, msc) == "other"  # rejected
+    assert national_row_locality("Columbus, OH", mvc, msc) == "metro"
+
+
+def test_national_row_locality_fails_open_unresolvable():
+    # Unresolvable target (None variants) -> everything is 'metro' (never dropped).
+    assert national_row_locality("Anywhere, ZZ", None, set()) == "metro"
+    # No location -> not dropped.
+    assert national_row_locality("", metro_variant_set("Cincinnati, OH"),
+                                 metro_state_set("Cincinnati, OH")) == "metro"
 
 
 # ── Adzuna query construction ─────────────────────────────────────────────────
@@ -135,6 +188,48 @@ def test_adzuna_non_remote_parse_unchanged(monkeypatch):
     }
     rows = c.parse_results(raw, "manager")
     assert rows[0].location == "Austin, TX"   # no _remote_intent -> no tag
+
+
+def test_adzuna_remote_tag_survives_cache_hit(tmp_path):
+    """S32d finding-3 regression: a remote-only search must yield IDENTICALLY
+    (Remote)-tagged rows on the SECOND (cache-hit) call. The _remote_intent flag
+    is stripped before caching, so it must be re-derived on read from the same
+    `remote` boolean — else the fan-out metro rows lose their (Remote) tag and
+    score location=0 against a Remote search, dropping out of Top Picks."""
+    from search.adzuna_client import AdzunaClient
+    c = AdzunaClient(app_id="x", app_key="y", cache_dir=tmp_path, cache_enabled=True)
+    api_payload = {
+        "results": [
+            {"title": "Marketing Manager (Remote)", "company": {"display_name": "A"},
+             "location": {"display_name": "Austin, TX"},
+             "description": "fully remote role", "redirect_url": "u1", "id": 1},
+        ]
+    }
+    calls = {"n": 0}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return api_payload
+
+    def _get(url, params=None, timeout=None):
+        calls["n"] += 1
+        return _Resp()
+
+    c.session.get = _get
+
+    # Call 1 (cold): network hit, row tagged.
+    r1 = c.search_and_parse("marketing manager", "Remote", None, 1)
+    assert calls["n"] == 1
+    assert r1[0].location == "Austin, TX (Remote)"
+
+    # Call 2 (cache hit): NO new network call, row STILL tagged identically.
+    r2 = c.search_and_parse("marketing manager", "Remote", None, 1)
+    assert calls["n"] == 1                              # served from cache
+    assert r2[0].location == "Austin, TX (Remote)"      # tag survived the round-trip
+    assert r1[0].location == r2[0].location
 
 
 # ── USAJobs query construction ────────────────────────────────────────────────
