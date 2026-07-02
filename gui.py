@@ -2356,6 +2356,97 @@ class TopPicksTab(ttk.Frame):
                 webbrowser.open(u)
 
 
+class AiSetupDialog(tk.Toplevel):
+    """"Set me up with my AI" (§6.3): a BYO-AI onboarding path. The app never
+    calls an LLM — it hands the user a copyable prompt to paste (with their
+    résumé + one sentence of intent) into THEIR own AI, then parses the canonical
+    config block the AI returns and applies it to config.json +
+    preferences.{json,md}. The wizard steps are owned by a parallel builder; this
+    is a standalone Tools dialog over ui.ai_setup's pure functions."""
+
+    def __init__(self, parent, on_applied=None):
+        super().__init__(parent)
+        self.title("Set up with your AI")
+        self.geometry("720x600")
+        self.configure(bg=theme.WINDOW)
+        self.transient(parent)
+        self.grab_set()
+        self._on_applied = on_applied
+        self._build()
+
+    def _build(self):
+        from ui import ai_setup
+        tk.Label(self, justify="left", wraplength=690, fg=theme.INK, bg=theme.WINDOW,
+                 text="Have a Claude or ChatGPT subscription? Let it set you up.\n"
+                      "1. Copy the prompt below. 2. Paste it into your AI, then "
+                      "paste your résumé and one sentence about the job you want. "
+                      "3. Copy your AI's reply back into the box below and click "
+                      "Apply."
+                 ).pack(fill="x", padx=12, pady=(12, 6))
+
+        tk.Label(self, text="Step 1 — copy this prompt:", anchor="w",
+                 fg=theme.MUTED, bg=theme.WINDOW).pack(fill="x", padx=12)
+        self._prompt_box = theme.text_widget(self, height=8, wrap="word")
+        self._prompt_box.pack(fill="both", expand=True, padx=12, pady=(2, 4))
+        self._prompt_box.insert("1.0", ai_setup.build_setup_prompt())
+        self._prompt_box.configure(state="disabled")
+
+        prow = tk.Frame(self, bg=theme.WINDOW)
+        prow.pack(fill="x", padx=12, pady=(0, 6))
+        theme.btn(prow, "Copy prompt", self._copy_prompt, "accent").pack(side="left")
+
+        tk.Label(self, text="Step 2 — paste your AI's reply here:", anchor="w",
+                 fg=theme.MUTED, bg=theme.WINDOW).pack(fill="x", padx=12)
+        self._reply_box = theme.text_widget(self, height=8, wrap="word")
+        self._reply_box.pack(fill="both", expand=True, padx=12, pady=(2, 4))
+
+        arow = tk.Frame(self, bg=theme.WINDOW)
+        arow.pack(fill="x", padx=12, pady=(0, 6))
+        theme.btn(arow, "Apply setup", self._apply, "accent").pack(side="left")
+        theme.btn(arow, "Close", self.destroy, "ghost").pack(side="right")
+
+        self._status = tk.Label(self, text="", fg=theme.MUTED, bg=theme.WINDOW,
+                                anchor="w", justify="left", wraplength=690)
+        self._status.pack(fill="x", padx=12, pady=(0, 10))
+
+    def _copy_prompt(self):
+        from ui import ai_setup
+        copy_or_warn(self, ai_setup.build_setup_prompt(),
+                     status_cb=lambda m: self._status.config(text=m))
+
+    def _apply(self):
+        from ui import ai_setup
+        text = self._reply_box.get("1.0", "end-1c").strip()
+        if not text:
+            self._status.config(text="Paste your AI's reply first.")
+            return
+        try:
+            summary = ai_setup.apply_setup(text)
+        except ai_setup.SetupBlockError as e:
+            messagebox.showwarning("Couldn't apply setup", str(e), parent=self)
+            self._status.config(text=str(e))
+            return
+        titles = ", ".join(summary.get("target_titles", [])[:4])
+        loc = "Remote" if summary.get("remote_only") else summary.get("location", "")
+        self._status.config(
+            text=f"Applied. Field: {summary.get('field')} · Titles: {titles} · "
+                 f"Where: {loc}. Your preferences are saved.")
+        messagebox.showinfo(
+            "You're set up",
+            f"Field: {summary.get('field')}\n"
+            f"Titles: {titles}\n"
+            f"Location: {loc}\n"
+            f"Salary floor: {summary.get('salary_min') or '—'}\n\n"
+            "Your search config and preferences are saved. Run an inbox update "
+            "to see your first jobs.", parent=self)
+        if callable(self._on_applied):
+            try:
+                self._on_applied(summary)
+            except Exception:
+                pass
+        self.destroy()
+
+
 # ── Search tab ────────────────────────────────────────────────────────────────
 def partition_add_entries(entries, status_by_idx):
     """Split add-companies entries by their probe verdict (P0-6). Returns
@@ -2383,14 +2474,15 @@ class AddCompaniesDialog(tk.Toplevel):
     _COLS = [("name", "Name", 170, "w"), ("type", "Type", 95, "w"),
              ("slug", "Slug", 230, "w"), ("status", "Status", 120, "w")]
 
-    def __init__(self, parent, default_industry=""):
+    def __init__(self, parent, default_industry="", default_metro=""):
         super().__init__(parent)
         self.title("Add Companies")
-        self.geometry("780x540")
+        self.geometry("780x560")
         self.configure(bg=theme.WINDOW)
         self.transient(parent)
         self.grab_set()
         self._entries = []
+        self._default_metro = default_metro or ""
         # Probe status per entry (index-aligned with self._entries), set by the
         # validate worker: "live" / "direct" = verified, "unreachable" = failed
         # its live probe. Missing = not yet probed. _add gates on this (P0-6).
@@ -2409,6 +2501,18 @@ class AddCompaniesDialog(tk.Toplevel):
                       "Examples:  boards.greenhouse.io/acme   jobs.lever.co/acme   "
                       "Acme | acme.wd5.myworkdayjobs.com/Careers"
                  ).pack(fill="x", padx=10, pady=(10, 4))
+
+        # §6.7 / SB-2a: don't know which employers to add? Copy an AI prompt that
+        # asks for careers-page URLs ONLY (what AIs get right — slug-guessing is
+        # ~50% wrong), paste the reply into the box below, and the app resolves
+        # the slug + verifies each board (P0-6).
+        seedrow = tk.Frame(self, bg=theme.WINDOW)
+        seedrow.pack(fill="x", padx=10, pady=(0, 2))
+        tk.Label(seedrow, text="Don't have a list? ", bg=theme.WINDOW,
+                 fg=theme.MUTED).pack(side="left")
+        theme.btn(seedrow, "Copy AI prompt", self._copy_seed_prompt,
+                  "ghost").pack(side="left", padx=4)
+
         self._box = theme.text_widget(self, height=7, wrap="none")
         self._box.pack(fill="x", padx=10)
 
@@ -2441,6 +2545,17 @@ class AddCompaniesDialog(tk.Toplevel):
         self._status = tk.Label(self, text="", fg=theme.MUTED, bg=theme.WINDOW,
                                 anchor="w")
         self._status.pack(fill="x", padx=10, pady=(0, 8))
+
+    def _copy_seed_prompt(self):
+        """Copy the URL-only company-seeding prompt (§6.7/SB-2a) to the clipboard,
+        pre-filled with the current industry tag + the active project's metro."""
+        from ui import ai_setup
+        prompt = ai_setup.build_seed_prompt(
+            self._industry.get().strip(), self._default_metro)
+        copy_or_warn(self, prompt,
+                     status_cb=lambda m: self._status.config(
+                         text="Prompt copied — paste it into your AI, then paste "
+                              "the Name | URL lines it returns into the box above."))
 
     def _detect(self):
         from scrape.ats_detect import parse_line
@@ -2827,7 +2942,8 @@ class SearchTab(ttk.Frame):
         return load_user_config()
 
     def _add_companies(self):
-        AddCompaniesDialog(self, default_industry=self._user_cfg.get("industry", ""))
+        AddCompaniesDialog(self, default_industry=self._user_cfg.get("industry", ""),
+                           default_metro=self._user_cfg.get("location", ""))
 
     def _build_company_list(self):
         BuildCompanyListDialog(
@@ -3842,6 +3958,8 @@ class App(tk.Tk):
         toolsm.add_command(label="Capture jobs from my browser…",
                            command=self._toggle_browser_capture)
         toolsm.add_separator()
+        toolsm.add_command(label="Set up with your AI…",
+                           command=self._show_ai_setup)
         toolsm.add_command(label="Connect your AI (API key)…",
                            command=self._show_settings)
         toolsm.add_command(label="Connect job sources…",
@@ -4091,6 +4209,15 @@ class App(tk.Tk):
         theme.btn(bb, "Turn off", turn_off, "ghost").pack(side="left", padx=2)
         theme.btn(bb, "Close", dlg.destroy, "ghost").pack(side="right", padx=2)
         dlg.grab_set()
+
+    def _show_ai_setup(self):
+        """Open the "Set up with your AI" dialog (§6.3): a BYO-AI onboarding path
+        that hands the user a copyable prompt and parses the config block their
+        AI returns. On apply, refresh tabs so the seeded config/preferences show."""
+        try:
+            AiSetupDialog(self, on_applied=lambda _s: self._rebuild_tabs())
+        except Exception as e:
+            messagebox.showerror("Set up with your AI", str(e), parent=self)
 
     def _show_source_keys(self):
         """Open the 'Connect job sources' dialog. The module is created by the
