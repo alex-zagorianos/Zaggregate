@@ -271,7 +271,8 @@ class ReapClient(SingleFeedClient):
         """Honor the portal's robots.txt live. Every REAP portal currently returns
         404 (no restrictions → allowed). If a robots.txt appears and disallows the
         search path for our UA, return False (skip that portal). A network error
-        fails OPEN to False (skip) — we never fetch a portal we couldn't verify."""
+        fails CLOSED (returns False) — we never fetch a portal we couldn't first
+        verify as allowed."""
         url = REAP_ROBOTS_URL.format(portal=portal)
         try:
             self.limiter.acquire()
