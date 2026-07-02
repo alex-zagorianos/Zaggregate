@@ -38,7 +38,16 @@ from typing import Optional
 
 from config import CACHE_DIR, CAREERS_SLOW_TIMEOUT
 from models import JobResult
-from scrape.cache_helpers import is_failed, mark_failed, read_cache, slug_safe, write_cache
+from scrape.cache_helpers import (
+    STATUS_OK,
+    STATUS_PERMANENT,
+    STATUS_TRANSIENT,
+    is_failed,
+    mark_failed,
+    read_cache,
+    slug_safe,
+    write_cache,
+)
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _CXS = "https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
@@ -133,10 +142,40 @@ def _job_url(tenant: str, n: str, site: str, external_path: str) -> str:
 def fetch(slug: str, *, keyword: str = "",
           cache_dir: Optional[Path] = None, cache_enabled: bool = False,
           company_name: str = "") -> list[JobResult]:
+    """Back-compat: return just the mapped postings (drops the status class).
+    New callers that must tell a permanent wall (422/404/410) from a
+    genuinely-live-but-empty board use ``fetch_with_status`` instead."""
+    jobs, _status = fetch_with_status(
+        slug, keyword=keyword, cache_dir=cache_dir,
+        cache_enabled=cache_enabled, company_name=company_name)
+    return jobs
+
+
+def fetch_with_status(slug: str, *, keyword: str = "",
+                      cache_dir: Optional[Path] = None, cache_enabled: bool = False,
+                      company_name: str = "") -> tuple[list[JobResult], str]:
+    """Same public CXS fetch as ``fetch``, but also returns the reachability
+    status class so the verify gate can distinguish an unreachable board from a
+    live-but-empty one:
+
+      - STATUS_OK        : the board was READ (HTTP 200). The postings list may be
+                           empty — that means genuinely 0 open jobs, which is a
+                           VERIFIED state, not an unreachable one.
+      - STATUS_PERMANENT : a hard 4xx (404/410/422 — the Cloudflare/Akamai CSRF
+                           wall FedEx/AutoZone/Nike run). The scraper can never
+                           read this board, so "verified" would be a lie; the
+                           consumer must treat it as UNREACHABLE (kept-unverified,
+                           excluded from scraping, re-verify upgrade still applies).
+      - STATUS_TRANSIENT : a 429/5xx/network blip. Not a wall — retry-worthy, and
+                           also NOT verified this pass (no read happened).
+
+    A cache HIT (fresh snapshot on disk) is STATUS_OK; a fresh negative-cache
+    marker (a board walled within the FAILED TTL) is STATUS_PERMANENT — so the
+    verdict stays stable across the negative-cache window without re-probing."""
     parsed = _parse_slug(slug)
     if parsed is None:
         print(f"  [workday_cxs] bad slug '{slug}' — expected tenant:N:site")
-        return []
+        return [], STATUS_PERMANENT
     tenant, n, site = parsed
 
     cache_file = ((cache_dir or CACHE_DIR) / f"workdaycxs_{slug_safe(slug)}.json"
@@ -146,35 +185,41 @@ def fetch(slug: str, *, keyword: str = "",
 
     if cache_enabled and failed_file is not None:
         if is_failed(read_cache(failed_file, ttl_hours=_FAILED_TTL)):
-            return []
+            # A live negative-cache marker means this tenant was walled/dead within
+            # the TTL — surface PERMANENT so the verdict is consistent with the
+            # original probe (a walled board doesn't flip to "verified-empty" just
+            # because we're serving it from the negative cache).
+            return [], STATUS_PERMANENT
         cached = read_cache(cache_file)
         if cached is not None:
-            return _map(cached, tenant, n, site, keyword, company_name)
+            return (_map(cached, tenant, n, site, keyword, company_name), STATUS_OK)
 
     # Whole-board fetch (keyword-less) so one snapshot serves every keyword; local
     # keyword filtering happens in _map, exactly like oracle_orc / phenom.
-    postings, total, permanent = _fetch_all(tenant, n, site)
+    postings, total, status = _fetch_all(tenant, n, site)
     if postings is None:
-        if cache_enabled and permanent and failed_file is not None:
+        if cache_enabled and status == STATUS_PERMANENT and failed_file is not None:
             mark_failed(failed_file)
-        return []
+        return [], status
     data = {"total": total, "jobPostings": postings}
     if cache_enabled and cache_file is not None:
         write_cache(cache_file, data)
-    return _map(data, tenant, n, site, keyword, company_name)
+    return (_map(data, tenant, n, site, keyword, company_name), STATUS_OK)
 
 
 def _fetch_all(tenant: str, n: str, site: str):
-    """Page the CXS jobs endpoint. Returns (postings|None, total, saw_permanent).
+    """Page the CXS jobs endpoint. Returns (postings|None, total, status).
 
-    None signals "nothing usable" (first page failed); saw_permanent distinguishes
-    a genuinely-dead board (404/410/422 — negative-cache a week) from a transient
-    throttle/outage (429/5xx/network — retry next run, never poison)."""
+    ``postings`` is None only when the FIRST page failed (nothing usable). ``status``
+    is a cache_helpers.STATUS_* class so the caller can tell a genuinely-dead/walled
+    board (404/410/422 — STATUS_PERMANENT, negative-cache a week) from a transient
+    throttle/outage (429/5xx/network — STATUS_TRANSIENT, retry next run, never
+    poison) from a clean read (STATUS_OK, postings may legitimately be empty)."""
     url = _CXS.format(tenant=tenant, n=n, site=site)
     host = host_of(url)
     all_posts: list[dict] = []
     total = -1
-    saw_permanent = False
+    status = STATUS_OK
     for page in range(_MAX_PAGES):
         offset = page * _PAGE
         payload = {"appliedFacets": {}, "limit": _PAGE, "offset": offset, "searchText": ""}
@@ -185,17 +230,17 @@ def _fetch_all(tenant: str, n: str, site: str):
             code = getattr(resp, "status_code", 200)
             if 400 <= code < 500 and code != 429:
                 # 404/410/403/422 -> board removed/renamed or CSRF-walled: permanent.
-                saw_permanent = True
+                status = STATUS_PERMANENT
                 if page == 0:
                     print(f"  [workday_cxs] {tenant}:{n}:{site}: HTTP {code} — gone/walled, skipping")
-                    return None, total, True
+                    return None, total, STATUS_PERMANENT
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 0:
                 print(f"  [workday_cxs] {tenant}:{n}:{site}: transient error — {e}")
-                return None, total, False
+                return None, total, STATUS_TRANSIENT
             break
         if not isinstance(body, dict):
             break
@@ -213,8 +258,8 @@ def _fetch_all(tenant: str, n: str, site: str):
         if total >= 0 and len(all_posts) >= total:
             break
     if not all_posts and total < 0:
-        return [], 0, saw_permanent
-    return all_posts, (total if total >= 0 else len(all_posts)), saw_permanent
+        return [], 0, status
+    return all_posts, (total if total >= 0 else len(all_posts)), status
 
 
 def _req_id(job: dict) -> str:

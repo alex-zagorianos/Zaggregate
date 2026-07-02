@@ -5,8 +5,12 @@ Unrecognized hosts fall back to 'direct' (best-effort scrape of the raw URL).
     detect_ats("https://boards.greenhouse.io/acme") -> ("greenhouse", "acme")
     parse_line("Acme | https://jobs.lever.co/acme")  -> CompanyEntry(...)
     probe_count(entry)  -> open-job count (None if uncountable/unreachable)
+    probe_board(entry)  -> ProbeResult(count, reachable): reachable tells a
+                           genuinely-live board (even one with 0 open jobs) from an
+                           unreachable one (a 404/410/422 CSRF-walled tenant).
 """
 import re
+from typing import NamedTuple, Optional
 from urllib.parse import urlsplit
 
 from scrape.company_registry import CompanyEntry
@@ -303,9 +307,84 @@ def parse_line(line: str) -> CompanyEntry | None:
                         ats_type=ats, slug=slug, industries=[])
 
 
+class ProbeResult(NamedTuple):
+    """Richer probe verdict than a bare count, so the P0-6 verify gate can tell a
+    genuinely-live board from an unreachable one.
+
+    ``count``     : open-job count (int, possibly 0) when the board was READ; None
+                    when it could not be counted (uncountable 'direct', or the read
+                    itself failed).
+    ``reachable`` : True only when the scraper actually READ the board this probe.
+                    A live board with 0 open jobs is reachable=True, count=0 — that
+                    is a VERIFIED-but-empty state. A CSRF/Cloudflare-walled Workday
+                    tenant (HTTP 422/404/410) is reachable=False, count=None — it
+                    must land in the SAME unreachable bucket as any dead board
+                    (kept-unverified, excluded from scraping, re-verify path applies
+                    if it ever opens up). This is the distinction a bare count lost:
+                    a walled workday_cxs probe fail-softs to [] -> len([])==0, an
+                    int, which the old gate mistook for "live (0 open jobs)"."""
+    count: Optional[int]
+    reachable: bool
+
+
+def probe_board(entry: CompanyEntry) -> ProbeResult:
+    """Probe a board and return BOTH its open-job count and whether it was actually
+    reachable (readable) this probe — the signal the verify gate needs to keep a
+    walled board out of the 'verified' bucket.
+
+    Reachability rules, consistent across ATS types:
+      * 'direct' (raw careers URL, no probeable JSON board): count=None,
+        reachable=False — uncountable. Callers that treat a user-supplied direct
+        page as verified-manual special-case ats_type=='direct' BEFORE probing;
+        this function does not claim a direct page is live.
+      * A count-API ATS (greenhouse/lever/ashby/smartrecruiters/rippling/bamboohr):
+        an HTTP-200 read returns the count (0 is a live-but-empty board =>
+        reachable); any non-2xx / parse failure fail-softs to count=None =>
+        NOT reachable. So for these reachable == (count is not None).
+      * workday_cxs: routed through workday_cxs_scraper.fetch_with_status, which
+        distinguishes a clean 200 read (STATUS_OK — reachable, count may be 0) from
+        a permanent 422/404/410 wall (STATUS_PERMANENT — NOT reachable) or a
+        transient blip (STATUS_TRANSIENT — NOT reachable, retry next run). This is
+        the case the smoke test caught: 14/15 marquee tenants 422-walled but saved
+        as "verified (0 jobs)". They are now correctly unreachable.
+      * Other scraper-backed probes (paylocity/eightfold/adp/oracle/phenom/breezy/
+        pinpoint/teamtailor/jazzhr, and JSON-LD icims/taleo/successfactors) return
+        len(fetch(...)); a 200-empty board and a soft-failed fetch both yield 0, so
+        for these reachable == (count is not None) — a 0-count is treated as
+        live-but-empty (verified), matching the greenhouse-200-empty semantics.
+        Only workday_cxs carries a wall (422) that must not read as verified-empty.
+    """
+    t = (entry.ats_type or "").strip().lower()
+    if t == "direct":
+        # Uncountable: the raw careers URL has no probeable board.
+        return ProbeResult(None, False)
+    if t == "workday_cxs" and (entry.slug or "").count(":") == 2:
+        try:
+            from scrape.cache_helpers import STATUS_OK
+            from scrape.workday_cxs_scraper import fetch_with_status
+            jobs, status = fetch_with_status(entry.slug)
+        except Exception:
+            return ProbeResult(None, False)
+        if status == STATUS_OK:
+            # Read succeeded — 0 postings means a live board with 0 open jobs
+            # (VERIFIED-empty), NOT a wall.
+            return ProbeResult(len(jobs), True)
+        # STATUS_PERMANENT (walled/gone) or STATUS_TRANSIENT (blip): unreachable.
+        return ProbeResult(None, False)
+    # Everything else: reuse the count probe; reachable iff we got a real count.
+    n = probe_count(entry)
+    return ProbeResult(n, n is not None)
+
+
 def probe_count(entry: CompanyEntry) -> int | None:
     """Open-job count for a board (validation). None = uncountable ('direct') or
-    unreachable. Keyword-less single request; fail-soft."""
+    unreachable. Keyword-less single request; fail-soft.
+
+    NOTE: a bare count cannot distinguish a live-but-empty board (0 open jobs) from
+    a CSRF-walled one that fail-softs to []. Consumers that make verify decisions
+    should call ``probe_board`` (which carries a ``reachable`` flag) instead. This
+    function is kept for callers that only need the count (and for the count of the
+    ATS types where 0 unambiguously means live-empty)."""
     import requests
     from config import CAREERS_REQUEST_TIMEOUT as TO
     try:
@@ -338,10 +417,15 @@ def probe_count(entry: CompanyEntry) -> int | None:
                 return r.json().get("total")
         elif t == "workday_cxs" and slug.count(":") == 2:
             # Same public cxs POST, but count via the production fetcher so the
-            # verify gate and the daily scrape agree on reachability (a CSRF-walled
-            # 422 tenant fails the probe here exactly as it will fail the run).
-            from scrape.workday_cxs_scraper import fetch as _f
-            return len(_f(slug))
+            # verify gate and the daily scrape agree on reachability. A CSRF-walled
+            # 422 tenant (STATUS_PERMANENT) or a transient blip returns None here —
+            # NOT a false 0 — so a bare-count caller can't mistake a wall for a
+            # live-but-empty board. A clean 200 read returns the count (0 = live
+            # board with 0 open jobs). See probe_board for the richer verdict.
+            from scrape.cache_helpers import STATUS_OK
+            from scrape.workday_cxs_scraper import fetch_with_status as _fs
+            jobs, status = _fs(slug)
+            return len(jobs) if status == STATUS_OK else None
         elif t == "bamboohr":
             # Embedded careers-list JSON. Use the SAME headers the production
             # scraper (bamboohr_scraper) sends, so the verify-gate and the daily

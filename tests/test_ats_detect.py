@@ -131,3 +131,82 @@ def test_resolve_board_direct_careers_page_is_unresolvable():
 ])
 def test_resolve_board_junk_is_unresolvable(url):
     assert resolve_board(url)["resolvable"] is False
+
+
+# ---------------------------------------------------------------------------
+# probe_board — the reachability verdict (P0-6 fix). A walled workday_cxs tenant
+# (HTTP 422) must land UNREACHABLE, not "verified (0 open jobs)"; a genuinely-
+# live board with 0 open jobs must land REACHABLE (verified-empty).
+# ---------------------------------------------------------------------------
+def test_probe_board_direct_is_uncountable_and_not_reachable():
+    from scrape.ats_detect import probe_board
+    from scrape.company_registry import CompanyEntry
+    pr = probe_board(CompanyEntry("Acme", "direct", "https://acme.com/careers"))
+    assert pr.count is None and pr.reachable is False
+
+
+def test_probe_board_workday_cxs_walled_422_is_unreachable(monkeypatch):
+    # The exact smoke-test defect: a 422-walled Workday tenant must be UNREACHABLE
+    # (count None, reachable False), NOT verified-with-0-jobs.
+    from scrape import ats_detect
+    from scrape.cache_helpers import STATUS_PERMANENT
+    from scrape.company_registry import CompanyEntry
+    import scrape.workday_cxs_scraper as WC
+    monkeypatch.setattr(WC, "fetch_with_status",
+                        lambda slug, **k: ([], STATUS_PERMANENT))
+    pr = ats_detect.probe_board(CompanyEntry("FedEx", "workday_cxs", "fedex:5:careers"))
+    assert pr.reachable is False and pr.count is None
+
+
+def test_probe_board_workday_cxs_live_empty_is_reachable(monkeypatch):
+    # A genuinely-live board with 0 open jobs (STATUS_OK, empty list) is REACHABLE
+    # -> verified-but-empty, count 0.
+    from scrape import ats_detect
+    from scrape.cache_helpers import STATUS_OK
+    from scrape.company_registry import CompanyEntry
+    import scrape.workday_cxs_scraper as WC
+    monkeypatch.setattr(WC, "fetch_with_status", lambda slug, **k: ([], STATUS_OK))
+    pr = ats_detect.probe_board(CompanyEntry("LiveCo", "workday_cxs", "live:1:Ext"))
+    assert pr.reachable is True and pr.count == 0
+
+
+def test_probe_board_workday_cxs_transient_is_unreachable(monkeypatch):
+    # A 429/network blip is not a verified read either -> unreachable this pass.
+    from scrape import ats_detect
+    from scrape.cache_helpers import STATUS_TRANSIENT
+    from scrape.company_registry import CompanyEntry
+    import scrape.workday_cxs_scraper as WC
+    monkeypatch.setattr(WC, "fetch_with_status",
+                        lambda slug, **k: ([], STATUS_TRANSIENT))
+    pr = ats_detect.probe_board(CompanyEntry("Busy", "workday_cxs", "busy:1:Ext"))
+    assert pr.reachable is False and pr.count is None
+
+
+def test_probe_board_count_ats_reachable_iff_counted(monkeypatch):
+    # For a count-API ATS, reachable mirrors "got a real count": a real count
+    # (incl. 0 = live-empty) is reachable; None (non-2xx/parse fail) is not.
+    from scrape import ats_detect
+    from scrape.company_registry import CompanyEntry
+    monkeypatch.setattr(ats_detect, "probe_count", lambda e: 0)
+    pr = ats_detect.probe_board(CompanyEntry("Gh", "greenhouse", "gh"))
+    assert pr.reachable is True and pr.count == 0
+    monkeypatch.setattr(ats_detect, "probe_count", lambda e: None)
+    pr = ats_detect.probe_board(CompanyEntry("Gh", "greenhouse", "gh"))
+    assert pr.reachable is False and pr.count is None
+
+
+def test_probe_count_workday_cxs_walled_returns_none(monkeypatch):
+    # The bare-count contract too: a walled tenant returns None (not a false 0),
+    # so any legacy count-only caller can't mistake a wall for a live-empty board.
+    from scrape import ats_detect
+    from scrape.cache_helpers import STATUS_OK, STATUS_PERMANENT
+    from scrape.company_registry import CompanyEntry
+    import scrape.workday_cxs_scraper as WC
+    monkeypatch.setattr(WC, "fetch_with_status",
+                        lambda slug, **k: ([], STATUS_PERMANENT))
+    assert ats_detect.probe_count(
+        CompanyEntry("FedEx", "workday_cxs", "fedex:5:careers")) is None
+    # A clean read with 0 jobs is a real 0 (live-empty).
+    monkeypatch.setattr(WC, "fetch_with_status", lambda slug, **k: ([], STATUS_OK))
+    assert ats_detect.probe_count(
+        CompanyEntry("LiveCo", "workday_cxs", "live:1:Ext")) == 0

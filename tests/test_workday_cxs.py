@@ -209,6 +209,83 @@ def test_junk_body_is_soft(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# fetch_with_status — the reachability signal that keeps a walled tenant out of
+# the "verified" bucket (the P0-6 verdict fix). A clean 200 read (even empty) is
+# STATUS_OK; a 422/404 wall is STATUS_PERMANENT; a 429/network blip is TRANSIENT.
+# ---------------------------------------------------------------------------
+def test_fetch_with_status_live_ok(tmp_path, monkeypatch):
+    from scrape.cache_helpers import STATUS_OK
+    patch_session(monkeypatch, WC, lambda *a, **k: FakeResp(_cxs_page()))
+    jobs, status = WC.fetch_with_status("mmc:1:MMC", cache_dir=tmp_path,
+                                        cache_enabled=False)
+    assert status == STATUS_OK and len(jobs) == 2
+
+
+def test_fetch_with_status_live_but_empty_is_ok(tmp_path, monkeypatch):
+    # A genuinely-live board with 0 open jobs (HTTP 200, empty jobPostings) is
+    # STATUS_OK with an empty list — a VERIFIED-empty state, NOT unreachable.
+    from scrape.cache_helpers import STATUS_OK
+    patch_session(monkeypatch, WC,
+                  lambda *a, **k: FakeResp({"total": 0, "jobPostings": []}))
+    jobs, status = WC.fetch_with_status("live0:1:External", cache_dir=tmp_path,
+                                        cache_enabled=False)
+    assert status == STATUS_OK and jobs == []
+
+
+def test_fetch_with_status_walled_422_is_permanent(tmp_path, monkeypatch):
+    # The Cloudflare/Akamai wall (FedEx/AutoZone/Nike) returns 422 -> PERMANENT.
+    from scrape.cache_helpers import STATUS_PERMANENT
+    patch_session(monkeypatch, WC,
+                  lambda *a, **k: FakeResp(None, status_code=422))
+    jobs, status = WC.fetch_with_status("fedex:5:fedexcareers", cache_dir=tmp_path,
+                                        cache_enabled=False)
+    assert status == STATUS_PERMANENT and jobs == []
+
+
+def test_fetch_with_status_404_is_permanent(tmp_path, monkeypatch):
+    from scrape.cache_helpers import STATUS_PERMANENT
+    patch_session(monkeypatch, WC, lambda *a, **k: FakeResp(None, status_code=404))
+    _jobs, status = WC.fetch_with_status("dead:1:External", cache_dir=tmp_path,
+                                         cache_enabled=False)
+    assert status == STATUS_PERMANENT
+
+
+def test_fetch_with_status_transient_is_transient(tmp_path, monkeypatch):
+    from scrape.cache_helpers import STATUS_TRANSIENT
+    patch_session(monkeypatch, WC, lambda *a, **k: FakeResp(None, status_code=429))
+    _jobs, status = WC.fetch_with_status("busy:1:External", cache_dir=tmp_path,
+                                         cache_enabled=False)
+    assert status == STATUS_TRANSIENT
+
+
+def test_fetch_with_status_bad_slug_is_permanent(tmp_path):
+    from scrape.cache_helpers import STATUS_PERMANENT
+    jobs, status = WC.fetch_with_status("not-a-slug", cache_dir=tmp_path,
+                                        cache_enabled=False)
+    assert status == STATUS_PERMANENT and jobs == []
+
+
+def test_fetch_with_status_negative_cache_stays_permanent(tmp_path, monkeypatch):
+    # Once a walled tenant is negative-cached, a re-probe within the TTL must keep
+    # returning STATUS_PERMANENT (not flip to a verified-empty STATUS_OK) without
+    # re-hitting the network.
+    from scrape.cache_helpers import STATUS_PERMANENT
+    calls = {"n": 0}
+
+    def walled(url, **k):
+        calls["n"] += 1
+        return FakeResp(None, status_code=422)
+
+    patch_session(monkeypatch, WC, walled)
+    _j1, s1 = WC.fetch_with_status("fedex:5:fedexcareers", cache_dir=tmp_path,
+                                   cache_enabled=True)
+    _j2, s2 = WC.fetch_with_status("fedex:5:fedexcareers", cache_dir=tmp_path,
+                                   cache_enabled=True)
+    assert s1 == STATUS_PERMANENT and s2 == STATUS_PERMANENT
+    assert calls["n"] == 1                       # second call served from neg-cache
+
+
+# ---------------------------------------------------------------------------
 # derive_slug — URL -> tenant:N:site
 # ---------------------------------------------------------------------------
 def test_derive_slug_from_public_and_cxs_urls():
