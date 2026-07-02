@@ -82,23 +82,111 @@ def test_get_registry_excludes_unverified_by_default(tmp_path):
     assert {"Live Co", "Dead Co"} <= all_names
 
 
-def test_reverifying_clears_unverified_via_user_wins(tmp_path):
-    # A board first saved unverified, then re-added after it verifies, is
-    # scraped again: save_companies dedups by (ats_type, slug) so the second
-    # write is a no-op ADD, but the earlier flagged record still excludes it.
-    # The real re-verify path in the GUI overwrites the same name with a fresh
-    # (unflagged) entry, so simulate that by writing the cleared record directly.
+def test_reverifying_clears_unverified_via_real_save(tmp_path):
+    # A board first saved unverified, then re-added after it verifies, is scraped
+    # again — via the REAL save path (no hand-edit): the second (verified)
+    # save_companies matches by (ats_type, slug)/name, upgrades the stored record
+    # in place, and clears the UNVERIFIED_FLAG so get_registry re-includes it.
     p = tmp_path / "companies.json"
     save_companies([CompanyEntry("Flip Co", "greenhouse", "flipco",
                                  ["controls_engineering"], {UNVERIFIED_FLAG: True})], p)
     assert "Flip Co" not in {c.name for c in get_registry("controls_engineering", user_json=p)}
-    # Manually clear the flag (what a successful re-probe would persist).
-    raw = json.loads(p.read_text(encoding="utf-8"))
-    for c in raw["companies"]:
-        if c["name"] == "Flip Co":
-            c.pop("extra", None)
-    p.write_text(json.dumps(raw), encoding="utf-8")
+
+    # Second save: same board, now VERIFIED (no flag). Counts as an upgrade.
+    upgraded = save_companies(
+        [CompanyEntry("Flip Co", "greenhouse", "flipco", ["controls_engineering"])], p)
+    assert upgraded == 1
     assert "Flip Co" in {c.name for c in get_registry("controls_engineering", user_json=p)}
+    # The persisted record no longer carries the flag (extra dropped when empty).
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    rec = [c for c in raw["companies"] if c["name"] == "Flip Co"][0]
+    assert not (rec.get("extra") or {}).get(UNVERIFIED_FLAG)
+    # And the board is exactly ONE record — the upgrade was in place, not a dup.
+    assert sum(1 for c in raw["companies"] if c.get("slug") == "flipco") == 1
+
+
+def test_reverify_upgrade_matches_by_name_across_slug(tmp_path):
+    # The user's AI mis-guessed the slug on the first (failed) probe, then the
+    # user re-adds the corrected live board. Identity match falls back to NAME,
+    # so the corrected verified entry upgrades the stored unverified one.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Slug Fixup Co", "greenhouse", "wrongslug",
+                                 ["controls_engineering"], {UNVERIFIED_FLAG: True})], p)
+    assert "Slug Fixup Co" not in {c.name for c in get_registry("controls_engineering", user_json=p)}
+    upgraded = save_companies(
+        [CompanyEntry("Slug Fixup Co", "greenhouse", "rightslug", ["controls_engineering"])], p)
+    assert upgraded == 1
+    surfaced = {c.name for c in get_registry("controls_engineering", user_json=p)}
+    assert "Slug Fixup Co" in surfaced
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    recs = [c for c in raw["companies"] if c["name"] == "Slug Fixup Co"]
+    assert len(recs) == 1                         # upgraded in place, not duplicated
+    assert recs[0]["slug"] == "rightslug"         # fields replaced with the fresh entry
+    assert not (recs[0].get("extra") or {}).get(UNVERIFIED_FLAG)
+
+
+def test_reverify_upgrade_unions_industries(tmp_path):
+    # Re-verifying under a different active field must not drop the board's prior
+    # field tags — industries are unioned on upgrade.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Multi Field Co", "lever", "multifield",
+                                 ["controls_engineering"], {UNVERIFIED_FLAG: True})], p)
+    save_companies([CompanyEntry("Multi Field Co", "lever", "multifield",
+                                 ["robotics"])], p)
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    rec = [c for c in raw["companies"] if c["name"] == "Multi Field Co"][0]
+    assert set(rec["industries"]) == {"controls_engineering", "robotics"}
+
+
+def test_still_unverified_reprobe_does_not_upgrade(tmp_path):
+    # An incoming STILL-unverified re-add never clears a stored flag (and never
+    # demotes) — only a verified re-add upgrades.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Dead Again Co", "greenhouse", "deadagain",
+                                 ["controls_engineering"], {UNVERIFIED_FLAG: True})], p)
+    added = save_companies([CompanyEntry("Dead Again Co", "greenhouse", "deadagain",
+                                         ["controls_engineering"], {UNVERIFIED_FLAG: True})], p)
+    assert added == 0
+    assert "Dead Again Co" not in {c.name for c in get_registry("controls_engineering", user_json=p)}
+
+
+def test_verified_re_add_of_verified_board_is_plain_duplicate(tmp_path):
+    # A verified re-add of an ALREADY-verified board stays a no-op skip (no
+    # spurious upgrade churn).
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Already Live Co", "lever", "alreadylive",
+                                 ["controls_engineering"])], p)
+    added = save_companies([CompanyEntry("Already Live Co", "lever", "alreadylive",
+                                         ["controls_engineering"])], p)
+    assert added == 0
+
+
+def test_concurrent_save_companies_loses_no_write(tmp_path):
+    # The threaded Flask /clip receiver and the GUI add both write companies.json
+    # in the SAME process. Without serialization each racing writer reads the same
+    # base list, appends, and the second atomic write clobbers the first — one
+    # board silently lost. The module lock in save_companies serializes the
+    # read-modify-write; assert every one of N concurrent distinct writers lands.
+    import threading
+
+    p = tmp_path / "companies.json"
+    N = 24
+    barrier = threading.Barrier(N)     # maximize the overlap window
+
+    def _writer(i):
+        barrier.wait()                 # release all writers as simultaneously as possible
+        save_companies([CompanyEntry(f"Co {i}", "greenhouse", f"slug{i}",
+                                     ["controls_engineering"])], p)
+
+    threads = [threading.Thread(target=_writer, args=(i,)) for i in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    slugs = {c["slug"] for c in raw["companies"] if "_example" not in c}
+    assert slugs == {f"slug{i}" for i in range(N)}   # not one write lost
 
 
 def test_careers_client_does_not_scrape_unverified(tmp_path, monkeypatch):
