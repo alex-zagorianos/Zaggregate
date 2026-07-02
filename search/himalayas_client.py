@@ -1,6 +1,24 @@
-"""Himalayas public API — free, no key, remote-only postings. Paginated;
-the first HIMALAYAS_MAX_JOBS are fetched once per cache cycle as a single
-feed and filtered client-side per keyword.
+"""Himalayas public API — free, no key, remote-only postings.
+
+Queries the **search** endpoint (``/jobs/api/search``) once per keyword with
+``q={keyword}&country=US``, NOT the bare browse feed (``/jobs/api``). Why:
+  * The browse feed is unfiltered — ~45% of a page is region-locked NON-US
+    postings (UK/Canada/India/Philippines; measured 9/20 on 2026-07-02), which
+    are false positives for a US remote seeker (the marketing-remote persona's
+    #1 gap). ``search?country=US`` returns only US-eligible rows (0/20 non-US-
+    only, same measurement) and honors a server-side ``q=`` keyword filter.
+  * The search endpoint IGNORES ``offset`` (it returns a fixed relevance-ranked
+    top slice per query — verified live), so we do ONE request per keyword and
+    do not page. The old browse client's 100-deep tail contributed ~0 matches in
+    practice anyway, so nothing useful is lost. ``parallel_keywords`` makes the
+    engine call ``search()`` once per keyword.
+
+ATTRIBUTION / ToS (research-sources §F): Himalayas requires attribution + a
+link BACK, and PROHIBITS re-submitting its jobs to Jooble/Google-Jobs/LinkedIn.
+This client preserves the Himalayas link as the job URL (``applicationLink`` ->
+``guid`` fallback, both himalayas.app links) and NEVER forwards its rows
+anywhere — each source client queries its own API independently; no cross-source
+forwarding path exists (pinned by test_himalayas_no_jooble_forwarding).
 
 Quirks handled here: pubDate is a UNIX timestamp (int) and must become an
 ISO string for search_engine._parse_created; minSalary/maxSalary come with
@@ -10,12 +28,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from config import (
-    HIMALAYAS_MAX_JOBS,
+    HIMALAYAS_COUNTRY,
     HIMALAYAS_PAGE_SIZE,
     HIMALAYAS_RATE_LIMIT,
-    HIMALAYAS_URL,
+    HIMALAYAS_SEARCH_URL,
 )
 from models import JobResult
+from search.http_util import cache_key
 from search.single_feed_client import SingleFeedClient
 
 # salaryPeriod -> multiplier to annualize
@@ -63,6 +82,9 @@ def _job_id(guid: str, url: str, title: str, company: str) -> str:
 class HimalayasClient(SingleFeedClient):
     cache_subdir = "himalayas"
     rate_limit = HIMALAYAS_RATE_LIMIT
+    # The search endpoint filters server-side per keyword (q=), so query it once
+    # per keyword rather than fetching one generic feed and filtering client-side.
+    parallel_keywords = True
 
     def search(
         self,
@@ -71,31 +93,29 @@ class HimalayasClient(SingleFeedClient):
         salary_min: Optional[int] = None,
         page: int = 1,
     ) -> dict:
+        # The search endpoint ignores `offset`/paging (returns a fixed relevance-
+        # ranked top slice per query — verified live 2026-07-02), so there is
+        # nothing beyond page 1.
         if page > 1:
-            return {"jobs": []}  # whole feed handled on page 1
+            return {"jobs": []}
+        key = cache_key("himalayas", keyword, HIMALAYAS_COUNTRY)
 
         def fetch():
-            jobs: list[dict] = []
-            offset = 0
-            # The API ignores `limit` and always returns <=20, so advance the
-            # offset by however many actually came back rather than a fixed step;
-            # stop on an empty page or once we've collected MAX_JOBS.
-            while len(jobs) < HIMALAYAS_MAX_JOBS:
-                self.limiter.acquire()
-                response = self.session.get(
-                    HIMALAYAS_URL,
-                    params={"limit": HIMALAYAS_PAGE_SIZE, "offset": offset},
-                    timeout=30,
-                )
-                response.raise_for_status()
-                batch = response.json().get("jobs", [])
-                if not batch:
-                    break
-                jobs.extend(batch)
-                offset += len(batch)
-            return {"jobs": jobs}
+            self.limiter.acquire()
+            response = self.session.get(
+                HIMALAYAS_SEARCH_URL,
+                params={
+                    "q": keyword,
+                    "country": HIMALAYAS_COUNTRY,  # US-eligible only (kills region-locked FPs)
+                    "limit": HIMALAYAS_PAGE_SIZE,
+                    "offset": 0,
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            return {"jobs": response.json().get("jobs", [])}
 
-        return self._cached("feed", fetch)
+        return self._cached(key, fetch)
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         from scrape.text_match import keyword_matches

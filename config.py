@@ -364,7 +364,24 @@ JOBICY_INDUSTRY = "engineering"   # server-side category filter
 # Himalayas — free public API, no key. Remote-only, paginated. The API
 # hard-caps each response at 20 jobs regardless of the `limit` param, so we
 # page by offset; 200 deep = 10 requests on a cold cache (once/day).
+#
+# We query the `search` endpoint with `country=US` instead of the bare browse
+# feed: the browse feed (/jobs/api) is unfiltered and ~45% of a page is
+# region-locked NON-US postings (UK/Canada/India/Philippines — measured 9/20 on
+# 2026-07-02), which are false positives for a US remote seeker (the
+# marketing-remote persona's #1 gap). The `search` endpoint
+# (/jobs/api/search?country=US) returns only US-eligible rows (0/20 non-US-only,
+# same measurement) and honors a server-side `q=` keyword filter. Same JSON
+# shape ({jobs, totalCount, offset, limit}), so parsing is unchanged.
+# HIMALAYAS_URL stays the browse base for back-compat; HIMALAYAS_SEARCH_URL is
+# the filtered endpoint the client actually calls. ATTRIBUTION/ToS: the job URL
+# MUST remain the Himalayas link (link-back), and Himalayas rows must NEVER be
+# forwarded into any Jooble/Google-Jobs path (each client queries its own API
+# independently — no cross-source forwarding exists; pinned by a test).
 HIMALAYAS_URL = "https://himalayas.app/jobs/api"
+HIMALAYAS_SEARCH_URL = "https://himalayas.app/jobs/api/search"
+# ISO-3166 alpha-2 the search endpoint filters on (US-eligible remote only).
+HIMALAYAS_COUNTRY = "US"
 HIMALAYAS_RATE_LIMIT = 5
 HIMALAYAS_PAGE_SIZE = 20          # server's hard per-response cap
 # 200-deep = 10 sequential requests, but the 5/min limiter forces a ~59s sleep
@@ -399,7 +416,7 @@ SEMANTIC_TITLE_CAP = 0.6
 DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
                  "remoteok", "remotive", "jobicy", "himalayas", "hn",
                  "weworkremotely", "workingnomads", "jooble", "careerjet",
-                 "higheredjobs", "rnjobsite"]
+                 "higheredjobs", "rnjobsite", "reap", "edjoin"]
 # weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
 # risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
 # OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
@@ -414,6 +431,15 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # neither), so adding them to the daily net is byte-identical for a non-education,
 # non-nursing user. jobsacuk (UK academic) is deliberately NOT here: it is opt-in
 # (config flag or non-US country) and stays out of a default US run.
+# reap + edjoin (2026-07-02, S32b): free/keyless K-12 EDUCATION sources — REAP
+# (per-state public teacher portals; light HTML, robots.txt honored live) and
+# EdJoin (public /Home/LoadJobs JSON, California-centric). Both INDUSTRY-GATE to
+# education-family fields; REAP additionally self-skips outside its covered states
+# (CT/MO/NM/OH/PA — routes by the user's location), EdJoin returns 0 gracefully
+# for non-CA metros. Inert (no network, no jobs) for every non-education field, so
+# adding them to the daily net is byte-identical for a non-education user. NEVER
+# Frontline/AppliTrack or NEOGOV — those are ToS-blocked; REAP/EdJoin are the
+# ToS-safe public applicant sites that route around them (plan §5 Education row).
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.

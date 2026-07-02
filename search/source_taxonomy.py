@@ -63,8 +63,29 @@ def rnjobsite_active(industry: Optional[str] = None) -> bool:
     return _should_poll(active_industry(industry))
 
 
-def sector_feed_applies(source: str, industry: Optional[str] = None) -> bool:
-    """Does a sector RSS `source` apply to this field? For sources with no
+def reap_active(industry: Optional[str] = None,
+                location: Optional[str] = None) -> bool:
+    """True when REAP should poll: an education-family field AND a location in a
+    REAP-covered state (CT/MO/NM/OH/PA). Empty/eng industry, or an education
+    seeker outside those states, -> False (inert). Best-effort."""
+    from search.reap_client import _is_education, portal_for_location
+    if not _is_education(active_industry(industry)):
+        return False
+    return portal_for_location(location) is not None
+
+
+def edjoin_active(industry: Optional[str] = None) -> bool:
+    """True when EdJoin should poll for this field (an education-family industry).
+    EdJoin is California-centric and returns 0 gracefully for non-CA metros, so
+    the gate is industry-only (location filtering happens in the client). Empty/
+    eng industry -> False (inert). Best-effort."""
+    from search.edjoin_client import _is_education
+    return _is_education(active_industry(industry))
+
+
+def sector_feed_applies(source: str, industry: Optional[str] = None,
+                        location: Optional[str] = None) -> bool:
+    """Does a sector `source` apply to this field/location? For sources with no
     industry gate (or unknown), returns True (no-op). jobsacuk is opt-in (handled
     at build time, not here) so it always returns True from this gate."""
     s = (source or "").strip().lower()
@@ -72,4 +93,8 @@ def sector_feed_applies(source: str, industry: Optional[str] = None) -> bool:
         return higheredjobs_active(industry)
     if s == "rnjobsite":
         return rnjobsite_active(industry)
+    if s == "reap":
+        return reap_active(industry, location)
+    if s == "edjoin":
+        return edjoin_active(industry)
     return True

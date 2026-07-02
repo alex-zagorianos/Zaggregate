@@ -358,6 +358,106 @@ def test_himalayas_two_empty_guid_jobs_stay_distinct(tmp_path):
     assert "himalayas_" not in ids
 
 
+# ── himalayas: search endpoint + country=US + attribution/ToS (S32b) ──────────
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._payload
+
+
+def test_himalayas_search_hits_search_endpoint_with_country_us(tmp_path, monkeypatch):
+    """search() must call the SEARCH endpoint with q=<keyword>&country=US — the
+    change that kills the marketing-remote persona's region-locked false
+    positives. Captures the outgoing request args instead of hitting the net."""
+    import config
+    c = _client(HimalayasClient, tmp_path)
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params or {}
+        return _FakeResp({"jobs": []})
+
+    monkeypatch.setattr(c.session, "get", fake_get)
+    c.search("digital marketing", location="Remote", page=1)
+    assert captured["url"] == config.HIMALAYAS_SEARCH_URL
+    assert captured["url"].endswith("/jobs/api/search")
+    assert captured["params"].get("q") == "digital marketing"
+    assert captured["params"].get("country") == "US"
+
+
+def test_himalayas_search_page_two_is_empty(tmp_path):
+    # The search endpoint ignores offset/paging, so there is nothing past page 1.
+    c = _client(HimalayasClient, tmp_path)
+    assert c.search("marketing", page=2) == {"jobs": []}
+
+
+def test_himalayas_search_is_per_keyword(tmp_path, monkeypatch):
+    # parallel_keywords=True => one server-side-filtered request per keyword,
+    # each cached under its own key (not one shared 'feed').
+    assert HimalayasClient.parallel_keywords is True
+    c = _client(HimalayasClient, tmp_path)
+    calls = []
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append((params or {}).get("q"))
+        return _FakeResp({"jobs": []})
+
+    monkeypatch.setattr(c.session, "get", fake_get)
+    c.search("nursing", page=1)
+    c.search("teaching", page=1)
+    assert calls == ["nursing", "teaching"]
+
+
+def test_himalayas_link_back_preserved(tmp_path):
+    """ToS: the job URL MUST remain the Himalayas link (attribution/link-back)."""
+    c = _client(HimalayasClient, tmp_path)
+    out = c.parse_results(_himalayas_payload(), "controls engineer")
+    assert out[0].url == "https://himalayas.app/jobs/abc123"
+    # guid fallback also stays a himalayas.app link (never a third-party URL).
+    payload = {"jobs": [{
+        "guid": "https://himalayas.app/jobs/xyz", "title": "Controls Engineer",
+        "companyName": "Acme", "categories": ["Engineering"],
+        "description": "x", "pubDate": 1700000000,
+    }]}
+    out2 = c.parse_results(payload, "controls engineer")
+    assert out2[0].url == "https://himalayas.app/jobs/xyz"
+
+
+def test_himalayas_no_jooble_forwarding(tmp_path):
+    """ToS pin: Himalayas rows must NEVER be forwarded into any Jooble/Google-Jobs
+    path. Architecturally, each source client queries ITS OWN api from the user's
+    keywords and returns JobResults tagged with its own source_api; no client
+    consumes another client's results. This test pins that isolation so a future
+    refactor can't silently introduce a forwarding path."""
+    # 1. Every Himalayas JobResult is tagged source_api='himalayas' and keeps a
+    #    himalayas.app URL — it is never re-emitted under another source's tag.
+    c = _client(HimalayasClient, tmp_path)
+    for j in c.parse_results(_himalayas_payload(), "controls engineer"):
+        assert j.source_api == "himalayas"
+        assert "himalayas.app" in j.url
+    # 2. The Jooble and SerpApi (Google-Jobs) clients contain no reference to
+    #    Himalayas — they build their query from the raw keyword, not from any
+    #    other source's output.
+    import inspect
+    from search import jooble_client, serpapi_client
+    for mod in (jooble_client, serpapi_client):
+        assert "himalayas" not in inspect.getsource(mod).lower()
+    # 3. Jooble/SerpApi.search take a keyword string, not a list of JobResults
+    #    (so they cannot receive forwarded rows).
+    from search.jooble_client import JoobleClient
+    from search.serpapi_client import SerpApiClient
+    for cls in (JoobleClient, SerpApiClient):
+        params = list(inspect.signature(cls.search).parameters)
+        assert params[1] == "keyword"
+
+
 # ── themuse.parse_results ─────────────────────────────────────────────────────
 
 def _themuse_payload():
