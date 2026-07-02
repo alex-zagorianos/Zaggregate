@@ -20,6 +20,21 @@ class CompanyEntry:
     extra: dict = field(default_factory=dict)
 
 
+# Key inside CompanyEntry.extra marking a board that FAILED its live probe at
+# add-time (P0-6). Such an entry is persisted (so the user's paste isn't lost and
+# they can see/prune it) but is EXCLUDED from scraping until it verifies — a
+# later re-add with a live probe overwrites it (user-wins-by-name) and clears the
+# flag. This is what makes the "+ Add Companies" probe status actually matter
+# instead of being advisory-only.
+UNVERIFIED_FLAG = "unverified"
+
+
+def is_unverified(entry: "CompanyEntry") -> bool:
+    """True when `entry` was flagged unverified (failed its live probe) and must
+    be kept out of scraping until it verifies."""
+    return bool((getattr(entry, "extra", None) or {}).get(UNVERIFIED_FLAG))
+
+
 # ---------------------------------------------------------------------------
 # Health Informatics
 # Greenhouse slugs verified 2026-05-26 against boards-api.greenhouse.io
@@ -320,13 +335,21 @@ def registry_stats(user_json: Optional[Path] = None) -> dict[str, int]:
     return dict(counts)
 
 
-def get_registry(industry: str | None = None, user_json: Optional[Path] = None) -> list[CompanyEntry]:
+def get_registry(industry: str | None = None, user_json: Optional[Path] = None,
+                 include_unverified: bool = False) -> list[CompanyEntry]:
     """Return companies filtered by industry key or tag, merged with user companies.json.
 
     User entries override hardcoded ones by name (case-insensitive match).
     Pass user_json=Path(...) to use a non-default file path.
+
+    By default (include_unverified=False) any user entry flagged unverified
+    (failed its live probe at add-time, P0-6) is EXCLUDED — this is what keeps
+    dead/junk boards from being scraped and re-throwing soft errors every run.
+    Pass include_unverified=True to see them too (e.g. a prune/manage UI).
     """
     user_entries = _load_user_companies(user_json)
+    if not include_unverified:
+        user_entries = [e for e in user_entries if not is_unverified(e)]
 
     # Build base list: hardcoded registry filtered by industry
     if industry is None:
