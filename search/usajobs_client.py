@@ -11,6 +11,7 @@ from config import (
 from models import JobResult
 from search.base_client import JobAPIClient
 from search.http_util import FileCache, RateLimiter, cache_key, make_session, to_float
+from search.remote_intent import is_remote_only
 
 
 class USAJobsClient(JobAPIClient):
@@ -50,7 +51,15 @@ class USAJobsClient(JobAPIClient):
         salary_min: Optional[int] = None,
         page: int = 1,
     ) -> dict:
-        key = cache_key("usajobs", keyword, location, salary_min, page)
+        # Remote-only intent: sending "Remote" as LocationName geocodes to a
+        # place and returns 0. USAJobs has a documented remote filter —
+        # `RemoteIndicator=True` (Search API) — so on a remote-only search drop
+        # LocationName and set that flag instead. Non-remote searches are
+        # UNCHANGED (LocationName carries the metro, no RemoteIndicator).
+        remote = is_remote_only(location)
+
+        key = cache_key("usajobs", keyword, location, salary_min, page,
+                        "remote" if remote else "")
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
@@ -65,10 +74,13 @@ class USAJobsClient(JobAPIClient):
         }
         params = {
             "Keyword": keyword,
-            "LocationName": self._normalize_location(location),
             "ResultsPerPage": USAJOBS_RESULTS_PER_PAGE,
             "Page": page,
         }
+        if remote:
+            params["RemoteIndicator"] = "True"
+        else:
+            params["LocationName"] = self._normalize_location(location)
         if salary_min is not None:
             params["RemunerationMinimumAmount"] = salary_min
 
