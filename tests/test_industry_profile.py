@@ -37,6 +37,33 @@ def test_finance_profile():
     assert p.jobicy_industry == "finance"
 
 
+def test_consulting_profile():
+    p = ip.resolve("management consulting")
+    assert p.source == "seed"
+    assert p.muse_categories == ["Management", "Business Operations"]
+    assert p.jobicy_industry == "business"          # knowledge work -> tech boards kept
+    assert "advisory services" in p.query_synonyms
+    assert "consultant" in p.title_terms and "engagement manager" in p.title_terms
+    # the triggers scope tightly: consultant/advisory/strategy-consulting all hit it
+    for q in ("consultant", "advisory", "strategy-consulting"):
+        ip.clear_cache()
+        assert ip.resolve(q).jobicy_industry == "business"
+
+
+def test_consulting_does_not_misfire_on_bare_strategy():
+    # "strategy" alone is deliberately NOT a consulting trigger (would misfire on
+    # product/marketing strategy roles); it falls through to generic full-reach.
+    p = ip.resolve("strategy")
+    assert p.source == "generic"
+
+
+def test_consulting_is_knowledge_work_keeps_tech_sources():
+    # Consulting IS desk/knowledge work: tech-skewed boards must NOT be gated off.
+    from search.keyword_strategy import gate_tech_sources, TECH_SKEWED_SOURCES
+    src = list(TECH_SKEWED_SOURCES)
+    assert gate_tech_sources(src, "management consulting") == src
+
+
 def test_unknown_genre_is_generic_full_reach():
     p = ip.resolve("underwater basket weaving")
     assert p.source == "generic"

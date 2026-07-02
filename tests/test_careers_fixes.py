@@ -354,3 +354,133 @@ def test_discoverer_extracts_entries_for_each_ats():
     out = _extract_entries(data, "myworkdayjobs.com")
     assert out and out[0][0] == "workday"
     assert out[0][1] == "cat:5:CaterpillarCareers"
+
+
+# ---------------------------------------------------------------------------
+# SmartRecruiters fetcher — parse/map, keyword filter, display-name preference,
+# public job URL, and permanent-404 negative-cache short-circuit.
+# ---------------------------------------------------------------------------
+def _sr_payload():
+    return {
+        "totalFound": 42,
+        "content": [
+            {
+                "id": "744000133907678",
+                "name": "Senior Management Consultant",
+                "function": {"label": "Advisory"},
+                "department": {"label": "Strategy"},
+                "location": {"city": "Austin", "region": "TX", "country": "us",
+                             "remote": False},
+                "releasedDate": "2026-06-24T10:00:11.853Z",
+                "ref": "https://api.smartrecruiters.com/v1/companies/visa/postings/744000133907678",
+            },
+            {
+                "id": "744000120624847",
+                "name": "Barista",
+                "function": {"label": "Food Service"},
+                "department": {"label": "Retail"},
+                "location": {"city": "London", "region": "England", "country": "gb",
+                             "remote": False},
+                "releasedDate": "2026-04-14T07:57:07.974Z",
+            },
+        ],
+    }
+
+
+def test_smartrecruiters_maps(tmp_path, monkeypatch):
+    patch_session(monkeypatch, smartrecruiters_scraper,
+                  lambda *a, **k: _Resp(_sr_payload()))
+    monkeypatch.setattr(smartrecruiters_scraper, "_fetch_description",
+                        lambda *a, **k: "")
+    company = CompanyEntry("Visa Inc.", "smartrecruiters", "visa")
+    jobs = smartrecruiters_scraper.scrape_smartrecruiters(
+        company, "consultant", tmp_path, cache_enabled=False)
+    assert len(jobs) == 1                              # only the consultant title matches
+    j = jobs[0]
+    assert j.title == "Senior Management Consultant"
+    assert j.location == "Austin, TX, us"              # city, region, country joined
+    assert j.source_api == "careers"
+    assert j.job_id == "smartrecruiters_744000133907678"
+    # Public job URL built from the registry slug + posting id (verified live).
+    assert j.url == "https://jobs.smartrecruiters.com/visa/744000133907678"
+    # board_count reflects totalFound, not just this page's length.
+    assert j.board_count == 42
+    # function/department reach the scorer via the description (not the match haystack).
+    assert "Advisory" in j.description and "Strategy" in j.description
+
+
+def test_smartrecruiters_keyword_filter(tmp_path, monkeypatch):
+    patch_session(monkeypatch, smartrecruiters_scraper,
+                  lambda *a, **k: _Resp(_sr_payload()))
+    monkeypatch.setattr(smartrecruiters_scraper, "_fetch_description",
+                        lambda *a, **k: "")
+    company = CompanyEntry("Visa Inc.", "smartrecruiters", "visa")
+    jobs = smartrecruiters_scraper.scrape_smartrecruiters(
+        company, "barista", tmp_path, cache_enabled=False)
+    assert [j.title for j in jobs] == ["Barista"]
+
+
+def test_smartrecruiters_uses_registry_display_name(tmp_path, monkeypatch):
+    # The slug ("visa") is an opaque tenant id; the scorer's per-company inbox cap
+    # and the UI want the registry display name, not a title-cased slug.
+    patch_session(monkeypatch, smartrecruiters_scraper,
+                  lambda *a, **k: _Resp(_sr_payload()))
+    monkeypatch.setattr(smartrecruiters_scraper, "_fetch_description",
+                        lambda *a, **k: "")
+    company = CompanyEntry("Visa Inc.", "smartrecruiters", "visa")
+    jobs = smartrecruiters_scraper.scrape_smartrecruiters(
+        company, "consultant", tmp_path, cache_enabled=False)
+    assert jobs and all(j.company == "Visa Inc." for j in jobs)
+
+
+def test_smartrecruiters_permanent_404_negative_caches(tmp_path, monkeypatch):
+    # A 404 (tenant removed/renamed) is PERMANENT -> negative-cached in the shared
+    # cache file so the run doesn't re-probe a dead tenant for the TTL window.
+    calls = {"n": 0}
+
+    def gone(*a, **k):
+        calls["n"] += 1
+        return _StatusResp(404)
+
+    patch_session(monkeypatch, smartrecruiters_scraper, gone)
+    company = CompanyEntry("Dead SR", "smartrecruiters", "deadsr")
+
+    assert smartrecruiters_scraper.scrape_smartrecruiters(
+        company, "consultant", tmp_path, cache_enabled=True) == []
+    assert calls["n"] == 1
+    marker = tmp_path / "smartrecruiters_deadsr.json"
+    assert is_failed(read_cache(marker)) is True
+
+    # Second call sees the marker and does NOT re-fetch.
+    assert smartrecruiters_scraper.scrape_smartrecruiters(
+        company, "consultant", tmp_path, cache_enabled=True) == []
+    assert calls["n"] == 1  # marker short-circuits the second attempt
+
+
+def test_smartrecruiters_error_soft(tmp_path, monkeypatch):
+    patch_session(monkeypatch, smartrecruiters_scraper,
+                  lambda *a, **k: (_ for _ in ()).throw(requests.RequestException()))
+    company = CompanyEntry("Acme", "smartrecruiters", "acme")
+    assert smartrecruiters_scraper.scrape_smartrecruiters(
+        company, "consultant", tmp_path, cache_enabled=False) == []
+
+
+def test_dispatch_smartrecruiters(tmp_path, monkeypatch):
+    # careers_client routes ats_type == "smartrecruiters" to scrape_smartrecruiters,
+    # passing the whole CompanyEntry (so company.name -> the display name).
+    import scrape.careers_client as cc
+    captured = {}
+
+    def stub(company, keyword, cache_dir, cache_enabled):
+        captured["company"] = company
+        captured["keyword"] = keyword
+        return []
+
+    monkeypatch.setattr(cc, "scrape_smartrecruiters", stub)
+    client = cc.CareersClient(cache_dir=tmp_path, cache_enabled=False,
+                              discovery_enabled=False)
+    company = CompanyEntry("Visa Inc.", "smartrecruiters", "visa")
+    client._scrape_one(company, "consultant")
+    assert captured["company"].name == "Visa Inc."
+    assert captured["company"].slug == "visa"
+    assert captured["keyword"] == "consultant"
