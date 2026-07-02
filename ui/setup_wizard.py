@@ -189,6 +189,47 @@ def structure_resume_text(text: str) -> tuple[str, bool]:
     return "\n".join(out).strip(), True
 
 
+# ── connected-source detection (keys step) ──────────────────────────────────────
+# Impact-ranked (Adzuna first, CareerOneStop second, then the rest) so the wizard
+# keys step and its "Connected:" hint agree with the persona-measured coverage
+# order. Each entry: (display label, list of required secret names). A source is
+# "connected" only when EVERY one of its credentials resolves (env-then-secret),
+# via the same config.resolve_secret path the source clients use.
+_KEYED_SOURCES = [
+    ("Adzuna", ["adzuna_app_id", "adzuna_app_key"]),
+    ("CareerOneStop", ["careeronestop_user_id", "careeronestop_token"]),
+    ("Jooble", ["jooble_api_key"]),
+    ("Careerjet", ["careerjet_affid"]),
+    ("USAJobs", ["usajobs_api_key", "usajobs_email"]),
+]
+
+
+def _credential_present(secret_name: str) -> bool:
+    """True when a single credential resolves (env-then-secret), mirroring how the
+    source clients read it. usajobs_email accepts the client's USAJOBS_USER_AGENT
+    fallback so the hint matches the client's real resolution."""
+    import os
+    if secret_name == "usajobs_email":
+        return bool(os.getenv("USAJOBS_EMAIL") or os.getenv("USAJOBS_USER_AGENT")
+                    or config.read_secret("usajobs_email"))
+    return bool(config.resolve_secret(secret_name.upper(), secret_name))
+
+
+def connected_source_labels() -> list[str]:
+    """Return the display labels of keyed sources whose credentials are all
+    present, impact-ranked. Pure-ish (reads only credential state); never raises.
+    Used by the wizard keys step to show progress without a live probe."""
+    out: list[str] = []
+    for label, secrets in _KEYED_SOURCES:
+        try:
+            ok = all(_credential_present(name) for name in secrets)
+        except Exception:
+            ok = False
+        if ok:
+            out.append(label)
+    return out
+
+
 # ── onboarding marker ───────────────────────────────────────────────────────────
 def _marker_path() -> Path:
     return Path(config.USER_DATA_DIR) / _MARKER_NAME
@@ -413,8 +454,14 @@ class SetupWizard(tk.Toplevel):
         except Exception:
             self._about_cache = ""
         self._build_chrome()
+        # Keys step sits AFTER roles/where/resume (value-first) and BEFORE the
+        # closing step: the user has felt what they're setting up before the one
+        # moment of real friction (research-onboarding-ux motivated-friction /
+        # value-first sequencing). It is fully skippable — the wizard completes
+        # with zero keys.
         self._steps = [self._step_welcome, self._step_roles,
-                       self._step_where, self._step_resume, self._step_keep_going]
+                       self._step_where, self._step_resume, self._step_keys,
+                       self._step_keep_going]
         self._render()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -589,6 +636,74 @@ class SetupWizard(tk.Toplevel):
         vsb.pack(side="right", fill="y")
         if getattr(self, "_resume_cache", ""):
             self._resume.insert("1.0", self._resume_cache)
+
+    def _step_keys(self):
+        self._heading(
+            "Connect your best free sources (optional)",
+            "The app already searches free no-signup feeds, but those lean toward "
+            "remote tech jobs. Two free keys unlock local, on-site jobs in YOUR "
+            "field — in our tests these keys supplied most local results. You can "
+            "skip this and add keys any time from Tools \N{RIGHTWARDS ARROW} "
+            "Connect job sources.")
+        # Impact-ranked pitch (Adzuna first, CareerOneStop second, then the rest)
+        # — the same order the persona tests measured as the coverage unlock.
+        for name, why in [
+            ("1.  Adzuna",
+             "the single biggest unlock for local, on-site jobs in any field "
+             "(office, trades, healthcare, retail, engineering). ~5 min, free."),
+            ("2.  CareerOneStop",
+             "the U.S. Dept. of Labor feed — the best free source for teachers, "
+             "nurses, government, and trades that never show up on tech boards. "
+             "~5 min, free."),
+            ("3.  Jooble · Careerjet · USAJobs",
+             "more free aggregators (and every U.S. federal opening) — each adds "
+             "postings the others miss."),
+        ]:
+            row = ttk.Frame(self._body)
+            row.pack(fill="x", pady=3)
+            ttk.Label(row, text=name, style="H2.TLabel").pack(anchor="w")
+            ttk.Label(row, text=why, style="Muted.TLabel", wraplength=560,
+                      justify="left").pack(anchor="w")
+        btn_row = ttk.Frame(self._body)
+        btn_row.pack(fill="x", pady=(14, 4))
+        theme.btn(btn_row, "Connect job sources\N{HORIZONTAL ELLIPSIS}",
+                  self._open_source_keys, "accent").pack(side="left")
+        self._keys_status = ttk.Label(
+            self._body, text="", style="Muted.TLabel", wraplength=560,
+            justify="left")
+        self._keys_status.pack(anchor="w", pady=(2, 0))
+        self._refresh_keys_status()
+
+    def _open_source_keys(self):
+        """Open the EXISTING 'Connect job sources' dialog (ui.source_keys) — the
+        one with per-source live Test buttons + free-key deep links. Reuse, not
+        new machinery. Guarded so a headless/degraded build never breaks the
+        wizard; on return, refresh the connected-sources hint."""
+        try:
+            from ui import source_keys
+            win = source_keys.open_dialog(self)
+            if win is not None:
+                # Modal-ish: wait for the dialog so the hint reflects new keys.
+                self.wait_window(win)
+        except Exception:
+            pass
+        self._refresh_keys_status()
+
+    def _refresh_keys_status(self):
+        """Show which of the free keys are now present so the user sees progress
+        without leaving the wizard. Best-effort; never raises."""
+        lbl = getattr(self, "_keys_status", None)
+        if lbl is None or not lbl.winfo_exists():
+            return
+        try:
+            connected = connected_source_labels()
+        except Exception:
+            connected = []
+        if connected:
+            lbl.config(text="Connected: " + ", ".join(connected))
+        else:
+            lbl.config(text="No keys connected yet — that's fine, you can add "
+                            "them later.")
 
     def _step_keep_going(self):
         self._heading(

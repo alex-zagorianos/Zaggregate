@@ -16,6 +16,21 @@ def test_score_cell_static():
     assert gui.InboxTab._score_cell(None) == ""
 
 
+def test_keyless_badge_text_static():
+    """Silent-zero surfacing: the header line names the count (from the run's
+    actual skip events) + the one-click fix, and is blank when nothing skipped."""
+    import gui
+    f = gui.InboxTab._keyless_badge_text
+    assert f(None) == ""                                    # no run yet
+    assert f({}) == ""                                      # older run schema
+    assert f({"keyless_skipped": []}) == ""                 # nothing skipped
+    one = f({"keyless_skipped": ["adzuna"]})
+    assert one.startswith("1 source skipped (no key)")      # singular
+    assert "Connect job sources" in one                     # names the fix
+    three = f({"keyless_skipped": ["adzuna", "careeronestop", "jooble"]})
+    assert three.startswith("3 sources skipped (no key)")   # plural + real count
+
+
 _COLS = ("norm_url", "url", "title", "company", "location", "salary_text",
          "description", "source", "score", "score_notes", "fit", "fit_why",
          "created", "date_added", "board_count")
@@ -110,6 +125,36 @@ def test_pay_floor_filter(inbox_tab):
     tab._f_floor.set(True)
     cos = {r["company"] for r in tab._filtered()}
     assert "Acme" in cos and "Beta" not in cos   # undisclosed pay is hidden
+
+
+def test_keyless_badge_wired_to_last_run(tmp_path, monkeypatch):
+    """End-to-end wiring: a persisted last_run.json with keyless_skipped drives
+    the Inbox header's keyless label via _update_reach_badge (best-effort, never
+    crashes the render)."""
+    import tkinter as tk
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+    db.init_db()
+    import applog
+    import workspace
+    # Point last_run.json at the temp dir regardless of active project.
+    monkeypatch.setattr(applog, "_project_data_dir", lambda slug: tmp_path)
+    applog.write_last_run({"added": 0, "keyless_skipped": ["adzuna", "careeronestop"]})
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    import gui
+    gui.theme.apply_theme(root)
+    tab = gui.InboxTab(root)
+    try:
+        tab._update_reach_badge()
+        assert "2 sources skipped (no key)" in tab._keyless_lbl.cget("text")
+        # Clearing the skip list blanks the badge on the next update.
+        applog.write_last_run({"added": 3, "keyless_skipped": []})
+        tab._update_reach_badge()
+        assert tab._keyless_lbl.cget("text") == ""
+    finally:
+        root.destroy()
 
 
 def test_hide_stale_filter_drops_evergreen(inbox_tab):
