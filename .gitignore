@@ -60,6 +60,8 @@ legacy/config_dad.json
 /experience.md
 # First-run Setup wizard marker (per-user state, like tracker.db)
 /.onboarded
+# First-run sample-inbox retirement marker (per-user state; §6.1)
+/.demo_inbox_retired
 # Per-user UI preferences (light/dark theme choice)
 /ui_settings.json
 
