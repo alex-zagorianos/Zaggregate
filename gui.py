@@ -1490,14 +1490,24 @@ class InboxTab(ttk.Frame):
     def _update_reach_badge(self):
         """Best-effort: read the last persisted reach snapshot for the active
         project. Never let a reach/coverage error touch the inbox render."""
-        try:
-            from coverage.reach import badge_line, badge_reason, load_latest
-            snap = load_latest(workspace.active_slug() or "root")
-            self._reach_lbl.config(text=badge_line(snap))
-            self._set_reach_fix(badge_reason(snap))
-        except Exception:
+        # While the first-run SAMPLE inbox is on screen there is no real reach
+        # state to describe — the curated demo rows are location-varied by design,
+        # so a real-reach "Seeing mostly remote/tech jobs…" fix badge would
+        # contradict what the user is looking at. The demo banner already tells
+        # them this is a sample; suppress the reach line + fix affordance until a
+        # real inbox exists.
+        if getattr(self, "_demo_active", False):
             self._reach_lbl.config(text="")
             self._set_reach_fix(None)
+        else:
+            try:
+                from coverage.reach import badge_line, badge_reason, load_latest
+                snap = load_latest(workspace.active_slug() or "root")
+                self._reach_lbl.config(text=badge_line(snap))
+                self._set_reach_fix(badge_reason(snap))
+            except Exception:
+                self._reach_lbl.config(text="")
+                self._set_reach_fix(None)
         info = None
         try:
             import applog
@@ -2249,16 +2259,30 @@ class InboxTab(ttk.Frame):
     def _export_rows(self) -> list[dict]:
         """Rows to hand the AI: the entire inbox by default (so it can judge
         relevance over everything and pick a top-X), or just the current
-        filtered view when chosen."""
-        if self._export_scope.get() == "Current view":
-            return self._filtered()
-        return list(self._all)
+        filtered view when chosen. Fictional sample-inbox rows are never
+        exportable (defense in depth — _export_for_ai also blocks while the demo
+        is active), so they can't reach the AI round-trip via any path."""
+        rows = (self._filtered() if self._export_scope.get() == "Current view"
+                else list(self._all))
+        return [r for r in rows if not r.get("is_demo")]
 
     def _export_for_ai(self):
         """Write the round-trip trio (csv+md+prompt) for the chosen inbox scope
         to a timestamped folder under OUTPUT_DIR/rerank, then open the folder."""
         from datetime import datetime
         from rerank.export import export_inbox
+        # The sample inbox is fictional (source "Demo", negative ids): never hand
+        # it to the user's AI as if it were their real scored inbox. Block export
+        # while the demo is active — the same nudge every triage action shows —
+        # so the round-trip only ever carries real jobs.
+        if getattr(self, "_demo_active", False):
+            messagebox.showinfo(
+                "Sample inbox",
+                "These are example jobs to show you what a scored inbox looks "
+                "like — there's nothing real to export yet. Click “Update my "
+                "Inbox now” to pull in real jobs, then export those.",
+                parent=self)
+            return
         rows = self._export_rows()
         if not rows:
             messagebox.showinfo(
