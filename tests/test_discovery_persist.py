@@ -49,6 +49,78 @@ def test_save_companies_creates_missing_file(tmp_path):
     assert json.loads(p.read_text(encoding="utf-8"))["companies"][0]["slug"] == "newco"
 
 
+# ── P0-6: unverified boards persist but are excluded from scraping ─────────────
+from scrape.company_registry import (UNVERIFIED_FLAG, get_registry,  # noqa: E402
+                                     is_unverified, _load_user_companies)
+
+
+def test_unverified_flag_round_trips_through_save_and_load(tmp_path):
+    p = tmp_path / "companies.json"
+    e = CompanyEntry("Dead Board", "greenhouse", "deadslug", ["controls_engineering"],
+                     {UNVERIFIED_FLAG: True})
+    assert save_companies([e], p) == 1
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    rec = [c for c in raw["companies"] if c["name"] == "Dead Board"][0]
+    assert rec["extra"] == {UNVERIFIED_FLAG: True}          # persisted in extra
+    loaded = _load_user_companies(p)
+    assert is_unverified(loaded[0]) is True                 # and reads back
+
+
+def test_get_registry_excludes_unverified_by_default(tmp_path):
+    p = tmp_path / "companies.json"
+    save_companies([
+        CompanyEntry("Live Co", "greenhouse", "liveco", ["controls_engineering"]),
+        CompanyEntry("Dead Co", "greenhouse", "deadco", ["controls_engineering"],
+                     {UNVERIFIED_FLAG: True}),
+    ], p)
+    names = {c.name for c in get_registry("controls_engineering", user_json=p)}
+    assert "Live Co" in names
+    assert "Dead Co" not in names                           # excluded from scraping
+    # ...but visible when explicitly requested (e.g. a prune/manage view).
+    all_names = {c.name for c in get_registry("controls_engineering", user_json=p,
+                                              include_unverified=True)}
+    assert {"Live Co", "Dead Co"} <= all_names
+
+
+def test_reverifying_clears_unverified_via_user_wins(tmp_path):
+    # A board first saved unverified, then re-added after it verifies, is
+    # scraped again: save_companies dedups by (ats_type, slug) so the second
+    # write is a no-op ADD, but the earlier flagged record still excludes it.
+    # The real re-verify path in the GUI overwrites the same name with a fresh
+    # (unflagged) entry, so simulate that by writing the cleared record directly.
+    p = tmp_path / "companies.json"
+    save_companies([CompanyEntry("Flip Co", "greenhouse", "flipco",
+                                 ["controls_engineering"], {UNVERIFIED_FLAG: True})], p)
+    assert "Flip Co" not in {c.name for c in get_registry("controls_engineering", user_json=p)}
+    # Manually clear the flag (what a successful re-probe would persist).
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    for c in raw["companies"]:
+        if c["name"] == "Flip Co":
+            c.pop("extra", None)
+    p.write_text(json.dumps(raw), encoding="utf-8")
+    assert "Flip Co" in {c.name for c in get_registry("controls_engineering", user_json=p)}
+
+
+def test_careers_client_does_not_scrape_unverified(tmp_path, monkeypatch):
+    # End-to-end: the scraper reads get_registry, so a flagged board never
+    # reaches _scrape_one (P0-6). Discovery off so only the base registry is seen.
+    p = tmp_path / "companies.json"
+    save_companies([
+        CompanyEntry("Live Co", "greenhouse", "liveco", ["controls_engineering"]),
+        CompanyEntry("Dead Co", "greenhouse", "deadco", ["controls_engineering"],
+                     {UNVERIFIED_FLAG: True}),
+    ], p)
+    client = CareersClient(cache_dir=tmp_path, cache_enabled=False,
+                           industry_filter="controls_engineering", top_n=0,
+                           discovery_enabled=False, companies_file=p)
+    scraped = []
+    monkeypatch.setattr(client, "_scrape_one",
+                        lambda company, keyword: scraped.append(company.name) or [])
+    client.search_and_parse("controls engineer")
+    assert "Live Co" in scraped
+    assert "Dead Co" not in scraped
+
+
 # ── CareersClient winner tracking ─────────────────────────────────────────────
 
 def test_only_winners_recorded_and_tagged(tmp_path, monkeypatch):

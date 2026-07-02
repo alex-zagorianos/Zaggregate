@@ -12,6 +12,7 @@ Covers:
 """
 import json
 
+import pytest
 import requests
 
 from models import JobResult
@@ -24,7 +25,7 @@ from scrape import (
     workday_scraper,
 )
 from scrape.cache_helpers import is_failed, mark_failed, read_cache
-from scrape.company_registry import CompanyEntry, get_registry
+from scrape.company_registry import CompanyEntry, get_registry, _industry_tag_match
 from tests.scrape._scrape_fakes import patch_session
 
 
@@ -226,6 +227,98 @@ def test_unrelated_user_tag_still_filtered_out(tmp_path):
     cfile.write_text(json.dumps(companies), encoding="utf-8")
     out = get_registry("controls_engineering", user_json=cfile)
     assert not any(c.name == "Bakery Co" for c in out)
+
+
+# ---------------------------------------------------------------------------
+# P0-1 — multi-word industry silently zeroed the careers path
+#
+# The stored company tag keeps its spaces ('warehouse logistics') but the
+# lookup key was normalized to underscores ('warehouse_logistics'); the old
+# body normalized only the key, so ANY 2+word field matched 0 companies. The
+# fix normalizes BOTH sides and matches on whole tokens.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("industry", [
+    "warehouse logistics",
+    "mechanical engineering",
+    "data analytics",
+    "management consulting",
+    # wizard-derived O*NET occupation title (blank field box -> _derive_industry)
+    "Advertising and Promotions Managers",
+])
+def test_multiword_industry_matches_its_own_spaced_tag(industry):
+    # A tag stored exactly as the user typed the field (spaces intact, as
+    # AddCompaniesDialog._add stamps it) must match the normalized lookup key.
+    key = industry.lower().replace(" ", "_")
+    assert _industry_tag_match(key, industry) is True
+    # ...and the raw human string on both sides works too (idempotent normalize).
+    assert _industry_tag_match(industry, industry) is True
+
+
+@pytest.mark.parametrize("industry,tag", [
+    ("warehouse logistics", "warehouse logistics"),
+    ("mechanical engineering", "mechanical engineering"),
+    ("data analytics", "data analytics"),
+    ("management consulting", "management consulting"),
+])
+def test_multiword_seeded_company_is_visible_end_to_end(tmp_path, industry, tag):
+    # The persona-blocking regression: seed a company tagged with a 2-word
+    # field, then confirm get_registry (the ONLY funnel the scraper reads)
+    # actually returns it. Pre-fix this was 0 for every multi-word field.
+    companies = {"companies": [{
+        "name": "Seeded Local Co",
+        "ats_type": "greenhouse",
+        "slug": "seededlocal",
+        "industries": [tag],
+    }]}
+    cfile = tmp_path / "companies.json"
+    cfile.write_text(json.dumps(companies), encoding="utf-8")
+    out = get_registry(industry, user_json=cfile)
+    assert any(c.name == "Seeded Local Co" for c in out), \
+        f"multi-word field {industry!r} did not surface its own seed"
+
+
+def test_hyphenated_field_normalizes_like_spaces(tmp_path):
+    # Hyphen handling is deliberate: 'data-analytics' == 'data analytics'.
+    assert _industry_tag_match("data-analytics", "data analytics") is True
+    assert _industry_tag_match("data_analytics", "data-analytics") is True
+
+
+def test_data_analytics_no_wrong_vertical_health_bleed(tmp_path):
+    # review-coverage.md: 'data analytics' returned 7 wrong-vertical
+    # health-informatics companies (tagged the generic 'analytics') while
+    # EXCLUDING the user's real 'data analytics' seeds. WHY it matched: the old
+    # bidirectional substring test made 'analytics' a substring of
+    # 'data_analytics'. The token-aware fix keeps the generic tag from bleeding
+    # while surfacing the user's own seed.
+    companies = {"companies": [{
+        "name": "Real Data Analytics Co",
+        "ats_type": "greenhouse",
+        "slug": "realdata",
+        "industries": ["data analytics"],
+    }]}
+    cfile = tmp_path / "companies.json"
+    cfile.write_text(json.dumps(companies), encoding="utf-8")
+    out = get_registry("data analytics", user_json=cfile)
+    names = {c.name for c in out}
+    # The user's real seed IS present.
+    assert "Real Data Analytics Co" in names
+    # No hardcoded health-informatics company (tagged the generic 'analytics')
+    # bleeds into a data-analytics search.
+    assert not any("health_informatics" in c.industries for c in out), \
+        f"wrong-vertical bleed: {sorted(names)}"
+    # The generic 'analytics' tag alone must NOT match the compound field.
+    assert _industry_tag_match("data_analytics", "analytics") is False
+
+
+def test_starter_single_token_tag_still_matches_longer_industry():
+    # Regression guard for the existing convention that a short user tag
+    # ('controls') survives a longer field key ('controls_engineering'). This
+    # must remain True even though 'analytics'->'data_analytics' is now False —
+    # the distinction is leading-token prefix vs trailing generic token.
+    assert _industry_tag_match("controls_engineering", "controls") is True
+    assert _industry_tag_match("controls", "controls_engineering") is True
+    # A trailing token is NOT a prefix, so it does not bleed.
+    assert _industry_tag_match("controls_engineering", "engineering") is False
 
 
 # ---------------------------------------------------------------------------

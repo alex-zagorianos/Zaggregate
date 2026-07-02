@@ -2311,10 +2311,28 @@ class TopPicksTab(ttk.Frame):
 
 
 # ── Search tab ────────────────────────────────────────────────────────────────
+def partition_add_entries(entries, status_by_idx):
+    """Split add-companies entries by their probe verdict (P0-6). Returns
+    (verified, unreachable): 'live' and 'direct' rows are verified; 'unreachable'
+    rows failed their live probe. Any row with no recorded verdict is treated as
+    unreachable (unknown-is-unsafe: a board we never confirmed live shouldn't be
+    scraped without the user opting in). Pure/UI-free so it's unit-testable."""
+    verified, unreachable = [], []
+    for i, e in enumerate(entries):
+        kind = status_by_idx.get(i)
+        if kind in ("live", "direct"):
+            verified.append(e)
+        else:
+            unreachable.append(e)
+    return verified, unreachable
+
+
 class AddCompaniesDialog(tk.Toplevel):
-    """Paste career-page URLs -> auto-detect ATS + slug -> (optionally validate
-    the board is live) -> append to companies.json, tagged with the active
-    project's industry so they show up in this campaign's 'careers' searches."""
+    """Paste career-page URLs -> auto-detect ATS + slug -> validate the board is
+    live -> append to companies.json, tagged with the active project's industry
+    so they show up in this campaign's 'careers' searches. Boards that fail the
+    live probe are NOT scraped unless the user explicitly keeps them (they're
+    saved flagged-unverified and excluded until they verify) — P0-6."""
 
     _COLS = [("name", "Name", 170, "w"), ("type", "Type", 95, "w"),
              ("slug", "Slug", 230, "w"), ("status", "Status", 120, "w")]
@@ -2327,6 +2345,13 @@ class AddCompaniesDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         self._entries = []
+        # Probe status per entry (index-aligned with self._entries), set by the
+        # validate worker: "live" / "direct" = verified, "unreachable" = failed
+        # its live probe. Missing = not yet probed. _add gates on this (P0-6).
+        self._status_by_idx: dict[int, str] = {}
+        # Set when _add triggered validation itself; _validate_done then resumes
+        # the add once verdicts are in.
+        self._pending_add = False
         self._build(default_industry)
 
     def _build(self, default_industry):
@@ -2375,6 +2400,8 @@ class AddCompaniesDialog(tk.Toplevel):
         from scrape.ats_detect import parse_line
         lines = self._box.get("1.0", "end").splitlines()
         self._entries = [e for e in (parse_line(l) for l in lines) if e]
+        # Re-detecting rebuilds _entries, so any prior probe verdict is stale.
+        self._status_by_idx = {}
         for r in self._tree.get_children():
             self._tree.delete(r)
         for i, e in enumerate(self._entries):
@@ -2403,11 +2430,15 @@ class AddCompaniesDialog(tk.Toplevel):
         from scrape.ats_detect import probe_count
         for i, e in enumerate(entries):
             if e.ats_type == "direct":
-                self.after(0, self._set_status_cell, i, "direct (manual)")
+                # A 'direct' page is uncountable, not unreachable — the user
+                # supplied the exact careers URL, so treat it as verified-manual.
+                self.after(0, self._set_status_cell, i, "direct (manual)", "direct")
                 continue
             n = probe_count(e)
-            self.after(0, self._set_status_cell, i,
-                       f"live ({n})" if n is not None else "unreachable")
+            if n is not None:
+                self.after(0, self._set_status_cell, i, f"live ({n})", "live")
+            else:
+                self.after(0, self._set_status_cell, i, "unreachable", "unreachable")
         self.after(0, self._validate_done)
 
     def _validate_done(self):
@@ -2418,15 +2449,24 @@ class AddCompaniesDialog(tk.Toplevel):
         self._val_btn.config(state="normal")
         self._detect_btn.config(state="normal")
         self._status.config(text="Validation done.")
+        # If the user hit Add on unvalidated entries, we ran validation for them;
+        # now resume the add with verdicts in hand (P0-6).
+        if self._pending_add:
+            self._pending_add = False
+            self._do_gated_add()
 
-    def _set_status_cell(self, i, txt):
+    def _set_status_cell(self, i, txt, kind=None):
+        # Record the probe verdict regardless of whether the tree still exists,
+        # so _add can gate on it even if the dialog was scrolled/closed-and-
+        # reopened between validate and add.
+        if kind is not None:
+            self._status_by_idx[i] = kind
         if not self.winfo_exists():
             return  # GUI-7: dialog closed before this after() fired
         if self._tree.exists(str(i)):
             self._tree.set(str(i), "status", txt)
 
     def _add(self):
-        from scrape.company_registry import save_companies
         if not self._entries:
             self._detect()
         if not self._entries:
@@ -2435,15 +2475,62 @@ class AddCompaniesDialog(tk.Toplevel):
         ind = self._industry.get().strip()
         for e in self._entries:
             e.industries = [ind] if ind else []
-        added = save_companies(self._entries)
-        skipped = len(self._entries) - added
-        messagebox.showinfo(
-            "Add Companies",
-            f"Added {added} compan(ies) to companies.json."
-            + (f"\nSkipped {skipped} already present." if skipped else ""))
+        # P0-6: the probe verdict must matter, so a board is never saved-as-live
+        # without having been probed. If any entry hasn't been validated yet,
+        # validate now and resume the add when the verdicts land.
+        needs_probe = any(i not in self._status_by_idx
+                          for i in range(len(self._entries)))
+        if needs_probe:
+            self._pending_add = True
+            self._status.config(text="Verifying boards before adding…")
+            self._validate()
+            return
+        self._do_gated_add()
+
+    def _do_gated_add(self):
+        """Persist entries with the probe verdict enforced (P0-6): verified
+        boards (live/direct) are saved normally; unreachable boards are saved
+        only if the user confirms, and then flagged-unverified so they're
+        excluded from scraping until they verify."""
+        from scrape.company_registry import (UNVERIFIED_FLAG, save_companies)
+        verified, unreachable = partition_add_entries(self._entries,
+                                                       self._status_by_idx)
+        keep_unreachable = []
+        if unreachable:
+            names = ", ".join(e.name for e in unreachable[:6])
+            more = "" if len(unreachable) <= 6 else f" (+{len(unreachable) - 6} more)"
+            keep = messagebox.askyesno(
+                "Some boards didn't verify",
+                f"{len(unreachable)} board(s) could not be verified as live:\n"
+                f"  {names}{more}\n\n"
+                "These are usually wrong/guessed ATS slugs. Keep them anyway?\n\n"
+                "If you keep them, they're saved but marked unverified and are "
+                "NOT scraped until they verify (so they can't quietly break every "
+                "future run). Choose No to discard them.")
+            if keep:
+                for e in unreachable:
+                    e.extra = dict(getattr(e, "extra", None) or {})
+                    e.extra[UNVERIFIED_FLAG] = True
+                keep_unreachable = unreachable
+
+        to_save = verified + keep_unreachable
+        added = save_companies(to_save) if to_save else 0
+        dropped = len(unreachable) - len(keep_unreachable)
+        skipped = len(to_save) - added
+        msg = f"Added {added} verified compan(ies) to companies.json."
+        if keep_unreachable:
+            msg += (f"\nKept {len(keep_unreachable)} unverified (excluded from "
+                    "scraping until they verify).")
+        if dropped:
+            msg += f"\nDiscarded {dropped} unreachable board(s)."
+        if skipped:
+            msg += f"\nSkipped {skipped} already present."
+        messagebox.showinfo("Add Companies", msg)
         if added:
             self._status.config(
                 text=f"Added {added}. They're scraped on the next 'careers' search.")
+        else:
+            self._status.config(text="Nothing added.")
 
 
 class BuildCompanyListDialog(tk.Toplevel):

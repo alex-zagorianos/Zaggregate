@@ -20,6 +20,21 @@ class CompanyEntry:
     extra: dict = field(default_factory=dict)
 
 
+# Key inside CompanyEntry.extra marking a board that FAILED its live probe at
+# add-time (P0-6). Such an entry is persisted (so the user's paste isn't lost and
+# they can see/prune it) but is EXCLUDED from scraping until it verifies — a
+# later re-add with a live probe overwrites it (user-wins-by-name) and clears the
+# flag. This is what makes the "+ Add Companies" probe status actually matter
+# instead of being advisory-only.
+UNVERIFIED_FLAG = "unverified"
+
+
+def is_unverified(entry: "CompanyEntry") -> bool:
+    """True when `entry` was flagged unverified (failed its live probe) and must
+    be kept out of scraping until it verifies."""
+    return bool((getattr(entry, "extra", None) or {}).get(UNVERIFIED_FLAG))
+
+
 # ---------------------------------------------------------------------------
 # Health Informatics
 # Greenhouse slugs verified 2026-05-26 against boards-api.greenhouse.io
@@ -231,14 +246,62 @@ def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = 
     return added
 
 
+def _normalize_industry(s: str) -> str:
+    """Canonical industry token form: lowercase, and every word boundary
+    (space or hyphen) folded to a single underscore. So 'Data Analytics',
+    'data analytics', 'data-analytics' and 'data_analytics' all normalize to
+    'data_analytics'. Used on BOTH sides of _industry_tag_match so the lookup
+    key and the stored company tag are always compared apples-to-apples."""
+    import re
+    return re.sub(r"[\s\-_]+", "_", (s or "").strip().lower()).strip("_")
+
+
 def _industry_tag_match(key: str, tag: str) -> bool:
-    """Symmetric industry/tag match. `key` is the normalized --industry value
-    (lowercased, spaces->underscores); `tag` is a company industry tag. A user
-    company tagged 'controls' must survive industry 'controls_engineering', so
-    containment is checked both directions, not just one."""
-    k = key.lower()
-    t = (tag or "").lower()
-    return bool(t) and (k == t or k in t or t in k)
+    """Token-aware, symmetric industry/tag match.
+
+    Both `key` (the --industry value) and `tag` (a company industry tag) are
+    normalized to the same underscore-token form first (P0-1: the old code
+    normalized only the key, so any multi-word field — 'warehouse logistics',
+    'mechanical engineering', 'data analytics' — matched 0 companies because the
+    stored tag kept its spaces).
+
+    Matching is on WHOLE tokens, not raw substrings, which fixes two bugs at
+    once:
+
+      * multi-word fields now match their own seeds (all tokens equal), and
+      * a generic single-token tag no longer bleeds into an unrelated compound
+        field. The old bidirectional substring test let 'analytics' match
+        'data_analytics' (`'analytics' in 'data_analytics'`), so a search for
+        'data analytics' pulled in 7 wrong-vertical health-informatics companies
+        tagged 'analytics' while excluding the user's real 'data analytics'
+        seeds. Whole-token subset matching drops that leak.
+
+    A user company tagged the SHORTER 'controls' must still survive industry
+    'controls_engineering', so the tag-is-subset-of-key direction is kept — but
+    ONLY when the tag is a leading-token prefix of the key ('controls_' heads
+    'controls_engineering'). A trailing generic token ('analytics' in
+    'data_analytics', 'engineering' in 'controls_engineering') is not a
+    prefix, so it no longer matches an unrelated field."""
+    k = _normalize_industry(key)
+    t = _normalize_industry(tag)
+    if not k or not t:
+        return False
+    if k == t:
+        return True
+    ks = [x for x in k.split("_") if x]
+    ts = [x for x in t.split("_") if x]
+    kset, tset = set(ks), set(ts)
+    # Searched field's tokens are all present in the company's (more specific)
+    # tag: a broad 'logistics' search catches a 'warehouse_logistics' company,
+    # and 'controls' catches 'controls_engineering'.
+    if kset <= tset:
+        return True
+    # Company tag is a subset of the searched field, but only when the tag is a
+    # leading-token prefix of the key (so 'controls' -> 'controls_engineering'
+    # still works, while 'analytics' -> 'data_analytics' does not).
+    if tset <= kset and k.startswith(t + "_"):
+        return True
+    return False
 
 
 def has_industry(industry: str | None, user_json: Optional[Path] = None) -> bool:
@@ -272,31 +335,40 @@ def registry_stats(user_json: Optional[Path] = None) -> dict[str, int]:
     return dict(counts)
 
 
-def get_registry(industry: str | None = None, user_json: Optional[Path] = None) -> list[CompanyEntry]:
+def get_registry(industry: str | None = None, user_json: Optional[Path] = None,
+                 include_unverified: bool = False) -> list[CompanyEntry]:
     """Return companies filtered by industry key or tag, merged with user companies.json.
 
     User entries override hardcoded ones by name (case-insensitive match).
     Pass user_json=Path(...) to use a non-default file path.
+
+    By default (include_unverified=False) any user entry flagged unverified
+    (failed its live probe at add-time, P0-6) is EXCLUDED — this is what keeps
+    dead/junk boards from being scraped and re-throwing soft errors every run.
+    Pass include_unverified=True to see them too (e.g. a prune/manage UI).
     """
     user_entries = _load_user_companies(user_json)
+    if not include_unverified:
+        user_entries = [e for e in user_entries if not is_unverified(e)]
 
     # Build base list: hardcoded registry filtered by industry
     if industry is None:
         base = list(REGISTRY)
     else:
-        key = industry.lower().replace(" ", "_")
+        key = _normalize_industry(industry)
         if key in REGISTRIES:
             base = list(REGISTRIES[key])
         else:
             base = [e for e in REGISTRY
                     if any(_industry_tag_match(key, tag) for tag in e.industries)]
 
-    # Filter user entries by industry too. The tag match must be SYMMETRIC:
-    # a user company tagged ['controls'] should survive --industry
-    # controls_engineering (and vice-versa). The old one-way containment
-    # ('controls_engineering' in 'controls') silently dropped partial tags.
+    # Filter user entries by industry too. The tag match is symmetric and
+    # token-aware (see _industry_tag_match): a user company tagged ['controls']
+    # survives --industry controls_engineering, and a multi-word field
+    # ('warehouse logistics') now matches its own seeds instead of silently
+    # dropping every one of them (P0-1).
     if industry is not None:
-        key = industry.lower().replace(" ", "_")
+        key = _normalize_industry(industry)
         user_entries = [
             e for e in user_entries
             if not e.industries or any(_industry_tag_match(key, t) for t in e.industries)

@@ -99,9 +99,13 @@ GUIDE = [
              "list. Ask your AI assistant (a free tier is fine): “List the 25 "
              "largest employers of [your kind of work] in [your city], with a "
              "link to each one's careers page, one per line as Name | link.” "
-             "Paste its answer straight into “+ Add Companies”. Anything the AI "
-             "got wrong simply fails verification — nothing bad can sneak in. "
-             "Ten minutes of this gives you a watch-list no job board offers."),
+             "Paste its answer straight into “+ Add Companies”. The app probes "
+             "each board live before saving: verified boards are added and "
+             "scraped, and anything that fails verification (a wrong or guessed "
+             "link) is either discarded or, if you choose to keep it, saved "
+             "marked unverified and left out of your searches until it checks "
+             "out — so a bad guess can't quietly break future runs. Ten minutes "
+             "of this gives you a watch-list no job board offers."),
     ("h2", "Tell the app your field"),
     ("body", "In the Setup Wizard, the “What kind of work?” answer does more "
              "than fill a label: it routes which categories are fetched from "

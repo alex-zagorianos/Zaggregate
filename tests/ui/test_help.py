@@ -50,6 +50,19 @@ def test_guide_goes_deep_on_source_setup():
     assert "largest employers" in blob
 
 
+def test_guide_add_companies_copy_is_truthful_about_verification():
+    # P0-6: the old copy claimed unverified boards "simply fail verification —
+    # nothing bad can sneak in", but every parsed line was saved and re-scraped
+    # forever. The corrected copy must not overpromise, and must tell the user
+    # what actually happens to a board that fails the live probe.
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    assert "nothing bad can sneak in" not in blob      # the false claim is gone
+    # The copy now describes the real behavior: unverified boards are kept out
+    # of searches until they verify.
+    assert "unverified" in blob
+    assert "fails verification" in blob
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 
