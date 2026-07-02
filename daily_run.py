@@ -214,8 +214,13 @@ def main():
     parser.add_argument("--max-pages", type=int, default=2)
     args = parser.parse_args()
 
-    if args.project and not args.user_config:
-        workspace.set_active(args.project)
+    # A scoped `--project` run must NOT rewrite projects.json 'active' as a side
+    # effect (S32/L1): doing so silently flips which project the user's GUI opens
+    # to next launch. We intentionally do NOT call workspace.set_active here — the
+    # process-local pin below already resolves EVERY db/config/output path in this
+    # process to the requested project regardless of projects.json, which is all a
+    # scoped run needs. (A future "run AND make this active" behavior should be an
+    # explicit flag, not the default for every --project run.)
 
     # Pin this run to ONE project for the whole process, so a concurrent
     # projects.json write — a second daily_run, or a GUI project switch — can't
@@ -223,6 +228,12 @@ def main():
     # the global 'active' on every call). Pin the explicit --project, else
     # whatever is active now. run_main() unpins in its finally.
     workspace.pin_active(args.project or workspace.active_slug())
+
+    # Reset the run-scoped "warn once" set so keyless-source skip + "verify
+    # manually" notices print ONCE this run instead of per keyword/company per
+    # pass (S32/L7) — presentation only, no scraping change.
+    import applog
+    applog.reset_run_warnings()
 
     from search.cli import build_clients, load_user_config
     from search.search_engine import SearchEngine
