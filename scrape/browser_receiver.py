@@ -76,6 +76,131 @@ def status():
     return jsonify({"status": "ok", "port": PORT})
 
 
+def _active_industry() -> str:
+    """The active project's industry field (raw text, e.g. 'mechanical
+    engineering'), '' if none. Tags clipped boards so the token-aware registry
+    matcher (_industry_tag_match) surfaces them in this campaign's 'careers'
+    searches — the same tag the '+ Add Companies' dialog writes from the active
+    project. An empty industry saves the board UNTAGGED, which get_registry
+    treats as visible to every search (company_registry: `not e.industries or
+    ...`), so a keyless/eng-agnostic user's clip still shows up everywhere."""
+    try:
+        return (workspace.load_config().get("industry") or "").strip()
+    except Exception:
+        return ""
+
+
+def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None):
+    """Pure core of the /clip endpoint (HTTP-free, unit-testable).
+
+    Resolve a clipped job-posting/board URL to its board root, probe it live,
+    and — only if it verifies — persist it to the registry tagged with the
+    active project's industry. Returns a verdict dict the extension renders:
+
+        {"status": "added"|"duplicate"|"failed",
+         "ats_type": str, "company": str, "slug": str,
+         "live_count": int|None, "industry": str, "reason": str}
+
+    Verdict paths (P0-6, but stricter — a one-click clip never saves an
+    unverified board; the whole value of clip-to-seed is that the user is on the
+    *real* live board, so we can and must verify at clip time):
+
+      * resolvable ATS board, probe live  -> "added"   (saved, tagged)
+      * resolvable ATS board, already in registry (dedup by ats_type/slug or
+        name) -> "duplicate" (nothing written)
+      * resolvable ATS board, probe fails  -> "failed" reason=unreachable
+        (NOT saved — an unreachable board is exactly the dead slug the gate
+        exists to keep out)
+      * unresolvable page ('direct' fallback / junk / off-board) -> "failed"
+        reason=unresolvable (NOT saved)
+
+    ``probe_fn`` (defaults to ats_detect.probe_count) and ``json_path`` are
+    injectable so tests never touch the network or the real companies.json."""
+    from scrape.ats_detect import resolve_board, probe_count
+    from scrape.company_registry import (CompanyEntry, get_registry,
+                                         save_companies)
+    if probe_fn is None:
+        probe_fn = probe_count
+
+    url = (url or "").strip()
+    if not url or not _safe_http_url(
+            url if "://" in url else "https://" + url):
+        return {"status": "failed", "reason": "unresolvable", "ats_type": "",
+                "company": "", "slug": "", "live_count": None,
+                "industry": industry}
+
+    board = resolve_board(url, page_title)
+    ats, slug, company = board["ats_type"], board["slug"], board["name"]
+    verdict = {"ats_type": ats, "company": company, "slug": slug,
+               "live_count": None, "industry": industry}
+
+    if not board["resolvable"]:
+        # A generic careers page / search result / non-board page. We can't
+        # verify a live board here, so we report why instead of dumping the raw
+        # URL into the registry (that's the coin-flip seeding clip-to-seed
+        # exists to replace).
+        verdict.update(status="failed", reason="unresolvable")
+        return verdict
+
+    entry = CompanyEntry(name=company, ats_type=ats, slug=slug,
+                         industries=[industry] if industry else [])
+
+    # Duplicate re-clip: already in the registry by (ats_type, slug) or name?
+    # save_companies would no-op it, but the user deserves an explicit
+    # "already have this" rather than a silent "added 0".
+    for existing in get_registry(include_unverified=True, user_json=json_path):
+        if ((existing.ats_type, existing.slug) == (ats, slug)
+                or existing.name.lower() == company.lower()):
+            verdict.update(status="duplicate", reason="already_in_registry")
+            return verdict
+
+    # Verify live at clip time. probe_count returns an int for a reachable
+    # board, None for unreachable/uncountable — a resolvable ATS that can't be
+    # probed is treated as unreachable and NOT saved.
+    count = probe_fn(entry)
+    if count is None:
+        verdict.update(status="failed", reason="unreachable")
+        return verdict
+
+    verdict["live_count"] = count
+    added = save_companies([entry], json_path=json_path)
+    verdict.update(status="added" if added else "duplicate",
+                   reason="verified_live" if added else "already_in_registry")
+    return verdict
+
+
+@app.route("/clip", methods=["POST", "OPTIONS"])
+def clip():
+    """One-click 'Add this employer's board to my registry' from the browser.
+
+    Body: {"url": <job-posting or board URL>, "page_title": <optional>}.
+    Resolves the board root, verifies it's live, and saves it (tagged with the
+    active project's industry) — or returns a clear failure verdict. Assisted,
+    never auto: this ADDS A BOARD to the registry; it never applies or submits
+    anything."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+
+    # Same origin gate as /harvest: this writes to companies.json and probes the
+    # network, so only our extension or a loopback caller may reach it.
+    if not _origin_allowed(request.headers.get("Origin", "")):
+        return jsonify({"error": "Forbidden origin"}), 403
+
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict) or not (data.get("url") or "").strip():
+        return jsonify({"error": "Expected JSON with a 'url'"}), 400
+
+    verdict = clip_board(data.get("url"), data.get("page_title", ""),
+                         industry=_active_industry())
+    # A failure to resolve/verify is a normal verdict, not a server error —
+    # the extension renders {status: failed, reason: ...} the same way it
+    # renders success. Keep HTTP 200 so the JS stays thin (no status-code
+    # branching); the payload carries the outcome.
+    print(f"[receiver] clip {verdict['status']} — {verdict.get('company') or '?'} "
+          f"({verdict['ats_type'] or '?'}) reason={verdict.get('reason')}")
+    return jsonify(verdict)
+
+
 @app.route("/harvest", methods=["POST", "OPTIONS"])
 def harvest():
     if request.method == "OPTIONS":
