@@ -4,6 +4,37 @@
 
 ---
 
+## Session 32 (2026-07-02) — Full improvement-plan rollout: 19 builders + review fleet + live smoke ✅
+
+Alex: "roll out fixes/changes/improvements with Opus subagents; breadth/quality =
+yes; keep sending waves until all changes are made and reviewed." Built the ENTIRE
+S31 plan. **Wave 1** (7 builders): all P0s — token-aware industry matching +
+probe-gated seeding, seniority/country/salary/label scoring honesty, Adzuna/USAJobs
+remote queries + remote_intent, Workday `wday/cxs` fetcher (live-validated;
+Cloudflare tenants still walled), taxonomy rules, set_active/UnknownFieldError/
+Top-Picks/warn_once lifecycle fixes, wizard keys step + keyless-skip badge.
+**Wave 2** (6): wizard v2 (presets, DEMO inbox, update-now terminal action, keys
+UX, actionable reach badge, Jobs-For-You), ui/ai_setup.py BYO-AI setup + MCP
+seed_companies + SOC aliases, Seed-My-Area Leg B (Business Finder, key-gated),
+REAP/EdJoin + Himalayas country=US, Kanban Board tab + ATS match hint + QW-7
+positioning, browser clip-to-seed (/clip + ext v1.5 — **needs unpacked reload**).
+**Wave 3**: wizard AI express-lane + workday migration script → **APPLIED: CCH
+(479 jobs) + Bon Secours (96) now live via cxs**. **Review fleet** (20 agents,
+7 dims): 13 CONFIRMED / 0 refuted — CRITICAL rescore-drift (end-of-run rescore
+erased the new scoring levers; parity test was blind), applog secret-scrubber
+INERT since S29 (wrong-arity call), REAP inert from GUI, unverified-flag permanent
+lockout, demo rows in AI export, + 8 more → 5 fix builders, ALL merged. **Live
+smoke** (3 blank slates): marketing-remote **8→36 inboxed (Adzuna remote 0→114
+raw)**; warehouse/teacher machinery proven (P0-1 15 seeds matched, 15/15 cxs
+probes, REAP 13 OH rows), P0-4 verified live; + final builder fixed cxs
+walled-vs-empty probe verdicts. Suite **1744 → 2176+ green at every merge**;
+**~195 ahead, PUSH HELD**. Needs Alex: eyeball `py gui.py`, reload extension,
+CareerOneStop key, push decision. Detail:
+`docs/handoffs/handoff_20260702_session32.md` + smoke report in
+`brain/general-user-tests-2026-07/`.
+
+---
+
 ## Session 31 (2026-07-02 overnight) — Repo reorg + 8-persona general-user tests → improvement plan ✅
 
 Fable 5 orchestrating an Opus fleet while Alex slept. (1) Repo-root reorg
