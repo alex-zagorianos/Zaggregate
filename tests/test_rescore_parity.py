@@ -80,3 +80,52 @@ def test_rescore_twice_is_idempotent(tmp_inbox):
     r1 = rescore_inbox.rescore(db_path=tmp_inbox, cfg=EXEC_CFG)
     r2 = rescore_inbox.rescore(db_path=tmp_inbox, cfg=EXEC_CFG)
     assert r1["after"] == r2["after"]
+
+
+# S32 honesty levers (seniority_target / years_cap / title_context_required from
+# cfg, remote_regions_ok from preferences 'hard'). daily_run.py:409-419 passes all
+# four at insert; the rescore MUST pass them too or the over-target down-nudge,
+# title-context cap, and region handling are silently reverted every run. EXEC_CFG
+# above sets NONE of these, so it can't catch the drift -- this cfg trips one.
+LEVER_CFG = {
+    "keywords": ["software engineer"],
+    "location": "Cincinnati, OH",
+    "salary_min": None,
+    "exclude_keywords": [],
+    "seniority_target": "entry",
+    "years_cap": 3,
+}
+
+
+def test_rescore_preserves_seniority_target_lever(tmp_inbox):
+    # An entry-target profile viewing a 'Senior ... 8+ years' role: the insert
+    # applies an over-target down-nudge. Before the fix the rescore, which passed
+    # NONE of the four levers, re-inflated the score and stripped the note.
+    j = JobResult(
+        title="Senior Software Engineer", company="Acme", location="Cincinnati, OH",
+        salary_min=None, salary_max=None,
+        description="8+ years of experience required.", url="http://x/lever",
+        source_keyword="", created="", source_api="t")
+    score_jobs([j], keywords=LEVER_CFG["keywords"], location=LEVER_CFG["location"],
+               salary_floor=None, exclude_keywords=[], remote_ok=True,
+               seniority_target=LEVER_CFG["seniority_target"],
+               years_cap=LEVER_CFG["years_cap"])
+    db.inbox_add_many([j])
+
+    conn = sqlite3.connect(str(tmp_inbox))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT score, score_notes FROM inbox").fetchone()
+    before, before_notes = row["score"], row["score_notes"]
+    conn.close()
+    assert "over-target" in before_notes  # insert actually tripped the lever
+
+    rescore_inbox.rescore(db_path=tmp_inbox, cfg=LEVER_CFG)
+
+    conn = sqlite3.connect(str(tmp_inbox))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT score, score_notes FROM inbox").fetchone()
+    after, after_notes = row["score"], row["score_notes"]
+    conn.close()
+
+    assert after == before, "rescore drifted the seniority-target down-nudge"
+    assert "over-target" in after_notes, "rescore erased the 'over-target' note"

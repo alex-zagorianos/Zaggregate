@@ -30,6 +30,17 @@ def _remote_ok() -> bool:
         return True
 
 
+def _remote_regions_ok() -> bool:
+    """Mirror daily_run.py:404-408 -- remote_regions_ok is read from
+    preferences.json's 'hard' block (default False), NOT from cfg. Threading it
+    into the rescore keeps the region-remote handling daily_run applied at insert."""
+    try:
+        import preferences
+        return bool(preferences.load().get("hard", {}).get("remote_regions_ok", False))
+    except Exception:
+        return False
+
+
 def rescore(db_path=None, cfg=None, dry_run=False):
     db_path = db_path or current_db_path()
     cfg = cfg or _cfg()
@@ -61,6 +72,11 @@ def rescore(db_path=None, cfg=None, dry_run=False):
     # (exec adjustment) and semantic_profile itself, and pass remote_ok from
     # preferences. Previously this called score_job WITHOUT those three, silently
     # erasing the exec +/-15/16 adjustment daily_run applies at insert (P0#7).
+    # It ALSO omitted the four S32 honesty levers (seniority_target / years_cap /
+    # title_context_required from cfg, remote_regions_ok from preferences 'hard'),
+    # so the over-target down-nudge, title-context cap, and region-remote handling
+    # daily_run.py:409-419 applied at insert were silently reverted every run. Pass
+    # all four here EXACTLY as daily_run does so daily-run-then-rescore is stable.
     # score_jobs SORTS in place, so we hold (row, job) pairs and read each job's
     # own .score/.score_notes back rather than relying on positional order.
     score_jobs(
@@ -70,6 +86,10 @@ def rescore(db_path=None, cfg=None, dry_run=False):
         title_miss_penalty=cfg.get("title_miss_penalty"),
         seniority_exclude=cfg.get("seniority_exclude"),
         remote_ok=_remote_ok(),
+        seniority_target=cfg.get("seniority_target"),
+        years_cap=cfg.get("years_cap"),
+        remote_regions_ok=_remote_regions_ok(),
+        title_context_required=cfg.get("title_context_required"),
     )
 
     after = []
