@@ -59,7 +59,14 @@ async function checkReceiver() {
       return true;
     }
   } catch (_) {}
-  setStatus("Start receiver: py -m scrape.browser_receiver", "err");
+  // A general user never runs `py -m scrape.browser_receiver` — the receiver is
+  // embedded in the desktop app. Point them at the real toggle; keep the CLI as
+  // a secondary parenthetical for anyone running the standalone process.
+  setStatus(
+    "Open Zaggregate → Tools → Capture jobs from my browser… " +
+      "(or run: py -m scrape.browser_receiver)",
+    "err",
+  );
   sendBtn.disabled = true;
   clipBtn.disabled = true;
   return false;
@@ -103,17 +110,35 @@ sendBtn.addEventListener("click", async () => {
   }
 });
 
-// Track all jobs directly in the tracker as "interested"
-trackBtn.addEventListener("click", async () => {
-  trackBtn.disabled = true;
-  setStatus("Adding to tracker...");
-  const stored = await chrome.storage.local.get("jobs");
-  const jobs = stored.jobs || [];
-  if (jobs.length === 0) {
-    setStatus("Nothing to track.");
-    return;
+// Track all collected jobs as "interested". Single-port story: try the
+// receiver's /track first (the embedded receiver a general user already has ON),
+// and only fall back to the legacy per-job 5001 tracker.app loop if the receiver
+// isn't reachable — so nothing regresses for anyone still running tracker.app.
+async function trackViaReceiver(jobs) {
+  // Returns {added, failed} on success, or null if the receiver is unreachable
+  // (so the caller can fall back). A non-OK HTTP response is a real error, not
+  // "unreachable", so it does NOT trigger the fallback.
+  try {
+    const resp = await fetch(`${RECEIVER_URL}/track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobs }),
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.error || resp.statusText);
+    }
+    return await resp.json();
+  } catch (e) {
+    // Connection failure (receiver down) -> signal fallback. Distinguish a
+    // network error (TypeError from fetch) from an HTTP error we threw above.
+    if (e instanceof TypeError) return null;
+    throw e;
   }
+}
 
+async function trackViaTrackerApp(jobs) {
+  // Legacy path: per-job POST to tracker.app on port 5001.
   let added = 0;
   let failed = 0;
   for (const job of jobs) {
@@ -137,17 +162,48 @@ trackBtn.addEventListener("click", async () => {
       failed++;
     }
   }
+  return { added, failed };
+}
 
-  if (failed === 0) {
+trackBtn.addEventListener("click", async () => {
+  trackBtn.disabled = true;
+  setStatus("Adding to tracker...");
+  const stored = await chrome.storage.local.get("jobs");
+  const jobs = stored.jobs || [];
+  if (jobs.length === 0) {
+    setStatus("Nothing to track.");
+    trackBtn.disabled = false;
+    return;
+  }
+
+  let result;
+  try {
+    result = await trackViaReceiver(jobs);
+    if (result === null) {
+      // Receiver down — fall back to the standalone tracker.app loop.
+      result = await trackViaTrackerApp(jobs);
+    }
+  } catch (e) {
+    setStatus(`Error adding to tracker: ${e.message}`, "err");
+    trackBtn.disabled = false;
+    return;
+  }
+
+  const { added, failed } = result;
+  if (failed === 0 && added > 0) {
     setStatus(`${added} jobs added to tracker`, "ok");
     await chrome.storage.local.set({ jobs: [] });
     chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
     await refreshCount();
   } else if (added > 0) {
-    setStatus(`${added} added, ${failed} failed - is tracker running?`, "err");
+    setStatus(`${added} added, ${failed} failed`, "err");
     trackBtn.disabled = false;
   } else {
-    setStatus("Could not reach tracker. Start it: py -m tracker.app", "err");
+    setStatus(
+      "Could not add to tracker. Turn on Zaggregate → Tools → " +
+        "Capture jobs from my browser… (or run: py -m tracker.app)",
+      "err",
+    );
     trackBtn.disabled = false;
   }
 });
