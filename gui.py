@@ -1188,6 +1188,15 @@ class InboxTab(ttk.Frame):
         self._lastrun_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
                                      fg=theme.MUTED, font=theme.FONT_SM)
         self._lastrun_lbl.pack(side="right", padx=14)
+        # Silent-zero surfacing: sources that self-skipped last run for a missing
+        # free key contribute 0 with only console lines today. Name the count and
+        # the one-click fix, in the WARN color so it reads as actionable. Click
+        # opens the same 'Connect job sources' dialog. Blank when nothing skipped.
+        self._keyless_lbl = tk.Label(hdr, text="", bg=theme.SURFACE,
+                                     fg=theme.WARN, font=theme.FONT_SM,
+                                     cursor="hand2")
+        self._keyless_lbl.pack(side="right", padx=14)
+        self._keyless_lbl.bind("<Button-1>", lambda _e: self._open_source_keys())
         theme.tip_strip(
             self, "Your shortlist. Pick jobs you like and click "
                   "“Track ▸ Interested” — they move to Apply Queue. "
@@ -1449,6 +1458,7 @@ class InboxTab(ttk.Frame):
             self._reach_lbl.config(text=badge_line(snap))
         except Exception:
             self._reach_lbl.config(text="")
+        info = None
         try:
             import applog
             info = applog.last_run_info(workspace.active_slug())
@@ -1460,6 +1470,42 @@ class InboxTab(ttk.Frame):
                 self._lastrun_lbl.config(text="")
         except Exception:
             self._lastrun_lbl.config(text="")
+        # Silent-zero: name the sources that self-skipped for a missing free key.
+        try:
+            self._keyless_lbl.config(text=self._keyless_badge_text(info))
+        except Exception:
+            self._keyless_lbl.config(text="")
+
+    @staticmethod
+    def _keyless_badge_text(last_run_info: dict | None) -> str:
+        """Compact, actionable line from last_run.json's keyless_skipped list.
+        Empty when nothing skipped or no run yet. Pure/static so it is unit-
+        testable without a Tk root. The count comes from the actual run's skip
+        events, never a hardcoded source list."""
+        skipped = (last_run_info or {}).get("keyless_skipped") or []
+        n = len(skipped)
+        if not n:
+            return ""
+        noun = "source" if n == 1 else "sources"
+        return (f"{n} {noun} skipped (no key) — "
+                f"unlock in Tools ▸ Connect job sources")
+
+    def _open_source_keys(self):
+        """Open the existing 'Connect job sources' dialog from the Inbox header's
+        keyless badge. Self-contained + guarded so a not-yet-merged/headless build
+        degrades gracefully instead of crashing the tab."""
+        try:
+            from ui import source_keys
+        except ImportError:
+            messagebox.showinfo(
+                "Connect job sources",
+                "Job-source key management isn't available in this build yet.",
+                parent=self)
+            return
+        try:
+            source_keys.open_dialog(self.winfo_toplevel())
+        except Exception as e:
+            messagebox.showerror("Connect job sources", str(e), parent=self)
 
     # ── Update my Inbox now (the daily loop, in-GUI) ──────────────────────────
     def _update_inbox_now(self):

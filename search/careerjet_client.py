@@ -20,6 +20,13 @@ class CareerjetClient(SingleFeedClient):
         # import) so an affid pasted into the in-app box is honored.
         return config.resolve_secret("CAREERJET_AFFID", "careerjet_affid")
 
+    @classmethod
+    def keyless(cls) -> bool:
+        """True when this client will self-skip for a missing affiliate id — the
+        SAME predicate search() uses. Lets build_clients count the keyless skip
+        from the source's own logic (not a hardcoded list)."""
+        return not cls._affid()
+
     def search(self, keyword: str, location: str = "", salary_min: Optional[int] = None,
                page: int = 1) -> dict:
         if page > 1:

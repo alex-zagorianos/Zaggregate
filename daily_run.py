@@ -298,8 +298,12 @@ def main():
     # DEFAULT now flips ON above ~200 registry companies (a full O(N) daily
     # scrape of a large registry is both the speed problem and a 429 contributor).
     tiered = _tiered_default(cfg, industry)
+    # Collect which sources are silently contributing zero for lack of a FREE key
+    # this run, so the GUI can surface it (review: keyless self-skips leave only
+    # console lines). Populated from the sources' own skip conditions.
+    keyless_skipped: list[str] = []
     clients = build_clients(sources, cache_enabled=True, industry_filter=industry,
-                            tiered_careers=tiered)
+                            tiered_careers=tiered, skipped_keyless=keyless_skipped)
     if not clients:
         log("ABORT: no sources could be initialized (check .env).")
         # Don't leave the beacon row stuck 'running' — this is a failed run.
@@ -570,6 +574,9 @@ def main():
             "capped": cap_overflow,
             "followups_due": followups_due,
             "errors": errors,
+            # Sources that self-skipped this run for a missing free key — the GUI
+            # turns this into an actionable "N sources skipped (no key)" line.
+            "keyless_skipped": list(keyless_skipped),
         }, project_slug=run_project or None)
     except Exception as e:  # status reporting must never kill a run
         log(f"WARN: last_run.json write skipped: {type(e).__name__}: {e}")

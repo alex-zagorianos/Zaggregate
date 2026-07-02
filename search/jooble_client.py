@@ -20,6 +20,13 @@ class JoobleClient(SingleFeedClient):
         # import) so a key pasted into the in-app box is honored without restart.
         return config.resolve_secret("JOOBLE_API_KEY", "jooble_api_key")
 
+    @classmethod
+    def keyless(cls) -> bool:
+        """True when this client will self-skip for a missing API key — the SAME
+        predicate search() uses. Lets build_clients count the keyless skip from
+        the source's own logic (not a hardcoded list)."""
+        return not cls._api_key()
+
     def search(self, keyword: str, location: str = "", salary_min: Optional[int] = None,
                page: int = 1) -> dict:
         if page > 1:

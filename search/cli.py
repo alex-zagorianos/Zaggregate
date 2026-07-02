@@ -55,8 +55,22 @@ def build_clients(
     discovery_enabled: bool = True,
     companies_file: Path | None = None,
     tiered_careers: bool = False,
+    skipped_keyless: list[str] | None = None,
 ) -> list[JobAPIClient]:
+    """Build the requested source clients.
+
+    skipped_keyless (optional out-param): if a list is passed, the source names
+    that were skipped/inert THIS build because their FREE key was missing are
+    appended to it — from the ACTUAL skip conditions (the ValueError raised by a
+    key-gated client, or a registered client reporting keyless() is True), never
+    a hardcoded source list. The caller surfaces this so a user learns which
+    sources are contributing zero for lack of a key (review: silent self-skip).
+    """
     clients: list[JobAPIClient] = []
+
+    def _note_keyless(name: str) -> None:
+        if skipped_keyless is not None and name not in skipped_keyless:
+            skipped_keyless.append(name)
     # Route per-source init failures/skips through the logging framework so a
     # keyless-skip or throttle finally PERSISTS to <data>/logs/app.log (a friend
     # can send it) instead of print()-ing to a console the frozen exe discards.
@@ -70,6 +84,7 @@ def build_clients(
                 clients.append(AdzunaClient(cache_enabled=cache_enabled))
             except ValueError as e:
                 slog.info(f"  [adzuna] Skipping — {e}")
+                _note_keyless("adzuna")
 
         elif source == "jsearch":
             try:
@@ -80,12 +95,14 @@ def build_clients(
                 )
             except ValueError as e:
                 slog.info(f"  [jsearch] Skipping — {e}")
+                _note_keyless("jsearch")
 
         elif source == "usajobs":
             try:
                 clients.append(USAJobsClient(cache_enabled=cache_enabled))
             except ValueError as e:
                 slog.info(f"  [usajobs] Skipping — {e}")
+                _note_keyless("usajobs")
 
         elif source == "careeronestop":
             from search.careeronestop_client import CareerOneStopClient
@@ -93,6 +110,7 @@ def build_clients(
                 clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
             except ValueError as e:
                 slog.info(f"  [careeronestop] Skipping — {e}")
+                _note_keyless("careeronestop")
 
         elif source == "themuse":
             from search.themuse_client import TheMuseClient
@@ -135,11 +153,24 @@ def build_clients(
 
         elif source == "jooble":
             from search.jooble_client import JoobleClient
-            clients.append(JoobleClient(cache_enabled=cache_enabled))
+            c = JoobleClient(cache_enabled=cache_enabled)
+            clients.append(c)
+            # Registers unconditionally then self-skips at fetch time when
+            # unkeyed; ask the client's OWN key predicate so the count tracks the
+            # real skip condition, not a source list here.
+            if getattr(c, "keyless", lambda: False)():
+                slog.info("  [jooble] JOOBLE_API_KEY unset — will self-skip "
+                          "(free key at jooble.org/api/about).")
+                _note_keyless("jooble")
 
         elif source == "careerjet":
             from search.careerjet_client import CareerjetClient
-            clients.append(CareerjetClient(cache_enabled=cache_enabled))
+            c = CareerjetClient(cache_enabled=cache_enabled)
+            clients.append(c)
+            if getattr(c, "keyless", lambda: False)():
+                slog.info("  [careerjet] CAREERJET_AFFID unset — will self-skip "
+                          "(free affiliate id at careerjet.com/partners).")
+                _note_keyless("careerjet")
 
         elif source == "linkedin_guest":
             from search.linkedin_guest_client import LinkedInGuestClient
@@ -155,6 +186,7 @@ def build_clients(
                           f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
             except ValueError as e:
                 slog.info(f"  [serpapi] Skipping — {e}")
+                _note_keyless("serpapi")
 
         elif source == "weworkremotely":
             from search.weworkremotely_client import WeWorkRemotelyClient
