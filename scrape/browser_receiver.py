@@ -322,6 +322,12 @@ def harvest():
     if not data or "jobs" not in data:
         return jsonify({"error": "Expected JSON with 'jobs' array"}), 400
 
+    # Manual sends (the popup's Send button) open the HTML report in a browser
+    # tab; the auto-send path passes open_report=false so a background flush
+    # never throws a surprise tab up mid-scroll. Default True keeps manual
+    # behavior unchanged for any caller that omits the flag.
+    open_report = data.get("open_report", True) is not False
+
     raw_jobs = data["jobs"]
     if not isinstance(raw_jobs, list) or len(raw_jobs) == 0:
         return jsonify({"error": "No jobs received"}), 400
@@ -393,7 +399,8 @@ def harvest():
         # The report already saved; a scoring/DB hiccup shouldn't lose the run.
         print(f"[receiver] inbox routing failed - {e}")
 
-    webbrowser.open(html_path.as_uri())
+    if open_report:
+        webbrowser.open(html_path.as_uri())
 
     _bump_capture(len(results))
     print(f"\n[receiver] {len(results)} jobs received -> {html_path.name} "
@@ -405,6 +412,68 @@ def harvest():
         "html": str(html_path),
         "csv":  str(csv_path),
     })
+
+
+@app.route("/track", methods=["POST", "OPTIONS"])
+def track():
+    """Add the popup's collected jobs straight into the tracker as 'interested',
+    so a general user never needs the separate `py -m tracker.app` (port 5001)
+    server running. Body: {"jobs": [...]} in the SAME job-dict shape as /harvest.
+
+    Writes to the tracker DB via the tracker's own add path (tracker.db.add_job,
+    exactly what tracker.app's /api/add uses) — no hand-rolled SQL. Per the
+    embedded-receiver rule (module comment): this resolves the ACTIVE project
+    per-request (init_db opens the active project's DB) and takes NO process-wide
+    pin, so tracked jobs land in the project the user is looking at. Returns
+    {added, failed}."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+
+    # Same origin gate as /harvest — this mutates the tracker DB, so an
+    # origin-less or foreign POST is rejected before any row is written.
+    if not _origin_allowed(request.headers.get("Origin", "")):
+        return jsonify({"error": "Forbidden origin"}), 403
+
+    data = request.get_json(force=True, silent=True)
+    if not data or "jobs" not in data:
+        return jsonify({"error": "Expected JSON with 'jobs' array"}), 400
+
+    raw_jobs = data["jobs"]
+    if not isinstance(raw_jobs, list) or len(raw_jobs) == 0:
+        return jsonify({"error": "No jobs received"}), 400
+
+    from tracker.db import add_job, init_db
+    init_db()  # resolve + migrate the ACTIVE project's DB per-request (no pin)
+
+    added = 0
+    failed = 0
+    for j in raw_jobs:
+        if not isinstance(j, dict):
+            failed += 1
+            continue
+        title = (j.get("title") or "").strip()
+        company = (j.get("company") or "").strip()
+        # Mirror tracker.app /api/add: title+company are the minimum to file a row.
+        if not title or not company:
+            failed += 1
+            continue
+        try:
+            add_job(
+                title=title,
+                company=company,
+                location=(j.get("location") or "").strip(),
+                url=(j.get("url") or "").strip(),
+                salary_text=(j.get("salary_text") or "").strip(),
+                source=j.get("source", "browser"),
+                status="interested",
+            )
+            added += 1
+        except Exception as e:
+            print(f"[receiver] track: failed to add '{title}' — {e}")
+            failed += 1
+
+    print(f"[receiver] track: {added} added, {failed} failed")
+    return jsonify({"added": added, "failed": failed})
 
 
 def _to_job_result(j) -> JobResult | None:

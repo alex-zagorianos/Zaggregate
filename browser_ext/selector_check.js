@@ -1,134 +1,44 @@
-// Job Harvester — selector rot self-check.
-// Open a LinkedIn or Indeed JOBS SEARCH results page (the list view), THEN
-// click a job so its detail pane is showing. Open DevTools (F12) -> Console,
-// paste this whole file, press Enter. It runs the extension's real content.js
-// selectors (both the CARD list layer and the DETAIL pane layer) against the
-// live DOM and reports what still matches. Paste the output back to Claude to
-// patch any rotted selectors.
+// Job Harvester — selector-rot audit.
+//
+// Two ways to run it:
+//   * ONE CLICK (normal): the popup's "Health check" button injects selectors.js
+//     then THIS file into the active tab (chrome.scripting), and shows the report
+//     it returns. Nothing to paste.
+//   * MANUAL (console): open a LinkedIn/Indeed jobs SEARCH results page, click a
+//     job so its detail pane shows, open DevTools (F12) -> Console, paste
+//     selectors.js FIRST (it defines the registries), then paste THIS file. Copy
+//     the printed report back to Claude to patch any rotted selectors.
+//
+// This file has NO selector registry of its own — it reads SITES / DETAIL from
+// selectors.js, the single source of truth the live harvester (content.js) uses.
+// That's the whole point: the audit can never disagree with what actually runs.
+// (It used to carry a hand-kept mirror of the registries; selectors.js removed
+// that drift risk.)
+//
+// Returns the report as a string (so chrome.scripting surfaces it as `result`)
+// AND console.logs it (so the manual console paste still prints).
 (() => {
-  const SITES = {
-    linkedin: {
-      match: /linkedin\.com/,
-      cards: [
-        "li.jobs-search-results__list-item",
-        "li.scaffold-layout__list-item",
-        "div.job-card-container",
-      ],
-      titleLink: [
-        "a.job-card-list__title--link",
-        "a[class*='job-card-list__title']",
-        ".job-card-list__title a",
-        "h3 > a",
-      ],
-      company: [
-        ".artdeco-entity-lockup__subtitle span",
-        ".job-card-container__primary-description",
-        ".job-card-container__company-name",
-        "h4 a",
-      ],
-      location: [
-        ".artdeco-entity-lockup__caption li",
-        "li.job-card-container__metadata-item:first-child",
-        ".job-search-card__location",
-      ],
-      salary: [
-        ".artdeco-entity-lockup__content",
-        ".job-card-list__salary",
-        "li.job-card-container__metadata-item:nth-child(2)",
-      ],
-    },
-    indeed: {
-      match: /indeed\.com/,
-      cards: [
-        "div.job_seen_beacon",
-        "li[class*='JobListItem']",
-        "td.resultContent",
-      ],
-      titleLink: ["h2.jobTitle a", "a[data-jk]", "[data-testid='jobTitle'] a"],
-      company: [
-        "span.companyName",
-        "[data-testid='company-name']",
-        ".companyInfo a",
-      ],
-      location: ["div.companyLocation", "[data-testid='text-location']"],
-      salary: [
-        ".salary-snippet-container span",
-        "[data-testid='attribute_snippet_testid']",
-        ".metadataContainer",
-      ],
-    },
-  };
-
-  // Mirror of content.js DETAIL — keep these two in sync when patching.
-  const DETAIL = {
-    linkedin: {
-      pane: [
-        ".jobs-search__job-details",
-        ".job-view-layout",
-        ".jobs-details",
-        "#job-details",
-      ],
-      description: [
-        "#job-details",
-        ".jobs-description__content .jobs-box__html-content",
-        ".jobs-description-content__text",
-        ".jobs-description__content",
-        "article.jobs-description__container",
-      ],
-      details: [
-        ".job-details-jobs-unified-top-card__primary-description-container",
-        ".job-details-jobs-unified-top-card__job-insight",
-        ".jobs-unified-top-card__primary-description",
-        ".jobs-unified-top-card__job-insight",
-        ".job-details-jobs-unified-top-card__tertiary-description-container",
-      ],
-      apply: [".jobs-apply-button", "button[class*='jobs-apply-button']"],
-    },
-    indeed: {
-      pane: [
-        ".jobsearch-RightPane",
-        "#jobsearch-ViewjobPaneWrapper",
-        ".fastviewjob",
-        ".jobsearch-BodyContainer",
-      ],
-      description: [
-        "#jobDescriptionText",
-        ".jobsearch-JobComponent-description",
-        "[id='jobDescriptionText']",
-      ],
-      details: [
-        ".jobsearch-JobInfoHeader-subtitle",
-        "#salaryInfoAndJobType",
-        ".jobsearch-JobMetadataHeader-item",
-        "[data-testid='jobsearch-JobInfoHeader-companyLocation']",
-        "[class*='js-match-insights-provider']",
-      ],
-      apply: [
-        "#indeedApplyButton",
-        ".jobsearch-IndeedApplyButton-newDesign",
-        "[data-testid='indeedApplyButton']",
-        "button[id*='ApplyButton']",
-      ],
-    },
-  };
-
-  const entry = Object.entries(SITES).find(([, s]) =>
-    s.match.test(location.hostname),
-  );
-  if (!entry) {
-    console.log(
-      "Not on LinkedIn/Indeed — open a jobs SEARCH results page first.",
-    );
-    return;
+  if (typeof SITES === "undefined" || typeof DETAIL === "undefined") {
+    const msg =
+      "[selector check] SITES/DETAIL not found — paste selectors.js in the " +
+      "console FIRST (it defines the shared selector registries), then re-run.";
+    console.log(msg);
+    return msg;
   }
-  const [name, S] = entry;
-  console.log(
-    `%c[selector check] site=${name}  url=${location.href}`,
-    "font-weight:bold;font-size:14px",
-  );
+
+  const entry = SITES.find((s) => s.match.test(location.hostname));
+  if (!entry) {
+    const msg =
+      "Not on a supported job site — open a jobs SEARCH results page first.";
+    console.log(msg);
+    return msg;
+  }
+  const name = entry.name;
+  const S = entry;
+  const D = DETAIL[name] || null;
 
   const firstSel = (sels, root = document) => {
-    for (const s of sels) {
+    for (const s of sels || []) {
       try {
         if (root.querySelector(s)) return s;
       } catch (_) {}
@@ -136,9 +46,12 @@
     return null;
   };
 
+  const out = [];
+  out.push(`[selector check] site=${name}  url=${location.href}`);
+
   // ── CARD layer ──────────────────────────────────────────────────────────
-  let cardSel = null,
-    cards = [];
+  let cardSel = null;
+  let cards = [];
   for (const s of S.cards) {
     try {
       const n = [...document.querySelectorAll(s)];
@@ -149,9 +62,9 @@
       }
     } catch (_) {}
   }
-  console.log(
-    `%cCARDS: ${cards.length} matched via  ${cardSel || "NONE  <-- all card selectors rotted"}`,
-    "font-weight:bold",
+  out.push("");
+  out.push(
+    `CARDS: ${cards.length} matched via ${cardSel || "NONE  <-- all card selectors rotted"}`,
   );
   if (cards.length) {
     const fields = ["titleLink", "company", "location", "salary"];
@@ -168,74 +81,74 @@
       }
     }
     const n = sample.length;
-    console.table(
-      fields.map((f) => ({
-        field: f,
-        "hit %": Math.round((100 * hits[f]) / n) + "%",
-        "working selector": used[f] || "NONE  <-- rotted",
-      })),
+    for (const f of fields) {
+      const pct = Math.round((100 * hits[f]) / n);
+      out.push(
+        `  ${f.padEnd(10)} ${String(pct).padStart(3)}%  ${used[f] || "NONE  <-- rotted"}`,
+      );
+    }
+    out.push(
+      `  title (required to capture a card): ${used.titleLink ? "OK" : "MISSING -- nothing will be collected"}`,
     );
-    console.log(
-      `title (required to capture a card): ${used.titleLink ? "OK" : "MISSING -- nothing will be collected"}`,
-    );
-    console.log(`Checked ${n} of ${cards.length} cards.`);
+    out.push(`  checked ${n} of ${cards.length} cards.`);
   } else {
-    console.log(
-      "(No cards — open a results LIST page to audit the card layer.)",
+    out.push(
+      "  (No cards — open a results LIST page to audit the card layer.)",
     );
   }
 
   // ── DETAIL layer (needs a job open) ─────────────────────────────────────
-  const D = DETAIL[name];
-  const paneSel = firstSel(D.pane);
-  console.log(
-    `%cDETAIL pane: ${paneSel || "NONE  <-- no job open, or pane selectors rotted"}`,
-    "font-weight:bold",
-  );
-  if (!paneSel) {
-    console.log(
-      "Click a job to open its detail pane, then re-run for the detail audit.",
-    );
+  out.push("");
+  if (!D) {
+    out.push("DETAIL: (no detail registry for this site)");
   } else {
-    const descSel = firstSel(D.description);
-    const descNode = descSel ? document.querySelector(descSel) : null;
-    const descLen = descNode ? (descNode.innerText || "").trim().length : 0;
-    const detailsHit = D.details.filter((s) => {
-      try {
-        return document.querySelector(s);
-      } catch (_) {
-        return false;
-      }
-    });
-    const applySel = firstSel(D.apply);
-    console.table([
-      {
-        field: "description",
-        "working selector": descSel || "NONE  <-- rotted (no body captured!)",
-        info: `${descLen} chars`,
-      },
-      {
-        field: "details(blob)",
-        "working selector": detailsHit[0] || "NONE  <-- rotted",
-        info: `${detailsHit.length}/${D.details.length} selectors hit`,
-      },
-      {
-        field: "apply",
-        "working selector": applySel || "(none)",
-        info: applySel
-          ? (document.querySelector(applySel).innerText || "")
-              .trim()
-              .slice(0, 40)
-          : "",
-      },
-    ]);
-    console.log(
-      `description: ${descSel && descLen > 40 ? "OK" : "MISSING/THIN -- the full body won't be captured"}`,
+    const paneSel = firstSel(D.pane);
+    out.push(
+      `DETAIL pane: ${paneSel || "NONE  <-- no job open, or pane selectors rotted"}`,
     );
+    if (!paneSel) {
+      out.push(
+        "  Click a job to open its detail pane, then re-run for the detail audit.",
+      );
+    } else {
+      const descSel = firstSel(D.description);
+      const descNode = descSel ? document.querySelector(descSel) : null;
+      const descLen = descNode ? (descNode.innerText || "").trim().length : 0;
+      const detailsHit = (D.details || []).filter((s) => {
+        try {
+          return document.querySelector(s);
+        } catch (_) {
+          return false;
+        }
+      });
+      const applySel = firstSel(D.apply);
+      out.push(
+        `  description  ${descSel || "NONE  <-- rotted (no body captured!)"}  (${descLen} chars)`,
+      );
+      out.push(
+        `  details      ${detailsHit[0] || "NONE  <-- rotted"}  (${detailsHit.length}/${(D.details || []).length} selectors hit)`,
+      );
+      out.push(
+        `  apply        ${applySel || "(none)"}${
+          applySel
+            ? "  " +
+              (document.querySelector(applySel).innerText || "")
+                .trim()
+                .slice(0, 40)
+            : ""
+        }`,
+      );
+      out.push(
+        `  description: ${descSel && descLen > 40 ? "OK" : "MISSING/THIN -- the full body won't be captured"}`,
+      );
+    }
   }
 
-  console.log(
-    "%cCopy this whole output back to Claude to patch any rotted selectors.",
-    "font-style:italic",
+  out.push("");
+  out.push(
+    "Copy this whole block back to Claude to patch any rotted selectors.",
   );
+  const report = out.join("\n");
+  console.log(report);
+  return report;
 })();

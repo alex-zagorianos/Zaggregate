@@ -27,7 +27,7 @@
         "https://www.ziprecruiter.com/candidate/*",
         "https://www.dice.com/jobs/*"
       ],
-      "js": ["content.js"],
+      "js": ["selectors.js", "content.js"],
       "run_at": "document_idle"
     }
   ],
