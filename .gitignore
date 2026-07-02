@@ -6,6 +6,11 @@
 *.pem
 *.p12
 *.pfx
+# Exception: the REAP portals' PUBLIC Sectigo intermediate CA cert (NOT a secret
+# — it is a publicly-distributed CA certificate). It must SHIP so search/
+# reap_client.py can complete those servers' incomplete TLS chain. See the file's
+# own header for why. This is the only *.pem that is intentionally tracked.
+!data_static/reap_sectigo_r36_intermediate.pem
 secrets/
 credentials/
 

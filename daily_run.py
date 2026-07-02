@@ -314,7 +314,8 @@ def main():
     # console lines). Populated from the sources' own skip conditions.
     keyless_skipped: list[str] = []
     clients = build_clients(sources, cache_enabled=True, industry_filter=industry,
-                            tiered_careers=tiered, skipped_keyless=keyless_skipped)
+                            tiered_careers=tiered, skipped_keyless=keyless_skipped,
+                            location=location)
     if not clients:
         log("ABORT: no sources could be initialized (check .env).")
         # Don't leave the beacon row stuck 'running' — this is a failed run.

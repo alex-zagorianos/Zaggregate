@@ -22,7 +22,7 @@ ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careeronestop", "careers",
                "themuse", "remoteok", "remotive", "jobicy", "himalayas", "hn",
                "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi",
                "socrata", "weworkremotely", "workingnomads",
-               "higheredjobs", "rnjobsite", "jobsacuk"]
+               "higheredjobs", "rnjobsite", "jobsacuk", "reap", "edjoin"]
 
 # Sources that must NOT run unless the user EXPLICITLY opts in (a truthy
 # cfg_sources[<name>]), i.e. the on-by-default fallback `cfg_sources.get(s, True)`
@@ -56,6 +56,7 @@ def build_clients(
     companies_file: Path | None = None,
     tiered_careers: bool = False,
     skipped_keyless: list[str] | None = None,
+    location: str | None = None,
 ) -> list[JobAPIClient]:
     """Build the requested source clients.
 
@@ -228,6 +229,36 @@ def build_clients(
             if not c.active:
                 slog.info("  [jobsacuk] Inert — UK academic feeds are opt-in "
                           "(set 'jobsacuk' in config or a non-US country).")
+            clients.append(c)
+
+        elif source == "reap":
+            # Sector: K-12 education, per-STATE public REAP portals. Self-skips
+            # for a non-education field OR a state REAP doesn't cover (routes by
+            # the user's location). robots.txt is honored live before any fetch.
+            from search.reap_client import ReapClient
+            c = ReapClient(cache_enabled=cache_enabled,
+                           industry=industry_filter, location=location)
+            if not c.active:
+                if not c.portal and industry_filter and __import__(
+                        "search.reap_client", fromlist=["_is_education"]
+                        )._is_education(industry_filter):
+                    slog.info(f"  [reap] Inert — no REAP portal for location "
+                              f"{location or '(none)'!r} (covered states: "
+                              f"CT/MO/NM/OH/PA).")
+                else:
+                    slog.info(f"  [reap] Inert for industry "
+                              f"{industry_filter or '(none)'!r} — not an education field.")
+            clients.append(c)
+
+        elif source == "edjoin":
+            # Sector: K-12 education, EdJoin public JSON search (California-centric;
+            # graceful 0 for non-CA metros). Self-skips for a non-education field.
+            from search.edjoin_client import EdjoinClient
+            c = EdjoinClient(cache_enabled=cache_enabled,
+                             industry=industry_filter, location=location)
+            if not c.active:
+                slog.info(f"  [edjoin] Inert for industry "
+                          f"{industry_filter or '(none)'!r} — not an education field.")
             clients.append(c)
 
         elif source == "socrata":
@@ -566,6 +597,7 @@ def main():
         industry_filter=industry,
         discovery_enabled=not args.no_discover,
         companies_file=companies_file,
+        location=location,
     )
 
     if not clients:

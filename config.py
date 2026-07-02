@@ -416,7 +416,7 @@ SEMANTIC_TITLE_CAP = 0.6
 DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
                  "remoteok", "remotive", "jobicy", "himalayas", "hn",
                  "weworkremotely", "workingnomads", "jooble", "careerjet",
-                 "higheredjobs", "rnjobsite"]
+                 "higheredjobs", "rnjobsite", "reap", "edjoin"]
 # weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
 # risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
 # OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
@@ -431,6 +431,15 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # neither), so adding them to the daily net is byte-identical for a non-education,
 # non-nursing user. jobsacuk (UK academic) is deliberately NOT here: it is opt-in
 # (config flag or non-US country) and stays out of a default US run.
+# reap + edjoin (2026-07-02, S32b): free/keyless K-12 EDUCATION sources — REAP
+# (per-state public teacher portals; light HTML, robots.txt honored live) and
+# EdJoin (public /Home/LoadJobs JSON, California-centric). Both INDUSTRY-GATE to
+# education-family fields; REAP additionally self-skips outside its covered states
+# (CT/MO/NM/OH/PA — routes by the user's location), EdJoin returns 0 gracefully
+# for non-CA metros. Inert (no network, no jobs) for every non-education field, so
+# adding them to the daily net is byte-identical for a non-education user. NEVER
+# Frontline/AppliTrack or NEOGOV — those are ToS-blocked; REAP/EdJoin are the
+# ToS-safe public applicant sites that route around them (plan §5 Education row).
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.
