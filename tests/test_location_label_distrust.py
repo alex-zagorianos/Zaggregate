@@ -83,3 +83,39 @@ def test_no_flag_when_no_body():
     _, n = scorer.score_job(j, keywords=["engineer"], location="Seattle, WA",
                             skill_terms=frozenset())
     assert "loc-unverified" not in n
+
+
+def test_bare_city_home_in_body_is_confirmation():
+    # A JD body routinely writes the home city as bare prose ("based in
+    # Cincinnati") while naming nearby plants as 'City, ST'. The label's own city
+    # appearing (word-boundary) in the body confirms the role IS local -> trust.
+    assert not scorer._location_contradicts(
+        "Cincinnati, OH",
+        "This role is based in Cincinnati. Plants in Louisville, KY and Indianapolis, IN.",
+        "Cincinnati")
+    # Multi-word label -> its leading city ("Seattle") still confirms.
+    assert not scorer._location_contradicts(
+        "Seattle, King County, WA",
+        "Work from our Seattle office. Occasional travel to Portland, OR.",
+        "Seattle, WA")
+
+
+def test_label_city_extraction():
+    assert scorer._label_city("Cincinnati, OH") == "Cincinnati"
+    assert scorer._label_city("Seattle, King County, WA") == "Seattle"
+    assert scorer._label_city("no state here") is None
+
+
+def test_mislabel_without_home_city_in_body_still_contradicts():
+    # The bare-city escape must NOT weaken the real mislabel case: the body does
+    # NOT name the label's city, so distrust still fires.
+    assert scorer._location_contradicts(
+        "Cincinnati, OH", "Our HQ in Chicago, IL. Great team.", "Cincinnati, OH")
+
+
+def test_scoring_no_flag_when_bare_city_home_in_body():
+    j = _job("Controls Engineer", "Cincinnati, OH",
+             desc="based in Cincinnati. Plants in Louisville, KY and Indianapolis, IN.")
+    _, n = scorer.score_job(j, keywords=["controls engineer"], location="Cincinnati",
+                            skill_terms=frozenset())
+    assert "loc-unverified" not in n

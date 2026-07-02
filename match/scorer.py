@@ -443,7 +443,11 @@ _SALARY_RE_BARE = re.compile(
 _HOURLY_CTX = _PERIOD_CTX[0][2]
 _NON_SALARY_CTX = re.compile(
     r"\bstipend\b|\bgift\s?card\b|\binsurance\b|401\s?\(?k\)?|\breimburs\w*|"
-    r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b", re.I)
+    r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b|"
+    # Incentive pay (bonus / commission / signing bonus) is NOT base salary: a
+    # body like "Base is competitive. Plus up to $2,500/month bonus" must not
+    # annualize the bonus figure and hard-drop a legit role past a salary floor.
+    r"\bbonus\b|\bcommissions?\b|\bsigning\s+bonus\b", re.I)
 
 
 def parse_comp(text: str) -> Optional[dict]:
@@ -578,6 +582,17 @@ def _all_us_states(text: str) -> set:
     return out
 
 
+def _label_city(label: str) -> Optional[str]:
+    """The bare CITY of the label (the text before its FIRST comma), or None when
+    the label carries no US-state 'City, ST' pair. Used to confirm a genuinely-
+    local role whose body names the home city in bare prose without its state
+    abbrev ('based in Cincinnati' for a 'Cincinnati, OH' label)."""
+    if not _first_us_state(label):
+        return None
+    head = (label or "").split(",", 1)[0].strip()
+    return head or None
+
+
 def _location_contradicts(label: str, desc: str, target: str) -> bool:
     """Item 4: True when the source LABEL state is contradicted by the body -- the
     Adzuna 'stamp the query metro' family (a Butte, MT role labeled 'Seattle, King
@@ -603,6 +618,13 @@ def _location_contradicts(label: str, desc: str, target: str) -> bool:
     body_states = _all_us_states(desc)
     if not body_states or label_st in body_states:
         return False   # body confirms the label state somewhere -> trust it
+    # A JD body routinely writes the home city as bare prose ("based in
+    # Cincinnati") while naming other plants/travel as 'City, ST'. That is
+    # confirmation too: if the label's own CITY appears (word-boundary) in the
+    # body, trust the label even though its state wasn't literally re-stated.
+    label_city = _label_city(label)
+    if label_city and re.search(r"\b" + re.escape(label_city) + r"\b", desc or "", re.I):
+        return False   # body names the label's home city in bare prose -> trust it
     return True        # body names only OTHER state(s) -> contradiction
 
 

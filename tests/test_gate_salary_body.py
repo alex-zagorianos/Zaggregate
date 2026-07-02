@@ -57,3 +57,20 @@ def test_no_floor_keeps_everything():
     # No salary_min set -> body comp is never gated.
     j = _job(desc="Compensation: US$1,500 per Month")
     assert preferences.hard_gate([j], {"salary_min": None}) == [j]
+
+
+def test_bonus_figure_not_read_as_base_salary_kept():
+    # A competitive-but-unstated base plus a monthly BONUS figure must not be
+    # annualized as if it were the salary and hard-dropped. Common in sales/AE.
+    j = _job(desc="Base salary is competitive. Plus up to $2,500/month bonus.")
+    assert preferences.hard_gate([j], HARD) == [j]
+
+
+def test_commission_figure_not_read_as_base_salary_kept():
+    j = _job(desc="Strong base. Plus up to $5,000 per month in commissions.")
+    assert preferences.hard_gate([j], HARD) == [j]
+
+
+def test_signing_bonus_figure_not_read_as_base_salary_kept():
+    j = _job(desc="Competitive base. Signing bonus of $3,000 per month for year one.")
+    assert preferences.hard_gate([j], HARD) == [j]
