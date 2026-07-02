@@ -77,7 +77,13 @@ def detect_ats(url: str) -> tuple[str, str]:
     if m:
         site = _workday_site(segs)
         if site:
-            return ("workday", f"{m.group(1)}:{m.group(2)}:{site}")
+            # Newly-onboarded Workday URLs use the public wday/cxs JSON reader
+            # (workday_cxs_scraper): it POSTs the JSON search body — the documented
+            # read path that dodges the HTML/CSRF wall the old "workday" GET-prime
+            # path hit with HTTP 422. The slug format ("tenant:N:site") is identical
+            # to the legacy "workday" type, so an existing registry row is portable
+            # between the two by just relabeling ats_type.
+            return ("workday_cxs", f"{m.group(1)}:{m.group(2)}:{site}")
 
     if host == "apply.workable.com" and segs:
         return ("workable", segs[0])
@@ -178,7 +184,7 @@ def detect_ats(url: str) -> tuple[str, str]:
 
 
 def _name_from(ats: str, slug: str, url: str) -> str:
-    if ats == "workday" and ":" in slug:
+    if ats in ("workday", "workday_cxs") and ":" in slug:
         return slug.split(":")[0].replace("-", " ").title()
     if ats == "direct":
         host = urlsplit(url if "://" in url else "https://" + url).netloc
@@ -255,6 +261,12 @@ def probe_count(entry: CompanyEntry) -> int | None:
                 timeout=TO)
             if r.ok:
                 return r.json().get("total")
+        elif t == "workday_cxs" and slug.count(":") == 2:
+            # Same public cxs POST, but count via the production fetcher so the
+            # verify gate and the daily scrape agree on reachability (a CSRF-walled
+            # 422 tenant fails the probe here exactly as it will fail the run).
+            from scrape.workday_cxs_scraper import fetch as _f
+            return len(_f(slug))
         elif t == "bamboohr":
             # Embedded careers-list JSON. Use the SAME headers the production
             # scraper (bamboohr_scraper) sends, so the verify-gate and the daily
