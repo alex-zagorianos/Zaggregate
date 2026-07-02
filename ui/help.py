@@ -68,8 +68,15 @@ GUIDE = [
              "but the free feeds lean toward remote tech jobs. Two free sign-ups "
              "transform the app into a wide net for YOUR city and YOUR field — "
              "in our live testing, they found the local jobs the built-in feeds "
-             "missed entirely. Open Tools ▸ “Connect job sources…”; each source "
-             "there links straight to its free-key page."),
+             "missed entirely. The Setup Wizard now has a “Connect your best free "
+             "sources” step that walks you through it (impact-ranked, and fully "
+             "skippable); you can also open it any time from Tools ▸ “Connect job "
+             "sources…”. Each source there links straight to its free-key page "
+             "and has a Test button to confirm your key works."),
+    ("body", "If a source has no key, it simply contributes nothing — quietly. So "
+             "the Inbox header shows a “N sources skipped (no key)” note after a "
+             "run; click it to connect them. That line is your cue that more local "
+             "jobs are one free key away."),
     ("h2", "The two keys that matter most"),
     ("bullet", "•  Adzuna — a broad aggregator covering millions of postings "
                "across ~19 countries. This is the single biggest unlock for "

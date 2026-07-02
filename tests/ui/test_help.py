@@ -50,6 +50,16 @@ def test_guide_goes_deep_on_source_setup():
     assert "largest employers" in blob
 
 
+def test_guide_aligns_with_wizard_keys_step_and_silent_zero_line():
+    """The Guide must reflect the new flow: the wizard's keys step and the Inbox
+    'N sources skipped (no key)' surfacing (so the copy matches what users see)."""
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    # Names the new wizard keys step.
+    assert "Connect your best free sources" in blob
+    # Explains the Inbox skipped-sources cue (the silent-zero fix).
+    assert "sources skipped (no key)" in blob
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 
