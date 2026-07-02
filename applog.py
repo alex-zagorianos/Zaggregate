@@ -49,6 +49,12 @@ _URL_CRED_RE = re.compile(
     r"(?i)\b(app_key|app_id|api_key|apikey|affid|access_token|token|key)"
     r"=([^&\s\"']+)")
 _JOOBLE_PATH_RE = re.compile(r"(?i)(jooble\.org/api/)[A-Za-z0-9._%-]+")
+# CareerOneStop puts the account userId as a bare URL PATH segment
+# (.../v1/jobsearch/<userId>/...), so raise_for_status()'s HTTPError message
+# embeds it. None of the query/userinfo layers match a bare path segment, so
+# scrub the segment straight after /jobsearch/ by shape — this holds even when
+# no value is configured (fresh install / stale log line).
+_C1_PATH_RE = re.compile(r"(?i)(careeronestop\.org/v1/jobsearch/)[^/\s\"']+")
 # URL userinfo (https://user:token@host/...) — a BYO base_url can carry a
 # credential this way (proxy tokens), and it would ride HTTPError messages.
 _URL_USERINFO_RE = re.compile(r"(?i)(://)[^/@\s\"']+@")
@@ -64,12 +70,24 @@ def _known_secret_values() -> list[str]:
         return _SECRET_VALUES
     vals: list[str] = []
     try:
-        names = list(getattr(config, "SOURCE_SECRET_FILES", {}) or {})
-        names += ["ANTHROPIC_API_KEY", "SERPAPI_KEY", "ANTHROPIC_BASE_URL"]
-        for n in names:
+        # resolve_secret(env_name, secret_name) needs BOTH args. For every
+        # SOURCE_SECRET_FILES entry the dict value IS the secrets/ filename and
+        # the env var is its upper-cased form (adzuna_app_id -> ADZUNA_APP_ID,
+        # careeronestop_user_id -> CAREERONESTOP_USER_ID), matching every source
+        # client's own resolve_secret call. The three non-source credentials use
+        # their established secrets/ filenames (ranker: anthropic_key; serpapi:
+        # serpapi_key; config.anthropic_base_url: base_url).
+        pairs = [(sec.upper(), sec)
+                 for sec in (getattr(config, "SOURCE_SECRET_FILES", {}) or {}).values()]
+        pairs += [
+            ("ANTHROPIC_API_KEY", "anthropic_key"),
+            ("SERPAPI_KEY", "serpapi_key"),
+            ("ANTHROPIC_BASE_URL", "base_url"),
+        ]
+        resolve = getattr(config, "resolve_secret", None)
+        for env_name, secret_file in pairs:
             try:
-                v = config.resolve_secret(n) if hasattr(config, "resolve_secret") \
-                    else None
+                v = resolve(env_name, secret_file) if resolve else None
             except Exception:
                 v = None
             # Only scrub substantial values; short strings would over-redact.
@@ -95,6 +113,7 @@ def redact(text) -> str:
     s = str(text)
     s = _URL_CRED_RE.sub(lambda m: f"{m.group(1)}=[redacted]", s)
     s = _JOOBLE_PATH_RE.sub(r"\1[redacted]", s)
+    s = _C1_PATH_RE.sub(r"\1[redacted]", s)
     s = _URL_USERINFO_RE.sub(r"\1[redacted]@", s)
     for v in _known_secret_values():
         if v in s:

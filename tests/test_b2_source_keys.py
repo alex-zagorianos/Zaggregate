@@ -232,6 +232,34 @@ def test_careeronestop_404_is_empty_not_error(tmp_path, monkeypatch):
     assert data == {"Jobs": [], "RecordCount": 0}
 
 
+def test_careeronestop_error_omits_userid(tmp_path, monkeypatch):
+    """On a non-404 HTTP error the client must re-raise a message that does NOT
+    embed the account userId (bare URL path segment) or the Bearer token, so the
+    credential half never enters last_run.json / logs / the diagnostic zip in the
+    first place (S32d leak source). Planted fake creds only."""
+    from search.careeronestop_client import CareerOneStopClient
+    c = CareerOneStopClient(user_id="PLANTEDUSERID_ZZZ9", token="PLANTED_TOKEN_XYZ",
+                            cache_dir=tmp_path, cache_enabled=False)
+
+    class _Resp:
+        status_code = 401
+        reason = "Unauthorized"
+
+        def raise_for_status(self):  # must NOT be what surfaces
+            raise AssertionError("raw raise_for_status would leak the URL")
+
+        def json(self):
+            raise AssertionError("error body must not be parsed")
+
+    monkeypatch.setattr(c.session, "get", lambda url, **kw: _Resp())
+    with pytest.raises(Exception) as ei:
+        c.search("nurse", location="Cincinnati, OH")
+    msg = str(ei.value)
+    assert "PLANTEDUSERID_ZZZ9" not in msg
+    assert "PLANTED_TOKEN_XYZ" not in msg
+    assert "401" in msg  # still a useful, redaction-safe diagnostic
+
+
 def test_careeronestop_attribution_present():
     from search import careeronestop_client
     assert "CareerOneStop" in careeronestop_client.ATTRIBUTION

@@ -141,7 +141,22 @@ class CareerOneStopClient(JobAPIClient):
         if response.status_code == 404:
             data = {"Jobs": [], "RecordCount": 0}
         else:
-            response.raise_for_status()
+            # The account userId rides in a bare URL PATH segment here, so a raw
+            # raise_for_status() HTTPError would embed it in str(e), which flows
+            # into last_run.json / logs / the diagnostic zip. Re-raise with the
+            # userId stripped from the URL so the credential half never enters
+            # the error string in the first place (defense-in-depth alongside
+            # applog.redact's path-segment layer). Bearer TOKEN lives in the
+            # header and never appears in the URL, so it is unaffected.
+            if response.status_code >= 400:
+                reason = getattr(response, "reason", "") or ""
+                raise RuntimeError(
+                    f"CareerOneStop request failed: {response.status_code} "
+                    f"{reason}".rstrip()
+                    + f" for {CAREERONESTOP_BASE_URL.rstrip('/')}/<userId>/... "
+                    "(verify CAREERONESTOP_USER_ID/TOKEN; the Jobs API may still "
+                    "be governance-gated)."
+                )
             try:
                 data = response.json()
             except ValueError:
