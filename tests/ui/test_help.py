@@ -108,6 +108,17 @@ def test_guide_lists_the_board_tab():
     assert "one column per" in blob and "Move" in blob
 
 
+def test_guide_documents_site_agnostic_capture():
+    # S33: the Guide must tell users the extension can capture a single job on
+    # ANY site (careers pages / Workday / Greenhouse / Lever), not only the five
+    # big boards — this is the project's #1 breadth story for the extension.
+    headings = [text for tag, text in uihelp.GUIDE if tag in ("h1", "h2")]
+    assert any("Capture this job on any site" in h for h in headings)
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    for phrase in ["Capture this job", "Workday", "structured data"]:
+        assert phrase in blob, phrase
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 
