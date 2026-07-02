@@ -193,6 +193,53 @@ def _name_from(ats: str, slug: str, url: str) -> str:
     return slug.replace("-", " ").replace("_", " ").title()
 
 
+# ATS types that carry a real, probeable slug — i.e. a resolvable board root
+# (as opposed to the 'direct' fallback, which is just the raw URL and can't be
+# probed for a live job count). `resolve_board` uses this to decide whether a
+# clipped page actually resolved to a job board.
+_RESOLVABLE_ATS = frozenset({
+    "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "workday_cxs",
+    "workable", "recruitee", "personio", "bamboohr", "rippling", "paylocity",
+    "eightfold", "adp", "oracle_orc", "phenom", "breezy", "pinpoint",
+    "teamtailor", "jazzhr", "icims", "taleo", "successfactors", "jsonld",
+})
+
+
+def resolve_board(url: str, page_title: str = ""):
+    """Resolve a *job-posting or board* URL to its board root for clip-to-seed.
+
+    Returns a dict:
+        {"resolvable": bool, "ats_type": str, "slug": str, "name": str}
+
+    Reuses ``detect_ats`` (which already strips a posting's job-id path back to
+    the board root for greenhouse/lever/ashby/smartrecruiters/workday_cxs, so a
+    user clipping a live *posting* seeds the whole board, not one job). The
+    board is *resolvable* only when detection lands on a recognized ATS with a
+    real slug — the ``('direct', url)`` fallback (an unrecognized host, e.g. a
+    generic company careers page or an off-board page like a search result) is
+    NOT resolvable, because it has no probeable JSON board and clipping it would
+    just dump the raw URL into the registry unverified. A page title, when the
+    extension sends one, gives the board a human name over the slug-derived one.
+
+    This is deliberately stricter than the paste-a-URL '+ Add Companies' dialog
+    (which treats a 'direct' careers page as verified-manual): a one-click clip
+    must only auto-seed a board we can actually verify live at clip time — that
+    is the whole point of clip-to-seed (competitors §8C), so an unverifiable
+    page returns resolvable=False and the caller reports a clear failure rather
+    than silently saving junk.
+
+    Board name comes from the ATS slug (clean: 'acme' -> 'Acme'), NOT the page
+    title — a clipped posting's <title> is usually the *job* title with board
+    chrome ('Software Engineer - Acme | Lever'), which would both mis-name the
+    board and, because save_companies dedups by name, defeat duplicate-clip
+    detection. The page title is only a last-resort fallback when the derived
+    name is empty."""
+    ats, slug = detect_ats(url)
+    resolvable = ats in _RESOLVABLE_ATS and bool(slug)
+    name = _name_from(ats, slug, url) or (page_title or "").strip()
+    return {"resolvable": resolvable, "ats_type": ats, "slug": slug, "name": name}
+
+
 def parse_line(line: str) -> CompanyEntry | None:
     """One paste line -> CompanyEntry. Accepts:
        'Name | URL'  ·  bare 'URL' (name derived)  ·  'Name | ats_type | slug'."""

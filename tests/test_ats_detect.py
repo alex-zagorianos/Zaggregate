@@ -1,5 +1,7 @@
 """ATS auto-detection from career-page URLs + paste-line parsing."""
-from scrape.ats_detect import detect_ats, parse_line
+import pytest
+
+from scrape.ats_detect import detect_ats, parse_line, resolve_board
 
 
 def test_greenhouse():
@@ -75,3 +77,57 @@ def test_parse_line_skips_blank_and_comment():
     assert parse_line("") is None
     assert parse_line("   ") is None
     assert parse_line("# a header line") is None
+
+
+# ── resolve_board: board-root resolution for browser clip-to-seed (SB-3) ──────
+# A clipped *job-posting* URL must resolve back to its board ROOT so the whole
+# board (not one job) is seeded. detect_ats already strips the job-id path;
+# resolve_board wraps it with a resolvable/unresolvable verdict + a clean name.
+
+@pytest.mark.parametrize("url,ats,slug", [
+    # greenhouse posting -> board root
+    ("https://boards.greenhouse.io/acme/jobs/4567890", "greenhouse", "acme"),
+    ("https://job-boards.greenhouse.io/acme/jobs/4567890", "greenhouse", "acme"),
+    # lever posting (uuid, /apply) -> board root
+    ("https://jobs.lever.co/acme/12345678-abcd-1234-5678-1234567890ab", "lever", "acme"),
+    ("https://jobs.lever.co/acme/12345678-abcd/apply", "lever", "acme"),
+    # ashby posting (path form + subdomain form) -> board root
+    ("https://jobs.ashbyhq.com/acme/some-job-id", "ashby", "acme"),
+    ("https://acme.ashbyhq.com/AcmeCorp/12345", "ashby", "acme"),
+    # smartrecruiters posting -> board root
+    ("https://jobs.smartrecruiters.com/AcmeCorp/743999-title", "smartrecruiters", "AcmeCorp"),
+    # workday public posting -> tenant:N:site (the cxs JSON reader)
+    ("https://acme.wd5.myworkdayjobs.com/en-US/AcmeCareers/job/Loc/Title_R-1",
+     "workday_cxs", "acme:5:AcmeCareers"),
+])
+def test_resolve_board_posting_url_resolves_to_board_root(url, ats, slug):
+    r = resolve_board(url)
+    assert r["resolvable"] is True
+    assert r["ats_type"] == ats
+    assert r["slug"] == slug
+
+
+def test_resolve_board_prefers_clean_slug_name_over_noisy_page_title():
+    # A posting's <title> is the JOB title with board chrome — using it as the
+    # board name would mis-name the board and defeat name-based dedup.
+    r = resolve_board("https://boards.greenhouse.io/acme/jobs/1",
+                      "Senior Software Engineer - Acme | Greenhouse")
+    assert r["name"] == "Acme"
+
+
+def test_resolve_board_direct_careers_page_is_unresolvable():
+    # A generic company careers page is 'direct' — no probeable board, so a
+    # one-click clip can't verify it live. Unresolvable (unlike the paste dialog,
+    # which treats 'direct' as verified-manual).
+    r = resolve_board("https://careers.acme.com/openings")
+    assert r["resolvable"] is False
+    assert r["ats_type"] == "direct"
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.google.com/search?q=jobs",     # search result, not a board
+    "https://en.wikipedia.org/wiki/Cat",         # random page
+    "",                                          # empty
+])
+def test_resolve_board_junk_is_unresolvable(url):
+    assert resolve_board(url)["resolvable"] is False
