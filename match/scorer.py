@@ -443,7 +443,11 @@ _SALARY_RE_BARE = re.compile(
 _HOURLY_CTX = _PERIOD_CTX[0][2]
 _NON_SALARY_CTX = re.compile(
     r"\bstipend\b|\bgift\s?card\b|\binsurance\b|401\s?\(?k\)?|\breimburs\w*|"
-    r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b", re.I)
+    r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b|"
+    # Incentive pay (bonus / commission / signing bonus) is NOT base salary: a
+    # body like "Base is competitive. Plus up to $2,500/month bonus" must not
+    # annualize the bonus figure and hard-drop a legit role past a salary floor.
+    r"\bbonus\b|\bcommissions?\b|\bsigning\s+bonus\b", re.I)
 
 
 def parse_comp(text: str) -> Optional[dict]:
