@@ -364,7 +364,24 @@ JOBICY_INDUSTRY = "engineering"   # server-side category filter
 # Himalayas — free public API, no key. Remote-only, paginated. The API
 # hard-caps each response at 20 jobs regardless of the `limit` param, so we
 # page by offset; 200 deep = 10 requests on a cold cache (once/day).
+#
+# We query the `search` endpoint with `country=US` instead of the bare browse
+# feed: the browse feed (/jobs/api) is unfiltered and ~45% of a page is
+# region-locked NON-US postings (UK/Canada/India/Philippines — measured 9/20 on
+# 2026-07-02), which are false positives for a US remote seeker (the
+# marketing-remote persona's #1 gap). The `search` endpoint
+# (/jobs/api/search?country=US) returns only US-eligible rows (0/20 non-US-only,
+# same measurement) and honors a server-side `q=` keyword filter. Same JSON
+# shape ({jobs, totalCount, offset, limit}), so parsing is unchanged.
+# HIMALAYAS_URL stays the browse base for back-compat; HIMALAYAS_SEARCH_URL is
+# the filtered endpoint the client actually calls. ATTRIBUTION/ToS: the job URL
+# MUST remain the Himalayas link (link-back), and Himalayas rows must NEVER be
+# forwarded into any Jooble/Google-Jobs path (each client queries its own API
+# independently — no cross-source forwarding exists; pinned by a test).
 HIMALAYAS_URL = "https://himalayas.app/jobs/api"
+HIMALAYAS_SEARCH_URL = "https://himalayas.app/jobs/api/search"
+# ISO-3166 alpha-2 the search endpoint filters on (US-eligible remote only).
+HIMALAYAS_COUNTRY = "US"
 HIMALAYAS_RATE_LIMIT = 5
 HIMALAYAS_PAGE_SIZE = 20          # server's hard per-response cap
 # 200-deep = 10 sequential requests, but the 5/min limiter forces a ~59s sleep
