@@ -114,14 +114,29 @@
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
-      #clip-btn {
+      #clip-btn,
+      #capture-btn {
         background: var(--surface);
         color: var(--ink);
         border: 1px solid var(--border);
       }
-      #clip-btn:hover:not(:disabled) {
+      #clip-btn:hover:not(:disabled),
+      #capture-btn:hover:not(:disabled) {
         background: var(--window);
         border-color: var(--accent);
+      }
+      #capture-status {
+        font-size: 0.74rem;
+        min-height: 16px;
+        color: var(--muted);
+        text-align: center;
+        margin-bottom: 6px;
+      }
+      #capture-status.ok {
+        color: var(--ok);
+      }
+      #capture-status.err {
+        color: var(--err);
       }
       .clip-hint {
         font-size: 0.68rem;
@@ -191,6 +206,16 @@
     <div id="status"></div>
 
     <div class="divider"></div>
+    <div class="section-label">On any employer's job page?</div>
+    <button id="capture-btn" disabled>Capture this job</button>
+    <p class="clip-hint" id="capture-hint">
+      Works on any job posting — Workday, Greenhouse, Lever, a company careers
+      page — not just the big boards. One click reads the open job into your
+      collected list.
+    </p>
+    <div id="capture-status"></div>
+
+    <div class="divider"></div>
     <div class="section-label">On a company's careers page?</div>
     <button id="clip-btn" disabled>
       Add this employer's board to my registry
@@ -201,6 +226,10 @@
     </p>
     <div id="clip-status"></div>
 
+    <!-- generic_capture.js defines extractGenericJob, which popup.js injects
+         into the active tab via chrome.scripting.executeScript. Loaded FIRST so
+         the symbol exists when popup.js references it by name. -->
+    <script src="generic_capture.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>
