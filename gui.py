@@ -56,6 +56,7 @@ from match.scorer import score_breakdown, extract_skill_terms
 from tracker import analytics as analyticsmod
 from scrape.inbox_health import prune_inbox
 from ui import theme
+from ui import chrome
 from ui import help as uihelp
 from ui import setup_wizard
 from ui import settings as uisettings
@@ -1110,8 +1111,7 @@ class InboxTab(ttk.Frame):
             return ""
         if n < 0:
             return ""
-        g = theme.score_glyph(n)
-        return f"{g} {n}" if g else str(n)
+        return str(n)   # band color now shown as a colored chip in the #0 gutter
 
     @staticmethod
     def _size_badge(board_count) -> str:
@@ -1272,6 +1272,7 @@ class InboxTab(ttk.Frame):
             self._tree.heading(col, text=label,
                                command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, anchor=anchor, minwidth=40)
+        chrome.enable_score_chips(self._tree)   # left #0 gutter for the score-band chip
         theme.zebra(self._tree)
         vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
@@ -1605,7 +1606,8 @@ class InboxTab(ttk.Frame):
         for i, r in enumerate(rows):
             iid = str(r["id"])
             self._rows[iid] = r
-            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),), values=(
+            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),),
+                              image=chrome.score_chip(self._tree, r["score"]), values=(
                 self._score_cell(r["score"]),
                 self._score_cell(r["fit"]),
                 r["title"], r["company"],
@@ -3637,6 +3639,7 @@ class App(tk.Tk):
         self._build_menu()
 
         self._proj_var = None
+        self._build_topbar()           # branded hero, above the project bar
         self._build_projectbar()       # shown only when projects exist
 
         self._nb = ttk.Notebook(self)
@@ -3646,6 +3649,7 @@ class App(tk.Tk):
         # Tracker/queue contents change from other tabs; refresh on focus.
         self._nb.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._update_title()
+        self.bind_all("<Control-k>", self._open_palette)   # command palette
 
         # Open where the work is: inbox if the daily run found anything.
         if inbox_count() == 0:
@@ -3733,6 +3737,10 @@ class App(tk.Tk):
     def _open_guide(self):
         if getattr(self, "_guide", None) is not None:
             self._nb.select(self._guide)
+
+    def _open_palette(self, _event=None):
+        from ui import palette
+        palette.open_palette(self)
 
     def _after_setup(self, applied: bool, actions: dict | None = None):
         """Called when the Setup wizard closes. On apply, refresh tabs so the
@@ -4308,8 +4316,24 @@ class App(tk.Tk):
         except (tk.TclError, AttributeError):
             sel = None
         self._build_menu()                     # tk menus ignore ttk; re-color them
+        self._rebuild_topbar()
         self._rebuild_projectbar()
         self._rebuild_tabs(select_index=sel)
+
+    # ── branded top bar (app identity) ──────────────────────────────────────────
+    def _build_topbar(self):
+        """Branded hero bar (serif wordmark + accent star + hairline) at the very
+        top, above the project bar. Classic-tk chrome, so it's rebuilt on a theme
+        switch to pick up the new palette (see _rebuild_topbar / _set_theme)."""
+        from ui import topbar
+        anchor = getattr(self, "_projbar", None) or getattr(self, "_nb", None)
+        self._topbar = topbar.build_top_bar(self, before=anchor)
+
+    def _rebuild_topbar(self):
+        if getattr(self, "_topbar", None) is not None:
+            self._topbar.destroy()
+            self._topbar = None
+        self._build_topbar()
 
     # ── project bar (switch campaigns without restarting) ──────────────────────
     def _build_projectbar(self):
@@ -4676,7 +4700,7 @@ def main() -> int:
         _log_fatal(e)
         try:
             messagebox.showerror(
-                "JobScout could not start",
+                "Zaggregate could not start",
                 "An unexpected error occurred at startup. Details were saved to "
                 "output/gui_error.log.")
         except Exception:

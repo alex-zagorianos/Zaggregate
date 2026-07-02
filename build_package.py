@@ -1,9 +1,9 @@
-"""Build the JobScout distributable — a zip a friend unzips and runs.
+"""Build the Zaggregate distributable — a zip a friend unzips and runs.
 
   1. pyinstaller app.spec     -> dist/JobProgram/ (onedir, windowed GUI)
-  2. assemble  dist/JobScout/ -> the app folder + a seeded data/ (templates only)
+  2. assemble  dist/Zaggregate/ -> the app folder + a seeded data/ (templates only)
                                  + README.txt
-  3. zip                      -> dist/JobScout.zip
+  3. zip                      -> dist/Zaggregate.zip
 
 Run:
   py build_package.py              # full build
@@ -32,7 +32,7 @@ APP_VERSION = config.APP_VERSION
 
 DIST = ROOT / "dist"
 APP_BUILD = DIST / "JobProgram"     # PyInstaller onedir output
-PKG = DIST / "JobScout"             # assembled package
+PKG = DIST / "Zaggregate"             # assembled package
 TEMPLATES = ROOT / "data_templates"
 
 # data_templates filename -> seeded name in the user's data folder
@@ -43,13 +43,13 @@ _SEEDS = {
 }
 
 README = f"""\
-JobScout v{APP_VERSION}
+Zaggregate v{APP_VERSION}
 
 First time? Read FIRST-RUN.txt - it shows how to open the app past Windows'
 "unknown publisher" warning (the app is safe; it just isn't code-signed yet).
 
-JobScout - a personal job search that ranks roles to YOUR preferences using your
-own AI (Claude, ChatGPT, Gemini, Copilot - a free tier is fine).
+Zaggregate - a personal job search that ranks roles to YOUR preferences using
+your own AI (Claude, ChatGPT, Gemini, Copilot - a free tier is fine).
 
 QUICK START
   1. Run  JobProgram\\JobProgram.exe.
@@ -67,7 +67,7 @@ Tools > "Turn on daily updates".
 UPGRADING TO A NEWER VERSION
   Your app and your data are kept separate, so upgrading never loses your saved
   jobs, preferences, or resume.
-  1. Download and unzip the new JobScout-vX.Y.Z.zip to a NEW folder.
+  1. Download and unzip the new Zaggregate-vX.Y.Z.zip to a NEW folder.
   2. Point the new app at your existing data - EITHER:
        * copy your old  JobProgram\\data  folder into the new
          JobProgram\\ folder (replacing the empty seeded one), OR
@@ -86,7 +86,7 @@ anywhere except the prompts you choose to paste into your own AI.
 # placeholder the release author fills in; the body points at the review that
 # drove this release rather than duplicating it.
 CHANGES = f"""\
-JobScout - CHANGES
+Zaggregate - CHANGES
 
 v{APP_VERSION} - {date.today().isoformat()}
   First versioned release. See brain/review-2026-07-01-deep-product-review.md in
@@ -99,10 +99,10 @@ v{APP_VERSION} - {date.today().isoformat()}
 # Friendly walkthrough for getting past SmartScreen. A non-technical user reads
 # "unknown publisher" as "virus" - this spells out the two safe ways to open it.
 FIRST_RUN_TXT = """\
-HOW TO OPEN JOBSCOUT THE FIRST TIME
+HOW TO OPEN ZAGGREGATE THE FIRST TIME
 ===================================
 
-JobScout is safe, but it isn't "code-signed" yet, so Windows shows a warning
+Zaggregate is safe, but it isn't "code-signed" yet, so Windows shows a warning
 the first time you open it. This is normal for small apps. Here is how to get
 past it - it only happens once.
 
@@ -120,11 +120,11 @@ IF YOU STILL SEE A BLUE BOX - "Windows protected your PC"
   1. Do NOT click "Don't run".
   2. Click the small  "More info"  link in that blue box.
   3. A  "Run anyway"  button appears at the bottom. Click  "Run anyway".
-  4. JobScout starts. You won't be asked again.
+  4. Zaggregate starts. You won't be asked again.
 
 PREFER A SHORTCUT?
-  You can also double-click  launch.bat  - it starts JobScout for you and shows
-  a friendly "Starting JobScout..." message.
+  You can also double-click  launch.bat  - it starts Zaggregate for you and shows
+  a friendly "Starting Zaggregate..." message.
 
 That's it. Once it has opened the first time, just double-click it like any
 other program from then on.
@@ -135,7 +135,7 @@ other program from then on.
 # empty "" is the (required) window title for start, not part of the path.
 LAUNCH_BAT = """\
 @echo off
-echo Starting JobScout...
+echo Starting Zaggregate...
 start "" "JobProgram.exe"
 """
 
@@ -225,15 +225,15 @@ def assemble() -> None:
 
 
 def zip_name() -> str:
-    """The versioned archive base name (no extension), e.g. 'JobScout-v1.0.0'.
+    """The versioned archive base name (no extension), e.g. 'Zaggregate-v1.0.0'.
     Kept as a helper so the build and its unit test agree on the naming."""
-    return f"JobScout-v{APP_VERSION}"
+    return f"Zaggregate-v{APP_VERSION}"
 
 
 def zip_package() -> None:
     print("[3/3] Zipping...")
     out = shutil.make_archive(str(DIST / zip_name()), "zip",
-                              root_dir=str(DIST), base_dir="JobScout")
+                              root_dir=str(DIST), base_dir="Zaggregate")
     print(f"Done -> {out}")
 
 
@@ -265,7 +265,7 @@ def _sign_exe(exe_path) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build the JobScout distributable.")
+    ap = argparse.ArgumentParser(description="Build the Zaggregate distributable.")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip PyInstaller; reassemble from an existing dist/JobProgram.")
     args = ap.parse_args()

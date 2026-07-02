@@ -66,7 +66,12 @@ def test_close_db_is_a_checkpoint_alias(tmp_db, tmp_path):
     db.init_db()
     db.add_job("Eng", "Acme")
     db.close_db()
-    assert (tmp_path / "t.db-wal").stat().st_size == 0
+    # close_db()==checkpoint(TRUNCATE): the -wal sidecar carries no pending data.
+    # SQLite may truncate it to 0 bytes OR remove it entirely when the last
+    # connection closes; both mean "checkpointed". (Asserting only size==0 was
+    # order/GC-timing fragile — it flaked once test timing shifted.)
+    wal = tmp_path / "t.db-wal"
+    assert (not wal.exists()) or wal.stat().st_size == 0
 
 
 def test_checkpoint_never_raises_when_db_missing(tmp_path, monkeypatch):

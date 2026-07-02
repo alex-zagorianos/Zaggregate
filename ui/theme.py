@@ -51,50 +51,50 @@ for _cls, _init in _VANILLA_TK_INIT.items():
 # *colors* — so the look stays on-brand and consistent between the ttk widgets and
 # the hand-painted tk chrome (headers, badges, score glyphs) that read these names.
 _LIGHT = {
-    "WINDOW":  "#f5f7fa",  # app background behind the tabs
-    "SURFACE": "#ffffff",  # cards, headers, tables
-    "ALT":     "#eef1f6",  # zebra rows / subtle fills / table headings
-    "INK":     "#1a2030",  # primary text
-    "MUTED":   "#5a6577",  # secondary text
-    "FAINT":   "#98a1b2",  # hints / disabled text
-    "BORDER":  "#e3e8ef",  # separators, input borders, hairlines
-    "ACCENT":      "#4263eb",  # the single brand accent (modern indigo)
-    "ACCENT_DK":   "#3b51c9",  # hover / pressed
+    "WINDOW":  "#f4f3ee",  # whitewashed paper — app background behind the tabs
+    "SURFACE": "#fcfbf8",  # cards, headers, tables
+    "ALT":     "#eae8e0",  # zebra rows / subtle fills / table headings
+    "INK":     "#16191f",  # primary text (near-black, faint cool)
+    "MUTED":   "#565d68",  # secondary text
+    "FAINT":   "#8b909a",  # hints / disabled text
+    "BORDER":  "#dcdad0",  # separators, input borders, hairlines (soft warm-gray)
+    "ACCENT":      "#0d5eaf",  # the single brand accent (Aegean / Greek-flag blue)
+    "ACCENT_DK":   "#0a4a8c",  # hover / pressed
     "ACCENT_FG":   "#ffffff",  # text on an accent button
-    "ACCENT_TINT": "#e7ecff",  # selected table row / soft accent fill
-    "ACCENT_DIM":  "#bcc6f0",  # disabled accent
-    "ACCENT_FG_DIM": "#eef1ff",  # text on a disabled accent button
-    "SUCCESS":     "#2f9e44",
-    "SUCCESS_DK":  "#2b8a3e",
-    "SUCCESS_DIM": "#aed5b5",   # disabled success button
-    "DANGER":      "#e03131",
-    "DANGER_DK":   "#c92a2a",
-    "WARN":        "#e8590c",
-    "TOOLTIP_BG":  "#1a2030",   # dark chip on a light app
+    "ACCENT_TINT": "#e3edf9",  # selected table row / soft accent fill
+    "ACCENT_DIM":  "#a7c4e6",  # disabled accent
+    "ACCENT_FG_DIM": "#eaf1fb",  # text on a disabled accent button
+    "SUCCESS":     "#3f8f5b",
+    "SUCCESS_DK":  "#35784c",
+    "SUCCESS_DIM": "#b3ccb9",   # disabled success button
+    "DANGER":      "#c14a34",
+    "DANGER_DK":   "#a63d2a",
+    "WARN":        "#cf8a3c",
+    "TOOLTIP_BG":  "#16191f",   # dark chip on a light app
     "TOOLTIP_FG":  "#ffffff",
 }
 _DARK = {
-    "WINDOW":  "#14161b",  # near-black app background (not pure black — less strain)
-    "SURFACE": "#1e222a",  # raised cards / tables / headers (clear elevation step)
-    "ALT":     "#272c36",  # zebra rows / subtle fills / table headings
-    "INK":     "#e6e9f0",  # primary text
-    "MUTED":   "#9aa4b4",  # secondary text
-    "FAINT":   "#6b7585",  # hints / disabled text
-    "BORDER":  "#2f3540",  # separators, input borders — subtle, NOT white
-    "ACCENT":      "#5c7cfa",  # brighter indigo reads better on dark
-    "ACCENT_DK":   "#4c6ef5",
+    "WINDOW":  "#13171d",  # deep-sea near-black (faint blue tint, not cool slate)
+    "SURFACE": "#1c222b",  # raised cards / tables / headers (clear elevation step)
+    "ALT":     "#252c37",  # zebra rows / subtle fills / table headings
+    "INK":     "#e7eaef",  # primary text
+    "MUTED":   "#98a1af",  # secondary text
+    "FAINT":   "#69727f",  # hints / disabled text
+    "BORDER":  "#2f3742",  # separators, input borders — subtle, NOT white
+    "ACCENT":      "#4a9be0",  # brighter Aegean blue reads better on dark
+    "ACCENT_DK":   "#3d86c9",
     "ACCENT_FG":   "#ffffff",
-    "ACCENT_TINT": "#29324d",  # selected table row (muted indigo, dark)
-    "ACCENT_DIM":  "#3a4566",
-    "ACCENT_FG_DIM": "#c8d0e8",
-    "SUCCESS":     "#51cf66",
-    "SUCCESS_DK":  "#40c057",
-    "SUCCESS_DIM": "#2f5d3a",
-    "DANGER":      "#ff6b6b",
-    "DANGER_DK":   "#fa5252",
-    "WARN":        "#ffa94d",
-    "TOOLTIP_BG":  "#2f3540",  # light chip on a dark app
-    "TOOLTIP_FG":  "#e6e9f0",
+    "ACCENT_TINT": "#21344c",  # selected table row (muted sea blue, dark)
+    "ACCENT_DIM":  "#35506e",
+    "ACCENT_FG_DIM": "#c6d6e8",
+    "SUCCESS":     "#59c07a",
+    "SUCCESS_DK":  "#4bb06c",
+    "SUCCESS_DIM": "#2f5540",
+    "DANGER":      "#e8735a",
+    "DANGER_DK":   "#e05a3f",
+    "WARN":        "#e5a75a",
+    "TOOLTIP_BG":  "#2f3742",  # light chip on a dark app
+    "TOOLTIP_FG":  "#e7eaef",
 }
 _PALETTES = {"light": _LIGHT, "dark": _DARK}
 
@@ -148,12 +148,29 @@ def toggle_mode() -> str:
 set_mode("light")
 
 # ── Fonts (plain tuples; valid before a root exists) ────────────────────────────
-FONT      = ("Segoe UI", 10)
-FONT_SM   = ("Segoe UI", 9)
-FONT_BOLD = ("Segoe UI", 10, "bold")
-FONT_H1   = ("Segoe UI", 15, "bold")
-FONT_H2   = ("Segoe UI", 11, "bold")
-FONT_MONO = ("Consolas", 10)
+# Font families. Bundled OFL fonts (Inter / Fraunces / JetBrains Mono) are a later
+# enhancement; for now we resolve to high-quality Windows-native families so the
+# editorial serif look ships with zero bundled assets. Tk silently falls back if a
+# family is absent, so these are safe on any Windows box.
+SANS  = "Segoe UI"   # body / UI
+SERIF = "Georgia"    # editorial headlines (built-in Windows transitional serif)
+MONO  = "Consolas"   # numerals in tables, code / log panes
+
+FONT       = (SANS, 10)
+FONT_SM    = (SANS, 9)
+FONT_BOLD  = (SANS, 10, "bold")
+FONT_H1    = (SERIF, 19)          # serif headline — the editorial signal
+FONT_H2    = (SANS, 11, "bold")
+FONT_MONO  = (MONO, 10)
+FONT_DISPLAY = (SERIF, 26)        # top-bar wordmark / empty-state hero (used in later phases)
+FONT_NUM   = (MONO, 9)            # right-aligned score / salary numerals in tables (later phases)
+
+# Spacing scale (8px base grid) + corner radii, consumed by the chrome retune in
+# later phases. Additive names — nothing references them yet.
+SP = (4, 8, 12, 16, 24, 32)
+RADIUS_BTN = 7
+RADIUS_CHIP = 6
+RADIUS_CARD = 0
 
 
 def base_theme() -> str:
@@ -317,6 +334,14 @@ def apply_theme(root, mode=None) -> ttk.Style:
     root.option_add("*TCombobox*Listbox.selectForeground", ACCENT_FG)
     root.option_add("*TCombobox*Listbox.font", FONT_SM)
 
+    # Rounded button chrome (Pillow 9-slice). Fully guarded — if Pillow is missing
+    # or anything fails, buttons stay flat and the theme is otherwise unaffected.
+    try:
+        from ui import chrome
+        chrome.install_rounded_buttons(style, root)
+    except Exception:
+        pass
+
     return style
 
 
@@ -378,11 +403,15 @@ def header_bar(parent, title, subtitle=None):
 
 def tip_strip(parent, text):
     """A one-line plain-English helper strip under a header. Self-packs."""
+    from ui import icons
     bar = tk.Frame(parent, bg=ALT)
     bar.pack(side="top", fill="x")
-    tk.Label(bar, text="\N{INFORMATION SOURCE}  " + text, bg=ALT, fg=MUTED,
-             font=FONT_SM, anchor="w", justify="left", padx=14, pady=7,
-             wraplength=1180).pack(fill="x")
+    row = tk.Frame(bar, bg=ALT)
+    row.pack(fill="x")
+    tk.Label(row, text=icons.glyph("info"), bg=ALT, fg=ACCENT,
+             font=icons.font(11), pady=7).pack(side="left", padx=(14, 6))
+    tk.Label(row, text=text, bg=ALT, fg=MUTED, font=FONT_SM, anchor="w",
+             justify="left", pady=7, wraplength=1140).pack(side="left", fill="x")
     tk.Frame(parent, bg=BORDER, height=1).pack(side="top", fill="x")
     return bar
 
@@ -488,17 +517,23 @@ def band_color(n) -> str:
     return {"good": SUCCESS, "mid": WARN, "low": DANGER, "none": FAINT}[key]
 
 
-def empty_state(parent, text, button_text=None, command=None,
-                icon="\N{INBOX TRAY}"):
+def empty_state(parent, text, button_text=None, command=None, icon=None):
     """A centered empty-state panel: faint icon + message + optional CTA button.
     Self-contained (the caller does .pack(fill='both', expand=True) and
     .pack_forget()/destroy when data arrives) — mirrors TopPicksTab's empty label
-    but generalized with a call-to-action. Returns the frame."""
+    but generalized with a call-to-action. Returns the frame.
+
+    `icon=None` uses a native MDL2 line glyph; a caller may still pass a raw string
+    (e.g. an emoji), which renders in the normal UI font."""
+    from ui import icons
     frame = tk.Frame(parent, bg=SURFACE)
     inner = tk.Frame(frame, bg=SURFACE)
     inner.place(relx=0.5, rely=0.42, anchor="center")
-    tk.Label(inner, text=icon, bg=SURFACE, fg=FAINT,
-             font=("Segoe UI", 30)).pack()
+    if icon is None:
+        icon_text, icon_font = icons.glyph("empty"), icons.font(30)
+    else:
+        icon_text, icon_font = icon, ("Segoe UI", 30)
+    tk.Label(inner, text=icon_text, bg=SURFACE, fg=FAINT, font=icon_font).pack()
     tk.Label(inner, text=text, bg=SURFACE, fg=MUTED, font=FONT, justify="center",
              wraplength=460).pack(pady=(8, 12))
     if button_text and command:

@@ -43,7 +43,7 @@ def test_app_version_is_semver():
 def test_build_package_zip_name_carries_version():
     import build_package
     assert build_package.APP_VERSION == config.APP_VERSION
-    assert build_package.zip_name() == f"JobScout-v{config.APP_VERSION}"
+    assert build_package.zip_name() == f"Zaggregate-v{config.APP_VERSION}"
 
 
 def test_build_package_readme_and_changes_reference_version_and_upgrade():
