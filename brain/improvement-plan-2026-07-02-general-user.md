@@ -1,5 +1,14 @@
 # Improvement Plan — General-User Readiness (2026-07-02)
 
+> **STATUS 2026-07-02: BUILT in Session 32** — all P0s, quick wins, coverage/onboarding
+> roadmaps, and strategic bets SB-1..SB-6 implemented and review-fleet-verified (13 confirmed
+> findings, 0 refuted, all fixed). See `docs/handoffs/handoff_20260702_session32.md` and the
+> corpus README (`brain/general-user-tests-2026-07/README.md`) for the full outcome mapping
+> (S31 finding → merge commit → live-smoke evidence). Per-item `✅ BUILT S32 (merge <hash>)`
+> markers are inline below. Precise caveats: **SB-1** Workday cxs built, Cloudflare-fronted
+> tenants remain walled; **SB-2 Leg B** + **P0-2 CareerOneStop daily source** built KEY-GATED /
+> code-ready, awaiting a CareerOneStop key. Original text below is intact — annotations only.
+
 **Source of truth:** 8 blank-slate persona runs (`persona-*.md`, `_structured-results.json`),
 4 review lenses (onboarding/coverage/ranking/lifecycle), 3 research reports
 (sources/competitors/onboarding-ux), and the orchestrator note — all in
@@ -61,6 +70,9 @@ where feasible.
 
 ### P0-1 — Multi-word `industry` silently zeroes the careers/registry path
 
+> ✅ BUILT S32 (merge `6d017f8` — token-aware `_industry_tag_match`, commit `11e670b`). Smoke:
+> `industry_company_count("warehouse logistics")` 0→15.
+
 - **File:** `scrape/company_registry.py:239-241` (`_industry_tag_match`), reached via
   `get_registry` key-normalization at `:287` / `:299`; tag written raw at `gui.py:2437`
   (`AddCompaniesDialog._add`).
@@ -77,6 +89,10 @@ where feasible.
 - **Effort:** XS (one line + test).
 
 ### P0-2 — CareerOneStop unkeyed & never surfaced (the #1 recurring "biggest gap")
+
+> ✅ BUILT S32 (merge `c3d442f` — `.env.example` keys `cd8f558`, wizard keys step `e843d5a`,
+> keyless-skip Inbox badge `5788d26`). CareerOneStop **daily source is code-ready but unkeyed** —
+> needs Alex's free CareerOneStop key to go live (Jobs API governance-gated since 2024-08-27, per the caveat below).
 
 - **File:** onboarding gap, not a code bug: `careeronestop_client.py:90` self-skips;
   `CAREERONESTOP_*` is absent from `.env.example`; the wizard (`ui/setup_wizard.py:416`) never
@@ -96,6 +112,10 @@ where feasible.
 
 ### P0-3 — Seniority-blind local Score (Sr./II·III/"8+ YOE" tie an entry role)
 
+> ✅ BUILT S32 (merge `b86c3b3` — seniority/country/label levers `0d65ca9`, threaded through all 5
+> callers `fdac6d1`). **Note:** the review fleet caught a CRITICAL rescore-drift that erased these
+> levers on every run — fixed in `025b0ce` (merge `80ce359`) + a lever-tripping parity test.
+
 - **File:** `match/scorer.py` — `_STOPWORDS` at `:33` strips `senior/junior/lead/staff/i/ii/iii`;
   `_seniority_fit_adj` engages only for management targets; the correct detector
   `facts._detect_seniority` (handles `\bsr\.?\b`, Roman I/II/III, `8+ years`) is **never called by
@@ -110,6 +130,9 @@ where feasible.
 
 ### P0-4 — `daily_run.py --project X` persistently flips the GLOBAL active project
 
+> ✅ BUILT S32 (merge `266cb1c` — drop `set_active` on the scoped path, commit `e5f3c20`).
+> **Verified live in smoke:** `active` stayed `test-controls` before/during/after all three runs.
+
 - **File:** `daily_run.py:218` `workspace.set_active(args.project)` writes `projects.json`;
   the process-local pin at `:225` (`pin_active`) already provides all in-process isolation, and
   `unpin_active` at `:629` does **not** restore the prior active.
@@ -122,6 +145,9 @@ where feasible.
 
 ### P0-5 — Remote-only search returns 0 on the keyed aggregators (query construction)
 
+> ✅ BUILT S32 (merge `75d80a8` — Adzuna/USAJobs remote query + national-feed localization, commit
+> `78defbe`). **Headline smoke win:** marketing-remote 8→36 inboxed; Adzuna remote 0→114 raw / 32 inboxed.
+
 - **File:** `daily_run.py:248` passes `location` verbatim; `search/adzuna_client.py:60-66` puts it
   in `where=` (geocoded → "Remote" resolves to nothing); `search/usajobs_client.py:68/121` sends
   it as a verbatim `LocationName`.
@@ -133,6 +159,12 @@ where feasible.
 - **Effort:** M.
 
 ### P0-6 — `+ Add Companies` saves unreachable/junk boards; Guide claims otherwise
+
+> ✅ BUILT S32 (merge `6d017f8` — probe-status gates saving+scraping, commit `5c7864c`). Two review-fleet
+> follow-ups also landed: the re-verify upgrade path (`c2c9589`+`8249683` → merge `b5e3ba6`, so a corrected
+> board clears its unverified flag) and the walled-vs-empty probe verdict (`b67a85e`+`62f449e` → merge
+> `f3b07ee`, so a Cloudflare-422 tenant is flagged unreachable not "verified-empty" — this last one's
+> lineage is the live smoke, not the fleet).
 
 - **File:** `gui.py:2428` `_add` calls `save_companies(self._entries)` with the **full** list;
   `scrape/company_registry.py:189` `save_companies` dedups only by `(ats_type, slug)`/name and
@@ -147,6 +179,8 @@ where feasible.
 - **Effort:** S–M.
 
 ### P0-7 — `tracker.db.update_job` silently drops unknown fields (data-loss trap)
+
+> ✅ BUILT S32 (merge `266cb1c` — UnknownFieldError + round/status coherence, commit `9641d4b`).
 
 - **File:** `tracker/db.py:678` filters to `_EDITABLE` (`:73`) and returns `None` regardless;
   same class in `update_interview_round` (`:847`, `_ROUND_EDITABLE`).
@@ -167,33 +201,33 @@ P0-2 are also quick-win-sized — listed above; not repeated here.)
 - **QW-1 — Broaden wizard field examples** to span the personas (add software engineering,
   consulting, marketing, logistics/warehouse, data analytics, teaching) + a one-line "this drives
   which sources & rankings you get" note. `ui/setup_wizard.py:518`. Every non-tech persona flagged
-  their field was unrepresented. **[XS]**
+  their field was unrepresented. **[XS]** — ✅ BUILT S32 (validated field-preset picker `ce57725` → merge `2e83a2a`).
 - **QW-2 — Country-blind remote credit cap.** `_location_score` (`search/search_engine.py:51-52`)
   returns full marks (3) for any "remote" string. When the remote label carries a non-US region
   token (`czech|canada|uk|emea|latam|europe|…`) and target is a US metro, cap the credit. One
   regex; also feed a label-derived `restriction` so `gate._FOREIGN_RESTRICTION` catches it. Fixes
-  SWE non-US remotes + marketer EMEA/LatAm rows. **[S]** (ranking #2)
+  SWE non-US remotes + marketer EMEA/LatAm rows. **[S]** (ranking #2) — ✅ BUILT S32 (country-blind remote cap in the scorer levers `0d65ca9` → merge `b86c3b3`).
 - **QW-3 — Sub-floor salary in JD body slips the gate.** In `hard_gate` (`preferences.py:127`),
   when API salary fields are empty, run `parse_comp(job.description)` and gate on the annualized
   floor — drop only on a confident sub-floor parse. Marketer's $18k/UK role passed a $90k floor.
-  **[S]** (ranking #5)
+  **[S]** (ranking #5) — ✅ BUILT S32 (body-salary floor in the scorer levers `0d65ca9` / `75d80a8` → merge `b86c3b3`; review fleet then fixed a bonus/commission false-drop, `a93ca54` → merge `80ce359`).
 - **QW-4 — Dedup console skip/verify noise.** Keyless-source + "verify manually" warnings print
   once per pass ×3 passes (`search/cli.py:72-157`, `scrape/direct_scraper.py:122`,
   `jooble_client.py:29`, `careerjet_client.py:29`). Module-level warned-set reset at run start.
-  Nurse/teacher both flagged the noise burying real signal. **[S]** (lifecycle L7)
+  Nurse/teacher both flagged the noise burying real signal. **[S]** (lifecycle L7) — ✅ BUILT S32 (warn-once dedup `a32b242` → merge `75d80a8`).
 - **QW-5 — File-import re-rank leaves Top Picks silently empty.** `service.apply_rerank_scores`
   writes `fit` but not `rank`/`rec_batch` unless the file has `new_rank`; the clipboard route
   always derives a shortlist. Make the file route fall back to ranking by `new_fit` desc (mirror
   `score_inbox_from_reply`), or surface "0 shortlisted — include new_rank". Warehouse B3.
-  **[S]** (lifecycle L2)
+  **[S]** (lifecycle L2) — ✅ BUILT S32 (file-import fit-fallback shortlist `265d180` → merge `75d80a8`).
 - **QW-6 — `add_status_note` renders as a phantom `accepted→accepted` self-transition in CSV
   export.** The interactive timeline tags it `kind='note'`; `status_timeline_all`
   (`tracker/db.py:1562`) does not. Format `old==new` rows as a note in the CSV. Data-changer B4.
-  **[low]** (lifecycle L6)
+  **[low]** (lifecycle L6) — ✅ BUILT S32 (CSV note fix folded into `9641d4b` (L4/L6) → merge `266cb1c`).
 - **QW-7 — Market own-your-data + no-auto-apply as the headline.** Zero code. The "90% of job
   platforms sell your data" and "auto-apply ≈ 0.01% success vs 4–6% tailored" stats are a moat no
   SaaS rival can answer, and the persona tests' honest false-positive/reach reporting is the
-  antithesis of ghost-job opacity. **[S, positioning]** (competitors §7/§8B)
+  antithesis of ghost-job opacity. **[S, positioning]** (competitors §7/§8B) — ✅ BUILT S32 (README/Guide positioning copy `ed95263` → merge `c7f67e7`).
 
 ---
 
@@ -275,29 +309,40 @@ own-your-data.
   bet: recovers the marquee local employers nurse/warehouse/data/mecheng/consultant all lost, and
   generalizes across four starving verticals at once. Pairs with P0-1 (so seeded employers are
   searched) and the HELD Seed-My-Area plan (the resolver becomes the "supply side" that plan
-  identified as the missing half). **[L]** (research-sources Headline #1)
+  identified as the missing half). **[L]** (research-sources Headline #1) — ✅ BUILT S32 (public
+  `wday/cxs` JSON fetcher + detection/dispatch/discovery `e1db6ba`/`1babd2f` → merge `5762e3e`;
+  registry migration `0f20b99` moved CCH 479 + Bon Secours 96 jobs to cxs). **Caveat:**
+  Cloudflare-fronted tenants (FedEx/AutoZone/Banner/etc.) still 422-wall → fail-soft; compliant
+  capture for those = extension/browser layer (future decision).
 - **SB-2 — Seed-My-Area, re-scoped against new evidence.** The HELD plan's Leg B assumed
   "get a free CareerOneStop key → #1 lever turns on." **That is now stale: the CareerOneStop Jobs
   API is governance-gated (2024-08-27).** Re-scope: (a) Leg A BYO-AI seeding stays, but per the
   AI-slug coin-flip evidence (SWE 5/13 wrong, nurse 0/14 live, consultant 1/17) prompt for the
   **careers-page URL only** and resolve slugs locally; (b) prefer the **verified-directory** path —
   CareerOneStop **Business Finder** (LMI family, still self-serve) for employer discovery, feeding
-  the SB-1 Workday resolver — over pure ask-your-AI. **[L, re-scope of held plan]**
+  the SB-1 Workday resolver — over pure ask-your-AI. **[L, re-scope of held plan]** — ✅ BUILT S32
+  **KEY-GATED**: Leg A URL-only seeding + BYO-AI setup module + MCP `seed_companies` (`ed3371b` →
+  merge `3f0a1fa`); Leg B CareerOneStop Business Finder client + `seed_my_metro` + Tools dialog
+  (`e2b1238`/`05c37bb` → merge `6f87d00`). **Leg B awaits a CareerOneStop key** — endpoint
+  provisional; drop one real Business Finder response at `COS_BF_FIXTURE` to confirm mapping once keyed.
 - **SB-3 — Browser-clip-to-seed** (competitor-inspired, assisted-not-auto). Simplify/Huntr sidestep
   the slug coin-flip entirely because the _user is already on the real career page_ when they clip.
   A one-click "add this live board to my registry" that verifies at clip time converts coin-flip
   seeding into ~100% valid boards — the competitors' proven mechanic without cloud or auto-apply.
-  **[L]** (competitors §8C)
+  **[L]** (competitors §8C) — ✅ BUILT S32 (`/clip` receiver + `resolve_board` verified-at-clip gate
+  - extension v1.5 `272e7ea`/`ce953f3` → merge `a52a4e7`). **Alex must reload the unpacked extension** (manifest 1.5).
 - **SB-4 — Reframe the daily inbox as a "Jobs For You" curated feed** and fold the P0-3/QW-2/QW-3
   scorer fixes in, so the **free** recommender is trustworthy _before_ BYO-AI. Jobright's
   most-loved feature is the matched feed framing; the engine already exists (`daily_run`).
-  **[M]** (competitors §8A, MED)
+  **[M]** (competitors §8A, MED) — ✅ BUILT S32 ("Jobs For You" inbox framing + forced first action `9a3d1a9` → merge `2e83a2a`).
 - **SB-5 — Visual Kanban tracker view.** Huntr's #1-loved feature; the lifecycle data already
   exists and is complete — this is a pure GUI add over the existing DB. Highest love-per-effort
-  emotional-anchor bet. **[S–M]** (competitors §8A, HIGH)
+  emotional-anchor bet. **[S–M]** (competitors §8A, HIGH) — ✅ BUILT S32 (Board tab over the tracker DB
+  `f4a557d` → merge `c7f67e7`; stage-aware clock + live cross-tab event `963ebd4` → merge `ad6a432`).
 - **SB-6 — Coverage/reach badge upgrade** (honest → actionable), plus a free **local ATS-detected
   match hint** (Jobscan-lite) using the ATS detection already in `ats_detect` — a free local answer
-  to a $50/mo tool, on-brand with own-your-data. **[M]** (competitors §8A, onboarding-ux §4)
+  to a $50/mo tool, on-brand with own-your-data. **[M]** (competitors §8A, onboarding-ux §4) — ✅ BUILT S32
+  (actionable reach badge `4602bed` + local `match/ats_hint.py` Jobscan-lite `493c4cc` → merge `2e83a2a`/`c7f67e7`).
 
 ---
 

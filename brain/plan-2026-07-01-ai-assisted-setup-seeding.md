@@ -1,5 +1,26 @@
 # Plan — AI-assisted setup & local-area seeding ("Seed My Area")
 
+> **STATUS 2026-07-02: BUILT in Session 32** (was HELD 2026-07-01). Shipped as SB-1/SB-2/SB-3 of the
+> general-user improvement plan:
+>
+> - **Leg A — BUILT, re-scoped** to careers-URL-only prompts (per the AI-slug coin-flip evidence):
+>   BYO-AI "set me up with my AI" module + URL-only seed prompts + MCP `seed_companies` tool
+>   (`ed3371b` → merge `3f0a1fa`). The industry-tag + probe pipeline it feeds is P0-1/P0-6-fixed.
+> - **Leg B — BUILT, KEY-GATED**: CareerOneStop Business Finder client + `seed_my_metro` pipeline +
+>   Tools ▸ "Seed my area…" dialog (`e2b1238`/`05c37bb` → merge `6f87d00`). Endpoint provisional —
+>   **awaits a CareerOneStop key**; drop one real Business Finder response at `COS_BF_FIXTURE` to
+>   verify the mapping once keyed.
+> - **Third leg — clip-to-seed (SB-3), BUILT**: a browser `/clip` receiver + `resolve_board`
+>   verified-at-clip gate + extension v1.5 (`272e7ea`/`ce953f3` → merge `a52a4e7`) — the
+>   competitor-proven mechanic that sidesteps the slug coin-flip entirely.
+> - **Success-metric status:** a non-Cincinnati user now reaches a seeded, verified local registry
+>   via one Tools-click **once the CareerOneStop key is added** (Leg B), or immediately via BYO-AI
+>   URL seeding (Leg A) / browser clip (SB-3). The Workday `wday/cxs` resolver (SB-1) is the supply
+>   side this plan called its "missing half" — also built.
+>
+> See `docs/handoffs/handoff_20260702_session32.md` + `brain/general-user-tests-2026-07/README.md`.
+> Original held-plan text below is intact.
+
 **Status: HELD (Alex, 2026-07-01) — noted for a future session. Pulled forward and
 built same day: the SmartRecruiters fetcher + consulting taxonomy entry. The K-12
 ATS (Frontline) was an illustrative example only — backlog, not committed work.**

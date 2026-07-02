@@ -27,8 +27,8 @@ lockout, demo rows in AI export, + 8 more → 5 fix builders, ALL merged. **Live
 smoke** (3 blank slates): marketing-remote **8→36 inboxed (Adzuna remote 0→114
 raw)**; warehouse/teacher machinery proven (P0-1 15 seeds matched, 15/15 cxs
 probes, REAP 13 OH rows), P0-4 verified live; + final builder fixed cxs
-walled-vs-empty probe verdicts. Suite **1744 → 2176+ green at every merge**;
-**~195 ahead, PUSH HELD**. Needs Alex: eyeball `py gui.py`, reload extension,
+walled-vs-empty probe verdicts. Suite **1744 → 2195 green**;
+**~196 ahead, PUSH HELD**. Needs Alex: eyeball `py gui.py`, reload extension,
 CareerOneStop key, push decision. Detail:
 `docs/handoffs/handoff_20260702_session32.md` + smoke report in
 `brain/general-user-tests-2026-07/`.
