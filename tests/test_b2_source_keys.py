@@ -73,6 +73,8 @@ def _clear_source_env(monkeypatch):
 
 def test_jooble_keyless_self_skip(secrets, monkeypatch, tmp_path, capsys):
     _clear_source_env(monkeypatch)
+    import applog
+    applog.reset_run_warnings()  # the skip warns once per run (S32/L7)
     from search.jooble_client import JoobleClient
     c = JoobleClient(cache_dir=tmp_path, cache_enabled=False)
     assert c.search("engineer", location="") == {"jobs": []}
@@ -81,6 +83,8 @@ def test_jooble_keyless_self_skip(secrets, monkeypatch, tmp_path, capsys):
 
 def test_careerjet_keyless_self_skip(secrets, monkeypatch, tmp_path, capsys):
     _clear_source_env(monkeypatch)
+    import applog
+    applog.reset_run_warnings()  # the skip warns once per run (S32/L7)
     from search.careerjet_client import CareerjetClient
     c = CareerjetClient(cache_dir=tmp_path, cache_enabled=False)
     assert c.search("engineer", location="") == {"jobs": []}

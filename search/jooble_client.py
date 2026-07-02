@@ -26,8 +26,11 @@ class JoobleClient(SingleFeedClient):
             return {"jobs": []}
         api_key = self._api_key()
         if not api_key:
-            print("  [jooble] WARNING: JOOBLE_API_KEY unset — Jooble skipped "
-                  "(free key at jooble.org/api/about).")
+            # Emitted once per run, not per keyword/pass (S32/L7).
+            import applog
+            applog.warn_once(
+                "  [jooble] WARNING: JOOBLE_API_KEY unset — Jooble skipped "
+                "(free key at jooble.org/api/about).", key="jooble:no-key")
             return {"jobs": []}
         key = cache_key("jooble", keyword, location)
 

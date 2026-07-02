@@ -226,6 +226,43 @@ def get_logger(name: str | None = None) -> logging.Logger:
     return logging.getLogger(f"{_ROOT_NAME}.{short}")
 
 
+# ── run-scoped "warn once" dedup (S32/L7) ─────────────────────────────────────
+# The paginated daily run re-invokes each keyless/direct source's search() per
+# keyword AND runs a page-1 baseline pass + a full pass, so an unconditional
+# per-call print() (keyless-source skip, "verify manually") floods the console
+# 2-3x for every keyword/company — dozens of duplicated lines that bury real
+# signal for a non-technical user. warn_once() emits a given message the FIRST
+# time its key is seen this run and swallows every repeat; reset_run_warnings()
+# clears the set at the start of a run so the next run warns afresh. Presentation
+# only — no scraping/behavior change.
+_WARNED_ONCE: set[str] = set()
+
+
+def reset_run_warnings() -> None:
+    """Clear the per-run 'warn once' dedup set. Call at the START of a daily run
+    so its skip/verify warnings print once for THIS run, not carrying over a
+    previous in-process run's seen-set (GUI 'Update now', tests)."""
+    _WARNED_ONCE.clear()
+
+
+def warn_once(message: str, *, key: str | None = None,
+              logger: str = "sources", level: int = logging.WARNING) -> bool:
+    """Log `message` only the first time `key` (defaults to the message itself)
+    is seen since the last reset_run_warnings(); subsequent calls with the same
+    key are silently dropped. Returns True if it emitted, False if deduped.
+
+    Routed through the shared logger tree so the persisted app.log still records
+    it once (and the console echo matches the old print for INFO). Used by the
+    keyless-source skips and the 'verify results manually' scraper notice, which
+    otherwise repeat per keyword/company per pass."""
+    k = key if key is not None else message
+    if k in _WARNED_ONCE:
+        return False
+    _WARNED_ONCE.add(k)
+    get_logger(logger).log(level, message)
+    return True
+
+
 def reset_for_tests() -> None:
     """Drop the configured handlers so a test that repoints config.USER_DATA_DIR
     gets a fresh file handler under the new path. Test-only."""

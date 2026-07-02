@@ -498,10 +498,21 @@ def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> 
     """Write imported re-rank scores back to the inbox: new_fit -> fit,
     fit_rationale -> fit_why (via inbox_set_fit, which snapshots score_history),
     and the optional extras blob MERGED into inbox.extras (preserving
-    new_batch/browse/etc). Returns rows updated."""
+    new_batch/browse/etc). Returns rows updated.
+
+    Top-Picks parity with the clipboard route (S32/L2): the file import stamps a
+    rank/rec_batch ONLY for rows whose extras carried a `new_rank` cell. A file
+    that fills new_fit but omits new_rank (the obvious, required-feeling column)
+    would otherwise leave the Top Picks tab silently empty, while the clipboard
+    route (score_inbox_from_reply) ALWAYS derives a shortlist. So when NO imported
+    row supplied a rank, we fall back to ranking the scored rows by new_fit
+    descending and stamping rank_patch on each — exactly what the clipboard route
+    does — so both BYO-AI routes fill Top Picks identically."""
     import uuid
     batch = uuid.uuid4().hex[:12]
     applied = 0
+    scored: list[tuple[int, int]] = []   # (inbox_id, fit) for the rank fallback
+    any_rank_supplied = False
     for u in updates:
         try:
             inbox_id = int(u["id"])
@@ -521,7 +532,17 @@ def apply_rerank_scores(updates: list[dict], *, source: str = "file_import") -> 
                     patch = None
             if patch:
                 db.inbox_merge_extras(inbox_id, patch)
+                if patch.get("rank") is not None and patch.get("rec_batch"):
+                    any_rank_supplied = True
+        scored.append((inbox_id, fit))
         applied += 1
+    # Fallback shortlist: no imported row carried a rank -> derive one from fit so
+    # Top Picks isn't left silently empty (mirrors score_inbox_from_reply).
+    if scored and not any_rank_supplied:
+        rec_batch = new_rec_batch()
+        for rank, (inbox_id, _fit) in enumerate(
+                sorted(scored, key=lambda t: -t[1]), start=1):
+            db.inbox_merge_extras(inbox_id, rank_patch(rank, rec_batch))
     return applied
 
 

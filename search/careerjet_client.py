@@ -26,8 +26,12 @@ class CareerjetClient(SingleFeedClient):
             return {"jobs": []}
         affid = self._affid()
         if not affid:
-            print("  [careerjet] WARNING: CAREERJET_AFFID unset — Careerjet skipped "
-                  "(free affiliate id at careerjet.com/partners/).")
+            # Emitted once per run, not per keyword/pass (S32/L7).
+            import applog
+            applog.warn_once(
+                "  [careerjet] WARNING: CAREERJET_AFFID unset — Careerjet skipped "
+                "(free affiliate id at careerjet.com/partners/).",
+                key="careerjet:no-affid")
             return {"jobs": []}
         key = cache_key("careerjet", keyword, location)
 

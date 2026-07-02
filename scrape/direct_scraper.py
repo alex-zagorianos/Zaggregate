@@ -119,7 +119,11 @@ def scrape_direct(
     if html is None:
         return []
 
-    print(f"  [direct] {company.name}: link extraction + JSON-LD — verify results manually")
+    # Once per company per run, not per keyword per pass (S32/L7).
+    import applog
+    applog.warn_once(
+        f"  [direct] {company.name}: link extraction + JSON-LD — verify results manually",
+        key=f"direct-verify:{company.slug}", level=applog.logging.INFO)
     jobs = _extract_jobs(html, company, keyword)
     return _merge_jsonld(jobs, html, company, keyword)
 

@@ -34,8 +34,12 @@ def discover_companies(
     known_slugs: set[str],
 ) -> list[CompanyEntry]:
     if not BRAVE_SEARCH_API_KEY:
-        print("  [discover] WARNING: BRAVE_SEARCH_API_KEY unset — Brave company "
-              "discovery skipped; relying on the existing registry only (spec §7).")
+        # Once per run, not per keyword (S32/L7).
+        import applog
+        applog.warn_once(
+            "  [discover] WARNING: BRAVE_SEARCH_API_KEY unset — Brave company "
+            "discovery skipped; relying on the existing registry only (spec §7).",
+            key="discover:no-brave-key")
         return []
 
     discovered: list[CompanyEntry] = []

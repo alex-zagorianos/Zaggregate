@@ -392,7 +392,9 @@ def test_export_applications_csv_golden(tmp_db, tmp_path):
     assert r["source"] == "careeronestop"
     # The full timeline is folded into 'history': the transition + the note.
     assert "interested->applied" in r["history"]
-    assert "[called back]" in r["history"]
+    # S32/L6: a same-status note renders as a note, not a phantom self-transition.
+    assert "applied->applied" not in r["history"]
+    assert "[note: called back]" in r["history"]
 
 
 def test_export_csv_excludes_archived(tmp_db, tmp_path):
