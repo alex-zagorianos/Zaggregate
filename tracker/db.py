@@ -78,6 +78,40 @@ _EDITABLE = {
 }
 
 
+class UnknownFieldError(ValueError):
+    """A tracker update was passed a field name that isn't an editable column.
+
+    Raised (instead of silently dropping the field) so a scripted/BYO-AI caller
+    that guesses a wrong column name — e.g. 'offer_salary' for the real
+    'offer_amount' — gets a hard, actionable error rather than losing the value
+    with no signal (S32/L3). Subclasses ValueError so existing `except ValueError`
+    handlers still catch it.
+    """
+
+
+def _reject_unknown_fields(fn_name: str, fields: dict, allowed: set) -> None:
+    """Raise UnknownFieldError if `fields` contains any key outside `allowed`.
+
+    An empty `fields` dict is fine (that's a caller-side no-op, handled by the
+    `if not updates` guard downstream) — this only fires when the caller DID
+    supply something and at least one supplied key is not an editable column.
+    The message lists the offending keys and the closest valid alternatives so
+    a wrong-column guess ('offer_salary') points the caller at 'offer_amount'.
+    """
+    unknown = [k for k in fields if k not in allowed]
+    if not unknown:
+        return
+    import difflib
+    hints = []
+    for k in unknown:
+        near = difflib.get_close_matches(k, sorted(allowed), n=1, cutoff=0.6)
+        hints.append(f"{k!r}" + (f" (did you mean {near[0]!r}?)" if near else ""))
+    raise UnknownFieldError(
+        f"{fn_name}: unknown field(s) {', '.join(hints)}. "
+        f"Editable fields: {', '.join(sorted(allowed))}."
+    )
+
+
 # Bounded mmap window for read-heavy GUI queries (phiresky's SQLite tuning
 # benchmark - see brain/research-2026-07-01-reach-storage.md). 256 MiB is well
 # above any realistic per-project tracker.db size, so this is a ceiling, not a
@@ -677,6 +711,13 @@ def get_counts():
 
 def update_job(job_id, **fields):
     from datetime import datetime, timezone, date, timedelta
+    # Reject unknown field names LOUDLY instead of silently dropping them
+    # (S32/L3): a scripted or BYO-AI caller that guesses a wrong column
+    # ('offer_salary' vs the real 'offer_amount') would otherwise lose data with
+    # no error, no warning, and a None return. Raise so the mistake surfaces at
+    # the call site. Note: an empty call (no fields at all) stays a silent no-op
+    # — that's "nothing to update", not "unknown field".
+    _reject_unknown_fields("update_job", fields, _EDITABLE)
     updates = {k: v for k, v in fields.items() if k in _EDITABLE}
     if not updates:
         return
@@ -809,10 +850,29 @@ def status_timeline(job_id) -> list[dict]:
 
 # ── Interview rounds (D1 P5) ──────────────────────────────────────────────────
 
+# Round KIND -> the funnel STATUS it implies (S32/L4). The STATUS is the funnel
+# source of truth (it drives analytics + the follow-up nudge, which keys off
+# status only); a round is a scheduled event UNDER an interview-y status. Adding
+# a round while the app is still pre-interview used to leave status at 'applied',
+# so `count_followups_due`/`followups_due` never advanced — a user who logged
+# their phone screen as a ROUND but left status at 'applied' got the wrong
+# nudging. Adding a round now advances a pre-interview status to the stage the
+# round implies, tying the two models together. A 'phone' round implies the
+# 'phone_screen' stage; every other round kind implies 'interview'.
+_ROUND_KIND_STATUS = {"phone": "phone_screen"}
+_PRE_INTERVIEW_STATUSES = {"interested", "applied"}
+
+
 def add_interview_round(app_id, kind="other", scheduled_at="", interviewer="",
                         notes="", outcome="", round_no=None) -> int:
     """Record an interview round for a tracked application. round_no defaults to
-    the next sequential number for that app when not given. Returns the new id."""
+    the next sequential number for that app when not given. Returns the new id.
+
+    Coherence (S32/L4): if the application is still at a pre-interview status
+    (interested/applied), adding a round advances it to the stage the round kind
+    implies (phone -> phone_screen, else interview) so the funnel + follow-up
+    nudge stay consistent with the round having happened. A round on an already-
+    interview-or-later status leaves the status untouched (never downgrades)."""
     with get_conn() as conn:
         if round_no is None:
             row = conn.execute(
@@ -827,7 +887,17 @@ def add_interview_round(app_id, kind="other", scheduled_at="", interviewer="",
             (app_id, round_no, kind, scheduled_at, interviewer, notes, outcome),
         )
         conn.commit()
-        return cur.lastrowid
+        new_id = cur.lastrowid
+        cur_status_row = conn.execute(
+            "SELECT status FROM applications WHERE id=?", (app_id,)
+        ).fetchone()
+    # Advance a pre-interview status OUTSIDE the connection above so update_job's
+    # own transaction (which records the status_history transition + follow-up
+    # side-effects) doesn't nest connections on the same db.
+    if cur_status_row and cur_status_row["status"] in _PRE_INTERVIEW_STATUSES:
+        implied = _ROUND_KIND_STATUS.get(kind, "interview")
+        update_job(app_id, status=implied)
+    return new_id
 
 
 def list_interview_rounds(app_id) -> list[dict]:
@@ -845,6 +915,9 @@ _ROUND_EDITABLE = {"round_no", "kind", "scheduled_at", "interviewer", "notes",
 
 
 def update_interview_round(round_id, **fields) -> None:
+    # Same silent-data-loss guard as update_job (S32/L3): reject unknown round
+    # field names rather than dropping them without a signal.
+    _reject_unknown_fields("update_interview_round", fields, _ROUND_EDITABLE)
     updates = {k: v for k, v in fields.items() if k in _ROUND_EDITABLE}
     if not updates:
         return
@@ -1548,8 +1621,15 @@ def export_applications_csv(path) -> int:
         hist: dict[int, list[str]] = {}
         for ev in status_timeline_all(conn):
             note = f" [{ev['note']}]" if ev["note"] else ""
-            hist.setdefault(ev["job_id"], []).append(
-                f"{ev['changed_at']} {ev['old_status']}->{ev['new_status']}{note}")
+            # A same-status row carrying a note is an add_status_note() event, not
+            # a real transition (S32/L6). The interactive timeline already tags it
+            # kind='note'; render it as a note here too instead of emitting a
+            # phantom 'accepted->accepted' self-transition in the exported CSV.
+            if ev["old_status"] == ev["new_status"] and ev["note"]:
+                entry = f"{ev['changed_at']} {ev['new_status']} [note: {ev['note']}]"
+            else:
+                entry = f"{ev['changed_at']} {ev['old_status']}->{ev['new_status']}{note}"
+            hist.setdefault(ev["job_id"], []).append(entry)
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
