@@ -299,10 +299,12 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
 
     Verdict per line: 'live'/'direct' -> verified & saved; 'unreachable' ->
     flagged-unverified (saved but excluded from scraping until it verifies);
-    'skipped' -> already in the registry."""
-    from scrape.ats_detect import parse_line, probe_count
-    from scrape.company_registry import (UNVERIFIED_FLAG, save_companies,
-                                         get_registry)
+    'skipped' -> already in the registry; 'rejected' -> a ToS-blocked/aggregator
+    host (NEOGOV/governmentjobs, Frontline/AppliTrack, Indeed, LinkedIn, ...)
+    that must never be scraped, dropped without saving."""
+    from scrape.ats_detect import parse_line, probe_count, is_tos_blocked_host
+    from scrape.company_registry import (UNVERIFIED_FLAG, is_unverified,
+                                         save_companies, get_registry)
 
     lines = [ln for ln in (text or "").splitlines() if ln.strip()]
     entries = [e for e in (parse_line(ln) for ln in lines) if e]
@@ -310,15 +312,32 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
     for e in entries:
         e.industries = [ind] if ind else []
 
-    # Existing (verified) registry names, so we can report already-present.
+    # Existing registry names, so we can report already-present. A currently
+    # UNVERIFIED stored board is NOT treated as "already in registry": a fresh
+    # live/direct verdict must flow through to save_companies so the P0-6
+    # re-verify upgrade can clear its flag (otherwise a mis-guessed-then-
+    # corrected board stays permanently unscraped). Only VERIFIED stored boards
+    # short-circuit as skipped.
     try:
-        known = {(c.name or "").lower() for c in get_registry(include_unverified=True)}
+        _all = get_registry(include_unverified=True)
+        known = {(c.name or "").lower() for c in _all if not is_unverified(c)}
     except Exception:
         known = set()
 
     verdicts: list[dict] = []
     to_save = []
     for e in entries:
+        # ToS/aggregator guard: a NEOGOV/governmentjobs, Frontline/AppliTrack,
+        # Indeed, LinkedIn, etc. URL must NEVER enter the scraped registry. These
+        # always fall to 'direct' (their host matches no ATS), where the slug IS
+        # the full URL, so the daily direct-scraper would plain-GET it. Reject at
+        # save time — critical for the AI-drivable MCP seed_companies path, where
+        # an agent could otherwise seed an arbitrary (ToS-gray) fetch target.
+        if is_tos_blocked_host(e.slug):
+            verdicts.append({"name": e.name, "ats_type": e.ats_type,
+                             "slug": e.slug, "verdict": "rejected",
+                             "detail": "blocked host (ToS/aggregator — not saved)"})
+            continue
         if (e.name or "").lower() in known:
             verdicts.append({"name": e.name, "ats_type": e.ats_type,
                              "slug": e.slug, "verdict": "skipped",
@@ -350,7 +369,9 @@ def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> di
     verified = sum(1 for v in verdicts if v["verdict"] in ("live", "direct"))
     unverified = sum(1 for v in verdicts if v["verdict"] == "unreachable")
     skipped = sum(1 for v in verdicts if v["verdict"] == "skipped")
+    rejected = sum(1 for v in verdicts if v["verdict"] == "rejected")
     return {
         "parsed": len(entries), "added": added, "verified": verified,
-        "unverified": unverified, "skipped": skipped, "verdicts": verdicts,
+        "unverified": unverified, "skipped": skipped, "rejected": rejected,
+        "verdicts": verdicts,
     }

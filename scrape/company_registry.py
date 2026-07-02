@@ -1,7 +1,19 @@
 import json
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+# Serializes the read-modify-write of companies.json. The GUI's "+ Add
+# Companies" and the embedded Flask browser-receiver (/clip) both write this file
+# from the SAME process, and Flask serves on threaded=True — so two near-
+# simultaneous /clip POSTs (or a clip racing a GUI add) would otherwise each read
+# the same base list, append, and the second atomic write would clobber the
+# first, silently losing a board. A single in-process lock is the correct, cheap
+# fix for this single-process local app (cross-process writers — the separate
+# MCP process — are never concurrent with the receiver). Held only around the
+# read-modify-write in save_companies, never around the live network probe.
+_SAVE_LOCK = threading.Lock()
 
 
 @dataclass
@@ -23,8 +35,10 @@ class CompanyEntry:
 # Key inside CompanyEntry.extra marking a board that FAILED its live probe at
 # add-time (P0-6). Such an entry is persisted (so the user's paste isn't lost and
 # they can see/prune it) but is EXCLUDED from scraping until it verifies — a
-# later re-add with a live probe overwrites it (user-wins-by-name) and clears the
-# flag. This is what makes the "+ Add Companies" probe status actually matter
+# later VERIFIED re-add (via '+ Add Companies', browser clip, or AI seed) matches
+# it by (ats_type, slug) or name and upgrades it in place, clearing this flag so
+# it re-enters the scraped set (save_companies(..., upgrade_unverified=True), the
+# default). This is what makes the "+ Add Companies" probe status actually matter
 # instead of being advisory-only.
 UNVERIFIED_FLAG = "unverified"
 
@@ -201,13 +215,40 @@ def _load_user_companies(json_path: Optional[Path] = None) -> list[CompanyEntry]
         return []
 
 
-def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = None) -> int:
+def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = None,
+                   *, upgrade_unverified: bool = True) -> int:
     """Append companies to companies.json, preserving its comments/examples and
     skipping any whose (ats_type, slug) or name already exists. Atomic write.
-    Returns the number actually added."""
+    Returns the number actually added (fresh inserts + unverified upgrades).
+
+    Re-verify path (P0-6): when ``upgrade_unverified`` is True (the default) an
+    incoming VERIFIED entry (i.e. NOT flagged unverified) that matches an
+    existing record by (ats_type, slug) OR name — where the STORED record is
+    currently flagged unverified — UPGRADES it in place: the stored record's
+    fields are replaced with the fresh entry's and the UNVERIFIED_FLAG is
+    cleared (dropping `extra` if it becomes empty). This is what makes a board
+    that failed its first live probe (a transient network blip / rate-limit /
+    ATS outage, then kept-anyway) scrapeable again once the user re-adds,
+    re-clips, or re-seeds it after it verifies — instead of being permanently
+    locked out. A verified board already stored as verified stays a plain
+    duplicate (skipped); an incoming still-unverified entry never overwrites a
+    verified stored record.
+
+    The read-modify-write is serialized by a module lock (_SAVE_LOCK) so
+    concurrent writers (the threaded Flask /clip receiver, the GUI add) can't
+    lose a write by racing on companies.json."""
     from config import COMPANIES_JSON
-    from scrape.cache_helpers import write_cache
     path = json_path or COMPANIES_JSON
+    with _SAVE_LOCK:
+        return _save_companies_locked(new_entries, path,
+                                      upgrade_unverified=upgrade_unverified)
+
+
+def _save_companies_locked(new_entries: list[CompanyEntry], path: Path,
+                           *, upgrade_unverified: bool) -> int:
+    """The read-modify-write body of save_companies. MUST be called holding
+    _SAVE_LOCK (see save_companies)."""
+    from scrape.cache_helpers import write_cache
     try:
         raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception as e:
@@ -217,13 +258,12 @@ def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = 
         raw = {}
     companies = raw.get("companies", [])
     real = [c for c in companies if "_example" not in c]
-    seen_keys = {(c.get("ats_type"), c.get("slug")) for c in real}
-    seen_names = {(c.get("name") or "").lower() for c in real}
+    # Index existing REAL records so a dup is a no-op and an upgrade can find &
+    # mutate the stored record in place (identity = (ats_type, slug) or name).
+    by_key = {(c.get("ats_type"), c.get("slug")): c for c in real}
+    by_name = {(c.get("name") or "").lower(): c for c in real}
 
-    added = 0
-    for e in new_entries:
-        if (e.ats_type, e.slug) in seen_keys or e.name.lower() in seen_names:
-            continue
+    def _record_for(e: CompanyEntry) -> dict:
         record = {
             "name": e.name,
             "ats_type": e.ats_type,
@@ -235,15 +275,38 @@ def save_companies(new_entries: list[CompanyEntry], json_path: Optional[Path] = 
         # metadata (a bare {} would gratuitously churn every existing entry).
         if getattr(e, "extra", None):
             record["extra"] = dict(e.extra)
-        companies.append(record)
-        seen_keys.add((e.ats_type, e.slug))
-        seen_names.add(e.name.lower())
-        added += 1
+        return record
 
-    if added:
+    changed = 0
+    for e in new_entries:
+        existing = by_key.get((e.ats_type, e.slug)) or by_name.get(e.name.lower())
+        if existing is not None:
+            # A verified re-add of a board stored as unverified clears the flag
+            # (user-wins-by-identity) so it re-enters the scraped set. Any other
+            # collision (verified<->verified, or an incoming still-unverified
+            # entry) stays a no-op skip — we never demote a verified record.
+            if (upgrade_unverified and not is_unverified(e)
+                    and bool((existing.get("extra") or {}).get(UNVERIFIED_FLAG))):
+                upgraded = _record_for(e)
+                # Merge industries (union) so a re-verify with a different active
+                # field doesn't silently drop the board's prior field tags.
+                merged = list(dict.fromkeys(
+                    list(existing.get("industries") or []) + list(e.industries)))
+                upgraded["industries"] = merged
+                existing.clear()
+                existing.update(upgraded)
+                changed += 1
+            continue
+        record = _record_for(e)
+        companies.append(record)
+        by_key[(e.ats_type, e.slug)] = record
+        by_name[e.name.lower()] = record
+        changed += 1
+
+    if changed:
         raw["companies"] = companies
         write_cache(path, raw)
-    return added
+    return changed
 
 
 def _normalize_industry(s: str) -> str:

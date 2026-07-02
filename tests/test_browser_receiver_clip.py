@@ -12,7 +12,8 @@ these tests never touch the network or the real registry.
 import pytest
 
 from scrape.browser_receiver import app, clip_board
-from scrape.company_registry import CompanyEntry, get_registry, is_unverified
+from scrape.company_registry import (CompanyEntry, UNVERIFIED_FLAG, get_registry,
+                                     is_unverified, save_companies)
 
 
 @pytest.fixture
@@ -107,6 +108,45 @@ def test_clip_duplicate_reclip_reports_duplicate(companies):
     assert v["status"] == "duplicate"
     assert v["reason"] == "already_in_registry"
     assert calls == []   # dedup short-circuits before the live probe
+
+
+def test_clip_reverifies_unverified_board_clearing_flag(companies):
+    """P0-6 re-verify: a board stored flagged-unverified (e.g. it failed its
+    add-time probe and was kept anyway) is NOT reported as a dead-end duplicate
+    on re-clip — the live probe runs, the flag is cleared, and it re-enters the
+    scraped set."""
+    # Seed a flagged-unverified greenhouse board directly.
+    save_companies([CompanyEntry("Acme", "greenhouse", "acme", [],
+                                 {UNVERIFIED_FLAG: True})], companies)
+    assert "Acme" not in {c.name for c in get_registry(user_json=companies)}  # excluded
+
+    calls = []
+    v = clip_board("https://boards.greenhouse.io/acme/jobs/1", "", industry="",
+                   json_path=companies,
+                   probe_fn=lambda e: calls.append(1) or 12)
+    assert v["status"] == "added"
+    assert v["reason"] == "re_verified"
+    assert v["live_count"] == 12
+    assert calls == [1]                          # the live probe DID run this time
+    # Flag cleared and the board is back in the scraped registry.
+    entries = get_registry(include_unverified=True, user_json=companies)
+    acme = next(e for e in entries if e.name == "Acme")
+    assert not is_unverified(acme)
+    assert "Acme" in {c.name for c in get_registry(user_json=companies)}
+
+
+def test_clip_reverify_that_still_fails_stays_unverified(companies):
+    """If the re-clip probe ALSO fails, nothing is upgraded — the board stays
+    flagged-unverified (never silently scraped)."""
+    save_companies([CompanyEntry("Acme", "greenhouse", "acme", [],
+                                 {UNVERIFIED_FLAG: True})], companies)
+    v = clip_board("https://boards.greenhouse.io/acme/jobs/1", "", industry="",
+                   json_path=companies, probe_fn=lambda e: None)
+    assert v["status"] == "failed"
+    assert v["reason"] == "unreachable"
+    entries = get_registry(include_unverified=True, user_json=companies)
+    acme = next(e for e in entries if e.name == "Acme")
+    assert is_unverified(acme)                    # still gated out
 
 
 def test_clip_duplicate_detected_by_name_across_slug(companies):

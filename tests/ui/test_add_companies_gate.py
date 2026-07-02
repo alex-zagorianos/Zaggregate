@@ -53,3 +53,37 @@ def test_dialog_class_exposes_gated_add_paths():
     # routes through the gated path.
     assert hasattr(gui.AddCompaniesDialog, "_do_gated_add")
     assert hasattr(gui.AddCompaniesDialog, "_add")
+
+
+def test_gui_verified_readd_upgrades_unverified_board(tmp_path):
+    # The GUI '+ Add Companies' save contract: a board first kept-anyway
+    # (unverified), then re-added after it probes live, is partitioned as
+    # 'verified' and save_companies (the same call _do_gated_add makes) upgrades
+    # the stored record in place — clearing the flag so it scrapes again. This is
+    # the registry-level equivalent of the dialog's _do_gated_add save, without a
+    # Tk display.
+    import json
+    from scrape.company_registry import (UNVERIFIED_FLAG, get_registry,
+                                         is_unverified, save_companies)
+    p = tmp_path / "companies.json"
+
+    # 1) Kept-anyway unreachable board (what _do_gated_add flags + saves).
+    dead = CompanyEntry("Flaky Co", "greenhouse", "flakyco",
+                        ["controls_engineering"], {UNVERIFIED_FLAG: True})
+    assert save_companies([dead], p) == 1
+    assert "Flaky Co" not in {c.name for c in get_registry("controls_engineering", user_json=p)}
+
+    # 2) Re-add after it verifies: partition_add_entries -> 'verified' (no flag),
+    #    the exact list _do_gated_add hands to save_companies.
+    fresh = CompanyEntry("Flaky Co", "greenhouse", "flakyco", ["controls_engineering"])
+    verified, unreachable = partition_add_entries([fresh], {0: "live"})
+    assert [e.name for e in verified] == ["Flaky Co"] and unreachable == []
+    assert save_companies(verified, p) == 1        # counted as an upgrade
+
+    entries = get_registry(include_unverified=True, user_json=p)
+    flaky = next(e for e in entries if e.name == "Flaky Co")
+    assert not is_unverified(flaky)
+    assert "Flaky Co" in {c.name for c in get_registry("controls_engineering", user_json=p)}
+    # Still one record — upgraded in place, not duplicated.
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    assert sum(1 for c in raw["companies"] if c.get("slug") == "flakyco") == 1

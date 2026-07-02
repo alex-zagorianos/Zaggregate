@@ -118,7 +118,7 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
     injectable so tests never touch the network or the real companies.json."""
     from scrape.ats_detect import resolve_board, probe_count
     from scrape.company_registry import (CompanyEntry, get_registry,
-                                         save_companies)
+                                         is_unverified, save_companies)
     if probe_fn is None:
         probe_fn = probe_count
 
@@ -147,10 +147,19 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
 
     # Duplicate re-clip: already in the registry by (ats_type, slug) or name?
     # save_companies would no-op it, but the user deserves an explicit
-    # "already have this" rather than a silent "added 0".
+    # "already have this" rather than a silent "added 0". EXCEPTION (P0-6
+    # re-verify): a stored board that is currently flagged UNVERIFIED is NOT a
+    # dead-end duplicate — re-clipping means the user is on the real live board,
+    # so we fall through to the live probe and let save_companies upgrade it
+    # (clearing the flag) instead of reporting a misleading "duplicate" that
+    # would leave it permanently unscraped.
+    reclip_unverified = False
     for existing in get_registry(include_unverified=True, user_json=json_path):
         if ((existing.ats_type, existing.slug) == (ats, slug)
                 or existing.name.lower() == company.lower()):
+            if is_unverified(existing):
+                reclip_unverified = True
+                break
             verdict.update(status="duplicate", reason="already_in_registry")
             return verdict
 
@@ -164,8 +173,13 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
 
     verdict["live_count"] = count
     added = save_companies([entry], json_path=json_path)
-    verdict.update(status="added" if added else "duplicate",
-                   reason="verified_live" if added else "already_in_registry")
+    # `added` counts a fresh insert OR an unverified->verified upgrade; a
+    # re-clip that cleared the flag is a "re-verified" success, not a duplicate.
+    if added:
+        reason = "re_verified" if reclip_unverified else "verified_live"
+        verdict.update(status="added", reason=reason)
+    else:
+        verdict.update(status="duplicate", reason="already_in_registry")
     return verdict
 
 

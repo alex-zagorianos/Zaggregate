@@ -35,6 +35,27 @@ def test_seed_companies_verifies_and_gates(monkeypatch, tmp_path):
     assert kinds == {"Acme": "live", "DeadCo": "unreachable", "Direct": "direct"}
 
 
+def test_seed_companies_rejects_tos_blocked_host(monkeypatch, tmp_path):
+    # An AI agent driving this tool must not be able to seed a ToS-blocked /
+    # aggregator host (NEOGOV/governmentjobs, Indeed, ...) as an unprobed 'direct'
+    # fetch target: those are rejected and never saved.
+    import json
+    import config
+    from scrape import ats_detect
+    monkeypatch.setattr(config, "COMPANIES_JSON", tmp_path / "companies.json")
+    monkeypatch.setattr(ats_detect, "probe_count", lambda e: 7)
+    lines = ("City Jobs | https://www.governmentjobs.com/careers/cincinnati\n"
+             "Real Co | https://boards.greenhouse.io/realco\n")
+    out = mcp_server.seed_companies(lines, industry="engineering")
+    assert out["rejected"] == 1
+    kinds = {v["name"]: v["verdict"] for v in out["verdicts"]}
+    assert kinds["City Jobs"] == "rejected"
+    assert kinds["Real Co"] == "live"
+    saved = json.loads((tmp_path / "companies.json").read_text(encoding="utf-8"))
+    names = {c["name"] for c in saved["companies"] if "_example" not in c}
+    assert "City Jobs" not in names and "Real Co" in names
+
+
 def test_seed_companies_bare_url_and_empty(monkeypatch, tmp_path):
     import config
     from scrape import ats_detect

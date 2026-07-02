@@ -280,3 +280,51 @@ def test_apply_seed_lines_skips_already_registered(isolated, monkeypatch):
 def test_apply_seed_lines_empty_is_noop(isolated):
     res = ai_setup.apply_seed_lines("   \n  \n", probe=False)
     assert res["parsed"] == 0 and res["added"] == 0 and res["verdicts"] == []
+
+
+# ── P0-6 re-verify: a previously-unverified board is upgraded on a live re-seed ─
+def test_apply_seed_lines_reverifies_unverified_board(isolated, monkeypatch):
+    from scrape import ats_detect
+    from scrape.company_registry import get_registry
+    # First seed offline: the greenhouse board is unreachable -> flagged-unverified.
+    ai_setup.apply_seed_lines("Acme | https://boards.greenhouse.io/acme\n",
+                              industry="engineering", probe=False)
+    assert "Acme" not in {c.name for c in get_registry(user_json=config.COMPANIES_JSON)}
+
+    # Re-seed with a live probe: it now verifies -> the stored flag is cleared
+    # and the board re-enters the scraped registry (NOT reported as 'skipped').
+    monkeypatch.setattr(ats_detect, "probe_count", lambda e: 9)
+    res = ai_setup.apply_seed_lines("Acme | https://boards.greenhouse.io/acme\n",
+                                    industry="engineering", probe=True)
+    v = res["verdicts"][0]
+    assert v["verdict"] == "live"
+    assert res["added"] == 1
+    assert "Acme" in {c.name for c in get_registry(user_json=config.COMPANIES_JSON)}
+
+
+# ── ToS/aggregator guard: blocked hosts are rejected, never saved ─────────────
+@pytest.mark.parametrize("url", [
+    "https://www.governmentjobs.com/careers/cincinnati",   # NEOGOV
+    "https://acme.applitrack.com/district/onlineapp/",      # Frontline/AppliTrack
+    "https://www.indeed.com/cmp/acme/jobs",                 # aggregator
+    "https://www.linkedin.com/company/acme/jobs",           # aggregator
+])
+def test_apply_seed_lines_rejects_tos_blocked_hosts(isolated, url):
+    res = ai_setup.apply_seed_lines(f"Acme | {url}\n", industry="engineering",
+                                    probe=False)
+    assert res["rejected"] == 1
+    assert res["added"] == 0
+    v = res["verdicts"][0]
+    assert v["verdict"] == "rejected"
+    # Nothing persisted for a blocked host.
+    assert not config.COMPANIES_JSON.exists() or "Acme" not in {
+        c["name"] for c in json.loads(config.COMPANIES_JSON.read_text(encoding="utf-8"))
+        .get("companies", []) if "_example" not in c}
+
+
+def test_apply_seed_lines_allows_legit_direct_page(isolated):
+    # A normal company careers page (not a blocked host) still saves as 'direct'.
+    res = ai_setup.apply_seed_lines("Direct Co | https://directco.com/careers/\n",
+                                    industry="engineering", probe=False)
+    assert res["rejected"] == 0
+    assert {v["verdict"] for v in res["verdicts"]} == {"direct"}
