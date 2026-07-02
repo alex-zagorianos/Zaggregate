@@ -40,6 +40,11 @@ var SITES = [
     ],
     // Verified live 2026-06-14: LinkedIn migrated to the artdeco-entity-lockup
     // card structure, so the lockup selectors lead (older ones kept as fallback).
+    // Re-verified live 2026-07-02: still current. NOTE the results list is now
+    // VIRTUALIZED — only the ~7 <li>s near the viewport carry content (the rest
+    // are empty occludable placeholders that hydrate on scroll), so a partial
+    // extraction rate against all list items is NORMAL, not rot; the
+    // MutationObserver picks each card up as the user scrolls past it.
     company: [
       ".artdeco-entity-lockup__subtitle span",
       ".job-card-container__primary-description",
@@ -79,13 +84,18 @@ var SITES = [
       "li[class*='JobListItem']",
       "td.resultContent",
     ],
-    titleLink: ["h2.jobTitle a", "a[data-jk]", "[data-testid='jobTitle'] a"],
+    // Audited live 2026-07-02: the classic class selectors (h2.jobTitle a,
+    // span.companyName, div.companyLocation) are DEAD on the current layout;
+    // the data-jk / data-testid selectors carry everything (17/17 cards
+    // extracted all fields). Live selectors promoted to first; dead ones kept
+    // as fallbacks in case of an A/B rollback.
+    titleLink: ["a[data-jk]", "h2.jobTitle a", "[data-testid='jobTitle'] a"],
     company: [
-      "span.companyName",
       "[data-testid='company-name']",
+      "span.companyName",
       ".companyInfo a",
     ],
-    location: ["div.companyLocation", "[data-testid='text-location']"],
+    location: ["[data-testid='text-location']", "div.companyLocation"],
     salary: [
       ".salary-snippet-container span",
       "[data-testid='attribute_snippet_testid']",
@@ -194,17 +204,26 @@ var DETAIL = {
       ".jobs-details",
       "#job-details",
     ],
+    // Audited live 2026-07-02: #job-details still wins with the full body (the
+    // pane hydrates LATE — early observer ticks legitimately see 0 chars, the
+    // ≥40-char gate in extractDetail handles that). ".jobs-description" added
+    // as an extra fallback (present on the current layout as the module root).
     description: [
       "#job-details",
       ".jobs-description__content .jobs-box__html-content",
       ".jobs-description-content__text",
       ".jobs-description__content",
       "article.jobs-description__container",
+      ".jobs-description",
     ],
     // Top-card area: company line, location, "Posted…", "N applicants", and the
     // Remote/Full-time/Mid-Senior insight pills. Captured raw for server parsing.
+    // 2026-07-02 rot fix: BOTH "__job-insight" selectors are dead — the pills
+    // (On-site/Remote, Full-time…) moved into buttons inside
+    // div.job-details-fit-level-preferences. Old selectors kept as fallbacks.
     details: [
       ".job-details-jobs-unified-top-card__primary-description-container",
+      ".job-details-fit-level-preferences",
       ".job-details-jobs-unified-top-card__job-insight",
       ".jobs-unified-top-card__primary-description",
       ".jobs-unified-top-card__job-insight",
