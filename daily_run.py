@@ -89,6 +89,69 @@ def _maybe_auto_rank(cfg: dict) -> None:
         log(f"WARN: auto-rank skipped: {type(e).__name__}: {e}")
 
 
+def _reach_probe(engine, results, keywords, location, cfg) -> int:
+    """SerpApi reach probe (E2 / review P1 Tier A): issue 1-2 Google-Jobs queries
+    on the broadest keyword + location, MERGE the parsed jobs into BOTH the run's
+    scored `results` list (they are real postings) AND engine.last_raw_results (so
+    capture-recapture sees the cross-family overlap that finally certifies reach).
+
+    Returns the number of probe jobs merged. No-op (returns 0) when the probe is
+    disabled, no SerpApi key is present, or nothing comes back. Wrapped by the
+    caller so a probe failure NEVER kills the daily run.
+
+    The probe is what turns the reach badge from "cannot certify" (f2=0) into a
+    real percentage: SerpApi (family 'google_jobs') overlaps the free families on
+    the same postings, giving the estimator recaptures. job_key inbox dedup (C1)
+    absorbs any collisions, so double-listing is impossible."""
+    import config
+    if not config.reach_probe_enabled(cfg):
+        return 0
+    try:
+        from search.serpapi_client import SerpApiClient
+    except Exception:
+        return 0
+    try:
+        probe_client = SerpApiClient(cache_enabled=True)
+    except ValueError:
+        # No SerpApi key -> the probe is simply unavailable (the badge keeps its
+        # honest 'add a SerpApi key' hint). Not an error.
+        return 0
+
+    # Pick the broadest keywords: shortest first (a broad field term returns the
+    # widest overlap with the other sources). Cap at the configured query budget.
+    n_queries = int(cfg.get("reach_probe_queries", config.REACH_PROBE_QUERIES)
+                    or config.REACH_PROBE_QUERIES)
+    n_queries = max(1, min(n_queries, len(keywords) or 1))
+    ordered = sorted((k for k in keywords if k), key=len)
+    probe_keywords = ordered[:n_queries] or (keywords[:n_queries] if keywords else [])
+    if not probe_keywords:
+        return 0
+
+    merged = 0
+    for kw in probe_keywords:
+        try:
+            jobs = probe_client.search_and_parse(
+                keyword=kw, location=location or "", salary_min=None, page=1)
+        except Exception as e:
+            log(f"WARN: reach probe query {kw!r} failed: {type(e).__name__}: {e}")
+            continue
+        if not jobs:
+            continue
+        results.extend(jobs)
+        # Feed the SAME jobs into the raw membership set the reach estimator reads.
+        # If a search already ran, last_raw_results is a real list; guard anyway.
+        try:
+            engine.last_raw_results = list(engine.last_raw_results) + list(jobs)
+        except Exception:
+            pass
+        merged += len(jobs)
+    if merged:
+        log(f"reach probe | +{merged} SerpApi Google-Jobs posting(s) merged "
+            f"({len(probe_keywords)} quer{'y' if len(probe_keywords) == 1 else 'ies'}) "
+            f"— cross-family overlap for reach certification")
+    return merged
+
+
 def _run_api_prompt(prompt: str) -> str:
     """Send a pre-built prompt to the configured Anthropic-compatible backend and
     return the raw text reply. Mirrors gui._call_prompt_via_api (key + base_url)
@@ -263,6 +326,14 @@ def main():
         delta = len(engine.last_raw_results) - page1_raw
         if delta > 0:
             log(f"page 2: +{delta} raw postings beyond page 1")
+    # SerpApi reach probe: merge a tiny Google-Jobs sample into BOTH the scored
+    # results and engine.last_raw_results so capture-recapture finally gets a
+    # cross-family overlap (f2>0 -> certifiable reach %). Default ON when a
+    # SerpApi key exists; self-skips otherwise. Wrapped so it never kills the run.
+    try:
+        _reach_probe(engine, results, query_keywords, location, cfg)
+    except Exception as e:
+        log(f"WARN: reach probe skipped: {type(e).__name__}: {e}")
     if tiered:
         for c in clients:
             if hasattr(c, "finalize_tiering"):
