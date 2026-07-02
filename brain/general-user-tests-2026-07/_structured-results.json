@@ -1,0 +1,1126 @@
+{
+ "reports": [
+  {
+   "slug": "gu-swe-newgrad-austin",
+   "setup_minutes": 18,
+   "wizard_clarity_1to10": 8,
+   "setup_friction": [
+    "Wizard field examples list health/nursing/finance/controls but never says 'software' or 'software engineering' is a valid field \u2014 a SWE has to guess to use software_engineering to keep tech boards on.",
+    "Location is asked as a free city string with no explanation that it becomes a HARD gate with a 30-mi metro-variant radius; 'Austin' vs 'Austin, TX' expand differently.",
+    "Nothing warns that a broad senior/lead exclusion list will silently cut ~half the raw results at the hard-gate.",
+    "create_project scaffolds config.json + a stub experience.md + output/, but does NOT scaffold preferences.{json,md} \u2014 only the wizard's apply() writes those, so a programmatic setup must write them via workspace.preferences_paths(slug).",
+    "CareerOneStop (the Guide's stated #1 local-coverage lever) has no key in .env and no onboarding step nudges the user to add it; it silently does nothing."
+   ],
+   "seeding": {
+    "attempted": 15,
+    "added": 15,
+    "rejected": 0,
+    "notes": "Drove the exact +Add Companies pipeline: ats_detect.parse_line -> probe_count -> company_registry.save_companies, tagged software_engineering. All 15 parsed; probe found 8 live (Cloudflare 226, Palantir 276, Notion 151, Ramp 126, Homeward 5, Indeed/Netflix/Square 0), 5 unreachable (bad slug/tenant guesses: CrowdStrike, Bumble, SailPoint, Gusto, Tesla), 2 direct/junk (deliberate). KEY FINDING: save_companies adds ALL parsed entries regardless of probe result \u2014 Validate is advisory, not a gate \u2014 so 5 unreachable + 2 junk boards were still written. An AI is bad at guessing ATS slugs (I got 5/13 real-company board slugs wrong); parse succeeds but the slug is a coin-flip. Junk failed at scrape time with soft NameResolutionError lines (working as designed). Seeds barely paid off: only Ramp+Homeward reached the top 40, both sub-optimal (over-remote)."
+   },
+   "run": {
+    "duration_s": 129,
+    "raw": 2230,
+    "deduped": 1900,
+    "inboxed": 141,
+    "errors": [
+     "careeronestop skipped \u2014 credentials missing (known unkeyed gap)",
+     "jooble skipped \u2014 JOOBLE_API_KEY unset",
+     "careerjet skipped \u2014 CAREERJET_AFFID unset",
+     "Brave company discovery skipped \u2014 BRAVE_SEARCH_API_KEY unset",
+     "Adzuna rate-limit back-off x2 (~60s each; no hard 429)",
+     "2 junk seed URLs logged soft [direct] fetch error -- NameResolutionError (non-fatal)"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 67,
+    "careers": 63,
+    "hn": 9,
+    "weworkremotely": 2
+   },
+   "local_relevance": {
+    "in_area": 77,
+    "remote": 64,
+    "wrong_area": 0
+   },
+   "top10": [
+    {
+     "title": "Software Engineer, Data (L1)",
+     "company": "acrisureinnovation",
+     "location": "Austin, TX",
+     "source": "careers",
+     "why": "Austin + explicitly L1/entry + Python/data \u2014 near-perfect new-grad fit."
+    },
+    {
+     "title": "Software Engineer",
+     "company": "uShip",
+     "location": "Austin, Travis County",
+     "source": "adzuna",
+     "why": "Austin, generic IC SWE, $120k disclosed (>>70k floor), logistics product."
+    },
+    {
+     "title": "Software Engineer \u2013 Simulation Backend",
+     "company": "Avride",
+     "location": "Austin, TX",
+     "source": "careers",
+     "why": "Austin backend, Python/C++ AV sim \u2014 strong backend match."
+    },
+    {
+     "title": "Software Engineer",
+     "company": "allencontrolsystems",
+     "location": "Austin, TX",
+     "source": "careers",
+     "why": "Austin IC SWE at a small company \u2014 mentorship-friendly."
+    },
+    {
+     "title": "Frontend Software Engineer",
+     "company": "KoBold Metals",
+     "location": "Remote (US)",
+     "source": "careers",
+     "why": "Clean US-remote, React/frontend \u2014 matches the internship strength."
+    },
+    {
+     "title": "Frontend Web Developer React/TypeScript",
+     "company": "Zensors",
+     "location": "California (Remote)",
+     "source": "weworkremotely",
+     "why": "US-remote, React/TS exact-match to the internship stack."
+    },
+    {
+     "title": "Software Engineer \u2013 Logs Infrastructure",
+     "company": "Avride",
+     "location": "Austin, TX",
+     "source": "careers",
+     "why": "Austin backend infra \u2014 reachable IC stretch role."
+    },
+    {
+     "title": "Software Engineer II, Backend (Capital Orchestration)",
+     "company": "Affirm",
+     "location": "Remote US",
+     "source": "careers",
+     "why": "US-remote backend at a strong eng org; SE II is a slight stretch but fintech backend fits."
+    },
+    {
+     "title": "Backend Software Engineer",
+     "company": "Enveritas (YC S18)",
+     "location": "Remote (Global)",
+     "source": "hn",
+     "why": "US-eligible remote, Python backend, non-profit \u2014 mentorship-y; verify work-auth."
+    },
+    {
+     "title": "Software Engineers",
+     "company": "MixRank (YC S11)",
+     "location": "100% Remote",
+     "source": "hn",
+     "why": "Remote generalist SWE at a small YC co (mentorship); verify US-remote OK."
+    }
+   ],
+   "ranking_notes": "Roughly 14-16 of the top 40 are poor fits for this persona. Over-leveled (6): 6sense 'Software Engineer III' scored 100 and was the #1 inbox row overall (worst possible top pick), plus addepar 'Sr. Backend', airtable 'Compute (8+ YOE)', CDK 'Sr. Software Engineer', Reliable Robotics 'Sr. Simulation' + 'Sr. Flight'. They scored high because the local scorer gives 'software engineer' title 100%, and exclude_titles/seniority_exclude word-boundary-match 'senior' but NOT the 'Sr.' abbreviation, so Sr./III/8+ titles sail through both the gate AND the downrank. Non-US-only remote (~8): MixRank Global, Homeward Latin America, addepar UK, affinipay x2 Czech, Affirm several Canada, Serve Montreal, Enveritas Global \u2014 scored 74-84 because any 'remote' row gets loc 100% with no US-work-auth awareness. Wrong role-type/not-full-time (2-3): a 'Software Tester' (QA) and a 'Summer Intern'. Local-scorer verdict: decent first cut but two systematic new-grad blind spots (seniority abbreviations; country-blind remote). The BYO-AI re-rank earned its keep by fixing exactly these; a new grad trusting the raw Score would apply to a Sr. role and a Czech-only remote job.",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "Two overlapping ways to model a phone screen: a phone_screen STATUS and a round kind='phone_screen'; GUI wiring doesn't make clear which is canonical.",
+    "add_interview_round takes free-text kind/outcome with no enum validation (fine for power use; a GUI without dropdowns could yield inconsistent values).",
+    "No functional gap: Interested->Applied->Interview+rounds->Offer(amount/deadline/notes)->Accepted/Rejected/Ghosted, notes, and timeline all persisted and re-read cleanly via a fresh SQL connection; date_applied + a +7-day follow-up auto-stamp centrally on any path into 'applied'."
+   ],
+   "verdict": {
+    "wide_use_1to10": 7,
+    "beats_manual": true,
+    "biggest_gap": "Seniority-blind and country-blind local scoring: a 'Software Engineer III' scored 100 and topped the inbox, and Canada/Czech/UK-only remote rows got full location credit \u2014 so ~14 of the top-40 are false positives a no-AI new grad would see. Compounded by CareerOneStop being unkeyed (the Guide's own #1 local lever) and only ~3% reach of the Austin SWE universe vs the ToS-blocked LinkedIn/Indeed.",
+    "would_stay": true
+   },
+   "bugs": [
+    "Seniority-abbreviation gate miss (scorer, no traceback): exclude_titles/seniority_exclude word-boundary-match 'senior' but NOT 'Sr.'; Roman numerals ('III') and '8+ YOE' also not downranked. Result: Sr. Software Engineer (CDK), Sr. Backend (addepar), Sr. Simulation/Flight (Reliable Robotics), and Software Engineer III (6sense, scored 100 = #1 row) all survived with title 100%.",
+    "Remote scoring ignores country/work-auth: any row containing 'remote' gets loc 100%; Czech-only, UK-only, Canada-only remote rows (affinipay, addepar, several Affirm) scored 75-84 and outranked real Austin jobs despite being unreachable for a US-only new grad.",
+    "+Add Companies persists unreachable boards without confirmation: save_companies adds all parsed entries regardless of probe_count; 5 unreachable + 2 junk seeds were all written to companies.json. Evidence: run-time soft errors '[direct] Oracle Austin: fetch error -- NameResolutionError(... not-a-real-ats.example.com)' and same for the junk-line host 'totally%20junk%20line%20no%20url%20here'.",
+    "Adzuna rate-limit back-off x2 (~60s each) added ~2 min to a 2m9s run; no hard 429 surfaced (rate/quota event, not a failure).",
+    "Keyless sources silently contribute nothing: Jooble, Careerjet, and CareerOneStop are in the daily net but returned 0 with only warning lines \u2014 a general user won't notice their local coverage is quietly capped (config/onboarding gap, not a code crash)."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-swe-newgrad-austin.md"
+  },
+  {
+   "slug": "gu-nurse-boise",
+   "setup_minutes": 18,
+   "wizard_clarity_1to10": 9,
+   "setup_friction": [
+    "Wizard 'Field/industry' and 'Career level' are optional and easy to skip, yet the field answer is load-bearing (turns on the nursing feed + gates out remote-tech boards). Wizard doesn't flag its importance at the skip point (Guide does).",
+    "Industry text 'nursing' does NOT resolve to an O*NET SOC code (only 'registered nurse'/'nurse' do -> 29-1141.00), so create_project silently skipped stamping onet_soc_code for a user who types the natural word 'nursing'.",
+    "A real nurse cannot supply exact ATS tenant slugs for local hospitals, so the Guide's headline 'add your local employers' step yields 0 verifiable boards without deep ATS knowledge.",
+    "CareerOneStop (the Guide's own 'best free source for nurses') is unkeyed out of the box, so the single most nurse-relevant national feed never ran."
+   ],
+   "seeding": {
+    "attempted": 14,
+    "added": 14,
+    "rejected": 0,
+    "notes": "save_companies() adds every parsed line regardless of probe status, so all 14 landed in companies.json tagged 'nursing'. But 0 probed LIVE: 10 were 'direct' (uncountable hospital portals) and 4 AI-guessed ATS slugs were all wrong (St. Lukes Workday stlukesonline:5:External->HTTP422 gone; Primary Health greenhouse 'primaryhealth'->gone; St Lukes Rehab lever 'stlukesrehab'->gone; Kindred workable 'kindredhospital'->gone). Several direct hosts don't resolve (trinity-health.jobs, fullcirclehealth.org, elksrehab.org=DNS fail; HCA=403; Idaho H&W=404). At run time the careers layer scraped these 14 and returned 0 jobs. Seeding contributed nothing usable to the inbox = the flow works as designed (bad guesses fail probe) but is effectively useless for a general nurse who cannot know ATS slugs."
+   },
+   "run": {
+    "duration_s": 41,
+    "raw": 623,
+    "deduped": 312,
+    "inboxed": 29,
+    "errors": [
+     "Seeded direct/ATS companies threw soft fetch errors (DNS getaddrinfo fail for trinity-health.jobs/fullcirclehealth.org, ConnectTimeout elksrehab.org, 403 HCA, 404 Idaho H&W, HTTP 422 St Lukes Workday) - all non-fatal",
+     "Repeated benign log noise: '[direct] ... link extraction + JSON-LD - verify manually' and BRAVE/jooble/careerjet skip lines re-logged across page-1, page-2, and rescore passes"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 22,
+    "usajobs": 7
+   },
+   "local_relevance": {
+    "in_area": 20,
+    "remote": 0,
+    "wrong_area": 3
+   },
+   "top10": [
+    {
+     "title": "Registered Nurse (Cardiac Catheterization Lab)",
+     "company": "Veterans Health Administration",
+     "location": "Boise, ID",
+     "source": "usajobs",
+     "why": "Real Boise acute-care RN; cardiac/tele fits her telemetry depth; federal band clears $65k floor easily."
+    },
+    {
+     "title": "Registered Nurse (Operating Room)",
+     "company": "Veterans Health Administration",
+     "location": "Boise, ID",
+     "source": "usajobs",
+     "why": "Confirmed Boise acute hospital RN; OR a stretch from med-surg but strong local employer + benefits."
+    },
+    {
+     "title": "Registered Nurse RN Heart and Vascular SDU",
+     "company": "Trinity Health (Saint Alphonsus)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Step-down cardiac unit ~= perfect match for a med-surg/telemetry charge nurse at a local system."
+    },
+    {
+     "title": "Trauma and Emergency RN - Full Time",
+     "company": "Trinity Health (Saint Alphonsus)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Acute hospital RN, full-time, on-site; ED adjacent to her med-surg/rapid-response experience."
+    },
+    {
+     "title": "RN PACU PT Days",
+     "company": "Trinity Health (Saint Alphonsus)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Post-anesthesia acute RN at a Boise system, days shift; strong clinical fit."
+    },
+    {
+     "title": "RN Surgical Short Stay Unit PRN Nights",
+     "company": "Trinity Health (Saint Alphonsus)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Med-surg-adjacent acute unit; she's fine with nights; local. Only knock is PRN."
+    },
+    {
+     "title": "Registered Nurse OB Float Pool Full-Time",
+     "company": "Trinity Health (Saint Alphonsus)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Full-time hospital RN at local system; OB off-core but float pool values med-surg versatility."
+    },
+    {
+     "title": "Wound Ostomy RN (WON) Full-Time Days",
+     "company": "Trinity Health (Saint Alphonsus)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Specialty acute RN, full-time days, local; her wound-care skill line maps directly."
+    },
+    {
+     "title": "Registered Nurse - $39-$50/hr",
+     "company": "Saint Alphonsus Rehab Hosp (Encompass Health)",
+     "location": "Boise metro",
+     "source": "adzuna",
+     "why": "Local inpatient rehab RN, wage clears floor ($81k-$104k annualized), $10k sign-on, on-site."
+    },
+    {
+     "title": "Staff Development Coordinator (Registered Nurse)",
+     "company": "Life Care Center of Boise",
+     "location": "Boise, ID",
+     "source": "adzuna",
+     "why": "'Coordinator' RN role in Boise matching her clinical-coordinator target; SNF setting but on-site + local + leadership-flavored."
+    }
+   ],
+   "ranking_notes": "~9 false positives in the top 29 (only 29 rows exist, so top-29 = full inbox). 6x Grand Canyon University 'Adjunct RN Faculty - PRN' scored 65-67 via title 'RN'/nurse 100% + salary 100% + loc 100%, but they are academic clinical-instructor PRN roles spanning Twin Falls/multiple campuses -> off-role AND often out-of-metro. id=7 'RN ... in MONTANA' scored 71 (all-100% components) but the JD body says Montana - Adzuna mislabels it 'Idaho City, Boise County'. id=3 Dialysis RN is Eastern Idaho (~250mi), agency/travel-flavored (HealthTrust). id=26/27 Senior Social Worker-PTSD and id=28 Lead Clinical Laboratory Scientist (USAJobs) matched only on 'clinical' and are not nursing at all; cleared 40 on federal salary + Boise loc padding. Root cause: the local scorer trusts the source's LOCATION LABEL and TITLE-KEYWORD overlap; it never reads the JD body, so a wrong-state or wrong-role posting labeled 'Boise County' clears the on-site filter and scores high. The app's own recommended BYO-AI Fit re-rank cleanly demotes all 9 - i.e. the product tells the user to run exactly the pass that fixes its scorer's blind spot. Local scorer quality: good on salary/remote-gate, weak on label-vs-body location truth and role-vs-title semantics.",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "Interview rounds and offer fields (amount/deadline/notes) are only editable inside the JobDialog (double-click a row), not from the tracker list quick-status dropdown - a discoverability step, not a missing capability.",
+    "No blocking gaps found: accepted/ghosted statuses, interview_rounds, status_history (transitions + note-only), and offer_* columns all persisted and are all wired to GUI buttons."
+   ],
+   "verdict": {
+    "wide_use_1to10": 6,
+    "beats_manual": true,
+    "biggest_gap": "The entire local inbox rode on Adzuna (76%) + USAJobs (24%), both keyed for this test; a real nurse with no keys would get ~7 federal-only jobs. The nurse-specific RNJobSite feed returned 244 postings but 0 survived the Boise location gate (national/unlocalized), the eng-shaped starter registry has zero nursing employers, seeding produced 0 live boards (needs ATS slugs no nurse knows), and CareerOneStop - the Guide's own 'best free source for nurses' - is unkeyed. The single biggest fix: make CareerOneStop work out of the box (or bundle a keyless equivalent) so the free national all-employer government feed fills the gap without the user guessing hospital ATS slugs.",
+    "would_stay": true
+   },
+   "bugs": [
+    "_attach_onet_soc gap (workspace.py:345): industry text 'nursing' does not resolve to a SOC code (only 'registered nurse'/'nurse' do -> 29-1141.00), so a project created with the natural field word 'nursing' silently gets no onet_soc_code/onet_soc_title. Cosmetic here (nursing gating keys on text tokens) but a real routing-stability gap. No traceback (silent no-op by design in _attach_onet_soc's try/except).",
+    "Location gate trusts the source's location LABEL not the JD body: Adzuna labels many out-of-metro/out-of-state RN postings as 'Idaho City, Boise County', so id=7 (Montana), id=3 (Eastern Idaho ~250mi), and 6 GCU faculty (Twin Falls ~130mi) all pass the on-site Boise filter with loc 100% and score 65-76. Not a crash - a relevance defect. ~3 out-of-metro + ~6 off-role rows leaked into a 29-row inbox.",
+    "save_companies adds companies regardless of probe result (company_registry.py:189): the '+ Add Companies' Add button appends every parsed line even when Validate showed 'unreachable'/'gone', so 14/14 seeded (4 dead ATS guesses included) landed in companies.json. Not incorrect by contract (probe is advisory) but means a user's dead-slug guesses persist and get re-scraped (throwing soft errors) every daily run.",
+    "Log noise: page-1, page-2, and rescore passes each re-emit the same '[direct] ... verify manually' and BRAVE/jooble/careerjet skip lines, so a 29-job run produced dozens of duplicate skip/verify lines - harmless but hides real signal for a non-technical user reading the console."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-nurse-boise.md"
+  },
+  {
+   "slug": "gu-teacher-columbus",
+   "setup_minutes": 18,
+   "wizard_clarity_1to10": 8,
+   "setup_friction": [
+    "Starter registry ships with only health_informatics + controls_engineering \u2014 ZERO education companies; wizard never says so, and a teacher who skips the optional Field box + Build-My-List step gets a company layer that adds nothing.",
+    "resolve_soc('education') and resolve_soc('education (K-12)') both return None, so create_project attached no O*NET-SOC code; only 'math teacher' resolves and it maps to POSTSECONDARY (wrong level for 7-12). Genre routing still works, but the SOC that would sharpen title scoring is absent.",
+    "Nothing warns that public school districts run Frontline (no scraper) or NEOGOV/governmentjobs (ToS-blocked) \u2014 a teacher's most obvious targets are structurally unaddable.",
+    "Career-level combobox (Entry/Mid/Senior/Manager-Exec) has no notion of teacher->coach->curriculum ladder; only the free-text 'Anything else' box can express it.",
+    "preferences.json/preferences.md are not scaffolded by create_project (only config.json + experience.md stub); a real GUI user gets them via the wizard's apply(), but a programmatic creator must write them by hand."
+   ],
+   "seeding": {
+    "attempted": 16,
+    "added": 16,
+    "rejected": 0,
+    "notes": "16 'Name | ATS-URL' lines pushed through the exact +Add Companies pipeline (parse_line -> probe_count -> save_companies). All 16 parsed and all 16 SAVED (GUI adds every detected entry; probe is advisory). Probe results: 4 live-with-jobs (Newsela 17, Guild 11, OSU/Workday 1041, Khan 22), 1 live-but-zero (Battelle SmartRecruiters), 11 unreachable (dead slug guesses: KIPP/IDEA/Uncommon/DemocracyPrep/SuccessAcademy/Amplify/IXL/CurriculumAssociates/VarsityTutors/Paper/TeachForAmerica). Deliberately leaned charter/ed-tech/nonprofit/higher-ed because Columbus public districts run Frontline/NEOGOV (unscrapeable/ToS-blocked). After save, get_registry(industry='education') returns 16 (shipped registry had 0) \u2014 registry generalized entirely from the seed. But yield into inbox was tiny: only OSU actually fed the inbox (13 careers rows, all OSU non-K12 noise); the teacher-adjacent boards (Newsela/Khan/Guild) contributed 0 gated rows this run."
+   },
+   "run": {
+    "duration_s": 227,
+    "raw": 1597,
+    "deduped": 1370,
+    "inboxed": 49,
+    "errors": [
+     "[careeronestop] Skipping \u2014 credentials missing (KNOWN GAP, and the Guide itself calls CareerOneStop the #1 free source for teachers)",
+     "[jooble] key unset \u2014 skipped (many warning lines, harmless self-skip)",
+     "[careerjet] affid unset \u2014 skipped",
+     "[discover] BRAVE_SEARCH_API_KEY unset \u2014 company discovery skipped, registry-only",
+     "11 seeded Greenhouse/Lever boards logged 'gone \u2014 skipping' (same dead slugs the probe flagged; non-fatal)"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 36,
+    "careers": 13
+   },
+   "local_relevance": {
+    "in_area": 41,
+    "remote": 0,
+    "wrong_area": 3
+   },
+   "top10": [
+    {
+     "title": "Middle School Math Teacher (South Scioto Performance Academy)",
+     "company": "Performance Academies",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Exact persona core: secondary MATH, Columbus charter, $54.3K above $50K floor."
+    },
+    {
+     "title": "Middle School Mathematics Teacher (South Scioto Performance Academy)",
+     "company": "Performance Academies",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Second math seat, same network, $51.5K \u2014 direct 7-12 math fit."
+    },
+    {
+     "title": "TOSA: Teacher Clarity Coach (Olde Orchard/Woodcrest ES)",
+     "company": "Columbus City School District",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Instructional-coach track at CCS, $77.9K; his dept-lead/PLC experience is a strong fit."
+    },
+    {
+     "title": "TOSA Instructional Coach \u2014 Yorktown MS",
+     "company": "Columbus City School District",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Middle-school coaching role at CCS, $53K \u2014 secondary-coach fit."
+    },
+    {
+     "title": "9th Grade Teacher \u2014 Performance HS West",
+     "company": "Performance Academies",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Secondary HS teaching, math-teachable, same charter network, $53.6K."
+    },
+    {
+     "title": "Instructional Coach \u2014 ELA",
+     "company": "Educational Solutions Company",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Coaching fit ($79.8K); subject is ELA but PLC/coaching skill transfers."
+    },
+    {
+     "title": "Social Studies Teacher, Middle School (2026-27)",
+     "company": "United Schools Network",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Secondary, reputable Columbus charter net, $57.5K; off-subject but strong org."
+    },
+    {
+     "title": "Business Technology Teacher (6th-12th Grade)",
+     "company": "Columbus City School District",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Secondary CCS role, $66.4K; math-adjacent tech subject."
+    },
+    {
+     "title": "ESL Instructional Coach",
+     "company": "Columbus City School District",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Coach ladder at CCS, $76.8K; ESL specialty but coaching-transferable."
+    },
+    {
+     "title": "Nonpublic School Title I Instructional Support Coach",
+     "company": "Columbus City School District",
+     "location": "Columbus, OH",
+     "source": "adzuna",
+     "why": "Coach/interventionist at CCS, $50.7K; aligns with math-intervention experience."
+    }
+   ],
+   "ranking_notes": "~9-11 false positives in the top 40, and the WORST are ranked HIGHEST. #1-#3 by on-device Score (all 87) are OSU 'Lead Teacher 2/3' \u2014 infant/toddler CHILDCARE lab-school roles, not secondary math. score_notes shows 'title 100% | loc 67% | size +4': the generic keyword 'teacher' matched 100%, OSU-Columbus gave loc, and the 1041-job board gave a size bonus. The scorer has NO grade-band awareness \u2014 cannot distinguish daycare 'Lead Teacher' from a 7-12 math teacher. Also FP: OSU Assistant Teacher x3 (61); OSU veterinary/livestock/dentistry/poultry 'Program Coordinator/Instructor' (40-44, correctly hit title-miss -18 and sank to floor but still occupy slots); 3 out-of-state Adzuna mis-stamps (Paris SSD/TN, Maury County/TN, Randolph County/NC-GA) only 'local' because Adzuna copies the query location onto every posting. Root causes: broad 'teacher' keyword with no grade-band negative; OSU's giant Workday board injecting non-K12 noise; Adzuna location stamping. Local scorer is EXCELLENT on location (dropped 976 wrong-loc), WEAK on role/grade-band nuance \u2014 exactly the split the app advertises (Score=overlap, Fit=nuance). The BYO-AI re-rank demoted every OSU/childcare/out-of-state row and floated the true math/coach seats the raw Score buried at 64-67.",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "No blocking gaps \u2014 applied, interview, offer, accepted, rejected, ghosted all exist and persisted; interview rounds (phone_screen + onsite) and per-stage notes work through the service layer.",
+    "Minor: both a distinct 'phone_screen' STATUS and a 'phone_screen' round KIND exist \u2014 a GUI user could conflate them.",
+    "offer_amount/offer_deadline/offer_notes are free-text (acceptable). date_applied auto-stamped and +7d follow-up auto-armed on the applied transition (centralized side-effect)."
+   ],
+   "verdict": {
+    "wide_use_1to10": 6,
+    "beats_manual": true,
+    "biggest_gap": "CareerOneStop is unkeyed (the app's own Guide calls it the #1 free source for teachers, yet it silently self-skips) AND public-district portals on Frontline/NEOGOV are unreachable \u2014 so the two places K-12 district jobs actually live are both dark. For an on-site teacher, Adzuna does ~100% of the useful work, which makes the missing CareerOneStop key the whole ballgame.",
+    "would_stay": true
+   },
+   "bugs": [
+    "No crashes/tracebacks \u2014 daily_run exited 0; create_project, the seeding pipeline, and the full lifecycle all succeeded first try.",
+    "Observation (not a bug): daily_run.py --project X calls workspace.set_active(X) at line 218, so running the persona's update flipped on-disk projects.json 'active' from gu-nurse-boise to gu-teacher-columbus \u2014 a general user running one project's update silently changes which project the GUI opens to next.",
+    "Data-quality (upstream Adzuna, worth surfacing): Adzuna stamps the query location onto every posting; 3/49 inbox rows are out-of-state employers shown as 'Columbus, Franklin County'. A 'verify location against description' pass would catch these.",
+    "Scorer limitation (known/acceptable): generic 'teacher' keyword produces title-100% bleed that floats daycare 'Lead Teacher' roles to the very top; no grade-band awareness. This is exactly what the BYO-AI channel exists to fix, and it did."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-teacher-columbus.md"
+  },
+  {
+   "slug": "gu-consultant-chicago",
+   "setup_minutes": 18,
+   "wizard_clarity_1to10": 9,
+   "setup_friction": [
+    "industry 'management consulting' did NOT resolve to an O*NET-SOC code in workspace._attach_onet_soc (no onet_soc_code written), though it resolves fine in industry_profile for routing/synonyms/title-terms",
+    "the wizard's optional field/industry box shows no consulting example (only health/nursing/finance/controls), so a consulting user might leave it blank and mis-route",
+    "starter registry ships only health_informatics + controls_engineering -> a consulting user's careers path is empty on day one until seeding, which then mostly fails (see seeding notes)",
+    "resume step doesn't state the resume is mainly used once an AI key is set for tailoring; ranking leans on preferences.md"
+   ],
+   "seeding": {
+    "attempted": 17,
+    "added": 17,
+    "rejected": 0,
+    "notes": "Pushed 17 'Name | URL' consulting-firm lines through the real +Add-Companies pipeline (ats_detect.parse_line -> probe_count -> company_registry.save_companies) tagged management_consulting. save_companies ADDED all 17 (0 skipped) because the dialog does NOT gate on the probe \u2014 probe is advisory only. But only 1 probed LIVE with jobs (Point B, lever:pointb, 9 open); 14 Greenhouse/Lever slug guesses were UNREACHABLE; 2 (Deloitte, McKinsey) parsed as 'direct' (JS/JSON-LD, uncountable). On the daily run all 14 unreachable logged 'gone -> skipping' and the 2 direct fell back to best-effort JSON-LD. So the ask-your-AI seeding flow added ~0 usable local coverage for consulting: major firms run enterprise ATSes (Workday/Avature/custom) behind CSRF/JS, and the AI cannot reliably guess public-board slugs. Probe pipeline itself verified healthy (SpaceX greenhouse control returned 1829). companies.json left for janitor to restore."
+   },
+   "run": {
+    "duration_s": 37,
+    "raw": 740,
+    "deduped": 565,
+    "inboxed": 196,
+    "errors": [
+     "careeronestop skipped \u2014 credentials missing (known unkeyed gap; biggest local miss)",
+     "jooble/careerjet/brave skipped \u2014 no keys",
+     "higheredjobs + rnjobsite correctly inert for a non-education/non-nursing field",
+     "14 seeded ATS companies logged 'gone -> skipping'; Deloitte/McKinsey 'direct' JSON-LD verify-manually",
+     "CareersClient returned 0 despite Point B being live with 9 open \u2014 likely keyword/location filtering after scrape, not a confirmed bug",
+     "reach 'cannot certify' \u2014 no cross-source overlap (no SerpApi key)"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 187,
+    "weworkremotely": 9
+   },
+   "local_relevance": {
+    "in_area": 188,
+    "remote": 8,
+    "wrong_area": 0
+   },
+   "top10": [
+    {
+     "title": "M&A Strategy & Governance Senior Consultant",
+     "company": "Deloitte",
+     "location": "Chicago (IL Medical District), IL",
+     "source": "adzuna",
+     "why": "Bullseye \u2014 S&T/M&A/restructuring, senior, $153k; her commercial-DD + PMI core."
+    },
+    {
+     "title": "Management Consultant, Senior Project Manager - Chicago",
+     "company": "Voyage Advisory",
+     "location": "River North, Chicago, IL",
+     "source": "adzuna",
+     "why": "Pure management-consulting boutique, in-city, $165k."
+    },
+    {
+     "title": "Engagement Manager- Management Consulting",
+     "company": "World Wide Technology",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "Titled exactly to her target role; strategy+execution, $176k (note ~50% travel)."
+    },
+    {
+     "title": "Payer Back Office Strategy/Ops Consultant, Senior Manager",
+     "company": "PwC",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "Big-4 advisory, operations strategy, senior-manager level, $158k."
+    },
+    {
+     "title": "Oliver Wyman - Operations/Supply-Chain Engagement Manager",
+     "company": "Marsh McLennan",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "Genuine MBB-tier EM role, $225-240k \u2014 top comp + true strategy house."
+    },
+    {
+     "title": "Business Strategy Senior Consultant",
+     "company": "Deloitte",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "Corporate strategy / transformation, $154k \u2014 direct match to her strengths."
+    },
+    {
+     "title": "Global Business Services (GBS) Strategy - Senior Consultant",
+     "company": "Deloitte",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "CFO/CAO operating-model advisory, $144k \u2014 her operating-model wheelhouse."
+    },
+    {
+     "title": "Senior Managing Consultant - Enterprise Strategy",
+     "company": "IBM",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "Enterprise-strategy consulting at managing level, $197k."
+    },
+    {
+     "title": "Consulting Engagement Manager (Lotis Blue)",
+     "company": "Sch Services Inc",
+     "location": "West Loop, Chicago, IL",
+     "source": "adzuna",
+     "why": "Boutique strategy/people-consulting EM, in-city, $158-237k."
+    },
+    {
+     "title": "Sr Principal Engagement Manager",
+     "company": "Coupa Software",
+     "location": "Chicago, IL",
+     "source": "adzuna",
+     "why": "Principal-level EM, $152-213k \u2014 borderline (SaaS services) but senior+comp+local strong."
+    }
+   ],
+   "ranking_notes": "Local scorer is strong on locality+field but weak on ROLE disambiguation. ~19 of the top 40 (~48%) are false positives/weak fits, driven almost entirely by the literal title token 'Engagement Manager': ~12 Amazon 'AWS ProServe / Community Engagement Manager' rows (cloud-implementation delivery, not strategy consulting \u2014 they took the top 3 slots at scores 91-93 purely on title+high salary), plus Google gTech Ads EM (#6, also NY/Atlanta primary = location noise), Edwards Lifesciences 'Provider Education & Engagement' (a medtech sales role, #21), Capital One PM 'Engagement Manager' x2 (#24/#34), Legora customer-success EM x2 (#30/#31), and Workday EM AI-Practice (#35, SaaS delivery). Guidehouse Strategy Sr Consultant (#39) is real consulting but FEMA/Public-Trust clearance ('ability to obtain') \u2014 borderline vs her clearance deal-breaker, and the preferences.json dealbreaker gate did NOT catch it (matches 'active clearance', not 'ability to obtain'). The remaining ~21 are genuine consulting/strategy fits. This is exactly the gap the BYO-AI Fit round-trip is meant to close and is the highest-value AI use for this persona. per-company cap is per-run so it didn't trim the 12 distinct AWS postings.",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "follow_up_date (+7d, armed on entering 'applied') is NOT cleared when an app reaches a terminal state \u2014 all 5 rows including accepted/rejected/ghosted still show fu=2026-07-08; count_followups_due filters to applied/phone_screen/interview so it won't nag, but the stale date lingers on the row (DB hygiene/cosmetic)",
+    "offer_amount is free-text only (string) \u2014 fine for tracking, no structured comp for analytics",
+    "no true blocker: all statuses (incl. S29 accepted + ghosted), interview rounds, notes, and offer terms are reachable from the module API the GUI buttons call"
+   ],
+   "verdict": {
+    "wide_use_1to10": 7,
+    "beats_manual": true,
+    "biggest_gap": "The local scorer cannot disambiguate the 'engagement manager' title family (strategy/management-consulting EMs vs AWS cloud-delivery / customer-success / internal-PM EMs), so ~half the top 40 are false positives that bury true strategy roles below AWS listings; combined with CareerOneStop unkeyed, the run is ~95% single-source (Adzuna).",
+    "would_stay": true
+   },
+   "bugs": [
+    "SEEDING/UX (not a crash): scrape.company_registry.save_companies (called by AddCompaniesDialog._add in gui.py) adds EVERY parsed line regardless of probe result \u2014 probe is advisory only. Seeding 17 consulting firms wrote all 17 into companies.json though only 1 (Point B) probes live; 16 dead entries silently persist and no-op ('gone -> skipping') on every daily run. No traceback (by design), but for consulting the ask-your-AI flow adds ~0 usable coverage and the user is never told which entries failed.",
+    "MINOR: workspace._attach_onet_soc does not resolve industry 'management consulting' to an O*NET-SOC code (no onet_soc_code written to config.json), while industry_profile.resolve DOES handle the 'consulting' token \u2014 so SOC-code tagging silently no-ops for consulting though routing/synonyms work. No traceback.",
+    "MINOR: preferences.json dealbreaker gate ('active clearance','ts/sci','security clearance') does not catch a posting whose text says 'Clearance Required: Ability to Obtain Public Trust' (Guidehouse #39 surfaced in top 40). Substring gate misses the 'ability to obtain' phrasing. No traceback.",
+    "OBSERVATION (unconfirmed): CareersClient returned 0 in the daily run despite the one live seed (Point B, lever:pointb, 9 open jobs) being present in the management-consulting registry and NOT logged as 'gone' \u2014 likely post-scrape keyword/location filtering, but the single scrapeable seed produced nothing. Not reproduced as a defect."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-consultant-chicago.md"
+  },
+  {
+   "slug": "gu-warehouse-memphis",
+   "setup_minutes": 22,
+   "wizard_clarity_1to10": 8,
+   "setup_friction": [
+    "Wizard never warns that a two-word field/industry ('warehouse logistics') behaves differently for the company registry than a one-word one - it silently matches 0 companies (bug B1), so the careers path is starved even after seeding",
+    "Location field is free-text city with no explicit radius control; the '20 mi' intent is implicit (it worked, but the user cannot set a radius)",
+    "No warehouse/logistics industry_profile exists: resolve_soc returns None for warehouse operations/lead/distribution/forklift, so query_synonyms is empty and keyword-broadening is a no-op for this field",
+    "CareerOneStop (the DOL feed the Guide names as the #2 key and the best free source for blue-collar on-site work) is unkeyed, so a general user's biggest local equalizer is missing"
+   ],
+   "seeding": {
+    "attempted": 17,
+    "added": 17,
+    "rejected": 0,
+    "notes": "16 real Memphis logistics/distribution employers + 1 deliberate junk line, pushed through the exact GUI '+ Add Companies' pipeline (ats_detect.parse_line -> probe_count -> company_registry.save_companies). ALL 17 were added to companies.json - the Add step does NOT gate on the Validate probe (bug B2), so the junk and 9 UNREACHABLE boards were saved anyway. Only 2 probed live (Flexport 129, Technicolor 0); 6 were 'direct' (uncountable best-effort: FedEx/XPO/GXO/Ryder/DHL/Kuehne+Nagel); 9 unreachable (Workday CSRF 422 for AutoZone/IntlPaper, 404 wrong-site-slug for Nike, dead GH slug for junk). The marquee Memphis employers a warehouse worker most wants (FedEx/Nike/AutoZone/Int'l Paper) are on CSRF-protected Workday portals the scraper cannot pull. Also, because config.industry='warehouse logistics' (two words), bug B1 meant NONE of these 17 were even scraped on the run."
+   },
+   "run": {
+    "duration_s": 32,
+    "raw": 479,
+    "deduped": 363,
+    "inboxed": 53,
+    "errors": [
+     "CareerOneStop skipped - CAREERONESTOP_USER_ID/TOKEN unset (known gap)",
+     "Jooble skipped - JOOBLE_API_KEY unset",
+     "Careerjet skipped - CAREERJET_AFFID unset",
+     "Brave company-discovery skipped - BRAVE_SEARCH_API_KEY unset",
+     "NOTE: only 0 registry companies match industry 'warehouse logistics' -> careers path added 0 jobs despite seeding 17 companies (bug B1)",
+     "HigherEdJobs + RNJobSite inert for non-education/non-nursing field (correct)"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 53
+   },
+   "local_relevance": {
+    "in_area": 53,
+    "remote": 0,
+    "wrong_area": 0
+   },
+   "top10": [
+    {
+     "title": "Warehouse Supervisor",
+     "company": "Floor & Decor",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "Direct Warehouse Supervisor title match, clear step-up from shift lead, $53,669 disclosed - best fit"
+    },
+    {
+     "title": "Warehouse Team Lead (1st Shift)",
+     "company": "Bosch Group",
+     "location": "West Memphis, Crittenden County AR (~10mi)",
+     "source": "adzuna",
+     "why": "Exact team-lead match; inbound/outbound-flow duties mirror his resume; $41,267"
+    },
+    {
+     "title": "Warehouse Supervisor",
+     "company": "Barrett Distribution Center",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "3PL DC supervisor - his exact 3PL background at the right level; $49,589"
+    },
+    {
+     "title": "Distribution Center Lead",
+     "company": "American Tire Distributors",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "DC lead, people-lead framing fits his shift-lead experience; $52,932"
+    },
+    {
+     "title": "Logistics Coordinator",
+     "company": "Puzzle Solutions Holdings",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "His 2nd target title, M-F day schedule, $60-80k - strong pay and growth"
+    },
+    {
+     "title": "Warehouse Associate",
+     "company": "Kenco (3PL)",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "Leading 3PL, $51,353, clear lead track from his 3PL history"
+    },
+    {
+     "title": "Supervisor, Distribution Center",
+     "company": "Hollywood Feed",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "Memphis-HQ DC supervisor, $70,195 - excellent pay for a step-up"
+    },
+    {
+     "title": "Distribution Group Lead IV",
+     "company": "Medtronic",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "DC lead at a major employer, $53,600-80,400 range"
+    },
+    {
+     "title": "Warehouse Supervisor II",
+     "company": "IFF",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "In-domain supervisor, $67,851; slight seniority stretch but reachable"
+    },
+    {
+     "title": "Warehouse Associate II (Evenings)",
+     "company": "Cardinal Health",
+     "location": "Memphis, Shelby County TN",
+     "source": "adzuna",
+     "why": "Reliable big-name DC role at his floor ($41,039) - solid fallback"
+    }
+   ],
+   "ranking_notes": "Local scorer quality is good for locality (100% in-area after the location hard-gate dropped 193 out-of-area) but poor at DOMAIN discrimination: it rewards title tokens (lead/shift/supervisor/warehouse) without understanding the field. ~12 false positives in the top ~40 scored 60-72: Industrial Maintenance Tech x3 (Bosch), Weld Production Leader (AAON), Electrical/Mechanical Lead x2 (Jabil), Quality Technician (Bosch), Warehouse Janitorial Cleaner (ABM), Warehouse Office Support (Home Depot), Starbucks store shift supervisor, Valet Shift Lead at Graceland (Towne Park), and a brewery cellar/shift person (Wiseacre). All matched on 'shift'/'lead'/'warehouse' tokens. The BYO-AI re-rank cleanly demoted every one of them to fit 12-30 while promoting real DC-lead/supervisor/coordinator roles to 80-95 - the textbook 'high Score, low Fit' the Guide describes. Score band was compressed (top 82, most 60-69, none >=90).",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "B4 data-loss trap: tracker.db.update_job silently ignores unknown field names - update_job(offer_salary='53669') was dropped with no error/warning; the real column is offer_amount. A user or their AI guessing a field name loses data silently",
+    "B3: apply_rerank_scores (file-import/'Load AI results' route) writes the Fit column but does NOT stamp rank/rec_batch, so top_picks() stays empty for that route - only the clipboard 'Paste AI ranking' route (score_inbox_from_reply) populates the Top Picks tab. File-round-trip users get a Fit-sortable inbox but an empty Top Picks tab",
+    "No functional gap otherwise: all 9 statuses reachable incl. S29 accepted+ghosted; interview rounds, status notes, and the full timeline all persisted and re-read correctly"
+   ],
+   "verdict": {
+    "wide_use_1to10": 6,
+    "beats_manual": true,
+    "biggest_gap": "Local warehouse results ride ~100% on the single keyed Adzuna aggregator: the careers/registry path added 0 (bug B1 + marquee employers FedEx/Nike/AutoZone/Int'l Paper being on CSRF-protected Workday portals the scraper cannot pull), the keyless sources (CareerOneStop/Jooble/Careerjet) added 0, and the app is ToS-blocked from Indeed - the dominant board for blue-collar warehouse work. Fix B1 + key CareerOneStop and this persona is well-served; until then it is one-source-fragile.",
+    "would_stay": true
+   },
+   "bugs": [
+    "B1 (real bug): a multi-word industry value never matches the company registry. get_registry normalizes the industry key spaces->underscores ('warehouse logistics'->'warehouse_logistics') but company tags keep the space, and _industry_tag_match uses plain substring containment which the underscore breaks both ways. Measured: industry_company_count('warehouse logistics')==0 while ('logistics')==17 and ('warehouse')==17, all 17 seeded cos tagged ['warehouse logistics']. Daily run logged 'only 0 registry companies match' and careers added 0 despite fresh seeding. Fix in scrape/company_registry.py _industry_tag_match.",
+    "B2 (design gap): AddCompaniesDialog._add / company_registry.save_companies write every parsed line to companies.json regardless of the Validate probe result - junk ('Zip Code Nonsense LLC') and all 9 UNREACHABLE Workday/greenhouse boards were saved. Validate is purely informational; no 'add only validated' option. gui.py ~L2428.",
+    "B3 (minor): tracker.service.apply_rerank_scores writes fit but not rank/rec_batch, so tracker.service.top_picks() returns empty for the file-import route; only score_inbox_from_reply (clipboard paste) populates Top Picks.",
+    "B4 (data-loss trap): tracker.db.update_job silently ignores unknown field names (only keys in _EXTRA_COLUMNS are written). update_job(offer_salary=...) dropped the value with no error; real column is offer_amount.",
+    "Non-bug findings: no warehouse/logistics industry_profile (resolve_soc returns None for warehouse operations/lead/distribution/forklift; empty query_synonyms; broaden_keywords no-op); gate_tech_sources does NOT drop remote-tech boards (remoteok/remotive/jobicy/himalayas/hn/weworkremotely/workingnomads) for a warehouse field, wasting calls though not producing wrong results; CareerOneStop/Jooble/Careerjet/Brave keys unset (known gaps); no 429/quota events observed."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-warehouse-memphis.md"
+  },
+  {
+   "slug": "gu-marketing-remote",
+   "setup_minutes": 18,
+   "wizard_clarity_1to10": 8,
+   "setup_friction": [
+    "Location step has no explicit 'remote-only' toggle; a remote user types 'Remote' as their city + ticks the checkbox, which then makes the geocoded aggregators (Adzuna/USAJobs) return 0.",
+    "Industry/field box silently drives source routing, query-synonyms, and the company-tag filter, but the wizard doesn't explain the stakes; leaving it blank auto-assigns an O*NET occupation title.",
+    "Wizard-derived industry ('Advertising and Promotions Managers') does NOT tag-match seeded companies (tagged 'digital_marketing'), so a normal wizard finish would seed 13 employers the daily run then never scrapes. I set industry='digital marketing' manually to fix this.",
+    "Typing industry='digital marketing' triggers health-informatics synonym pollution in query broadening; I set broaden_keywords=false to work around it.",
+    "Enabled Jooble/Careerjet in config but no keys present -> silent skip. CareerOneStop (Guide's #2 key) unkeyed, so the DOL/NLx feed was absent."
+   ],
+   "seeding": {
+    "attempted": 15,
+    "added": 13,
+    "rejected": 2,
+    "notes": "Pushed 15 AI-suggested 'Name | ATS URL' lines through the real GUI pipeline (ats_detect.parse_line -> probe_count -> company_registry.save_companies). All 15 parsed; 6 probed LIVE (GitLab 141, Remote.com 294, Vercel 65, Webflow 24, Toptal 16, Doximity 11), 3 parsed as 'direct'/uncountable (HubSpot/Buffer/Grammarly - I gave marketing-landing-page URLs not ATS slugs), 6 probed unreachable 404 (Zapier/Automattic/Sourcegraph/Deel/Clipboard Health/1Password - all off those exact Greenhouse/Lever slugs now). save_companies adds every parsed entry regardless of probe (probe is advisory in the GUI), so 13 landed; 2 skipped as already-present dups (Doximity was in the shipped health registry). GitLab/Vercel/Webflow seeds produced this run's top 4 inbox rows. 'rejected'=skipped-as-dup count; the 6 unreachable/3 direct were still saved."
+   },
+   "run": {
+    "duration_s": 27,
+    "raw": 76,
+    "deduped": 41,
+    "inboxed": 8,
+    "errors": []
+   },
+   "source_mix": {
+    "weworkremotely": 37,
+    "remoteok": 17,
+    "careers": 8,
+    "himalayas": 8,
+    "hn": 3,
+    "themuse": 2,
+    "workingnomads": 1,
+    "adzuna": 0,
+    "usajobs": 0,
+    "jobicy": 0,
+    "remotive": 0,
+    "careerjet": 0,
+    "jooble": 0,
+    "higheredjobs": 0,
+    "rnjobsite": 0
+   },
+   "local_relevance": {
+    "in_area": 0,
+    "remote": 8,
+    "wrong_area": 0
+   },
+   "top10": [
+    {
+     "title": "Staff Lifecycle Marketing Manager",
+     "company": "GitLab",
+     "location": "Remote, US",
+     "source": "careers",
+     "why": "Bullseye: lifecycle marketing management, remote-US, top remote-first company, staff-level clears the $90k floor. Came from my seeded company."
+    },
+    {
+     "title": "Lead Global Marketing Campaigns Manager",
+     "company": "GitLab",
+     "location": "Remote, US",
+     "source": "careers",
+     "why": "Senior campaigns manager, remote-US, exactly her wheelhouse (paid+owned full-funnel). Seeded company."
+    },
+    {
+     "title": "Ecommerce Lifecycle Manager",
+     "company": "North Spore LLC",
+     "location": "Remote or in-person (Portland, ME)",
+     "source": "weworkremotely",
+     "why": "Real DTC lifecycle/email/retention role - her exact skillset; remote possible. Keyword scorer under-rated it at 43."
+    },
+    {
+     "title": "SaaS Project/Marketing Manager",
+     "company": "BlueBox",
+     "location": "Remote (UK hours)",
+     "source": "weworkremotely",
+     "why": "Marketing+PM blend but ~$18k/yr (US$1,500/mo) and UK hours - false-comp positive; only if desperate."
+    },
+    {
+     "title": "Senior Google Ads Account Manager",
+     "company": "StubGroup",
+     "location": "Remote (LatAm/EU/Canada/UK/ZA - NOT US)",
+     "source": "workingnomads",
+     "why": "Google Ads is her core skill but the role explicitly excludes the US and pays $48-60k. Geo+comp fail."
+    },
+    {
+     "title": "Technical Partnerships Manager",
+     "company": "Origami Risk",
+     "location": "Remote, US",
+     "source": "weworkremotely",
+     "why": "Remote-US and $140k+ but it's a partnerships/revenue role, not marketing. Adjacent, not target."
+    },
+    {
+     "title": "Senior Regional Marketing Manager, EMEA",
+     "company": "GitLab",
+     "location": "Remote, EMEA",
+     "source": "careers",
+     "why": "Right title/company but EMEA-only region - wrong for a US-remote candidate. False positive (scored 66)."
+    },
+    {
+     "title": "Manager, Product Design",
+     "company": "BrowserStack",
+     "location": "Remote (Mumbai HQ)",
+     "source": "weworkremotely",
+     "why": "Product Design management, zero marketing. Pure 'Manager'+'remote' title-word match. False positive."
+    }
+   ],
+   "ranking_notes": "\"Only 8 rows inboxed, so the 'top 40' IS the whole inbox. 4 of 8 are false positives (50% tail FP rate): GitLab-EMEA (region-locked remote), BlueBox ($18k UK-hours contract - see bug 5), StubGroup (non-US remote + $48-60k), BrowserStack (Product Design, not marketing). They scored 41-66 because the local scorer over-weights the token 'Manager' and the word 'remote' and under-weights (a) region qualifiers inside a remote string (EMEA/LatAm-only) and (b) sub-floor comp that only appears in the description, not salary_text. The two GitLab US roles (my seeds) correctly topped at 79/66, so the scorer didn't miss the winner. Local-scorer quality: good at the head, noisy in the tail.\"",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "No blocking gaps. Full status set (interested->applied->phone_screen->interview->offer->accepted/rejected/withdrawn/ghosted), interview_rounds, per-stage notes, and offer fields (amount/deadline/notes) are all reachable via the same functions the GUI buttons call and all persisted (verified by independent DB re-read: 1 accepted/1 interview/1 applied/1 rejected/1 ghosted, 3 interview rounds, 14 status_history rows).",
+    "Minor: entering 'applied' auto-stamps date_applied and arms a +7-day follow-up on EVERY path - good, but a user might not expect the auto follow-up date.",
+    "Minor: phone_screen is a valid status but I jumped straight to interview; both work."
+   ],
+   "verdict": {
+    "wide_use_1to10": 6,
+    "beats_manual": false,
+    "biggest_gap": "Remote-only search is unproductive on the keyed aggregators: Adzuna (the Guide's #1 unlock) and USAJobs both returned 0 for location='Remote', so a remote knowledge-worker leans almost entirely on WeWorkRemotely/RemoteOK + self-seeded career pages -> only 8 jobs in one run, half the tail noise, vs 100+ in one LinkedIn scroll for 'remote marketing manager'.",
+    "would_stay": true
+   },
+   "bugs": [
+    "Adzuna returns 0 for location='Remote' (both passes: '[AdzunaClient] 0 results'). USAJobs also 0. Not a crash - a coverage gap that guts the value prop for remote knowledge-workers, and it's precisely the source the Guide calls the #1 'biggest unlock'.",
+    "Industry-synonym pollution: industry_profile.resolve('digital marketing') has no marketing profile and falls back to health-informatics defaults, so broad_query_keywords(..., 'digital marketing') injects ['clinical informatics','healthcare analytics','health data','electronic health record','epic'] into a marketing query. A user who types 'digital marketing' gets healthcare noise. Verified via search.keyword_strategy.broad_query_keywords.",
+    "industry_profile.resolve_soc('demand generation manager') mis-resolves to '11-3051.06 Hydroelectric Production Managers'. Harmless here (didn't let it set industry) but would mislead auto-detect. 'growth marketing manager' resolves to None; 'marketing manager' -> 'Advertising and Promotions Managers'.",
+    "Silent careers-path zeroing: the wizard derives industry='Advertising and Promotions Managers' for a marketing user, but seeded companies get tagged 'digital_marketing'. industry_company_count('Advertising and Promotions Managers')==0 vs ==13 for 'digital marketing'; _industry_tag_match('digital marketing','digital_marketing') is even False (only get_registry's containment path saves it). Net: a user finishing the wizard normally would seed 13 employers the daily run then never scrapes. Most impactful trap; I worked around it by setting industry='digital marketing'.",
+    "Sub-floor salary in the description slips the $90k hard-gate: BlueBox's real comp 'US$1,500 per Month' (~$18k) but its salary_text field is '$18,000+', which salary_from_text() parses to (None,None) -> 'unknown salary => kept'. The gate never reads the description, so a clearly sub-$90k role passed a $90k floor and scored 65 (inbox top-4)."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-marketing-remote.md"
+  },
+  {
+   "slug": "gu-mecheng-seattle",
+   "setup_minutes": 18,
+   "wizard_clarity_1to10": 8,
+   "setup_friction": [
+    "Field/industry box is free text with no validation and no match against the registry's actual tags \u2014 the direct cause of BUG 1 (two-word field label never matches seeded companies).",
+    "Senior level must be set via the Career-level combobox, not the role text; easy to miss.",
+    "Nothing warns the user that a two-word field label ('mechanical engineering') will silently match 0 registry/seeded companies.",
+    "create_project scaffolds config.json/experience.md/output only; preferences.json/md must be written separately (the wizard's apply() does this, but a programmatic caller must replicate the shape)."
+   ],
+   "seeding": {
+    "attempted": 15,
+    "added": 8,
+    "rejected": 6,
+    "notes": "15 lines parsed to CompanyEntry via ats_detect.parse_line; probe_count validated; save_companies added 8 (Stoke Space, Radiant, Divergent, Zipline, Relativity, Formic, Fictiv, Seurat) + 1 direct (Boeing) submitted but Boeing counted in the 8-vs-9: save_companies returned 8 added, 1 skipped (already present). 6 rejected on 404 probe (Blue Origin, Glowforge, Carbon Robotics, Kymeta, McKinstry-Workday, PACCAR-Workday). KEY FRICTION: a chat-only AI reliably produces company NAMES but frequently WRONG ATS slugs \u2014 first-pass guesses for well-known Seattle employers 404'd (network was fine; Divergent 200'd same run). Had to fall back to slugs I could verify (several already in starter registry). The pipeline rejected bad slugs gracefully (flow working as designed) but yield is low without web browsing. CRITICAL: all 8 added tagged industries=['mechanical engineering'] but get_registry(industry='mechanical engineering') returns 0 due to BUG 1 (space-vs-underscore) \u2014 so they will NEVER be searched by this project's careers path. companies.json left for janitor to restore; not restored by me."
+   },
+   "run": {
+    "duration_s": 33,
+    "raw": 628,
+    "deduped": 396,
+    "inboxed": 32,
+    "errors": [
+     "NOTE: 0 registry companies match industry 'mechanical engineering' -> careers path added 0 jobs (BUG 1 symptom)",
+     "careeronestop skipped: credentials missing (known gap)",
+     "jooble skipped: JOOBLE_API_KEY unset",
+     "careerjet skipped: CAREERJET_AFFID unset",
+     "brave company discovery skipped: BRAVE_SEARCH_API_KEY unset",
+     "no 429/quota events; run exited 0"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 26,
+    "weworkremotely": 4,
+    "hn": 2
+   },
+   "local_relevance": {
+    "in_area": 25,
+    "remote": 6,
+    "wrong_area": 1
+   },
+   "top10": [
+    {
+     "title": "Sr. Mechanical Engineer (HVAC/Plumbing Design)",
+     "company": "K2 Staffing",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "Bullseye HVAC + PE, $124.8-183K; exactly his building-systems half"
+    },
+    {
+     "title": "Senior Mechanical Engineer",
+     "company": "IMEG Consultants",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "MEP/HVAC consulting, $107-149K; classic PE-stamp role"
+    },
+    {
+     "title": "Contract Senior Mechanical Design Engineer",
+     "company": "Simplexity Product Development",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "SolidWorks product design, $113.6K; his product half"
+    },
+    {
+     "title": "Lead Mechanical Engineer - Buildings",
+     "company": "WSP",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "Building-systems lead IC, $118-175K"
+    },
+    {
+     "title": "Senior Mechanical Engineer",
+     "company": "DLR Group",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "MEP/buildings, $100-140K (edge of floor)"
+    },
+    {
+     "title": "Senior Mechanical Engineer - P2S",
+     "company": "Legence",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "MEP/HVAC, $142K"
+    },
+    {
+     "title": "Sr. Mechanical Engineer",
+     "company": "Cowboy Space",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "Aerospace product mechanical, $150-200K; senior hands-on"
+    },
+    {
+     "title": "Senior Mechanical Engineer",
+     "company": "PBK Architects",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "Building MEP, $120-148K"
+    },
+    {
+     "title": "Mechanical Engineer, Structures",
+     "company": "Gravitics",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "Aerospace structures/FEA, $110-140K"
+    },
+    {
+     "title": "Senior Staff Mechanical Engineer",
+     "company": "Agile Space Industries",
+     "location": "Seattle, WA",
+     "source": "adzuna",
+     "why": "Aerospace product design, $146-247K; top of his range"
+    }
+   ],
+   "ranking_notes": "Top 40 = all 32 inbox rows (fit=-1 on all, no auto-AI used; I was the BYO-AI re-ranker). 8 false positives, all explained by score_notes showing title-match dominates and skills is a weak counterweight: (1) Railway 73 HN 'Infra Eng...Brand Designer...Product Eng' -> title 100%/skills 12%, software infra, HIGHEST-scored and a total miss; (2) Hospitable 'Staff UI/UX Product Designer' 72 -> 'product designer'~='product design engineer', title 100%/skills 25%; (3) jerry.ai 'Staff Product Designer' 68 same; (4) DigitalOcean 'Product Security Engineer, Secure Design' 67 -> 'design' token, title 100%/skills 0%; (5) BrowserStack 'Manager Product Design' 62 software; (6) Qualtrics 'Staff PM Product Design & Engineering' 50; (7) Solace Health Mobile Engineer 43 software; (8) Kosmos Mechanical Engineer 64 = REAL ME role but Butte MT mislabeled 'Seattle' by Adzuna (locality FP, source error not app). Local scorer quality: locality gate is excellent (25/32 truly in-area after dropping 280) and salary/dealbreaker gates work; the weakness is title-token over-weighting for a keyword containing 'design' pulling in software/UX. The BYO-AI re-rank cleanly demotes all 8.",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "No blocking gaps \u2014 all S29 statuses (accepted, ghosted) and interview rounds work from the tracker.service layer that GUI buttons call.",
+    "date_applied + a +7-day follow-up are auto-stamped centrally on the applied transition (db.update_job), so every entry path arms the same follow-up engine (verified in code).",
+    "Minor: status_timeline folds status into old_status/new_status columns in status_history; a reader must join those (not user-facing).",
+    "DB paths resolve from workspace.active_slug(), so any programmatic tracker call must set_active or pin_active the project first \u2014 a subtle footgun for scripted use, invisible in the GUI."
+   ],
+   "verdict": {
+    "wide_use_1to10": 6,
+    "beats_manual": true,
+    "biggest_gap": "Careers/company-registry path yields 0 for this persona's field due to the industry-tag space-vs-underscore bug (BUG 1), so his 8 verified employers are never searched; combined with unkeyed CareerOneStop/Jooble/Careerjet this makes the run effectively Adzuna-only for local jobs.",
+    "would_stay": true
+   },
+   "bugs": [
+    "BUG 1 (HIGH, persona-blocking, silent wrong-result, no traceback): scrape/company_registry.py _industry_tag_match (~L234) does not normalize the company tag while get_registry (~L300) normalizes the industry key (spaces->underscores). So a company tagged ['mechanical engineering'] never matches industry 'mechanical engineering': _industry_tag_match('mechanical_engineering','mechanical engineering')==False, and get_registry(industry='mechanical engineering')==0 even after 8 companies were added tagged that way. Any general user with a 2+word field label ('mechanical engineering','product design','supply chain','data science') has their '+ Add Companies' additions silently invisible and their daily careers path contributes 0; daily_run logs 'only 0 registry companies match industry'. Single-word fields work; starter tags are single-token (controls_engineering) so single-project eng users never hit it. Fix: normalize the tag inside _industry_tag_match (t.replace(' ','_')). Verified live this run: careers=0 for this persona.",
+    "BUG 2 (LOW, upstream data quality, not the app's fault): Adzuna returned location 'Seattle, King County' for a Butte, MT role (Kosmos 'Mechanical Engineer', score 64); it passed the location hard-gate. The description contradicts the location field. A description-vs-location sanity check would catch such source mislabels."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-mecheng-seattle.md"
+  },
+  {
+   "slug": "gu-data-changer-phoenix",
+   "setup_minutes": 40,
+   "wizard_clarity_1to10": 8,
+   "setup_friction": [
+    "Industry is optional free text with no picker/validation \u2014 typing \"data analytics\" (the natural phrasing) triggers a space-vs-underscore normalization bug that silently excludes every company the user later adds via + Add Companies from their own careers searches.",
+    "AI-assisted seeding could only reliably resolve Greenhouse slugs (guessable from the board URL); the 9 biggest local employers Nicole most wants (Banner Health, Phoenix Children's, HonorHealth, APS, SRP + 2 Lever cos) came back 'unreachable' because a public careers URL doesn't reveal the correct Workday tenant slug \u2014 no recovery path for a non-technical user.",
+    "CareerOneStop unkeyed = the single biggest missing local unlock for this field; the local hospital/utility/university/state analyst jobs never arrive, forcing the user back to LinkedIn.",
+    "Resume auto-structuring leaves the name/contact block un-sectioned (bare above the first promoted heading) and doesn't recognize 'DATA ANALYTICS BOOTCAMP' as a heading \u2014 cosmetic, no data lost."
+   ],
+   "seeding": {
+    "attempted": 15,
+    "added": 15,
+    "rejected": 0,
+    "notes": "All 15 AI-produced 'Name | URL' lines parsed to CompanyEntry and were added by save_companies (probe is advisory-only in the + Add Companies dialog, so nothing is rejected at save time). Probe outcomes: 2 LIVE (Axon 522, Carvana 2103 \u2014 both Greenhouse, both Phoenix-HQ analyst employers), 4 direct/uncountable (ASU, Grand Canyon Univ, OpenDoor, Choice Hotels), 9 unreachable (Western Alliance, Progressive Leasing, Banner Health, Phoenix Children's, HonorHealth, APS, SRP via wrong/CSRF Workday slugs; Nextiva, Trainual via 404 Lever slugs). CRITICAL: all 15 were tagged industry 'data analytics' (space form the wizard stores) but get_registry normalizes the key to 'data_analytics' and matches against the un-normalized tag, so ALL 15 are silently excluded from the persona's own careers scrape \u2014 industry_company_count('data analytics') stayed at 8 after adding 15."
+   },
+   "run": {
+    "duration_s": 43,
+    "raw": 649,
+    "deduped": 532,
+    "inboxed": 77,
+    "errors": [
+     "CareerOneStop skipped \u2014 no key (known gap)",
+     "Jooble/Careerjet/Brave-discovery skipped \u2014 no keys (clean self-skip)",
+     "higheredjobs inert (no education categories for data-analytics); rnjobsite inert (not nursing)",
+     "Reach badge: cannot certify \u2014 no SerpApi key, disjoint source families, ~28% Good-Turing completeness",
+     "preflight NOTE: only 8 registry companies match industry 'data analytics' \u2014 careers path adds few/no jobs (downstream effect of the industry-tag bug)"
+    ]
+   },
+   "source_mix": {
+    "adzuna": 66,
+    "workingnomads": 4,
+    "weworkremotely": 2,
+    "usajobs": 2,
+    "jobicy": 1,
+    "hn": 1,
+    "careers": 1
+   },
+   "local_relevance": {
+    "in_area": 67,
+    "remote": 10,
+    "wrong_area": 0
+   },
+   "top10": [
+    {
+     "title": "Business Intelligence Analyst - Hybrid",
+     "company": "Blue Cross Blue Shield of Arizona",
+     "location": "Phoenix, AZ (hybrid)",
+     "source": "adzuna",
+     "why": "Plain BI analyst (not senior), large stable local employer that trains career-changers; $61.5k > $55k floor. Best entry-accessible fit."
+    },
+    {
+     "title": "Contact Center Data Analyst",
+     "company": "U-Haul",
+     "location": "Phoenix, AZ (onsite)",
+     "source": "adzuna",
+     "why": "Phoenix corporate HQ, plain Data Analyst, operational/contact-center metrics \u2014 maps directly to her retail sales/staffing reporting background."
+    },
+    {
+     "title": "Data Coordination Analyst",
+     "company": "Maximus",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "Build/maintain dashboards, metrics, reports; 'coordination' not senior; federal contractor with training pipeline."
+    },
+    {
+     "title": "Enterprise Data Analyst",
+     "company": "Leslie's Pool Supplies",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "Phoenix-HQ retailer \u2014 her retail domain is a genuine edge; plain Data Analyst title."
+    },
+    {
+     "title": "Data Analyst",
+     "company": "Ryde Technologies",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "Plain 'Data Analyst', SQL/data-mapping work, no seniority marker in title."
+    },
+    {
+     "title": "Computer Programmer/Analyst (Data Management & Reporting)",
+     "company": "Arizona Department of Public Safety",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "Posting explicitly says work 'under the guidance of more experienced developers' \u2014 a true trainee/entry role; AZ state job, $67k."
+    },
+    {
+     "title": "Revenue & Accounting Data Analyst",
+     "company": "Robert Half (client)",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "'Connect accounting fundamentals with reporting' fits her P&L/retail-finance background; staffing agency = faster entry. Caveat: interim contract."
+    },
+    {
+     "title": "Data Analyst",
+     "company": "Serco",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "Plain 'Data Analyst' title, entry-plausible. Caveat: defense/logistics domain, may need work eligibility checks."
+    },
+    {
+     "title": "Online Data Analyst (US, EN/ES)",
+     "company": "TELUS Digital",
+     "location": "Remote (US)",
+     "source": "workingnomads",
+     "why": "Genuinely entry-level freelance/remote, very low barrier \u2014 a realistic first in-field paycheck while she keeps applying to full-time roles."
+    },
+    {
+     "title": "Manufacturing Data Analyst",
+     "company": "Corning",
+     "location": "Phoenix, AZ",
+     "source": "adzuna",
+     "why": "$70.8k Phoenix, plain 'Data Analyst' (not senior), reputable employer. Caveat: manufacturing-data domain, but broadly analyst work."
+    }
+   ],
+   "ranking_notes": "Of the top 40 by local score, roughly 14-16 are poor fits for a no-experience career-changer and they cluster at the very top. Root cause from score_notes: any title containing 'analyst'/'data' gets title 100% regardless of seniority, any disclosed salary above the $55k floor gets salary 100%, Phoenix gets loc 67%, plus freshness. The entry-level config (seniority_target=entry, years_cap=3) feeds the AI rubric but barely touches the LOCAL keyword scorer. False positives: #1 Senior Data Analyst (System One, contract), #3/#11 Sr Analyst (Maximus), #4 Senior Data Solutions (Highmark), #5 Senior Preconstruction (Ryan), #6 Senior Analyst Data Governance (Amex), #20 Senior Data Analyst (Stride), #40 Principal BI Analyst (Cytel); plus role-mislabels #15 Ops Research/Data Scientist (GovCIO), #23/#38/#39 Mayo 'Data Science Analyst' (AI/ML/deep-learning); plus clearance/contract-heavy #9 (banking regulatory, $60-70/hr, 11 yrs), #19 Network Security (Noblis). NONE are location false positives (locality was clean 67 in-area / 10 remote / 0 wrong). Local scorer quality: strong on location and title-keyword recall, weak on SENIORITY/LEVEL discrimination \u2014 the single most impactful scoring fix for this persona.",
+   "tracking_worked": true,
+   "tracking_gaps": [
+    "add_status_note records the note as a same-status -> same-status row in status_history (e.g. 'accepted -> accepted'), which reads oddly as a no-op status change in a timeline view \u2014 functionally correct, cosmetically confusing.",
+    "No functional gaps: all required statuses (interested/applied/phone_screen/interview/offer/accepted/rejected/withdrawn/ghosted) exist and persisted; interview rounds auto-increment round_no; offer_amount/deadline/notes persist; every step maps to a GUI button."
+   ],
+   "verdict": {
+    "wide_use_1to10": 7,
+    "beats_manual": true,
+    "biggest_gap": "CareerOneStop is unkeyed and AI-assisted + Add Companies can't resolve the biggest local employers' Workday/Lever slugs, so the marquee Phoenix employers (Banner Health, Dignity, city/county, ASU) never reach the inbox \u2014 forcing the user back to LinkedIn for exactly the jobs a career-changer most wants.",
+    "would_stay": true
+   },
+   "bugs": [
+    "INDUSTRY-TAG SPACE/UNDERSCORE MISMATCH (silent data-exclusion, no traceback): scrape/company_registry.py get_registry normalizes the industry key via industry.lower().replace(' ','_') -> 'data_analytics' but _industry_tag_match compares it to the un-normalized company tag 'data analytics' (as the wizard stores industry and AddCompaniesDialog passes it). Neither contains the other, so companies a general user adds with their own multi-word wizard industry are excluded from their own careers searches/daily run. Repro: py -3.12 -c \"from scrape.company_registry import _industry_tag_match; print(_industry_tag_match('data_analytics','data analytics'))\" -> False. Effect: 15 seeded companies added but industry_company_count('data analytics') stayed 8. (Existing spawned task task_f39d0974 already covers this; not re-filed.)",
+    "DESIGN GAP (not a crash): entry-level config (seniority_target=entry, years_cap=3) does not down-rank Senior/Sr/Lead/Principal TITLES in the local match scorer \u2014 such roles get identical title 100% to a plain Data Analyst and dominate the top of a career-changer's inbox (8+ of top-40).",
+    "MINOR: ui/setup_wizard.py structure_resume_text Path A promotes recognized ALL-CAPS headings but leaves the leading name/email/phone contact block un-wrapped (no ## CONTACT) and doesn't recognize 'DATA ANALYTICS BOOTCAMP' as a heading; no data lost but the parser won't cleanly associate contact info.",
+    "MINOR: tracker add_status_note is stored as a same-status self-transition in status_history, appearing as a no-op status change in a timeline view."
+   ],
+   "narrative_path": "E:\\ClaudeWork\\ZAG0005 - Job Search App\\brain\\general-user-tests-2026-07\\persona-data-changer-phoenix.md"
+  }
+ ],
+ "failed_personas": [],
+ "janitors": [
+  {
+   "slug": "swe-newgrad-austin",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 0
+   }
+  },
+  {
+   "slug": "nurse-boise",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 1
+   }
+  },
+  {
+   "slug": "teacher-columbus",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 0
+   }
+  },
+  {
+   "slug": "consultant-chicago",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 1,
+    "notes": "Registry snapshot restored (companies.baseline.json \u2192 companies.json, 62,269 bytes). File sizes verified matching. One daily_run.py process (PID 31388) terminated."
+   }
+  },
+  {
+   "slug": "warehouse-memphis",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 1
+   }
+  },
+  {
+   "slug": "marketing-remote",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 0
+   }
+  },
+  {
+   "slug": "mecheng-seattle",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 1,
+    "notes": "companies.json restored from baseline snapshot (62269 bytes, verified match). One lingering daily_run.py process found (PID 2056) but termination blocked by permission classifier \u2014 requires user-authorized cleanup via elevated PS or task manager."
+   }
+  },
+  {
+   "slug": "data-changer-phoenix",
+   "result": {
+    "restored": true,
+    "sizes_match": true,
+    "killed": 0,
+    "notes": "Cleanup complete: companies.json restored from baseline, file sizes match, no leftover daily_run.py processes found."
+   }
+  }
+ ]
+}
