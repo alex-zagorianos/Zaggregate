@@ -22,6 +22,29 @@ GUIDE = [
              "install or configure beyond the quick setup; just follow the three "
              "steps below."),
 
+    ("h1", "Why Zaggregate"),
+    ("body", "Two things make this app different from every job site and browser "
+             "tool — and both are on your side:"),
+    ("h2", "Your data stays yours"),
+    ("body", "A 2025 study found 90% of job platforms sell their users' data. "
+             "Zaggregate is the opposite: it runs on your computer with no "
+             "account and no cloud, and nothing — your resume, preferences, "
+             "scores, or application tracker — is ever uploaded or sold. That "
+             "privacy is something no cloud service can match, because their "
+             "business depends on your data."),
+    ("h2", "Assisted, never auto-apply"),
+    ("body", "Bots that blast out applications succeed about 0.01% of the time — "
+             "1 in 10,000 — while a tailored application lands 4–6% of the time. "
+             "Recruiters are now filtering out the AI spam, so mass-applying "
+             "actively hurts. Zaggregate helps you find and tailor the right "
+             "jobs, but you always click submit. Fewer, better applications — on "
+             "purpose."),
+    ("h2", "Honest about what it sees"),
+    ("body", "Job sites bury you in stale and ghost listings and never say how "
+             "much of the market you're actually seeing. Zaggregate shows you a "
+             "reach estimate for your area and flags when top matches may be a "
+             "poor fit, so you can trust the shortlist instead of guessing."),
+
     ("h1", "The 3 steps"),
     ("h2", "1.  Find jobs"),
     ("body", "Open your Inbox and click “Update my Inbox now” to pull in fresh "

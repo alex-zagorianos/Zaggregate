@@ -78,8 +78,10 @@ def test_detail_text_has_scorecard_and_skill_gap(inbox_tab):
     assert "Score 82" in text
     assert "Title 100%" in text and "Skills 80%" in text
     assert "confidence 5/5" in text
-    # the JD wants Kubernetes/Rust which aren't generic noise -> skill-gap line
-    assert "Job also wants" in text
+    # SB-6 ATS match hint: the JD wants Kubernetes/Rust (not generic noise), so
+    # the "terms the job asks for that aren't in your profile" guidance line fires.
+    assert "aren't in your profile yet" in text
+    assert "kubernetes" in text.lower() and "rust" in text.lower()
 
 
 def test_empty_inbox_shows_empty_state(tmp_path, monkeypatch):

@@ -50,8 +50,8 @@ from claude_bridge import (
     build_fit_prompt, parse_fit_response, profile_summary,
 )
 from match import ghost as ghostmod
-from match import skillgap as skillgapmod
 from match import comp as compmod
+from match import ats_hint as atshintmod
 from match.scorer import score_breakdown, extract_skill_terms
 from tracker import analytics as analyticsmod
 from scrape.inbox_health import prune_inbox
@@ -60,6 +60,7 @@ from ui import chrome
 from ui import help as uihelp
 from ui import setup_wizard
 from ui import settings as uisettings
+from ui.kanban import KanbanTab
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -1756,19 +1757,22 @@ class InboxTab(ttk.Frame):
             lines.append("Captured while browsing: " + summary)
 
         desc = r.get("description") or ""
-        if desc.strip():
-            if self._skill_terms is None:
-                try:
-                    self._skill_terms = extract_skill_terms()
-                except Exception:
-                    self._skill_terms = frozenset()
+        # Free local "ATS match hint" (Jobscan-lite, SB-6): name the ATS the
+        # posting runs on (from its URL) and the local keyword overlap between the
+        # user's skills and the JD — honest guidance, no AI, no network, no fake
+        # "ATS score". ats_hint reuses the same skill-gap machinery as before.
+        if self._skill_terms is None:
             try:
-                gap = skillgapmod.skill_gap(desc, skill_terms=self._skill_terms)
-                if gap["missing"]:
-                    lines.append("Job also wants (not in your skills): "
-                                 + ", ".join(gap["missing"][:8]))
+                self._skill_terms = extract_skill_terms()
             except Exception:
-                pass
+                self._skill_terms = frozenset()
+        try:
+            hint = atshintmod.match_hint(
+                desc, r.get("url", ""), skill_terms=self._skill_terms)
+            for line in atshintmod.hint_lines(hint):
+                lines.append(line)
+        except Exception:
+            pass
 
         try:
             g = ghostmod.ghost_score(r)
@@ -3405,6 +3409,15 @@ class ApplyQueueTab(ttk.Frame):
         bits = []
         if j.get("fit_rationale"):
             bits.append(j["fit_rationale"])
+        # ATS hint (SB-6): naming the applicant-tracking system at apply time lets
+        # the user format their resume for that parser. From the URL only — no
+        # network, no AI. The fuller keyword-overlap read lives in the Inbox detail.
+        try:
+            ats = atshintmod.ats_label(j.get("url", ""))
+            if ats:
+                bits.append(f"Applies through {ats}")
+        except Exception:
+            pass
         # Referral nudge: surface known contacts at this company (highest-
         # conversion channel). contacts_for_company is queried through the service.
         hint = tracker_service.referral_hint(j.get("company", ""))
@@ -4317,6 +4330,8 @@ class App(tk.Tk):
         try:
             if getattr(self, "_tracker", None) is not None:
                 self._tracker.refresh()
+            if getattr(self, "_board", None) is not None:
+                self._board.refresh()
             if getattr(self, "_queue", None) is not None:
                 self._queue.refresh(keep_selection=True)
         except (tk.TclError, AttributeError):
@@ -4638,6 +4653,7 @@ class App(tk.Tk):
                                    open_guide_cb=lambda: self._nb.select(self._guide))
         self._queue    = ApplyQueueTab(self._nb)
         self._tracker  = TrackerTab(self._nb)
+        self._board    = KanbanTab(self._nb)
         self._resume   = ResumeTab(self._nb)
         self._guide    = uihelp.GuideTab(self._nb, app=self)
         self._nb.add(self._inbox,    text="Inbox")
@@ -4645,13 +4661,14 @@ class App(tk.Tk):
         self._nb.add(self._search,   text="Search")
         self._nb.add(self._queue,   text="Apply Queue")
         self._nb.add(self._tracker, text="Job Tracker")
+        self._nb.add(self._board,   text="Board")
         self._nb.add(self._resume,  text="Resume Generator")
         self._nb.add(self._guide,   text="\N{BLACK QUESTION MARK ORNAMENT} Guide")
         self._update_badges()
 
     def _rebuild_tabs(self, select_index=None):
         for tab in (self._inbox, self._toppicks, self._search, self._queue,
-                    self._tracker, self._resume, self._guide):
+                    self._tracker, self._board, self._resume, self._guide):
             tab.destroy()
         self._build_tabs()
         if select_index is not None:
@@ -4756,6 +4773,8 @@ class App(tk.Tk):
             self._queue.refresh(keep_selection=True)
         elif current is self._tracker:
             self._tracker.refresh()
+        elif current is self._board:
+            self._board.refresh()
         elif current is self._toppicks:
             self._toppicks.refresh()
         elif current is self._inbox:
