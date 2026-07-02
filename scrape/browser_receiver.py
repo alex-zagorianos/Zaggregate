@@ -365,9 +365,16 @@ def _to_job_result(j) -> JobResult | None:
     # (derived from "N days ago") over the capture timestamp, which would make
     # every browsed job look brand-new and defeat the staleness advisory.
     created = j.get("captured_at") or datetime.now(timezone.utc).isoformat()
-    posted_iso = _created_from_age(meta.get("posted_age_days"))
-    if posted_iso:
-        created = posted_iso
+    age_iso = _created_from_age(meta.get("posted_age_days"))
+    if age_iso:
+        created = age_iso
+    # An explicit ISO `posted_iso` (schema.org JobPosting datePosted, forwarded by
+    # the generic JSON-LD capture path) is the strongest signal — an exact posting
+    # date beats both the capture timestamp and a coarse "N days ago" derivation —
+    # so it wins the precedence when present and parseable.
+    dated_iso = _iso_date_prefix(j.get("posted_iso"))
+    if dated_iso:
+        created = dated_iso
 
     uid = hashlib.md5(url.encode()).hexdigest()[:10]
     job_id = f"browser_{uid}"
@@ -567,6 +574,28 @@ def _created_from_age(days):
         return None
     from datetime import timedelta
     return (date.today() - timedelta(days=days)).isoformat()
+
+
+# schema.org datePosted is ISO-8601, but real feeds carry it as "2026-06-30",
+# "2026-06-30T09:00:00Z", "2026-06-30T09:00:00+02:00", or occasionally junk.
+# We only need the calendar day for recency/staleness, so accept a leading
+# YYYY-MM-DD and validate it's a real date; anything else falls back gracefully
+# (caller keeps the capture timestamp / age-derived date).
+_ISO_DATE_RE = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})")
+
+
+def _iso_date_prefix(value):
+    """Return 'YYYY-MM-DD' from an ISO-8601 datePosted string, or None. Tolerant
+    of a time/zone suffix and of junk (a non-date, an int, None) — never raises."""
+    if not isinstance(value, str):
+        return None
+    m = _ISO_DATE_RE.match(value)
+    if not m:
+        return None
+    try:
+        return date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+    except ValueError:
+        return None  # e.g. 2026-13-40 — a well-shaped but impossible date
 
 
 # ── in-process embedding (GUI Tools toggle) ────────────────────────────────────

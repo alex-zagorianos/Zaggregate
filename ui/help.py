@@ -254,6 +254,21 @@ GUIDE = [
     ("muted", "The listener runs only while the app is open and only accepts jobs "
               "from the extension on your own machine."),
 
+    ("h2", "Capture this job on any site"),
+    ("body", "The big boards above are handled automatically as you browse — but "
+             "most jobs live somewhere else: a company's own careers page, or an "
+             "applicant system like Workday, Greenhouse, or Lever. When you're "
+             "looking at any single job posting, open the extension and click "
+             "“Capture this job” to add the open posting to your collected list, "
+             "then “Send to Tool” like usual."),
+    ("body", "It reads the job's title, company, location, pay, and description "
+             "straight from the page's own structured data when the site provides "
+             "it (most do — it's what puts jobs in Google) and falls back to a "
+             "best-effort read of the page when it doesn't. Either way, the job "
+             "lands in your Inbox scored like everything else."),
+    ("muted", "“Capture this job” only reads the one page you're on, only when you "
+              "click it — it never reads other tabs or sites in the background."),
+
     ("h1", "Tips & FAQ"),
     ("h2", "Where is my information stored?"),
     ("body", "Everything stays on your computer in your data folder. Open it any "

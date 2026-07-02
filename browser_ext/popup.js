@@ -10,6 +10,8 @@ const clearBtn = document.getElementById("clear-btn");
 const statusEl = document.getElementById("status");
 const clipBtn = document.getElementById("clip-btn");
 const clipStatusEl = document.getElementById("clip-status");
+const captureBtn = document.getElementById("capture-btn");
+const captureStatusEl = document.getElementById("capture-status");
 
 function setStatus(msg, cls = "") {
   statusEl.textContent = msg;
@@ -19,6 +21,11 @@ function setStatus(msg, cls = "") {
 function setClipStatus(msg, cls = "") {
   clipStatusEl.textContent = msg;
   clipStatusEl.className = cls;
+}
+
+function setCaptureStatus(msg, cls = "") {
+  captureStatusEl.textContent = msg;
+  captureStatusEl.className = cls;
 }
 
 async function refreshCount() {
@@ -53,15 +60,18 @@ async function checkReceiver() {
     });
     if (r.ok) {
       setStatus("Receiver running ✓", "ok");
-      // Clip-to-seed only needs the receiver (not collected jobs), so it's
-      // enabled purely on receiver reachability.
+      // Clip-to-seed and generic "Capture this job" only need the receiver
+      // (not already-collected jobs), so both are enabled purely on receiver
+      // reachability — they work on any tab the user is looking at.
       clipBtn.disabled = false;
+      captureBtn.disabled = false;
       return true;
     }
   } catch (_) {}
   setStatus("Start receiver: py -m scrape.browser_receiver", "err");
   sendBtn.disabled = true;
   clipBtn.disabled = true;
+  captureBtn.disabled = true;
   return false;
 }
 
@@ -214,6 +224,90 @@ clipBtn.addEventListener("click", async () => {
     setClipStatus("Could not reach receiver. Is it running?", "err");
   }
   clipBtn.disabled = false;
+});
+
+// Generic "Capture this job" — works on ANY tab, not just the 5 aggregator
+// domains content.js is wired for. We inject extractGenericJob (generic_capture
+// .js) into the CURRENT tab on this user gesture; activeTab + "scripting" grant
+// that with NO host permissions, so the install prompt stays narrow. The
+// injected fn returns {ok, via, job}; we store the job here (same shape + dedup
+// as content.js) and render a verdict. The heavy lifting (structured-data vs DOM
+// fallback) is all in the injected function; this handler just persists + tells
+// the user which path was used.
+async function storeCapturedJob(job) {
+  // Dedup exactly like content.js: match on url, or a shared external_id. A
+  // repeat capture of the same page is a no-op (returns false); a new page adds.
+  const stored = await chrome.storage.local.get("jobs");
+  const jobs = stored.jobs || [];
+  const dup = jobs.some(
+    (j) =>
+      (job.url && j.url === job.url) ||
+      (job.external_id && j.external_id && j.external_id === job.external_id),
+  );
+  if (dup) return { added: false, total: jobs.length };
+  jobs.push(job);
+  await chrome.storage.local.set({ jobs });
+  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: jobs.length });
+  return { added: true, total: jobs.length };
+}
+
+captureBtn.addEventListener("click", async () => {
+  captureBtn.disabled = true;
+  setCaptureStatus("Reading this page…");
+  let tab;
+  try {
+    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch (_) {}
+  if (!tab || tab.id == null) {
+    setCaptureStatus("Couldn't read the current tab.", "err");
+    captureBtn.disabled = false;
+    return;
+  }
+
+  let result;
+  try {
+    // executeScript returns one InjectionResult per frame; we target the top
+    // frame (default) so there's exactly one. func is serialized by value and
+    // runs in the page world — extractGenericJob is self-contained for that.
+    const injected = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: extractGenericJob,
+    });
+    result = injected && injected[0] && injected[0].result;
+  } catch (e) {
+    // Restricted pages (chrome://, the Chrome Web Store, PDF viewer, other
+    // extensions) block injection — surface a friendly reason, not a stack.
+    setCaptureStatus(
+      "Can't capture from this page (it's a browser or store page). " +
+        "Open the actual job posting and try again.",
+      "err",
+    );
+    captureBtn.disabled = false;
+    return;
+  }
+
+  if (!result || !result.ok || !result.job) {
+    setCaptureStatus("Couldn't find a job posting here.", "err");
+    captureBtn.disabled = false;
+    return;
+  }
+
+  const { added } = await storeCapturedJob(result.job);
+  await refreshCount();
+  if (result.via === "jsonld") {
+    setCaptureStatus(
+      added ? "Captured via structured data ✓" : "Already collected ✓",
+      "ok",
+    );
+  } else {
+    setCaptureStatus(
+      added
+        ? "Captured (best-effort) — no structured data on this page"
+        : "Already collected ✓",
+      "ok",
+    );
+  }
+  captureBtn.disabled = false;
 });
 
 // Init
