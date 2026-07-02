@@ -4,6 +4,31 @@
 
 ---
 
+## Session 33 (2026-07-02) — Browser-extension breadth wave: any-site capture + browser-verified boards ✅
+
+Alex: the extension's job is FILLING GAPS the main search misses; "do that. We
+do want to be filling gaps and adding even more breadth." Assessment found it
+covered only the 5 aggregator domains — zero capture on the actual gap
+territory (walled Workday, careers pages, unprobeable ATS). **3 Opus builders**
+(worktrees, all merged): (1) **JSON-LD "Capture this job"** on ANY employer/ATS
+page (schema.org JobPosting + DOM fallback, `posted_iso` created-precedence,
+manifest v1.6 adds only `scripting` — no new host permissions); (2)
+**browser-verified clip** — failed clips reveal "Verify from this tab", walled
+boards save as `BROWSER_ONLY_FLAG` (visible everywhere, only CareersClient
+skips; server probe wins; evidence never overrides identity); (3) **friction +
+health** — GUI-toggle receiver copy, `/track` single-port tracking (5001
+fallback), opt-in auto-send per 25 jobs (`open_report:false`), selector-rot
+self-detection (amber badge) + in-popup Health-check, shared
+`browser_ext/selectors.js` registry. **Review fleet** (4 dims, adversarial
+verify): 3 confirmed majors / 1 refuted → all fixed `058ae74` (auto-send
+delta-clear vs cross-context race; browser-only RESCUE of stored-unverified
+boards; seed-path re-probe of browser-only boards). Suite **2195 → 2256
+green**; ~207 ahead, PUSH HELD. Docs: `handoff_20260702_session33.md` +
+`brain/review-2026-07-02-s33-ext-fleet-findings.md`. NEEDS ALEX: reload
+unpacked extension (v1.6 supersedes the S32 v1.5 reload); live selector audit
+still pending a connected Chrome (LinkedIn last verified 06-14;
+Glassdoor/Zip/Dice never).
+
 ## Session 32 (2026-07-02) — Full improvement-plan rollout: 19 builders + review fleet + live smoke ✅
 
 Alex: "roll out fixes/changes/improvements with Opus subagents; breadth/quality =
