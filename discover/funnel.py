@@ -41,6 +41,17 @@ _ENTERPRISE_ATS_HOSTS = [
     "icims.com",
     "taleo.net",
     "successfactors.com",
+    # E1 wave-2 enterprise ATS apexes — where hospitals/universities/Fortune-1000
+    # non-tech employers live. detect_ats fingerprints tenants under these (the
+    # subdomain-keyed ones directly; oracle CandidateExperience by path).
+    "eightfold.ai",
+    "oraclecloud.com",
+    "recruiting.paylocity.com",
+    "workforcenow.adp.com",
+    "breezy.hr",
+    "pinpointhq.com",
+    "teamtailor.com",
+    "applytojob.com",
 ]
 
 
