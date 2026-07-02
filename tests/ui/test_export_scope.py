@@ -6,7 +6,13 @@ import gui
 
 @pytest.fixture
 def root_tmpdb(tmp_path, monkeypatch):
+    import config
+    import demo_data
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+    # Isolate the user-data dir + retire the first-run sample inbox so it never
+    # activates for a test that swaps in its own real rows.
+    monkeypatch.setattr(config, "USER_DATA_DIR", tmp_path)
+    demo_data.retire_demo(tmp_path)
     db.init_db()
     try:
         r = tk.Tk()

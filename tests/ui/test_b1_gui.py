@@ -16,8 +16,12 @@ import workspace
 
 @pytest.fixture
 def root(tmp_path, monkeypatch):
+    import config
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
     monkeypatch.setattr(workspace, "BASE_DIR", tmp_path)
+    # Isolate the user-data dir so the first-run sample-inbox marker is
+    # deterministic (and never touches the real machine's marker).
+    monkeypatch.setattr(config, "USER_DATA_DIR", tmp_path)
     db.init_db()
     try:
         r = tk.Tk()
@@ -47,6 +51,10 @@ def _seed_inbox(n=3):
 
 def test_inbox_empty_state_copy_updated(root):
     import gui
+    import config
+    import demo_data
+    # Returning-user empty state (not first-run demo): retire the sample inbox.
+    demo_data.retire_demo(config.USER_DATA_DIR)
     tab = gui.InboxTab(root)
     root.update_idletasks()
     assert tab._empty_widget is not None
@@ -66,6 +74,57 @@ def test_inbox_empty_state_copy_updated(root):
     assert "Update my Inbox now" in blob
     # The old lie ("click Search — matches land here") is gone.
     assert "click Search" not in blob
+
+
+# ── §6.1 bundled sample inbox (first-run demo) ────────────────────────────────
+
+def test_first_run_shows_demo_inbox(root):
+    """A fresh, empty inbox with the demo not yet retired shows the sample rows
+    (no empty overlay), the demo banner, and marks the tab in demo mode."""
+    import gui
+    tab = gui.InboxTab(root)
+    root.update_idletasks()
+    assert tab._demo_active is True
+    assert tab._empty_widget is None                 # demo replaces empty state
+    assert tab._all and all(r.get("is_demo") for r in tab._all)
+    # banner is packed (winfo_ismapped needs a shown root; pack_info is enough)
+    assert tab._demo_banner.pack_info()              # raises/empty if not packed
+    assert "DEMO" in tab._demo_banner.cget("text")
+
+
+def test_demo_rows_cannot_be_tracked_or_dismissed(root, monkeypatch):
+    """Triage on a demo row is blocked (no DB write on a synthetic negative id)."""
+    import gui
+    # The guard shows an info modal in real use; stub it so the headless test
+    # doesn't block on it.
+    monkeypatch.setattr(gui.messagebox, "showinfo", lambda *a, **k: None)
+    tab = gui.InboxTab(root)
+    root.update_idletasks()
+    demo_sel = [tab._all[0]]
+    assert tab._block_if_demo(demo_sel) is True      # guard fires
+    # a real (non-demo) row is NOT blocked
+    assert tab._block_if_demo([{"is_demo": False}]) is False
+
+
+def test_update_now_retires_demo(root, monkeypatch):
+    """Clicking Update retires the sample inbox immediately so it never returns,
+    even if the run adds zero real rows."""
+    import gui
+    import config
+    import demo_data
+    tab = gui.InboxTab(root)
+    root.update_idletasks()
+    assert tab._demo_active is True
+    monkeypatch.setattr(workspace, "active_slug", lambda: "p1")
+    # Run the worker inline (no background thread) so no stray self.after fires
+    # after the test root is torn down.
+    monkeypatch.setattr(gui.threading, "Thread",
+                        lambda *a, **k: type("T", (), {"start": lambda self: None,
+                                                       "daemon": True})())
+    monkeypatch.setattr(gui, "run_daily_ingest", lambda slug, on_line=None: 0)
+    tab._update_inbox_now()
+    # Retire is synchronous (happens before the worker), so it's already done.
+    assert demo_data.is_demo_retired(config.USER_DATA_DIR) is True
 
 
 def test_inbox_update_button_exists(root):

@@ -84,6 +84,12 @@ def test_detail_text_has_scorecard_and_skill_gap(inbox_tab):
 
 def test_empty_inbox_shows_empty_state(tmp_path, monkeypatch):
     import tkinter as tk
+    import config
+    import demo_data
+    # This asserts the RETURNING-user guided empty state (inbox emptied after
+    # onboarding), so retire the first-run sample inbox in an isolated data dir.
+    monkeypatch.setattr(config, "USER_DATA_DIR", tmp_path)
+    demo_data.retire_demo(tmp_path)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
     db.init_db()                     # no rows
     try:
