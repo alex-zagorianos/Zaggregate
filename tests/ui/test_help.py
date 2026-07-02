@@ -89,6 +89,25 @@ def test_guide_leads_with_own_your_data_and_no_auto_apply(tmp_path):
         assert phrase in blob, phrase
 
 
+def test_guide_field_copy_names_the_real_wizard_step_not_a_dead_label():
+    # The wizard has no "What kind of work?" step; the field control lives in the
+    # "What jobs are you looking for?" step as "Your field / industry". The Guide
+    # copy must reference what the user actually sees.
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    assert "What kind of work?" not in blob
+    assert "What jobs are you looking for?" in blob
+    assert "Your field / industry" in blob
+
+
+def test_guide_lists_the_board_tab():
+    # The Board (Kanban) notebook tab must appear in the "What each tab does"
+    # section (it was previously omitted).
+    headings = [text for tag, text in uihelp.GUIDE if tag == "h2"]
+    assert "Board" in headings
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    assert "one column per" in blob and "Move" in blob
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 

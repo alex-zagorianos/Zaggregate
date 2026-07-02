@@ -84,6 +84,12 @@ GUIDE = [
     ("body", "A record of every job you're tracking and where it stands "
              "(Interested → Applied → Interview …). Update the "
              "status as you hear back, and set follow-up reminders."),
+    ("h2", "Board"),
+    ("body", "The same tracked applications as a visual board — one column per "
+             "stage (Interested, Applied, Interview, Offer …). Use a card's "
+             "“Move ▸” button to advance a job as you hear back, or double-click "
+             "a card to edit it. It's the same data as the Job Tracker tab, just "
+             "laid out as a pipeline so you can see your whole search at a glance."),
     ("h2", "Resume Generator"),
     ("body", "Paste any job posting and generate a resume + cover letter tailored "
              "to it, even for a job that didn't come from this app."),
@@ -140,7 +146,8 @@ GUIDE = [
              "out — so a bad guess can't quietly break future runs. Ten minutes "
              "of this gives you a watch-list no job board offers."),
     ("h2", "Tell the app your field"),
-    ("body", "In the Setup Wizard, the “What kind of work?” answer does more "
+    ("body", "In the Setup Wizard's “What jobs are you looking for?” step, the "
+             "“Your field / industry” answer does more "
              "than fill a label: it routes which categories are fetched from "
              "each source, turns field-specific feeds on or off (nursing and "
              "higher-education feeds exist today), tunes how job titles are "
