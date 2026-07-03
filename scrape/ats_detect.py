@@ -218,6 +218,10 @@ def detect_ats(url: str) -> tuple[str, str]:
 def _name_from(ats: str, slug: str, url: str) -> str:
     if ats in ("workday", "workday_cxs") and ":" in slug:
         return slug.split(":")[0].replace("-", " ").title()
+    if ats == "vincere":
+        # slug is the careers host; the agency name is the domain core.
+        from scrape.vincere_scraper import _name_from_host
+        return _name_from_host(slug)
     if ats == "direct":
         host = urlsplit(url if "://" in url else "https://" + url).netloc
         core = host.lower().replace("www.", "").split(".")[0]
@@ -234,10 +238,36 @@ _RESOLVABLE_ATS = frozenset({
     "workable", "recruitee", "personio", "bamboohr", "rippling", "paylocity",
     "eightfold", "adp", "oracle_orc", "phenom", "breezy", "pinpoint",
     "teamtailor", "jazzhr", "icims", "taleo", "successfactors", "jsonld",
+    "vincere",
 })
 
 
-def resolve_board(url: str, page_title: str = ""):
+def _detect_vincere(url: str, probe_fn=None) -> tuple[str, str] | None:
+    """When URL-only detection can't identify the ATS (a Vincere board lives on
+    the agency's own careers.<agency>.com, indistinguishable from any careers
+    page by host alone), PROBE the page for the Vincere fingerprint
+    (static.vincere.io assets). Returns ("vincere", host) on a match, else None.
+
+    Never probes a ToS-blocked host (the guard runs first). ``probe_fn`` (host ->
+    bool) is injectable so tests need no network; it defaults to the live
+    fingerprint probe in vincere_scraper."""
+    if is_tos_blocked_host(url):
+        return None
+    if probe_fn is None:
+        from scrape.vincere_scraper import is_vincere_host as probe_fn
+    from scrape.vincere_scraper import derive_slug as _vslug
+    host = _vslug(url)
+    if not host:
+        return None
+    try:
+        if probe_fn(url):
+            return ("vincere", host)
+    except Exception:
+        return None
+    return None
+
+
+def resolve_board(url: str, page_title: str = "", *, vincere_probe=None):
     """Resolve a *job-posting or board* URL to its board root for clip-to-seed.
 
     Returns a dict:
@@ -253,6 +283,13 @@ def resolve_board(url: str, page_title: str = ""):
     just dump the raw URL into the registry unverified. A page title, when the
     extension sends one, gives the board a human name over the slug-derived one.
 
+    ONE URL-opaque ATS is resolved by PROBING when detection falls back to
+    'direct': Vincere quick-job-boards (careers.<agency>.com) can't be told from
+    a generic careers page by host, so we fetch the page and fingerprint
+    static.vincere.io. ``vincere_probe`` (host -> bool) is injectable for tests;
+    the ToS-blocked-host guard in detect_ats/_detect_vincere runs BEFORE it, so a
+    blocked host is never probed and never resolves to vincere.
+
     This is deliberately stricter than the paste-a-URL '+ Add Companies' dialog
     (which treats a 'direct' careers page as verified-manual): a one-click clip
     must only auto-seed a board we can actually verify live at clip time — that
@@ -267,6 +304,13 @@ def resolve_board(url: str, page_title: str = ""):
     detection. The page title is only a last-resort fallback when the derived
     name is empty."""
     ats, slug = detect_ats(url)
+    if ats == "direct":
+        # URL-only detection couldn't name the ATS. Probe for Vincere before
+        # giving up (a Vincere board is a real, verifiable, scrapeable board — it
+        # just isn't identifiable from the host). The ToS guard runs inside.
+        vin = _detect_vincere(url, probe_fn=vincere_probe)
+        if vin is not None:
+            ats, slug = vin
     resolvable = ats in _RESOLVABLE_ATS and bool(slug)
     name = _name_from(ats, slug, url) or (page_title or "").strip()
     return {"resolvable": resolvable, "ats_type": ats, "slug": slug, "name": name}
@@ -371,6 +415,20 @@ def probe_board(entry: CompanyEntry) -> ProbeResult:
             return ProbeResult(len(jobs), True)
         # STATUS_PERMANENT (walled/gone) or STATUS_TRANSIENT (blip): unreachable.
         return ProbeResult(None, False)
+    if t == "vincere":
+        # Vincere board (slug = careers host): the public /ajax/search-jobs read
+        # via the production fetcher, so probe and daily scrape agree on
+        # reachability. STATUS_OK = read (count may be 0 = live-empty); a
+        # robots-Disallow/gone (PERMANENT) or blip (TRANSIENT) is unreachable.
+        try:
+            from scrape.cache_helpers import STATUS_OK
+            from scrape.vincere_scraper import fetch_with_status as _vfs
+            jobs, status = _vfs(entry.slug)
+        except Exception:
+            return ProbeResult(None, False)
+        if status == STATUS_OK:
+            return ProbeResult(len(jobs), True)
+        return ProbeResult(None, False)
     # Everything else: reuse the count probe; reachable iff we got a real count.
     n = probe_count(entry)
     return ProbeResult(n, n is not None)
@@ -425,6 +483,14 @@ def probe_count(entry: CompanyEntry) -> int | None:
             from scrape.cache_helpers import STATUS_OK
             from scrape.workday_cxs_scraper import fetch_with_status as _fs
             jobs, status = _fs(slug)
+            return len(jobs) if status == STATUS_OK else None
+        elif t == "vincere":
+            # Public /ajax/search-jobs read via the production fetcher; a
+            # robots-Disallow/gone (PERMANENT) or blip (TRANSIENT) returns None
+            # (fail-soft), never a false 0. A clean 200 read returns the count.
+            from scrape.cache_helpers import STATUS_OK
+            from scrape.vincere_scraper import fetch_with_status as _vfs2
+            jobs, status = _vfs2(slug)
             return len(jobs) if status == STATUS_OK else None
         elif t == "bamboohr":
             # Embedded careers-list JSON. Use the SAME headers the production

@@ -21,6 +21,7 @@ from scrape.lever_scraper import scrape_lever
 from scrape.direct_scraper import scrape_direct
 from scrape.workday_scraper import scrape_workday
 from scrape.workday_cxs_scraper import fetch as scrape_workday_cxs
+from scrape.vincere_scraper import fetch as scrape_vincere
 from scrape.workable_scraper import fetch as scrape_workable
 from scrape.recruitee_scraper import fetch as scrape_recruitee
 from scrape.rippling_scraper import fetch as scrape_rippling
@@ -212,6 +213,13 @@ class CareersClient(JobAPIClient):
             return scrape_workday_cxs(company.slug, keyword=keyword,
                                       cache_dir=self.cache_dir, cache_enabled=self.cache_enabled,
                                       company_name=company.name)
+        elif company.ats_type == "vincere":
+            # slug = the careers host; public /ajax/search-jobs JSON (whole-board
+            # cache). Vincere hosts many recruiting-agency boards on the agency's
+            # own domain, so the host can't identify the ATS from a URL alone.
+            return scrape_vincere(company.slug, keyword=keyword,
+                                  cache_dir=self.cache_dir, cache_enabled=self.cache_enabled,
+                                  company_name=company.name)
         elif company.ats_type == "workable":
             return scrape_workable(company.slug, keyword=keyword,
                                    cache_dir=self.cache_dir, cache_enabled=self.cache_enabled)

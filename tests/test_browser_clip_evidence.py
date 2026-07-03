@@ -190,16 +190,17 @@ def test_reclip_browser_only_with_evidence_is_duplicate(companies):
     assert calls == []                                # dedup short-circuits
 
 
-def test_unresolvable_page_with_evidence_still_failed(companies):
-    """Evidence never rescues an UNRESOLVABLE page — evidence only upgrades
-    reachability of a board whose identity came from resolve_board(). A generic
-    careers page ('direct') stays unresolvable, nothing saved."""
+def test_unresolvable_page_without_evidence_still_failed(companies):
+    """An UNRESOLVABLE page with NO evidence is exactly today's behavior:
+    failed/unresolvable, nothing saved. (vincere_probe injected False so the
+    live Vincere fingerprint probe never touches the network.)"""
     v = clip_board(
         "https://careers.acme.com/openings", "", industry="",
         json_path=companies, probe_fn=lambda e: ProbeResult(None, False),
-        browser_evidence=_evidence(job_count=50),
+        vincere_probe=lambda u: False,
     )
     assert v["status"] == "failed" and v["reason"] == "unresolvable"
+    assert "browser_only" not in v
     assert not companies.exists()
 
 
@@ -370,3 +371,150 @@ def test_registry_browser_only_rescue_merges_industries(companies):
                if e.name == "Banner")
     assert is_browser_only(rec) and not is_unverified(rec)
     assert set(rec.industries) == {"nursing", "health informatics"}
+
+
+# ── S34: honest clip fallback for UNRECOGNIZED-but-live boards ─────────────────
+
+def test_unresolvable_with_evidence_saves_direct_browser_only(companies):
+    """An unrecognized-but-live page (no known ATS, no Vincere fingerprint) that
+    carries browser evidence is saved as a `direct` BROWSER-ONLY board — the
+    honest fallback that replaces the failed/unresolvable dead-end."""
+    v = clip_board(
+        "https://jobs.some-startup.io/careers?ref=hn&page=2", "Some Startup Jobs",
+        industry="software engineering", json_path=companies,
+        probe_fn=lambda e: ProbeResult(None, False),
+        vincere_probe=lambda u: False,          # not Vincere
+        browser_evidence=_evidence(job_count=7, page_url="https://jobs.some-startup.io/careers"),
+    )
+    assert v["status"] == "added"
+    assert v["reason"] == "browser_verified_direct"
+    assert v["browser_only"] is True
+    assert v["ats_type"] == "direct"
+    assert v["live_count"] == 7
+    # Slug is the origin-rooted page URL (query noise stripped).
+    assert v["slug"] == "https://jobs.some-startup.io/careers"
+
+    entries = get_registry("software engineering", user_json=companies)
+    rec = next(e for e in entries if e.slug == "https://jobs.some-startup.io/careers")
+    assert rec.ats_type == "direct"
+    assert is_browser_only(rec)
+    assert not is_unverified(rec)
+
+
+def test_unresolvable_direct_null_count_evidence_still_added(companies):
+    """job_count=None (page had postings but the counter couldn't total them) is
+    still valid live evidence -> direct browser-only save."""
+    v = clip_board(
+        "https://work.acme.dev/", "", industry="", json_path=companies,
+        probe_fn=lambda e: ProbeResult(None, False),
+        vincere_probe=lambda u: False,
+        browser_evidence=_evidence(job_count=None, via="dom"),
+    )
+    assert v["status"] == "added" and v["reason"] == "browser_verified_direct"
+    assert v["browser_only"] is True and v["live_count"] is None
+    # Bare-origin URL: trailing slash dropped so it dedups cleanly.
+    assert v["slug"] == "https://work.acme.dev"
+
+
+def test_unresolvable_direct_name_from_host_when_no_title(companies):
+    """With no page title, the browser-only direct board is named from its host
+    (careers/jobs/www label + TLD stripped)."""
+    v = clip_board(
+        "https://careers.northwind.com/openings", "", industry="",
+        json_path=companies, probe_fn=lambda e: ProbeResult(None, False),
+        vincere_probe=lambda u: False, browser_evidence=_evidence(job_count=3),
+    )
+    assert v["status"] == "added" and v["company"] == "Northwind"
+
+
+def test_tos_blocked_host_with_evidence_still_rejected(companies):
+    """The ToS-blocked-host guard wins over the S34 fallback: a blocked host
+    (Indeed/LinkedIn/NEOGOV/…) with browser evidence is rejected as tos_blocked,
+    nothing saved, and the vincere probe never runs."""
+    called = []
+    v = clip_board(
+        "https://www.indeed.com/jobs?q=engineer", "Indeed", industry="",
+        json_path=companies, probe_fn=lambda e: ProbeResult(None, False),
+        vincere_probe=lambda u: called.append(u) or True,
+        browser_evidence=_evidence(job_count=500),
+    )
+    assert v["status"] == "failed" and v["reason"] == "tos_blocked"
+    assert "browser_only" not in v
+    assert not companies.exists()
+    assert called == []                          # never probed a blocked host
+
+
+def test_tos_blocked_neogov_rejected_before_fallback(companies):
+    """A second blocked host (NEOGOV/governmentjobs) is rejected the same way —
+    the guard is host-substring, not a single hardcoded domain."""
+    v = clip_board(
+        "https://agency.governmentjobs.com/careers/x", "", industry="",
+        json_path=companies, probe_fn=lambda e: ProbeResult(None, False),
+        vincere_probe=lambda u: False, browser_evidence=_evidence(job_count=9),
+    )
+    assert v["status"] == "failed" and v["reason"] == "tos_blocked"
+    assert not companies.exists()
+
+
+def test_vincere_page_on_blocked_host_still_rejected(companies):
+    """Even if a page WOULD fingerprint as Vincere, a blocked host is rejected
+    before any probe — the ToS guard is absolute."""
+    called = []
+    v = clip_board(
+        "https://jobs.linkedin.com/vincere-board", "", industry="",
+        json_path=companies, probe_fn=lambda e: ProbeResult(999, True),
+        vincere_probe=lambda u: called.append(u) or True,   # would say "Vincere"
+        browser_evidence=_evidence(job_count=42),
+    )
+    assert v["status"] == "failed" and v["reason"] == "tos_blocked"
+    assert called == [] and not companies.exists()
+
+
+def test_resolvable_vincere_with_evidence_saves_verified_not_direct(companies):
+    """A page that DOES resolve to Vincere (fingerprint probe true) and is
+    server-reachable saves as a normal verified `vincere` board — the S34 direct
+    fallback is only for pages that stay unresolvable. Server probe wins over
+    evidence, so no browser_only flag."""
+    v = clip_board(
+        "https://careers.edisonsmart.com/?unit=mile&radius=50&page=1", "",
+        industry="engineering", json_path=companies,
+        probe_fn=lambda e: ProbeResult(214, True),   # server can read it
+        vincere_probe=lambda u: True,                 # fingerprint says Vincere
+        browser_evidence=_evidence(job_count=999),    # ignored (server wins)
+    )
+    assert v["status"] == "added" and v["reason"] == "verified_live"
+    assert v["ats_type"] == "vincere"
+    assert v["slug"] == "careers.edisonsmart.com"
+    assert v.get("browser_only") is None
+    assert v["live_count"] == 214                 # server count, not 999
+    rec = next(e for e in get_registry("engineering", user_json=companies)
+               if e.ats_type == "vincere")
+    assert not is_browser_only(rec)
+
+
+def test_clip_endpoint_unresolvable_evidence_saves_direct(client, monkeypatch, tmp_path):
+    """The /clip route: an unresolvable page + evidence comes back as
+    added/browser_verified_direct over HTTP 200 (route boundary)."""
+    import scrape.browser_receiver as br
+    p = tmp_path / "companies.json"
+    real = br.clip_board
+
+    def _wrapped(url, page_title="", **kw):
+        kw["json_path"] = p
+        kw["probe_fn"] = lambda e: ProbeResult(None, False)
+        kw["vincere_probe"] = lambda u: False
+        return real(url, page_title, **kw)
+
+    monkeypatch.setattr(br, "clip_board", _wrapped)
+    resp = client.post(
+        "/clip",
+        json={"url": "https://jobs.unknown-board.io/list",
+              "evidence": {"job_count": 12, "via": "dom", "page_url": "u"}},
+        headers={"Origin": "chrome-extension://abcdefghijklmnop"},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "added"
+    assert body["reason"] == "browser_verified_direct"
+    assert body["browser_only"] is True
+    assert body["ats_type"] == "direct"

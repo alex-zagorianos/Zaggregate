@@ -94,6 +94,36 @@ def _sanitize_field(s) -> str:
     return s.strip()
 
 
+def _direct_slug(url: str) -> str:
+    """Origin-rooted slug for a browser-only 'direct' save (S34): keep scheme +
+    host + path, drop the query/fragment noise (the `?unit=mile&radius=50&page=1
+    &search=1` a Vincere search URL carries), and drop a bare trailing slash so
+    'https://careers.x.com/' and 'https://careers.x.com' dedup to one board.
+    A `direct` entry's slug IS the URL the direct scraper fetches, so it must
+    stay a clean, stable page URL."""
+    from urllib.parse import urlsplit, urlunsplit
+    u = url if "://" in url else "https://" + url
+    p = urlsplit(u)
+    # Drop the path entirely when it's a bare "/" (origin only), and strip a
+    # trailing slash otherwise, so ".../careers/" and ".../careers" — and
+    # "https://x.com/" and "https://x.com" — dedup to one board.
+    path = (p.path or "").rstrip("/")
+    return urlunsplit((p.scheme, p.netloc, path, "", ""))
+
+
+def _direct_name(url: str) -> str:
+    """Human name for a browser-only 'direct' board from its host: strip a
+    leading www/careers/jobs label + the TLD (careers.acme.com -> 'Acme')."""
+    from urllib.parse import urlsplit
+    host = urlsplit(url if "://" in url else "https://" + url).netloc.lower()
+    for pre in ("www.", "careers.", "jobs.", "apply."):
+        if host.startswith(pre):
+            host = host[len(pre):]
+            break
+    core = host.split(".")[0]
+    return core.replace("-", " ").title() or host
+
+
 @app.route("/status")
 def status():
     return jsonify({"status": "ok", "port": PORT})
@@ -140,7 +170,7 @@ def _valid_browser_evidence(evidence):
 
 
 def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None,
-               browser_evidence=None):
+               browser_evidence=None, vincere_probe=None):
     """Pure core of the /clip endpoint (HTTP-free, unit-testable).
 
     Resolve a clipped job-posting/board URL to its board root, probe it live,
@@ -176,11 +206,22 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
     upgrades REACHABILITY of a board whose identity (ats_type/slug/name) came
     from resolve_board(url); it never overrides resolution.
 
-    ``probe_fn`` (defaults to ats_detect.probe_count) and ``json_path`` are
-    injectable so tests never touch the network or the real companies.json.
-    ``browser_evidence`` is the sanitized dict from _valid_browser_evidence (the
-    /clip route validates the raw POST body before passing it here)."""
-    from scrape.ats_detect import resolve_board, probe_board, ProbeResult
+    S34 — honest fallback for an UNRECOGNIZED-but-live board: when the URL is
+    unresolvable as a known ATS BUT the caller supplied valid ``browser_evidence``
+    (the extension's "Verify from this tab" counting saw a live page), the board
+    is saved as ats_type ``direct`` (slug = the origin-rooted page URL, query
+    noise stripped) flagged BROWSER_ONLY, verdict added / browser_verified_direct.
+    The app can't scrape it, so the popup tells the user to revisit it with the
+    extension. The ToS-blocked-host guard runs BEFORE this (and before resolution
+    and probing), so this can never seed a fetch target for a blocked host.
+
+    ``probe_fn`` (defaults to ats_detect.probe_board), ``vincere_probe`` (the
+    fingerprint probe resolve_board uses for URL-opaque Vincere boards; host->bool),
+    and ``json_path`` are injectable so tests never touch the network or the real
+    companies.json. ``browser_evidence`` is the sanitized dict from
+    _valid_browser_evidence (the /clip route validates the raw POST body first)."""
+    from scrape.ats_detect import (resolve_board, probe_board, ProbeResult,
+                                   is_tos_blocked_host)
     from scrape.company_registry import (BROWSER_ONLY_FLAG, CompanyEntry,
                                          get_registry, is_browser_only,
                                          is_unverified, save_companies)
@@ -195,16 +236,52 @@ def clip_board(url, page_title="", *, industry="", json_path=None, probe_fn=None
                 "company": "", "slug": "", "live_count": None,
                 "industry": industry}
 
-    board = resolve_board(url, page_title)
+    # ToS/aggregator guard runs FIRST — before resolution, probing, OR the S34
+    # browser-verified-direct fallback. A board on a ToS-blocked or aggregator
+    # host (Indeed/LinkedIn/NEOGOV/…) can never legitimately enter the registry:
+    # the direct scraper would issue a bare requests.get() against it with no
+    # allowlist, and browser evidence must not be a backdoor around that. This
+    # wins even over a would-be-Vincere page hosted on a blocked host.
+    if is_tos_blocked_host(url if "://" in url else "https://" + url):
+        return {"status": "failed", "reason": "tos_blocked", "ats_type": "",
+                "company": "", "slug": "", "live_count": None,
+                "industry": industry}
+
+    board = resolve_board(url, page_title, vincere_probe=vincere_probe)
     ats, slug, company = board["ats_type"], board["slug"], board["name"]
     verdict = {"ats_type": ats, "company": company, "slug": slug,
                "live_count": None, "industry": industry}
 
     if not board["resolvable"]:
-        # A generic careers page / search result / non-board page. We can't
-        # verify a live board here, so we report why instead of dumping the raw
-        # URL into the registry (that's the coin-flip seeding clip-to-seed
-        # exists to replace).
+        # A generic careers page / search result / non-board page: we can't
+        # resolve it to a probeable ATS board. S34 honest fallback: if the POST
+        # carries valid browser evidence (the extension's "Verify from this tab"
+        # counting saw a live page), don't dead-end — save it as a `direct`
+        # BROWSER-ONLY board (a real, live page the app can't scrape) so the user
+        # keeps it and can refresh it by browsing. The ToS-blocked-host guard
+        # already ran above, so this can never seed a fetch target for a blocked
+        # host. Without evidence, this is exactly today's failed/unresolvable.
+        if evidence is not None:
+            dslug = _direct_slug(url)
+            # Name from the page title if the extension sent one, else derive it
+            # from the host (careers.northwind.com -> "Northwind"). We ignore the
+            # slug-derived board["name"] here — for an unresolvable 'direct' page
+            # that's just the first host label ("Careers"), not the company.
+            name = (page_title or "").strip() or _direct_name(dslug)
+            entry = CompanyEntry(
+                name=name, ats_type="direct", slug=dslug,
+                industries=[industry] if industry else [],
+                extra={BROWSER_ONLY_FLAG: True})
+            live_count = evidence["job_count"]
+            verdict.update(ats_type="direct", company=name, slug=dslug,
+                           live_count=live_count)
+            added = save_companies([entry], json_path=json_path)
+            if added:
+                verdict.update(status="added", reason="browser_verified_direct",
+                               browser_only=True)
+            else:
+                verdict.update(status="duplicate", reason="already_in_registry")
+            return verdict
         verdict.update(status="failed", reason="unresolvable")
         return verdict
 
