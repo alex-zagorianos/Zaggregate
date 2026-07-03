@@ -190,16 +190,21 @@ def test_dom_fallback_payload_is_valid_result():
 
 # ── /harvest route round-trip with the extension origin ───────────────────────
 
-def test_harvest_route_accepts_page_source_payload(client, monkeypatch):
+def test_harvest_route_accepts_page_source_payload(client, monkeypatch, tmp_path):
     """End-to-end through the /harvest handler with a chrome-extension Origin: a
-    single 'page'-source JSON-LD job is received and inboxed. We stub the browser
-    open + inbox write so the test touches neither the desktop nor a real DB."""
+    single 'page'-source JSON-LD job is received and inboxed — into a TMP
+    tracker DB. The DB_PATH override matters: without it this test's fixture row
+    leaked into the user's real ACTIVE project on every suite run (found live in
+    test-controls' inbox during the S33 smoke — the docstring claimed isolation
+    it didn't have)."""
     import scrape.browser_receiver as br
+    import tracker.db as db
 
     monkeypatch.setattr(br.webbrowser, "open", lambda *a, **k: None)
     # Don't let report generation or inbox routing depend on a real project.
     monkeypatch.setattr(br, "generate_html_report", lambda *a, **k: None)
     monkeypatch.setattr(br, "generate_csv_report", lambda *a, **k: None)
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
 
     job = {
         "title": "Controls Engineer",
@@ -218,3 +223,10 @@ def test_harvest_route_accepts_page_source_payload(client, monkeypatch):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["received"] == 1
+    # Inboxed into the TMP db — provable now that the write is isolated.
+    assert body["inboxed"] == 1
+    import sqlite3
+    con = sqlite3.connect(tmp_path / "tracker.db")
+    n = con.execute("SELECT COUNT(*) FROM inbox WHERE company = 'Acme'").fetchone()[0]
+    con.close()
+    assert n == 1

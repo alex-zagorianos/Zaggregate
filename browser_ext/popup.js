@@ -407,6 +407,28 @@ captureBtn.addEventListener("click", async () => {
     return;
   }
 
+  // The 5 aggregator sites are content.js territory: their cards/detail capture
+  // is richer (stable external ids, salary blobs, card signals) and runs
+  // automatically. Running the generic path there just minted a near-duplicate
+  // with WORSE fields (live test 2026-07-02: LinkedIn's SPA has no JobPosting
+  // JSON-LD and no og:site_name, so the fallback captured the open job with an
+  // empty company and no id to dedup on). Point the user at the passive flow.
+  const AUTO_SITES =
+    /(?:^|\.)(linkedin|indeed|glassdoor|ziprecruiter|dice)\.com$/i;
+  let autoHost = "";
+  try {
+    autoHost = new URL(tab.url || "").hostname;
+  } catch (_) {}
+  if (AUTO_SITES.test(autoHost)) {
+    setCaptureStatus(
+      "This site is captured automatically as you browse — open a job and " +
+        "it's collected with full details. This button is for employer sites.",
+      "ok",
+    );
+    captureBtn.disabled = false;
+    return;
+  }
+
   let result;
   try {
     // executeScript returns one InjectionResult per frame; we target the top
