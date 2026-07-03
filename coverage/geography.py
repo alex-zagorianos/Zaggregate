@@ -31,4 +31,14 @@ def metro_variants(area: str) -> set[str]:
             out.add(r["principal_city"].casefold())
             bare = title.split(",")[0].replace(" metro area", "").strip()
             out.add(bare)
+    # Non-US / unrecognized-metro fallback (S35): when NO US CBSA row matched, a
+    # "City, Country" area (e.g. "London, United Kingdom") kept only its exact
+    # string, so a posting listed as bare "London" or "London, England" was
+    # bucketed 'elsewhere' and hidden from an international user's default Inbox
+    # view. Add the bare city token so local matching works abroad. Guarded on
+    # the no-CBSA-match case, so every US metro stays byte-identical.
+    if len(out) == 1 and "," in a:
+        city = a.split(",")[0].strip()
+        if len(city) >= 3:
+            out.add(city)
     return {v for v in out if v}

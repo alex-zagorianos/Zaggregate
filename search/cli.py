@@ -82,7 +82,14 @@ def build_clients(
     for source in sources:
         if source == "adzuna":
             try:
-                clients.append(AdzunaClient(cache_enabled=cache_enabled))
+                # Route to the user's country (one free key covers ~19). Without
+                # this, a non-US user (e.g. "London, United Kingdom") always hit
+                # the /us/ endpoint and got US-only jobs. adzuna_country_for is a
+                # no-op for US locations (returns the module default).
+                import config as _cfg
+                clients.append(AdzunaClient(
+                    cache_enabled=cache_enabled,
+                    country=_cfg.adzuna_country_for(location)))
             except ValueError as e:
                 slog.info(f"  [adzuna] Skipping — {e}")
                 _note_keyless("adzuna")
