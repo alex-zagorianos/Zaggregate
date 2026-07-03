@@ -46,23 +46,48 @@ def _enabled() -> bool:
     return bool(getattr(config, "SEMANTIC_RANKING", False))
 
 
+def _resolve_source() -> str:
+    """The path/id to load the model from, resolved WITHOUT touching the network.
+
+    Prefer a bundled dir (frozen exe). Otherwise resolve the HF-cached snapshot by
+    name using ``local_files_only`` — a concrete on-disk path that ``from_pretrained``
+    loads directly (no HTTP round-trip). This upholds the module's "no network once
+    cached" guarantee: the default ``StaticModel.from_pretrained(name)`` uses
+    ``force_download=True`` and always calls ``snapshot_download`` online — even for a
+    fully cached model — which fails/hangs whenever the hub is unreachable (and, in
+    the test suite, trips the autouse socket guard). Falls back to the bare model id
+    (network-capable, first-run download) only when nothing is cached locally."""
+    if _BUNDLED_DIR.exists():
+        return str(_BUNDLED_DIR)
+    try:
+        import huggingface_hub
+        return huggingface_hub.snapshot_download(
+            _MODEL_NAME, repo_type="model", local_files_only=True)
+    except Exception:
+        # Not cached (or hub layout changed): let from_pretrained download it.
+        return _MODEL_NAME
+
+
 def _load():
     """Lazily load the Model2Vec static model once. Returns the model or None if
-    model2vec isn't installed / the model can't be loaded (then we no-op)."""
+    model2vec isn't installed / the model can't be loaded (then we no-op).
+
+    The negative cache latches ONLY when the ``model2vec`` package is absent — a
+    stable, permanent condition. A failed *model load* (e.g. a transient cache/IO
+    hiccup) is NOT latched, so a later call can retry rather than being poisoned for
+    the life of the process."""
     global _model, _load_failed
     if _model is not None or _load_failed:
         return _model
     try:
         from model2vec import StaticModel
     except Exception:
-        _load_failed = True
+        _load_failed = True  # package missing -> permanent, safe to latch
         return None
     try:
-        src = str(_BUNDLED_DIR) if _BUNDLED_DIR.exists() else _MODEL_NAME
-        _model = StaticModel.from_pretrained(src)
+        _model = StaticModel.from_pretrained(_resolve_source())
     except Exception:
-        _load_failed = True
-        _model = None
+        _model = None  # transient load failure: leave un-latched so it can retry
     return _model
 
 
