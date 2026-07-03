@@ -26,6 +26,7 @@ scope) so both the GUI dialog and tests/MCP can call the functions directly.
 from __future__ import annotations
 
 import json
+import re
 
 import industry_profile
 import workspace
@@ -86,14 +87,17 @@ def build_setup_prompt() -> str:
         "}\n"
         "```\n\n"
         "Rules:\n"
-        "- \"field\" MUST be exactly one token from the list above. If nothing "
-        "fits, use \"other\".\n"
-        "- \"target_titles\": 1-5 real job titles (strings).\n"
-        "- \"location\": my metro as \"City, ST\", or the literal \"Remote\" for "
-        "remote-only.\n"
-        "- \"salary_floor\": my minimum acceptable ANNUAL salary in whole US "
-        "dollars (0 if I don't care).\n"
-        "- \"radius_miles\": how far from my location I'll commute (whole miles).\n"
+        "- \"field\" MUST be exactly one token from the list above. Pick the "
+        "closest fit; if my occupation isn't obviously one of them (e.g. a skilled "
+        "trade, a niche role), use \"other\" rather than forcing a wrong token.\n"
+        "- \"target_titles\": 1-5 real job titles, as a JSON array of strings "
+        "(e.g. [\"Forklift Operator\", \"Warehouse Associate\"]).\n"
+        "- \"location\": my metro. Use \"City, ST\" for US, \"City, Country\" "
+        "outside the US, or the literal \"Remote\" for remote-only.\n"
+        "- \"salary_floor\": my minimum acceptable ANNUAL salary as a plain whole "
+        "number (e.g. 140000, not \"$140k\"); use 0 if I don't care.\n"
+        "- \"radius_miles\": how far from my location I'll commute, as a whole "
+        "number (e.g. 50).\n"
         "- Return the block ONLY. Do not invent facts not supported by my résumé "
         "or sentence.\n\n"
         "--- paste your résumé and one sentence of intent below this line ---\n"
@@ -116,23 +120,56 @@ def _canonical_field(raw: str) -> str:
     canon_norm = {_normalize_industry(c): c for c in CANONICAL_FIELDS}
     if norm in canon_norm:
         return canon_norm[norm]
-    # Accept a token that at least resolves to a known seed profile (so a close
-    # synonym like "registered nurse" or "management consulting" is tolerated) —
-    # but only when it lands on a NON-generic seed, so a typo can't slip through.
+    # Accept a token that resolves to a known NON-generic profile (so a close
+    # synonym like "registered nurse" or "management consulting", or a real
+    # blue-collar occupation the O*NET tier recognizes like "machinist" /
+    # "barista" / "welder", is tolerated). Only "generic" (a typo like "quantum
+    # astrology" that matches nothing) is rejected — accepting an O*NET-routed
+    # occupation is a strict breadth win and keeps the trades audience unblocked.
     try:
         prof = industry_profile.resolve(val)
     except Exception:
         prof = None
-    if prof is not None and prof.source in ("seed", "user"):
+    if prof is not None and prof.source in ("seed", "user", "onet"):
         return val.strip().lower()
     raise SetupBlockError(
         f"Unknown field {raw!r}. Ask your AI to pick ONE token from: "
         + ", ".join(CANONICAL_FIELDS))
 
 
+def _coerce_number(raw, *, allow_k: bool = True) -> float | None:
+    """Best-effort human-number parse for weak-AI shorthand. Returns the first
+    numeric value in the string, honouring a k/m multiplier when allow_k:
+      '140k' -> 140000 · '$120,000 per year' -> 120000 · '1.4m' -> 1400000 ·
+      '100000-150000' -> 100000 (low end of a range) · '25 miles' -> 25.
+    Returns None only when there is no digit at all (caller decides if that
+    is an error)."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip().lower().replace(",", "").replace("$", "")
+    if not s:
+        return None
+    m = re.search(r"(\d+(?:\.\d+)?)\s*([km])?", s)
+    if not m:
+        return None
+    val = float(m.group(1))
+    suf = m.group(2)
+    if allow_k and suf == "k":
+        val *= 1_000
+    elif allow_k and suf == "m":
+        val *= 1_000_000
+    return val
+
+
 def _validate_titles(raw) -> list[str]:
+    # A weak AI sometimes returns a single comma/semicolon/newline-joined STRING
+    # instead of a JSON list ("Account Exec, SDR, BDR") — split it so each title
+    # is searchable instead of matching nothing as one literal string.
     if isinstance(raw, str):
-        raw = [raw]
+        parts = [p.strip() for p in re.split(r"[,;\n]+", raw) if p.strip()]
+        raw = parts or [raw]
     if not isinstance(raw, list):
         raise SetupBlockError(
             "'target_titles' must be a list of job-title strings.")
@@ -146,22 +183,22 @@ def _validate_titles(raw) -> list[str]:
 def _validate_salary(raw) -> int | None:
     if raw in (None, "", 0, "0"):
         return None
-    try:
-        val = int(round(float(str(raw).replace(",", "").replace("$", "").strip())))
-    except (TypeError, ValueError):
+    val = _coerce_number(raw, allow_k=True)       # "140k", "$120,000/yr", ranges
+    if val is None:
         raise SetupBlockError(
             f"'salary_floor' must be a number (got {raw!r}).")
-    return val if val > 0 else None
+    ival = int(round(val))
+    return ival if ival > 0 else None
 
 
 def _validate_radius(raw) -> int | None:
     if raw in (None, "", 0, "0"):
         return None
-    try:
-        val = int(round(float(str(raw).replace(",", "").strip())))
-    except (TypeError, ValueError):
+    val = _coerce_number(raw, allow_k=False)      # "25 miles" -> 25
+    if val is None:
         raise SetupBlockError(f"'radius_miles' must be a whole number (got {raw!r}).")
-    return val if val > 0 else None
+    ival = int(round(val))
+    return ival if ival > 0 else None
 
 
 def _validate_seniority(raw) -> str:
@@ -170,10 +207,17 @@ def _validate_seniority(raw) -> str:
     val = (str(raw or "")).strip().lower()
     if not val:
         return ""
-    # Tolerate a few common phrasings.
-    alias = {"junior": "entry", "entry-level": "entry", "mid-level": "mid",
-             "manager/exec": "manager", "executive": "manager", "lead": "senior",
-             "staff": "senior", "principal": "senior"}
+    # Tolerate the phrasings a résumé-summarizing AI plausibly emits.
+    alias = {"junior": "entry", "entry-level": "entry", "entry level": "entry",
+             "intern": "entry", "internship": "entry", "new grad": "entry",
+             "new-grad": "entry", "graduate": "entry", "trainee": "entry",
+             "mid-level": "mid", "mid level": "mid", "intermediate": "mid",
+             "associate": "mid", "manager/exec": "manager", "executive": "manager",
+             "exec": "manager", "director": "manager", "vp": "manager",
+             "vice president": "manager", "head": "manager", "chief": "manager",
+             "c-level": "manager", "c-suite": "manager", "cxo": "manager",
+             "ceo": "manager", "cto": "manager", "cfo": "manager", "coo": "manager",
+             "lead": "senior", "staff": "senior", "principal": "senior", "sr": "senior"}
     val = alias.get(val, val)
     if val not in _SENIORITY_TO_LEVEL:
         raise SetupBlockError(
@@ -181,17 +225,72 @@ def _validate_seniority(raw) -> str:
     return _SENIORITY_TO_LEVEL[val]
 
 
+# Keys the config block is expected to carry — used to pick the RIGHT object when
+# a weak AI emits more than one JSON block (a partial example then the real one).
+_EXPECTED_CFG_KEYS = frozenset({
+    "field", "target_titles", "location", "remote_ok", "radius_miles",
+    "salary_floor", "seniority", "preferences_md"})
+
+
+def _normalize_pasted(text: str) -> str:
+    """Make a pasted AI reply more parse-tolerant: curly/smart quotes -> straight
+    (many models render them when formatting markdown, which breaks json.loads),
+    and strip // line and /* */ block comments some models annotate JSON with. A
+    URL's '//' is preserved (it is never preceded by whitespace/line-start)."""
+    t = (text or "")
+    t = (t.replace("“", '"').replace("”", '"')
+           .replace("‘", "'").replace("’", "'"))
+    t = re.sub(r"(?m)(^|\s)//.*$", r"\1", t)
+    t = re.sub(r"/\*.*?\*/", "", t, flags=re.S)
+    return t
+
+
+def _best_config_object(text: str):
+    """Return the dict most likely to BE the config block. Handles a reply with
+    MULTIPLE JSON objects/fences by scoring each brace-balanced candidate on how
+    many expected config keys it carries (so a partial `{"field":"sales"}` example
+    never wins over the real, complete block). Falls back to the tolerant
+    single-object extractor (trailing commas etc.) when no candidate parses."""
+    candidates = []
+    depth, start = 0, None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    obj = json.loads(text[start:i + 1])
+                    if isinstance(obj, dict):
+                        candidates.append(obj)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                start = None
+    if candidates:
+        candidates.sort(
+            key=lambda d: len(_EXPECTED_CFG_KEYS & set(d.keys())), reverse=True)
+        return candidates[0]
+    # No brace-balanced object parsed. Fall back to the tolerant single-value
+    # extractor and return whatever it yields (dict or not) so the caller can
+    # tell "no JSON at all" (None) from "JSON, but not an object" (e.g. a list).
+    from claude_bridge import _extract_json
+    try:
+        return json.loads(_extract_json(text, prefer="object"))
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
 def parse_setup_block(text: str) -> dict:
     """Parse + STRICTLY validate the pasted config block into a wizard `answers`
     dict (so apply_setup can reuse setup_wizard.build_preferences/_search_config
     — one contract, no drift). Raises SetupBlockError with an actionable message
     on any problem. Never partially applies (pure parse; caller applies)."""
-    from claude_bridge import _extract_json
     if not (text or "").strip():
         raise SetupBlockError("Nothing pasted — copy your AI's reply first.")
-    try:
-        payload = json.loads(_extract_json(text, prefer="object"))
-    except (json.JSONDecodeError, ValueError):
+    payload = _best_config_object(_normalize_pasted(text))
+    if payload is None:
         raise SetupBlockError(
             "Couldn't find a valid JSON config block in the pasted text. Make "
             "sure you copied the ```json ... ``` block your AI returned.")

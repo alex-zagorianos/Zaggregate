@@ -316,38 +316,49 @@ def resolve_board(url: str, page_title: str = "", *, vincere_probe=None):
     return {"resolvable": resolvable, "ats_type": ats, "slug": slug, "name": name}
 
 
+# A leading markdown/list marker ("- ", "* ", "• ", "1. ", "2) ") a weak AI adds.
+_LIST_MARKER_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
+# The first http(s) URL anywhere in a line (stops at whitespace / pipe / bracket).
+_URL_RE = re.compile(r"https?://[^\s|,)\]>]+", re.I)
+
+
 def parse_line(line: str) -> CompanyEntry | None:
-    """One paste line -> CompanyEntry. Accepts:
-       'Name | URL'  ·  bare 'URL' (name derived)  ·  'Name | ats_type | slug'."""
+    """One paste line -> CompanyEntry, or None to DROP the line. Accepts:
+       'Name | URL'  ·  bare 'URL' (name derived)  ·  'Name | ats_type | slug'.
+
+    Hardened for weak-AI formatting (S35): strips a leading list marker ('- ',
+    '1. ') and markdown bold, then requires a real http URL for any non-power
+    line. A line with NO URL is prose the AI wrapped around the list ("Here are
+    some employers:") — dropped, NOT saved as a junk 'direct' company. A bulleted
+    or numbered careers URL is rescued: the embedded URL is extracted and routed
+    through detect_ats so its ATS slug is recovered instead of mangled."""
     line = (line or "").strip()
     if not line or line.startswith("#"):
         return None
+    line = _LIST_MARKER_RE.sub("", line, count=1)
+    line = line.replace("**", "").strip()          # drop markdown bold on name
+    if not line:
+        return None
     parts = [p.strip() for p in line.split("|")]
 
-    if len(parts) >= 3:  # power form: Name | ats_type | slug
+    if len(parts) >= 3:  # power form: Name | ats_type | slug (explicit; kept as-is)
         name, ats, slug = parts[0], parts[1].lower(), parts[2]
         return CompanyEntry(name=name or _name_from(ats, slug, slug),
                             ats_type=ats, slug=slug, industries=[])
 
-    if len(parts) == 2:  # Name | URL
-        name, url = parts[0], parts[1]
-        ats, slug = detect_ats(url)
-        return CompanyEntry(name=name or _name_from(ats, slug, url),
-                            ats_type=ats, slug=slug, industries=[])
-
-    # "Name, URL" comma form (only when there's no '|'): split on the FIRST comma
-    # and treat the remainder as a URL when it looks like one.
-    if "," in line:
-        name, _, rest = line.partition(",")
-        rest = rest.strip()
-        if rest and ("http" in rest or "." in rest):
-            ats, slug = detect_ats(rest)
-            return CompanyEntry(name=name.strip() or _name_from(ats, slug, rest),
-                                ats_type=ats, slug=slug, industries=[])
-
-    url = parts[0]       # bare URL
+    # Every other accepted form must contain a real URL. Extract the FIRST one
+    # anywhere in the line (rescues "Name: URL", "Name - URL", bullets, numbers).
+    m = _URL_RE.search(line)
+    if not m:
+        return None                                 # no URL -> prose, drop it
+    url = m.group(0).rstrip(".")                     # trailing sentence period
     ats, slug = detect_ats(url)
-    return CompanyEntry(name=_name_from(ats, slug, url),
+
+    if len(parts) == 2:                              # Name | URL
+        name = parts[0]
+    else:                                            # "Name: URL" / "Name - URL" / bare URL
+        name = line[:m.start()].strip(" \t-:,–—")
+    return CompanyEntry(name=name or _name_from(ats, slug, url),
                         ats_type=ats, slug=slug, industries=[])
 
 
