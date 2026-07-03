@@ -35,6 +35,30 @@ def test_source_catalog_shape():
             assert label
 
 
+def test_source_urls_are_direct_signup_pages():
+    # S34: the per-source buttons must land on the direct free-key page, not a
+    # generic landing/home. USAJobs -> the API-request form; Careerjet -> the
+    # publisher signup that issues the affiliate ID.
+    by_key = {s["key"]: s["url"] for s in source_keys.SOURCES}
+    assert by_key["usajobs"] == "https://developer.usajobs.gov/apirequest/"
+    assert by_key["careerjet"] == "https://www.careerjet.com/partners/publishers/"
+    assert by_key["adzuna"] == "https://developer.adzuna.com/"
+    assert "registration.aspx" in by_key["careeronestop"]
+
+
+def test_reference_sources_have_free_key_links():
+    # S34: SerpApi + JSearch are configured elsewhere but still surface a
+    # one-click free-key link here, so every usable source has a signup path.
+    labels = {label for label, _ in source_keys.REFERENCE_SOURCES}
+    urls = {url for _, url in source_keys.REFERENCE_SOURCES}
+    assert any("SerpApi" in l for l in labels)
+    assert any("JSearch" in l for l in labels)
+    assert "https://serpapi.com/users/sign_up" in urls
+    assert any("rapidapi.com" in u for u in urls)
+    for _, url in source_keys.REFERENCE_SOURCES:
+        assert url.startswith("https://")
+
+
 def test_test_source_is_guarded_under_pytest():
     # PYTEST_CURRENT_TEST is set by pytest, so the live probe must never run.
     for key in ("adzuna", "usajobs", "jooble", "careerjet", "careeronestop"):

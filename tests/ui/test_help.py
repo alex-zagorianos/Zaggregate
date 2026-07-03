@@ -119,6 +119,33 @@ def test_guide_documents_site_agnostic_capture():
         assert phrase in blob, phrase
 
 
+def test_guide_has_numbered_extension_walkthrough(tmp_path):
+    # S34: the Guide must carry a numbered, step-by-step browser-extension setup
+    # covering where the folder lives, Developer mode, Load unpacked, pinning,
+    # and the three popup buttons — the walkthrough Alex asked for.
+    headings = [text for tag, text in uihelp.GUIDE if tag in ("h1", "h2")]
+    assert any("Set up the browser extension" in h for h in headings)
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    for phrase in ["browser_ext", "chrome://extensions", "Developer mode",
+                   "Load unpacked", "puzzle", "Send to Tool", "Capture this job",
+                   "Add this employer's board", "Capture jobs from my browser"]:
+        assert phrase in blob, phrase
+
+
+def test_guide_lists_free_key_signup_links(tmp_path):
+    # S34: every source the app can use surfaces its FREE-key signup link in the
+    # Guide, so a reader always knows where to go (matches the one-click buttons
+    # in Tools > Connect job sources).
+    blob = " ".join(text for _, text in uihelp.GUIDE)
+    for url in ["developer.adzuna.com",
+                "careeronestop.org/Developers/WebAPI/registration.aspx",
+                "developer.usajobs.gov/apirequest",
+                "jooble.org/api/about",
+                "careerjet.com/partners/publishers",
+                "serpapi.com/users/sign_up"]:
+        assert url in blob, url
+
+
 def test_ai_help_dialog_callable():
     assert callable(uihelp.show_ai_help)
 

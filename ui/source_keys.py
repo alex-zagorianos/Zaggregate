@@ -36,7 +36,9 @@ SOURCES = [
     {
         "key": "usajobs",
         "title": "USAJobs (US federal jobs)",
-        "url": "https://developer.usajobs.gov/",
+        # The API-key REQUEST page (not the generic dev home) so the button lands
+        # the user straight on the free-key form.
+        "url": "https://developer.usajobs.gov/apirequest/",
         "fields": [
             ("usajobs_api_key", "API Key"),
             ("usajobs_email", "Registered Email"),
@@ -53,7 +55,9 @@ SOURCES = [
     {
         "key": "careerjet",
         "title": "Careerjet (aggregator)",
-        "url": "https://www.careerjet.com/partners/",
+        # The Publisher signup issues the affiliate ID the API needs — link there
+        # directly rather than the generic partners landing page.
+        "url": "https://www.careerjet.com/partners/publishers/",
         "fields": [
             ("careerjet_affid", "Affiliate ID"),
         ],
@@ -67,6 +71,21 @@ SOURCES = [
             ("careeronestop_token", "API Token"),
         ],
     },
+]
+
+
+# --- Reference-only sources ----------------------------------------------------
+# Two more free sources power features outside the credential-entry flow above:
+# SerpApi backs the Inbox "reach" badge (and can act as a Google-Jobs backend) and
+# JSearch aggregates the big walled boards (Indeed/LinkedIn/Glassdoor) via RapidAPI.
+# Both are configured elsewhere (SERPAPI_KEY / secrets/serpapi_key, and
+# JSEARCH_RAPIDAPI_KEY in .env), so here we surface their FREE-key signup links for
+# completeness — a one-click "Get a free key" for every source the app can use.
+REFERENCE_SOURCES = [
+    ("SerpApi (reach badge / Google Jobs, free 250/mo)",
+     "https://serpapi.com/users/sign_up"),
+    ("JSearch via RapidAPI (Indeed / LinkedIn / Glassdoor, free 200/mo)",
+     "https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch"),
 ]
 
 
@@ -238,7 +257,7 @@ def open_dialog(parent=None):
         # gets its own button for consistency.
         reg_row = ttk.Frame(box)
         reg_row.grid(row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(6, 2))
-        ttk.Button(reg_row, text="Register (free) \N{RIGHTWARDS ARROW}",
+        ttk.Button(reg_row, text="Get a free key \N{RIGHTWARDS ARROW}",
                    command=lambda u=src["url"]: webbrowser.open(u)).pack(side="left")
         link = ttk.Label(reg_row, text="  " + src["url"],
                          foreground="#0d5eaf", cursor="hand2")
@@ -330,6 +349,24 @@ def open_dialog(parent=None):
                 st.config(text="Pasted from clipboard.", foreground=_OK_FG)
             ttk.Button(btns, text="Paste both from clipboard",
                        command=_paste_both).pack(side="left", padx=(6, 0))
+
+    # More free sources — link-only (configured elsewhere), so every source the
+    # app can use has a one-click "Get a free key" here.
+    ref = ttk.LabelFrame(body, text="More free sources")
+    ref.pack(fill="x", expand=True, padx=6, pady=6)
+    ttk.Label(ref, text=("These power extra features and are set up elsewhere "
+                         "(.env / secrets), but each has a free key:"),
+              wraplength=460, justify="left").grid(
+        row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
+    for i, (label, url) in enumerate(REFERENCE_SOURCES, start=1):
+        rrow = ttk.Frame(ref)
+        rrow.grid(row=i, column=0, columnspan=2, sticky="w", padx=8, pady=2)
+        ttk.Button(rrow, text="Get a free key \N{RIGHTWARDS ARROW}",
+                   command=lambda u=url: webbrowser.open(u)).pack(side="left")
+        rlink = ttk.Label(rrow, text="  " + label, foreground="#0d5eaf",
+                          cursor="hand2")
+        rlink.pack(side="left")
+        rlink.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
 
     def _save_all_and_close():
         saved = 0

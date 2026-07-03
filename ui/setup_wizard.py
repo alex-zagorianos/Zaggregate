@@ -589,7 +589,9 @@ class SetupWizard(tk.Toplevel):
             ttk.Label(row, text=n, style="H2.TLabel").pack(anchor="w")
             ttk.Label(row, text=t, style="Muted.TLabel").pack(anchor="w")
         ttk.Label(self._body,
-                  text="Let's set up your profile. It takes about a minute.",
+                  text="Let's set up your profile. It takes about a minute, and "
+                       "every step is optional — you can skip anything now and "
+                       "change it later from Help ▸ “Run Setup Wizard”.",
                   wraplength=560, justify="left").pack(anchor="w", pady=(16, 0))
 
     def _step_ai(self):
@@ -952,6 +954,17 @@ class SetupWizard(tk.Toplevel):
                  "area so “careers” searches cover them. Runs after setup.",
             style="Muted.TLabel", wraplength=560, justify="left").pack(
                 anchor="w", padx=(24, 0), pady=(0, 6))
+        # Point users at the browser-extension walkthrough — the way to pull jobs
+        # from LinkedIn/Indeed and any careers page. The full numbered steps live
+        # in the Guide ("Set up the browser extension — step by step").
+        ttk.Label(
+            self._body,
+            text="Tip: to pull jobs straight from LinkedIn, Indeed, or any "
+                 "company's careers page, set up the free browser extension. The "
+                 "Guide has a short, numbered walkthrough — open it any time from "
+                 "Help ▸ “Open the Guide”, section “Set up the browser extension”.",
+            style="Muted.TLabel", wraplength=560, justify="left").pack(
+                anchor="w", pady=(14, 0))
 
     def _load_resume_file(self):
         path = filedialog.askopenfilename(

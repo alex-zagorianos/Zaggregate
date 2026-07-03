@@ -109,23 +109,34 @@ GUIDE = [
              "the Inbox header shows a “N sources skipped (no key)” note after a "
              "run; click it to connect them. That line is your cue that more local "
              "jobs are one free key away."),
+    ("body", "Every source below has a one-click “Get a free key” button in "
+             "Tools ▸ “Connect job sources…”, so you never have to hunt for the "
+             "right page — but the signup links are listed here too."),
     ("h2", "The two keys that matter most"),
     ("bullet", "•  Adzuna — a broad aggregator covering millions of postings "
                "across ~19 countries. This is the single biggest unlock for "
                "local, on-site jobs in any field: office, trades, healthcare, "
-               "retail, engineering. Free key, ~5 minutes."),
+               "retail, engineering. Free key, ~5 minutes. "
+               "Get a free key: developer.adzuna.com"),
     ("bullet", "•  CareerOneStop — the U.S. Department of Labor's feed of the "
                "National Labor Exchange (~3.5 million active postings a day from "
                "all 50 state job banks). The best free source for teachers, "
                "nurses, government, trades, and every other job that never shows "
-               "up on tech boards. Free key, ~5 minutes."),
+               "up on tech boards. Free key, ~5 minutes. Get a free key: "
+               "careeronestop.org/Developers/WebAPI/registration.aspx"),
     ("h2", "Worth adding when you want more"),
     ("bullet", "•  Jooble and Careerjet — two more free aggregators; each adds "
-               "postings the others miss."),
-    ("bullet", "•  USAJobs — every U.S. federal opening (free key)."),
+               "postings the others miss. Get free keys: jooble.org/api/about "
+               "and careerjet.com/partners/publishers/"),
+    ("bullet", "•  USAJobs — every U.S. federal opening (free key). "
+               "Get a free key: developer.usajobs.gov/apirequest/"),
     ("bullet", "•  SerpApi — powers the Inbox “reach” badge, which estimates "
                "what percentage of your local market the app is actually seeing "
-               "instead of guessing. A small free quota is plenty."),
+               "instead of guessing. A small free quota is plenty. "
+               "Get a free key: serpapi.com/users/sign_up"),
+    ("bullet", "•  JSearch (via RapidAPI) — pulls the big walled boards "
+               "(Indeed, LinkedIn, Glassdoor) through one free key. "
+               "Get a free key: rapidapi.com — search “JSearch”."),
     ("h2", "Add your local employers — the biggest quality jump"),
     ("body", "Aggregators cast wide, but the app is at its best when it watches "
              "the career pages of the employers you actually want. That's how "
@@ -238,36 +249,63 @@ GUIDE = [
               "alternative Anthropic-compatible endpoint (e.g. Ollama) via a "
               "base URL instead of a paid key."),
 
-    ("h1", "Capture jobs from your browser (optional)"),
+    ("h1", "Set up the browser extension — step by step (optional)"),
     ("body", "Some big boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter, Dice) "
-             "don't offer a search feed, but you can still pull jobs you're "
-             "already looking at into your Inbox with the browser extension."),
+             "don't offer a search feed, and many jobs live on a company's own "
+             "careers page or an applicant system like Workday, Greenhouse, or "
+             "Lever. The browser extension lets you pull any job you're already "
+             "looking at into your Inbox, scored like everything else. It takes "
+             "about two minutes to set up, once."),
     ("bullet", "1.  In the app, open Tools ▸ “Capture jobs from my browser”. "
-               "It starts a small local listener (nothing leaves your computer)."),
-    ("bullet", "2.  In Chrome or Edge, open the Extensions page "
-               "(chrome://extensions), turn on “Developer mode” (top-right)."),
-    ("bullet", "3.  Click “Load unpacked” and pick the browser_ext folder inside "
-               "your install."),
-    ("bullet", "4.  Browse a job board. When you see jobs you like, click the "
-               "extension and choose “Send to Tool” — they land in your Inbox for "
-               "triage, scored like everything else."),
+               "This starts a small local listener on your own computer "
+               "(nothing leaves your machine). Leave the app open while you "
+               "browse — the listener runs only while it's open."),
+    ("bullet", "2.  Find the extension folder. It's the browser_ext folder "
+               "inside your install folder (the same folder the app runs from). "
+               "You don't need to open it — just note where it is; you'll point "
+               "Chrome at it in step 5."),
+    ("bullet", "3.  In Chrome or Edge, open the Extensions page: type "
+               "chrome://extensions in the address bar and press Enter."),
+    ("bullet", "4.  Turn on “Developer mode” using the switch in the top-right "
+               "corner of that page."),
+    ("bullet", "5.  Click “Load unpacked” (top-left), then select the browser_ext "
+               "folder from step 2. The “Job Harvester” extension appears in your "
+               "list."),
+    ("bullet", "6.  Pin it so it's one click away: click the puzzle-piece icon "
+               "in the Chrome toolbar, then the pin next to “Job Harvester”. Its "
+               "icon now sits in your toolbar."),
+    ("bullet", "7.  Browse jobs. As you visit the big boards, the extension "
+               "quietly collects the postings it sees — the little badge count "
+               "on its toolbar icon goes up as it finds jobs on the page."),
+    ("bullet", "8.  Click the extension icon to open its popup. You'll see up to "
+               "three buttons, depending on the page:"),
+    ("bullet", "     •  “Send to Tool” — sends the jobs the extension collected "
+               "on the big boards straight into your Inbox for triage."),
+    ("bullet", "     •  “Capture this job” — on ANY single job posting (a company "
+               "careers page, Workday, Greenhouse, Lever, anywhere), grabs the "
+               "one job you're looking at, then “Send to Tool” delivers it."),
+    ("bullet", "     •  “Add this employer's board to my registry” — on a "
+               "company's careers page, adds that employer so future searches "
+               "watch its board for new postings."),
+    ("body", "“Capture this job” reads the job's title, company, location, pay, "
+             "and description from the page's own structured data when the site "
+             "provides it (most do — it's what puts jobs in Google) and falls "
+             "back to a best-effort read of the page when it doesn't. Either way "
+             "the job lands in your Inbox, scored like everything else."),
     ("muted", "The listener runs only while the app is open and only accepts jobs "
-              "from the extension on your own machine."),
+              "from the extension on your own machine. “Capture this job” only "
+              "reads the one page you're on, only when you click it — it never "
+              "reads other tabs or sites in the background."),
 
     ("h2", "Capture this job on any site"),
-    ("body", "The big boards above are handled automatically as you browse — but "
-             "most jobs live somewhere else: a company's own careers page, or an "
-             "applicant system like Workday, Greenhouse, or Lever. When you're "
-             "looking at any single job posting, open the extension and click "
-             "“Capture this job” to add the open posting to your collected list, "
-             "then “Send to Tool” like usual."),
-    ("body", "It reads the job's title, company, location, pay, and description "
-             "straight from the page's own structured data when the site provides "
-             "it (most do — it's what puts jobs in Google) and falls back to a "
-             "best-effort read of the page when it doesn't. Either way, the job "
-             "lands in your Inbox scored like everything else."),
-    ("muted", "“Capture this job” only reads the one page you're on, only when you "
-              "click it — it never reads other tabs or sites in the background."),
+    ("body", "This is the extension's most useful trick, so it's worth repeating: "
+             "the five big boards are handled automatically as you browse, but "
+             "most jobs live somewhere else — a company's own careers page, or an "
+             "applicant system like Workday, Greenhouse, or Lever. On any single "
+             "job posting, click the extension's “Capture this job” button and "
+             "then “Send to Tool”. It reads the job's structured data when the "
+             "site provides it and falls back to a best-effort page read when it "
+             "doesn't, so the job lands in your Inbox scored like everything else."),
 
     ("h1", "Tips & FAQ"),
     ("h2", "Where is my information stored?"),
@@ -684,16 +722,19 @@ class GuideTab(ttk.Frame):
         txt.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
 
-        txt.tag_configure("h1", font=("Segoe UI", 16, "bold"),
-                          foreground=theme.INK, spacing1=18, spacing3=8)
-        txt.tag_configure("h2", font=("Segoe UI", 12, "bold"),
-                          foreground=theme.ACCENT, spacing1=12, spacing3=4)
+        # Editorial hierarchy on the 8px rhythm: serif h1 (the "document, not a
+        # settings panel" signal), sans accent h2, comfortable body line spacing.
+        # All from theme tokens so a font swap flows through automatically.
+        txt.tag_configure("h1", font=theme.FONT_GUIDE_H1,
+                          foreground=theme.INK, spacing1=24, spacing3=8)
+        txt.tag_configure("h2", font=theme.FONT_GUIDE_H2,
+                          foreground=theme.ACCENT, spacing1=16, spacing3=4)
         txt.tag_configure("body", font=theme.FONT, foreground=theme.INK,
-                          spacing3=8, lmargin1=2, lmargin2=2)
+                          spacing2=3, spacing3=8, lmargin1=2, lmargin2=2)
         txt.tag_configure("bullet", font=theme.FONT, foreground=theme.INK,
-                          spacing3=4, lmargin1=18, lmargin2=34)
+                          spacing2=2, spacing3=4, lmargin1=18, lmargin2=34)
         txt.tag_configure("muted", font=theme.FONT_SM, foreground=theme.MUTED,
-                          spacing1=18)
+                          spacing1=16, spacing3=4)
 
         for tag, text in GUIDE:
             txt.insert("end", text + "\n", tag)
