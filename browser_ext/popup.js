@@ -23,6 +23,27 @@ function setStatus(msg, cls = "") {
   statusEl.className = cls;
 }
 
+// ── Sent-keys ledger (shared with background.js) ──────────────────────────────
+// A manual Send / Track All wipes `jobs: []`, but content.js may still hold a
+// pre-wipe snapshot in a running read-modify-write and resurrect the just-sent
+// jobs on its next write. Recording the sent jobs' identity keys here makes that
+// next content write self-heal (it filters against sentKeys) — the same guard the
+// auto-send path uses. Identity mirrors the dedup/delta-clear: external_id else
+// url. FIFO-capped so a long session can't grow the ledger unbounded.
+const SENT_KEYS_CAP = 600;
+function jobKey(j) {
+  return j.external_id || j.url || "";
+}
+async function recordSentKeys(jobs) {
+  const stored = await chrome.storage.local.get("sentKeys");
+  const newKeys = jobs.map(jobKey).filter(Boolean);
+  let sentKeys = [...(stored.sentKeys || []), ...newKeys];
+  if (sentKeys.length > SENT_KEYS_CAP) {
+    sentKeys = sentKeys.slice(sentKeys.length - SENT_KEYS_CAP);
+  }
+  await chrome.storage.local.set({ sentKeys });
+}
+
 function setClipStatus(msg, cls = "") {
   clipStatusEl.textContent = msg;
   clipStatusEl.className = cls;
@@ -112,6 +133,7 @@ sendBtn.addEventListener("click", async () => {
         `Sent ${data.received} jobs${inboxed} - report opening in browser`,
         "ok",
       );
+      await recordSentKeys(jobs); // ledger BEFORE the wipe (resurrection guard)
       await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
       chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
       await refreshCount();
@@ -207,6 +229,7 @@ trackBtn.addEventListener("click", async () => {
   const { added, failed } = result;
   if (failed === 0 && added > 0) {
     setStatus(`${added} jobs added to tracker`, "ok");
+    await recordSentKeys(jobs); // ledger BEFORE the wipe (resurrection guard)
     await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
     chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
     await refreshCount();
@@ -224,6 +247,10 @@ trackBtn.addEventListener("click", async () => {
 });
 
 clearBtn.addEventListener("click", async () => {
+  // Deliberately leave `sentKeys` intact: it only ever FILTERS future writes, so
+  // keeping it is harmless, and wiping it would strip the resurrection guard at
+  // the exact moment the user reset (a still-running content pass could then
+  // re-add already-sent jobs). It self-caps at SENT_KEYS_CAP regardless.
   await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
   chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
   await refreshCount();

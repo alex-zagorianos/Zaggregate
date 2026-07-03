@@ -56,6 +56,28 @@ function firstText(el, selectors) {
   return node ? (node.innerText || node.textContent || "").trim() : "";
 }
 
+// ── Field sanitation (shared by card + detail extraction) ─────────────────────
+// LinkedIn's newer entity-lockup renders the title/company/subtitle as innerText
+// that leaks the visual separators between spans — a trailing " |" or " ·" or a
+// dangling "-" (live 2026-07-02: title "Control Systems Engineer |", company
+// "GrayMatter |"). Strip leading/trailing pipe/dash/bullet/whitespace runs and
+// collapse internal whitespace so those artifacts never reach the tracker/inbox.
+// The SERVER mirrors this exact cleanup (browser_receiver._sanitize_field) so a
+// stale client version can't slip junk past — same JS-grabs / Python-owns split
+// as salary + details.
+const _EDGE_JUNK_RE = /^[\s|·•\-–—:]+|[\s|·•\-–—:]+$/g;
+function sanitizeField(s) {
+  if (!s) return "";
+  return String(s).replace(_EDGE_JUNK_RE, "").replace(/\s+/g, " ").trim();
+}
+
+// A title shorter than this after sanitizing is a mid-hydration placeholder, not
+// a real posting (live 2026-07-02: a virtualized LinkedIn <li> whose title link
+// had hydrated to a single glyph — "T" — before its full text painted; the old
+// `if (!title)` guard only caught the EMPTY case, so the 1-char card slipped
+// through). Real titles are always >= 3 chars.
+const MIN_TITLE_LEN = 3;
+
 // Join the text of every matching `details` container into one blob (deduped
 // lines), so the server-side parser has all the metadata in one string.
 function collectDetailsBlob(root, selectors) {
@@ -168,15 +190,18 @@ function extractCard(card) {
   if (!titleEl) return null;
 
   // LinkedIn repeats the title in a visually-hidden span, so innerText comes
-  // back as "Title\nTitle". Take the first line so it isn't captured doubled.
-  const title = titleEl.innerText?.trim().split("\n")[0].trim();
-  if (!title) return null;
+  // back as "Title\nTitle". Take the first line so it isn't captured doubled,
+  // then sanitize away the entity-lockup separator artifacts (trailing " |").
+  const title = sanitizeField(titleEl.innerText?.trim().split("\n")[0]);
+  // Reject the empty title AND the mid-hydration 1-char placeholder ("T"): a
+  // virtualized card whose title link hasn't finished painting is not a job.
+  if (title.length < MIN_TITLE_LEN) return null;
 
   const url = resolveUrl(titleEl.href || titleEl.getAttribute("href") || "");
   if (!url) return null;
 
-  const company = first(card, SITE.company)?.innerText?.trim() || "";
-  const location = first(card, SITE.location)?.innerText?.trim() || "";
+  const company = sanitizeField(first(card, SITE.company)?.innerText);
+  const location = sanitizeField(first(card, SITE.location)?.innerText);
   const salaryTxt = shrinkToSalary(first(card, SITE.salary));
   const footerTxt = SITE.footer ? firstText(card, SITE.footer) : "";
 
@@ -238,6 +263,41 @@ function extractDetail() {
 // read-modify-write on `jobs` (lost-update race).
 let busy = false;
 
+// ── Sent-keys ledger (kills the auto-send resurrection race) ──────────────────
+// Background's auto-send removes the jobs it POSTed by identity, but content.js's
+// own read-modify-write on `jobs` can span that delta-clear: a pass that read the
+// PRE-clear array, appended new cards, and wrote the merge AFTER the clear would
+// resurrect the just-sent batch — which the next milestone then RE-SENT (the
+// live double-POST bursts on 2026-07-02). The ledger closes it at the source:
+// background appends each sent job's identity key here on a successful POST, and
+// EVERY `jobs` write below filters the outgoing array against it, so a resurrected
+// stale copy self-heals on the very next write instead of persisting and re-firing.
+// Lives in chrome.storage.local (NOT a module global) because the MV3 service
+// worker restarts and content scripts run per-tab — storage is the only shared,
+// durable home. Identity = external_id when present, else url (same identity the
+// dedup + delta-clear use).
+function jobKey(j) {
+  return j.external_id || j.url || "";
+}
+
+// Drop from `arr` any job whose key is already in the sent ledger. Reads sentKeys
+// fresh each call (background may have appended since our snapshot).
+async function filterAgainstSent(arr) {
+  let sentKeys = [];
+  try {
+    const s = await chrome.storage.local.get("sentKeys");
+    sentKeys = s.sentKeys || [];
+  } catch (_) {
+    return arr; // storage read failed — don't drop jobs on a transient error
+  }
+  if (sentKeys.length === 0) return arr;
+  const sent = new Set(sentKeys);
+  return arr.filter((j) => {
+    const k = jobKey(j);
+    return !(k && sent.has(k));
+  });
+}
+
 async function harvestCards() {
   let cards = [];
   for (const sel of SITE.cards) {
@@ -290,7 +350,11 @@ async function harvestCards() {
   const newJobs = jobs.filter((j) => !existingUrls.has(j.url));
   if (newJobs.length === 0) return;
 
-  const merged = [...existing, ...newJobs];
+  // Filter the merged array against the sent ledger before writing: if `existing`
+  // was a pre-clear snapshot that resurrected an already-sent batch, this write
+  // self-heals it instead of persisting the duplicates. (newJobs are freshly
+  // harvested this pass, but filtering the whole merge is simplest + correct.)
+  const merged = await filterAgainstSent([...existing, ...newJobs]);
   await chrome.storage.local.set({ jobs: merged });
   chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: merged.length });
 }
@@ -338,8 +402,9 @@ async function harvestDetail() {
     // storage write + badge ping on every mutation while a job stays open).
     if (jobs[idx].detailed && jobs[idx].description) return;
     jobs[idx] = { ...jobs[idx], ...detail };
-    await chrome.storage.local.set({ jobs });
-    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: jobs.length });
+    const cleaned = await filterAgainstSent(jobs);
+    await chrome.storage.local.set({ jobs: cleaned });
+    chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: cleaned.length });
     return;
   }
 
@@ -365,8 +430,12 @@ async function harvestDetail() {
     "[data-testid='jobsearch-JobInfoHeader-title']",
     "h1",
   ]);
-  const title = titleEl ? (titleEl.innerText || "").trim().split("\n")[0] : "";
-  if (!title) return;
+  const title = titleEl
+    ? sanitizeField((titleEl.innerText || "").split("\n")[0])
+    : "";
+  // Same min-title guard as the card path — a detail pane mid-hydration can
+  // hand back a 1-char title too.
+  if (title.length < MIN_TITLE_LEN) return;
   const companyEl = first(document, [
     ".job-details-jobs-unified-top-card__company-name a",
     ".job-details-jobs-unified-top-card__company-name",
@@ -375,7 +444,7 @@ async function harvestDetail() {
   ]);
   jobs.push({
     title,
-    company: companyEl ? (companyEl.innerText || "").trim() : "",
+    company: sanitizeField(companyEl ? companyEl.innerText : ""),
     location: "",
     url: standaloneUrl,
     salary_text: "",
@@ -383,8 +452,9 @@ async function harvestDetail() {
     card_text: "",
     ...detail,
   });
-  await chrome.storage.local.set({ jobs });
-  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: jobs.length });
+  const cleaned = await filterAgainstSent(jobs);
+  await chrome.storage.local.set({ jobs: cleaned });
+  chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: cleaned.length });
 }
 
 async function run() {
