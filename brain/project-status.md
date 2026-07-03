@@ -4,6 +4,34 @@
 
 ---
 
+## Session 35 (2026-07-03) — Weakness sweep: cheap-AI onboarding + international + receiver ✅
+
+Alex: "keep testing… find flaws/inefficiencies… make sure cheap AIs can onboard
+with ease… help as many people as possible." **Empirically tested cheap-AI
+onboarding** (fed the REAL setup prompt + 8 diverse personas — SWE/nurse/warehouse/
+career-changer/UK/India/HVAC-trade/fresh-grad — to granite:micro 2B + gemma-12b,
+then ran each raw reply through the ACTUAL `parse_setup_block`; +19/9 deterministic
+adversarial-format cases) and ran a **39-finding fleet audit** (8-dimension find →
+adversarial-refuter verify, 51 Sonnet agents; 43 raised → 39 confirmed / 3 refuted).
+Empirical verdict: parser is robust (8/8 parse on a 2B model) but had model-INDEPENDENT
+**hard-blocks** on plausible AI output. **Fixed 5 commits / ~50 tests (suite 2311→2360,
+0 failed):** (1) onboarding parser — salary "140k"/"$120k per year"/ranges, radius
+"25 miles", seniority director/C-level/intern aliases, comma-string titles split, smart
+quotes + `//` comments, two-fence best-object, **O\*NET trades (machinist/barista/welder)
+accepted as fields** (`65454d0`); (2) **Adzuna routes to user's country** (London→/gb/,
+Bangalore→/in/; US byte-identical, Indianapolis IN≠India) + **metro_variants non-US city
+fallback** so international local jobs aren't hidden (`4aaf9d5`); (3) receiver — **/track
+dedup** (`url_is_tracked`, 'Track All'×2 no longer dupes), /clip non-string 500 fix,
+8 MB body cap (`d19c9f6`); (4) generic_capture JSON-LD scan bounded (`24605fb`).
+**DEFERRED for Alex's approval (byte-identical scoring/filter rule):** #7 hard_gate
+title substring over-drop ("sales"→drops Salesforce), #28 _EXEC_RE IC-title false-positive,
+#37/#38 SOC/skill scoring gaps. **DEFERRED design/data (biggest lever = #4 zero
+blue-collar starter registry; #15 non-tech ATS hosts; silent-failure surfacing #5/#6/#22/#23;
+zero-key transparency #18).** Full disposition of all 39: `brain/review-2026-07-03-s35-weakness-sweep.md`.
+PUSH HELD. See [[handoff_20260703_session35]].
+
+---
+
 ## Session 34 (2026-07-02 evening) — Live-test fixes + onboarding + production + FIRST PUSH ✅
 
 Alex live-tested the extension in his real Chrome (first true end-to-end run) →
