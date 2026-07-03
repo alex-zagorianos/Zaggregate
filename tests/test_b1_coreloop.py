@@ -306,6 +306,16 @@ def test_receiver_wait_until_listening_false_when_thread_dead(monkeypatch):
             return False
 
     monkeypatch.setattr(br, "_SERVER_THREAD", _Dead(), raising=False)
+    # Probe a port that is guaranteed FREE (bind :0, note it, close) instead of
+    # the real receiver port — a LIVE receiver on 5002 (the GUI's embedded one
+    # during a manual extension-test session) flipped this assert to True
+    # (found live 2026-07-02). The unit under test is the dead-thread
+    # fast-path, not the shared real port.
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free_port = s.getsockname()[1]
+    monkeypatch.setattr(br, "PORT", free_port)
     # Nothing is listening on the port and the thread is dead -> fast False.
     assert br.wait_until_listening(timeout=0.5) is False
 
