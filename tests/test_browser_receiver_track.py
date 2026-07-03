@@ -60,7 +60,7 @@ def test_track_adds_rows_as_interested(client, track_db):
     )
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body == {"added": 2, "failed": 0}
+    assert body == {"added": 2, "failed": 0, "skipped": 0}
 
     rows = db.get_all("interested")
     assert {(r["title"], r["company"]) for r in rows} == {
@@ -121,7 +121,7 @@ def test_track_rejects_degenerate_one_char_title(client, track_db):
         headers={"Origin": _EXT_ORIGIN},
     )
     assert resp.status_code == 200
-    assert resp.get_json() == {"added": 0, "failed": 1}
+    assert resp.get_json() == {"added": 0, "failed": 1, "skipped": 0}
     assert db.get_all("interested") == []
 
 
@@ -137,7 +137,7 @@ def test_track_sanitizes_trailing_pipe_title_and_company(client, track_db):
         headers={"Origin": _EXT_ORIGIN},
     )
     assert resp.status_code == 200
-    assert resp.get_json() == {"added": 1, "failed": 0}
+    assert resp.get_json() == {"added": 1, "failed": 0, "skipped": 0}
     rows = db.get_all("interested")
     assert len(rows) == 1
     assert rows[0]["title"] == "Control Systems Engineer"
@@ -164,7 +164,7 @@ def test_track_batch_mix_adds_only_clean_and_counts_honestly(client, track_db):
     )
     assert resp.status_code == 200
     body = resp.get_json()
-    assert body == {"added": 2, "failed": 2}
+    assert body == {"added": 2, "failed": 2, "skipped": 0}
     rows = db.get_all("interested")
     assert {(r["title"], r["company"]) for r in rows} == {
         ("Data Engineer", "Acme"), ("Nurse", "Mercy")}
@@ -266,3 +266,56 @@ def test_harvest_open_report_true_opens_browser(client, harvest_isolated):
         headers={"Origin": _EXT_ORIGIN})
     assert resp.status_code == 200
     assert len(harvest_isolated) == 1
+
+
+# ── S35: /track dedup + /clip non-string coercion + body size cap ──────────────
+
+def test_track_skips_already_tracked_url(client, track_db):
+    # The applications table has no UNIQUE norm_url, so re-tracking the same
+    # posting (e.g. 'Track All' pressed twice) must SKIP, not duplicate.
+    payload = {"jobs": [_job(url="https://example.com/jobs/dup")]}
+    first = client.post("/track", json=payload, headers={"Origin": _EXT_ORIGIN})
+    assert first.get_json()["added"] == 1
+    again = client.post("/track", json=payload, headers={"Origin": _EXT_ORIGIN})
+    body = again.get_json()
+    assert body["added"] == 0 and body["skipped"] == 1
+    assert len(db.get_all("interested")) == 1
+
+
+def test_track_dedups_within_a_single_batch(client, track_db):
+    payload = {"jobs": [_job(url="https://example.com/jobs/x"),
+                        _job("Nurse", "Mercy", url="https://example.com/jobs/x")]}
+    body = client.post("/track", json=payload,
+                       headers={"Origin": _EXT_ORIGIN}).get_json()
+    assert body["added"] == 1 and body["skipped"] == 1
+    assert len(db.get_all("interested")) == 1
+
+
+def test_clip_coerces_nonstring_url_and_title_no_500(client, monkeypatch):
+    # A client sending a numeric url/page_title must NOT 500 the receiver
+    # (clip_board used to .strip() a non-string). clip_board is stubbed so the
+    # test stays offline; the point is the handler coerces to str first.
+    captured = {}
+
+    def _stub(url, page_title, industry=None, browser_evidence=None):
+        captured["url"] = url
+        captured["title"] = page_title
+        return {"status": "failed", "company": None, "ats_type": None,
+                "reason": "stub"}
+
+    monkeypatch.setattr(br, "clip_board", _stub)
+    resp = client.post("/clip", json={"url": 12345, "page_title": 999},
+                       headers={"Origin": _EXT_ORIGIN})
+    assert resp.status_code == 200
+    assert isinstance(captured["url"], str) and isinstance(captured["title"], str)
+
+
+def test_clip_null_url_is_clean_400_not_500(client):
+    resp = client.post("/clip", json={"url": None, "page_title": None},
+                       headers={"Origin": _EXT_ORIGIN})
+    assert resp.status_code == 400
+
+
+def test_receiver_caps_request_body_size():
+    # An 8 MB cap bounds a runaway/oversized POST before the handler runs.
+    assert app.config.get("MAX_CONTENT_LENGTH") == 8 * 1024 * 1024

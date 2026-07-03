@@ -23,6 +23,12 @@ import workspace
 from config import PORT_RECEIVER
 
 app = Flask(__name__)
+# Cap request bodies so a runaway/oversized capture (a page with thousands of
+# JSON-LD blocks, or a malformed multi-MB POST) can't exhaust memory before the
+# handler even runs. 8 MB is far above any legitimate batch of job rows; Flask
+# returns 413 automatically past this. Loopback-only + extension-origin gating
+# already limits who can reach here — this bounds how much they can send.
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 PORT = PORT_RECEIVER
 
 # Only the unpacked browser extension talks to this server. A chrome-extension://
@@ -387,7 +393,10 @@ def clip():
         return jsonify({"error": "Forbidden origin"}), 403
 
     data = request.get_json(force=True, silent=True)
-    if not isinstance(data, dict) or not (data.get("url") or "").strip():
+    # Coerce to str: a client sending a non-string url/page_title (e.g. a number
+    # or null) must yield a clean 400/verdict, not a 500 from .strip() on a non-
+    # string. get() default only covers an ABSENT key, not a present non-string.
+    if not isinstance(data, dict) or not str(data.get("url") or "").strip():
         return jsonify({"error": "Expected JSON with a 'url'"}), 400
 
     # Optional S33 browser evidence: the extension's two-step "Verify from this
@@ -395,7 +404,8 @@ def clip():
     # postings client-side. clip_board sanitizes it defensively (junk -> treated
     # as absent, so behavior is exactly as before). It only ever upgrades a
     # board's reachability; the origin gate above already restricts callers.
-    verdict = clip_board(data.get("url"), data.get("page_title", ""),
+    verdict = clip_board(str(data.get("url") or ""),
+                         str(data.get("page_title") or ""),
                          industry=_active_industry(),
                          browser_evidence=data.get("evidence"))
     # A failure to resolve/verify is a normal verdict, not a server error —
@@ -542,11 +552,12 @@ def track():
     if not isinstance(raw_jobs, list) or len(raw_jobs) == 0:
         return jsonify({"error": "No jobs received"}), 400
 
-    from tracker.db import add_job, init_db
+    from tracker.db import add_job, init_db, url_is_tracked
     init_db()  # resolve + migrate the ACTIVE project's DB per-request (no pin)
 
     added = 0
     failed = 0
+    skipped = 0
     for j in raw_jobs:
         if not isinstance(j, dict):
             failed += 1
@@ -562,13 +573,20 @@ def track():
         if len(title) < _MIN_TITLE_LEN or not company:
             failed += 1
             continue
+        url = str(j.get("url") or "").strip()
+        # Dedup: the applications table has no UNIQUE norm_url, so re-tracking the
+        # same posting (e.g. 'Track All' pressed twice) would insert a duplicate
+        # row. Skip a URL that's already tracked — mirrors /harvest's inbox dedup.
+        if url and url_is_tracked(url):
+            skipped += 1
+            continue
         try:
             add_job(
                 title=title,
                 company=company,
                 location=_sanitize_field(j.get("location")),
-                url=(j.get("url") or "").strip(),
-                salary_text=(j.get("salary_text") or "").strip(),
+                url=url,
+                salary_text=str(j.get("salary_text") or "").strip(),
                 source=j.get("source", "browser"),
                 status="interested",
             )
@@ -577,8 +595,8 @@ def track():
             print(f"[receiver] track: failed to add '{title}' — {e}")
             failed += 1
 
-    print(f"[receiver] track: {added} added, {failed} failed")
-    return jsonify({"added": added, "failed": failed})
+    print(f"[receiver] track: {added} added, {failed} failed, {skipped} skipped")
+    return jsonify({"added": added, "failed": failed, "skipped": skipped})
 
 
 def _to_job_result(j) -> JobResult | None:

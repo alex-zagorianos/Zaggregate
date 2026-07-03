@@ -549,6 +549,25 @@ def add_job(title, company, location="", url="", salary_text="",
         return job_id
 
 
+def url_is_tracked(url) -> bool:
+    """True when a non-archived application already has this (normalized) URL.
+    The applications table — unlike the inbox — has no UNIQUE norm_url constraint,
+    so the browser /track path uses this to skip re-adding a job the user already
+    tracked (e.g. pressing 'Track All' twice). Empty/blank URL -> False (can't
+    dedup without a key); tolerant of a pre-norm_url schema."""
+    s = str(url or "").strip()
+    if not s:
+        return False
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM applications WHERE norm_url=? AND archived=0 LIMIT 1",
+                (normalize_url(s),)).fetchone()
+        return row is not None
+    except sqlite3.OperationalError:
+        return False
+
+
 def get_all(status_filter=None):
     """Active (non-archived) applications, newest first. status_filter="archived"
     returns only archived rows; any other status filters within non-archived."""

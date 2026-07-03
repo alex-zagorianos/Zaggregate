@@ -227,14 +227,22 @@ trackBtn.addEventListener("click", async () => {
   }
 
   const { added, failed } = result;
-  if (failed === 0 && added > 0) {
-    setStatus(`${added} jobs added to tracker`, "ok");
+  const skipped = result.skipped || 0; // already-tracked dups (receiver path)
+  const dup = skipped > 0 ? `, ${skipped} already tracked` : "";
+  if (failed === 0 && (added > 0 || skipped > 0)) {
+    // Success includes the all-duplicates case: everything is accounted for, so
+    // clear the queue and ledger the keys instead of showing a scary error.
+    const msg =
+      added > 0
+        ? `${added} added to tracker${dup}`
+        : `All ${skipped} already tracked`;
+    setStatus(msg, "ok");
     await recordSentKeys(jobs); // ledger BEFORE the wipe (resurrection guard)
     await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
     chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });
     await refreshCount();
   } else if (added > 0) {
-    setStatus(`${added} added, ${failed} failed`, "err");
+    setStatus(`${added} added, ${failed} failed${dup}`, "err");
     trackBtn.disabled = false;
   } else {
     setStatus(
