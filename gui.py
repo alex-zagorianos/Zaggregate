@@ -274,7 +274,7 @@ class JobDialog(tk.Toplevel):
         # Notes — full width
         ttk.Label(form, text="Notes").grid(row=4, column=0, sticky="nw", **p)
         self._notes = theme.text_widget(form, width=70, height=5,
-                                        font=("Segoe UI", 9))
+                                        font=theme.FONT_SM)
         self._notes.grid(row=4, column=1, columnspan=4, sticky="ew", **p)
         if job and job.get("notes"):
             self._notes.insert("1.0", job["notes"])
@@ -430,7 +430,7 @@ class JobDialog(tk.Toplevel):
                             font=theme.FONT_SM, padx=8, pady=6)
         box.grid(row=9, column=0, columnspan=5, sticky="ew", padx=6, pady=(2, 4))
         self._timeline = theme.text_widget(box, width=90, height=6,
-                                           font=("Segoe UI", 9))
+                                           font=theme.FONT_MONO_SM)
         self._timeline.pack(fill="x")
         self._reload_timeline()
 
@@ -534,7 +534,7 @@ class _RoundDialog(tk.Toplevel):
         entry("Interviewer", "interviewer", 2)
         entry("Outcome", "outcome", 3)
         ttk.Label(form, text="Notes").grid(row=4, column=0, sticky="nw", padx=6, pady=5)
-        self._notes = theme.text_widget(form, width=40, height=3, font=("Segoe UI", 9))
+        self._notes = theme.text_widget(form, width=40, height=3, font=theme.FONT_SM)
         self._notes.grid(row=4, column=1, columnspan=2, sticky="ew", padx=6, pady=5)
         if rnd.get("notes"):
             self._notes.insert("1.0", rnd["notes"])
@@ -578,7 +578,7 @@ class PasteDialog(tk.Toplevel):
         ttk.Label(self, text=hint, padding=(10, 8)).pack(anchor="w")
         body = ttk.Frame(self, padding=(10, 0, 10, 0))
         body.pack(fill="both", expand=True)
-        self._text = theme.text_widget(body, font=("Consolas", 9))
+        self._text = theme.text_widget(body, font=theme.FONT_MONO_SM)
         vsb = ttk.Scrollbar(body, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=vsb.set)
         self._text.pack(side="left", fill="both", expand=True)
@@ -904,12 +904,11 @@ class ResumeTab(ttk.Frame):
         # Text input area
         body = ttk.Frame(self, padding=12)
         body.pack(fill="both", expand=True)
-        ttk.Label(body, text="Job Posting",
-                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        ttk.Label(body, text="Job Posting", style="H2.TLabel").pack(anchor="w")
 
         txt_f = ttk.Frame(body)
         txt_f.pack(fill="both", expand=True, pady=4)
-        self._text = theme.text_widget(txt_f, font=("Segoe UI", 10))
+        self._text = theme.text_widget(txt_f, font=theme.FONT)
         vsb = ttk.Scrollbar(txt_f, orient="vertical", command=self._text.yview)
         self._text.configure(yscrollcommand=vsb.set)
         self._text.pack(side="left", fill="both", expand=True)
@@ -941,7 +940,7 @@ class ResumeTab(ttk.Frame):
         self._status_lbl.pack(side="left", padx=6)
 
         self._out_lbl = tk.Label(bar, text="", bg=theme.WINDOW, fg=theme.ACCENT,
-                                  font=("Segoe UI", 9, "underline"),
+                                  font=(theme.SANS, 9, "underline"),
                                   cursor="hand2")
         self._out_lbl.pack(side="left")
         self._out_lbl.bind("<Button-1>", self._open_folder)
@@ -4054,6 +4053,15 @@ class App(tk.Tk):
         self.geometry("1280x780")
         self.minsize(980, 620)
 
+        # Theme the native Windows title bar (caption) to the app palette, and
+        # install the class hook so every Toplevel dialog gets the same treatment.
+        # Hard no-op off Windows / on unsupported builds / headless.
+        try:
+            from ui import titlebar
+            titlebar.install(self)
+        except Exception:
+            pass
+
         # Global Tk callback exception handler: in a windowed .exe an unguarded
         # error inside a button/after callback otherwise vanishes silently (dead
         # button, no feedback). Log the traceback and show the user something.
@@ -4114,29 +4122,7 @@ class App(tk.Tk):
                               command=self._toggle_dark)
         menubar.add_cascade(label="View", menu=viewm)
 
-        toolsm = theme.style_menu(tk.Menu(menubar, tearoff=0))
-        toolsm.add_command(label="Due — follow-ups & deadlines…",
-                           command=self._show_due)
-        toolsm.add_command(label="Application funnel…", command=self._show_funnel)
-        toolsm.add_command(label="Contacts / referrals…", command=self._show_contacts)
-        toolsm.add_separator()
-        toolsm.add_command(label="Turn on daily updates…",
-                           command=self._show_daily_updates)
-        toolsm.add_command(label="Capture jobs from my browser…",
-                           command=self._toggle_browser_capture)
-        toolsm.add_separator()
-        toolsm.add_command(label="Set up with your AI…",
-                           command=self._show_ai_setup)
-        toolsm.add_command(label="Connect your AI (API key)…",
-                           command=self._show_settings)
-        toolsm.add_command(label="Connect job sources…",
-                           command=self._show_source_keys)
-        toolsm.add_command(label="Seed my area (find local employers)…",
-                           command=self._show_seed_area)
-        toolsm.add_separator()
-        toolsm.add_command(label="Enable stealth fetching (downloads browser)…",
-                           command=self._enable_stealth)
-        menubar.add_cascade(label="Tools", menu=toolsm)
+        menubar.add_cascade(label="Tools", menu=self._make_tools_menu(menubar))
 
         helpm = theme.style_menu(tk.Menu(menubar, tearoff=0))
         helpm.add_command(label="Quick Start",
@@ -4160,6 +4146,36 @@ class App(tk.Tk):
         menubar.add_cascade(label="Help", menu=helpm)
 
         self.config(menu=menubar)
+
+    def _make_tools_menu(self, parent):
+        """Build the Tools menu once so BOTH the menubar cascade and the branded
+        top-bar 'Tools ▾' button post the identical actions (Alex's ask: surface
+        Tools as a top button while keeping the menubar entry for muscle memory).
+        Kept on self so the topbar can reuse it and a theme rebuild re-creates it."""
+        toolsm = theme.style_menu(tk.Menu(parent, tearoff=0))
+        toolsm.add_command(label="Due — follow-ups & deadlines…",
+                           command=self._show_due)
+        toolsm.add_command(label="Application funnel…", command=self._show_funnel)
+        toolsm.add_command(label="Contacts / referrals…", command=self._show_contacts)
+        toolsm.add_separator()
+        toolsm.add_command(label="Turn on daily updates…",
+                           command=self._show_daily_updates)
+        toolsm.add_command(label="Capture jobs from my browser…",
+                           command=self._toggle_browser_capture)
+        toolsm.add_separator()
+        toolsm.add_command(label="Set up with your AI…",
+                           command=self._show_ai_setup)
+        toolsm.add_command(label="Connect your AI (API key)…",
+                           command=self._show_settings)
+        toolsm.add_command(label="Connect job sources…",
+                           command=self._show_source_keys)
+        toolsm.add_command(label="Seed my area (find local employers)…",
+                           command=self._show_seed_area)
+        toolsm.add_separator()
+        toolsm.add_command(label="Enable stealth fetching (downloads browser)…",
+                           command=self._enable_stealth)
+        self._tools_menu = toolsm
+        return toolsm
 
     def _open_guide(self):
         if getattr(self, "_guide", None) is not None:
@@ -4779,6 +4795,12 @@ class App(tk.Tk):
         theme.apply_theme(self, mode=mode)     # restyle ttk + set active palette
         _sync_palette_aliases()
         self.configure(bg=theme.WINDOW)
+        # Re-tint the native title bar (root + any open dialog) to the new mode.
+        try:
+            from ui import titlebar
+            titlebar.retheme_all(self)
+        except Exception:
+            pass
         try:
             sel = self._nb.index(self._nb.select())
         except (tk.TclError, AttributeError):
@@ -4795,7 +4817,11 @@ class App(tk.Tk):
         switch to pick up the new palette (see _rebuild_topbar / _set_theme)."""
         from ui import topbar
         anchor = getattr(self, "_projbar", None) or getattr(self, "_nb", None)
-        self._topbar = topbar.build_top_bar(self, before=anchor)
+        # Rebuild the Tools menu fresh for this bar so it belongs to a live parent
+        # (and re-reads palette on a theme switch). The menubar keeps its own copy.
+        tools_menu = self._make_tools_menu(self)
+        self._topbar = topbar.build_top_bar(self, before=anchor,
+                                            tools_menu=tools_menu)
 
     def _rebuild_topbar(self):
         if getattr(self, "_topbar", None) is not None:
