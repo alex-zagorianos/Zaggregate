@@ -263,8 +263,19 @@ function renderClipVerdict(v) {
       "err",
     );
     verifyTabBtn.style.display = "block";
+  } else if (v.reason === "unresolvable") {
+    // Not a recognized ATS board — but it may be a live page the app just
+    // doesn't know how to scrape (an unrecognized-but-live board). Offer the
+    // same two-step verify: if the browser sees postings, it's saved as a
+    // browse-only board (S34) instead of dead-ending.
+    setClipStatus(
+      "This isn't a job board the app recognizes. If you can see live jobs on " +
+        "this page, verify it from your browser to save it as a browse-only board:",
+      "err",
+    );
+    verifyTabBtn.style.display = "block";
   } else {
-    // unresolvable / junk / off-board
+    // tos_blocked / junk / off-board — no verify offer (it won't be saved).
     setClipStatus(
       "This page isn't a recognized live job board — open the employer's " +
         "actual careers/ATS page, then try again.",
