@@ -4,6 +4,30 @@
 
 ---
 
+## Session 34 (2026-07-02 evening) — Live-test fixes + onboarding + production + FIRST PUSH ✅
+
+Alex live-tested the extension in his real Chrome (first true end-to-end run) →
+found: extension couldn't even LOAD (manifest referenced never-created icons —
+since v1.5), auto-send double-fired (delta-clear resurrect race), degenerate
+"T"/"C" captures, edisonsmart clip dead-end, plus a test that leaked fixture
+rows into his real project DB. **5 Opus builders**: (1) sentKeys ledger +
+capture sanitation; (2) **Vincere ATS** (`ajax/search-jobs` + Laravel token
+dance; edisonsmart = verified_live 214 jobs) + browser-verified `direct`
+fallback for still-unrecognized boards; (3) onboarding — verified "Get a free
+key →" links everywhere, Tools ▾ top-bar button, numbered extension walkthrough
+in Guide, **DWM-themed title bar** (ui/titlebar.py), typography tokens; (4)
+`build_package.py --production` → production/ folder w/ 18MB onedir exe
+(smoke-launched clean); (5) **semantic 4-test flake root-caused + fixed** (not
+skipped): model2vec from_pretrained phones home even when cached → conftest
+socket guard → swallowed exception latched available()=False; offline-first
+`_resolve_source(local_files_only=True)` + no transient latching. Review fleet:
+0 confirmed / 1 refuted (SSRF dies on BROWSER_ONLY gating); its verifier
+exposed prune_companies deleting browser-only boards → fixed + tested. Suite
+**2258 → 2312 green (0 failed, flake included)**. Pre-push scan clean →
+**PUSHED to origin/master (~225 commits)**. NEEDS ALEX: reload extension
+(again — sentKeys landed after his session), re-clip edisonsmart, relaunch app
+for the new chrome, delete junk tracker rows from the pre-fix test.
+
 ## Session 33 (2026-07-02) — Browser-extension breadth wave: any-site capture + browser-verified boards ✅
 
 Alex: the extension's job is FILLING GAPS the main search misses; "do that. We
