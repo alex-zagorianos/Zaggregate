@@ -162,8 +162,16 @@ FONT_BOLD  = (SANS, 10, "bold")
 FONT_H1    = (SERIF, 19)          # serif headline — the editorial signal
 FONT_H2    = (SANS, 11, "bold")
 FONT_MONO  = (MONO, 10)
+FONT_MONO_SM = (MONO, 9)          # dense mono (Text panes, timelines, code)
 FONT_DISPLAY = (SERIF, 26)        # top-bar wordmark / empty-state hero (used in later phases)
 FONT_NUM   = (MONO, 9)            # right-aligned score / salary numerals in tables (later phases)
+
+# Guide (in-app help) reader typography — a serif h1 (editorial), a sans h2, and a
+# comfortable serif body so the Guide reads like a document, not a settings panel.
+# Centralized here so the Guide follows the same font tokens as the rest of the app
+# (and a future bundled-serif swap flows through automatically).
+FONT_GUIDE_H1 = (SERIF, 17, "bold")
+FONT_GUIDE_H2 = (SANS, 12, "bold")
 
 # Spacing scale (8px base grid) + corner radii, consumed by the chrome retune in
 # later phases. Additive names — nothing references them yet.
