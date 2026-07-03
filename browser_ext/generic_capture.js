@@ -201,10 +201,20 @@ function extractGenericJob() {
   const blocks = document.querySelectorAll(
     'script[type="application/ld+json"]',
   );
+  // Bound the work: a real JobPosting page has 1-3 LD blocks. Cap how many we
+  // parse and skip a pathologically large block so a hostile/broken page with
+  // thousands of (or giant) LD scripts can't stall the capture.
+  const MAX_LD_BLOCKS = 40;
+  const MAX_LD_BYTES = 1_000_000;
+  let scanned = 0;
   for (const s of blocks) {
+    if (scanned >= MAX_LD_BLOCKS) break;
+    scanned++;
+    const text = s.textContent || "";
+    if (text.length > MAX_LD_BYTES) continue;
     let parsed;
     try {
-      parsed = JSON.parse(s.textContent);
+      parsed = JSON.parse(text);
     } catch (_) {
       continue; // tolerate a malformed block; keep scanning the others
     }
