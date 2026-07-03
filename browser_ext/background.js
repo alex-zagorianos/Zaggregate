@@ -38,6 +38,18 @@ async function refreshBadge(count) {
 // ── Auto-send (single-flight) ─────────────────────────────────────────────────
 let autoSendInFlight = false;
 
+// Sent-keys ledger cap. Each entry is a job identity (external_id else url) we've
+// successfully POSTed; content.js filters every `jobs` write against it so a
+// resurrected already-sent copy self-heals instead of being re-sent (the live
+// double-POST race). FIFO-capped so the array can't grow unbounded across a long
+// browsing session — 600 comfortably covers many auto-send blocks of 25 while
+// staying tiny in storage. Identity for a key mirrors the delta-clear + dedup:
+// prefer external_id, fall back to url.
+const SENT_KEYS_CAP = 600;
+function jobKey(j) {
+  return j.external_id || j.url || "";
+}
+
 async function doAutoSend() {
   if (autoSendInFlight) return; // guard against double-fires
   autoSendInFlight = true;
@@ -73,7 +85,7 @@ async function doAutoSend() {
     // remains instead of resetting to 0.
     const sentUrls = new Set(jobs.map((j) => j.url).filter(Boolean));
     const sentIds = new Set(jobs.map((j) => j.external_id).filter(Boolean));
-    const after = await chrome.storage.local.get("jobs");
+    const after = await chrome.storage.local.get(["jobs", "sentKeys"]);
     const remaining = (after.jobs || []).filter(
       (j) =>
         !(
@@ -81,8 +93,26 @@ async function doAutoSend() {
           (j.external_id && sentIds.has(j.external_id))
         ),
     );
+
+    // Record the sent jobs' identity keys in the ledger BEFORE (well, in the SAME
+    // set as) the delta-clear write: content.js filters every `jobs` write against
+    // sentKeys, so even if a racing content-script pass resurrects this batch, its
+    // next write drops them — instead of persisting and letting the next milestone
+    // re-fire. FIFO-cap so the ledger stays bounded over a long session.
+    const priorKeys = after.sentKeys || [];
+    const newKeys = jobs.map(jobKey).filter(Boolean);
+    let sentKeys = [...priorKeys, ...newKeys];
+    if (sentKeys.length > SENT_KEYS_CAP) {
+      sentKeys = sentKeys.slice(sentKeys.length - SENT_KEYS_CAP);
+    }
+
+    // Re-baseline the milestone from what ACTUALLY remains after the clear (safe
+    // now: sentKeys guarantees the sent batch can't be resurrected into a re-send,
+    // so lowering autoSendLastAt won't re-fire it). One combined set: jobs +
+    // ledger + baseline land atomically.
     await chrome.storage.local.set({
       jobs: remaining,
+      sentKeys,
       autoSendLastAt: remaining.length - (remaining.length % 25),
     });
     await refreshBadge(remaining.length);

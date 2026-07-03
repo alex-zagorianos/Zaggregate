@@ -188,6 +188,80 @@ def test_dom_fallback_payload_is_valid_result():
     assert "backend" in r.description
 
 
+# ── S34: degenerate-row rejection + separator-artifact sanitation (_to_job_result)
+# The /harvest path (inbox routing) must reject the same junk /track does, since
+# a card can enter the inbox as well as the tracker. Same live evidence: a 1-char
+# "T" title from a mid-hydration virtualized card, and "…Engineer |" / "Company |"
+# trailing-pipe artifacts from entity-lockup innerText.
+
+def test_to_job_result_rejects_degenerate_one_char_title():
+    """A 1-char title is not a job — _to_job_result returns None so it never
+    reaches the inbox."""
+    assert _to_job_result({
+        "title": "T", "company": "C",
+        "url": "https://careers.acme.com/jobs/deg",
+    }) is None
+
+
+def test_to_job_result_rejects_whitespace_and_separator_only_title():
+    """A title that sanitizes down to <3 chars (all separators/whitespace) is
+    rejected, not filed as a blank-titled row."""
+    assert _to_job_result({
+        "title": " | - ", "url": "https://careers.acme.com/jobs/junk",
+    }) is None
+
+
+def test_to_job_result_sanitizes_trailing_pipe_title_and_company():
+    """Entity-lockup artifacts are stripped before the JobResult is built."""
+    r = _to_job_result({
+        "title": "Control Systems Engineer |",
+        "company": "GrayMatter |",
+        "location": "Cincinnati, OH |",
+        "url": "https://careers.acme.com/jobs/pipe",
+    })
+    assert r is not None
+    assert r.title == "Control Systems Engineer"
+    assert r.company == "GrayMatter"
+    assert r.location == "Cincinnati, OH"
+
+
+def test_to_job_result_collapses_internal_whitespace():
+    """Internal whitespace runs (newlines/tabs leaking from innerText) collapse
+    to single spaces so the tracker/inbox title reads cleanly."""
+    r = _to_job_result({
+        "title": "Senior   Controls\n\tEngineer",
+        "url": "https://careers.acme.com/jobs/ws",
+    })
+    assert r is not None
+    assert r.title == "Senior Controls Engineer"
+
+
+def test_harvest_batch_mix_reports_honest_received_count(client, monkeypatch, tmp_path):
+    """A /harvest batch of clean + degenerate jobs inboxes only the clean ones and
+    the `received` count reflects what was actually kept (not the raw POST size)."""
+    import scrape.browser_receiver as br
+    import tracker.db as db
+
+    monkeypatch.setattr(br.webbrowser, "open", lambda *a, **k: None)
+    monkeypatch.setattr(br, "generate_html_report", lambda *a, **k: None)
+    monkeypatch.setattr(br, "generate_csv_report", lambda *a, **k: None)
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+
+    jobs = [
+        {"title": "Data Engineer", "company": "Acme",
+         "url": "https://careers.acme.com/jobs/1"},          # clean
+        {"title": "T", "company": "C",
+         "url": "https://careers.acme.com/jobs/2"},          # degenerate
+        {"title": "Nurse |", "company": "Mercy |",
+         "url": "https://careers.acme.com/jobs/3"},          # pipe artifacts -> clean
+    ]
+    resp = client.post("/harvest", json={"jobs": jobs}, headers=EXT_ORIGIN)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    # Two clean jobs kept; the "T" row dropped -> honest count, not 3.
+    assert body["received"] == 2
+
+
 # ── /harvest route round-trip with the extension origin ───────────────────────
 
 def test_harvest_route_accepts_page_source_payload(client, monkeypatch, tmp_path):

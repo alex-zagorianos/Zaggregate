@@ -71,6 +71,29 @@ def _safe_http_url(url: str) -> bool:
         return False
 
 
+# A card's innerText leaks the visual separators between entity-lockup spans —
+# LinkedIn's newer layout hands back "Control Systems Engineer |" / "GrayMatter |"
+# (live 2026-07-02). content.js sanitizeField already strips these client-side;
+# we mirror the EXACT cleanup here so a stale extension version can't slip a junk
+# row past the server either (same JS-grabs / Python-owns contract as salary).
+# Strip leading/trailing pipe/dash/bullet/colon/whitespace runs, collapse
+# internal whitespace.
+_EDGE_JUNK_RE = re.compile(r"^[\s|·•\-–—:]+|[\s|·•\-–—:]+$")
+# A title shorter than this after sanitizing is a mid-hydration placeholder
+# (a virtualized card whose title link painted a single glyph — "T"/"C" in the
+# live run), not a real posting — rejected on both /track and /harvest.
+_MIN_TITLE_LEN = 3
+
+
+def _sanitize_field(s) -> str:
+    """Trim separator artifacts and collapse whitespace. Mirror of content.js
+    sanitizeField (kept in lockstep). Tolerant of None/non-str."""
+    if not s:
+        return ""
+    s = re.sub(r"\s+", " ", _EDGE_JUNK_RE.sub("", str(s)))
+    return s.strip()
+
+
 @app.route("/status")
 def status():
     return jsonify({"status": "ok", "port": PORT})
@@ -451,17 +474,22 @@ def track():
         if not isinstance(j, dict):
             failed += 1
             continue
-        title = (j.get("title") or "").strip()
-        company = (j.get("company") or "").strip()
-        # Mirror tracker.app /api/add: title+company are the minimum to file a row.
-        if not title or not company:
+        # Sanitize the same way the extension does (defense in depth: a stale
+        # client version, or a hand-rolled caller, can't slip a "GrayMatter |"
+        # row through). A degenerate title ("T") is rejected, not filed.
+        title = _sanitize_field(j.get("title"))
+        company = _sanitize_field(j.get("company"))
+        # Mirror tracker.app /api/add: title+company are the minimum to file a
+        # row, plus a min-title floor so a mid-hydration 1-char placeholder can't
+        # enter the tracker.
+        if len(title) < _MIN_TITLE_LEN or not company:
             failed += 1
             continue
         try:
             add_job(
                 title=title,
                 company=company,
-                location=(j.get("location") or "").strip(),
+                location=_sanitize_field(j.get("location")),
                 url=(j.get("url") or "").strip(),
                 salary_text=(j.get("salary_text") or "").strip(),
                 source=j.get("source", "browser"),
@@ -479,13 +507,16 @@ def track():
 def _to_job_result(j) -> JobResult | None:
     if not isinstance(j, dict):
         return None
-    title = (j.get("title") or "").strip()
+    # Sanitize + min-title guard, mirroring /track and the extension, so a
+    # degenerate "T" card or a "…Engineer |" artifact can't reach the inbox
+    # regardless of client version.
+    title = _sanitize_field(j.get("title"))
     url   = (j.get("url")   or "").strip()
-    if not title or not url or not _safe_http_url(url):
+    if len(title) < _MIN_TITLE_LEN or not url or not _safe_http_url(url):
         return None
 
-    company  = (j.get("company")  or "").strip()
-    location = (j.get("location") or "").strip()
+    company  = _sanitize_field(j.get("company"))
+    location = _sanitize_field(j.get("location"))
     source   = j.get("source", "browser")
 
     salary_min = j.get("salary_min")

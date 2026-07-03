@@ -104,6 +104,72 @@ def test_track_counts_failures_without_title_or_company(client, track_db):
     assert len(db.get_all("interested")) == 1
 
 
+# ── /track: degenerate-row rejection + separator-artifact sanitation (S34) ─────
+# Live 2026-07-02 tracker rows showed two junk shapes: a 1-char title ("T",
+# company "C") from a virtualized LinkedIn card whose title link hadn't finished
+# hydrating, and trailing-pipe artifacts ("Control Systems Engineer |",
+# "GrayMatter |") from entity-lockup innerText leaking span separators. The server
+# mirrors the extension's sanitizeField so junk can't enter regardless of client
+# version.
+
+def test_track_rejects_degenerate_one_char_title(client, track_db):
+    """A 1-char title (mid-hydration placeholder) is counted failed, not filed."""
+    resp = client.post(
+        "/track",
+        json={"jobs": [_job(title="T", company="C",
+                            url="https://example.com/jobs/deg")]},
+        headers={"Origin": _EXT_ORIGIN},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"added": 0, "failed": 1}
+    assert db.get_all("interested") == []
+
+
+def test_track_sanitizes_trailing_pipe_title_and_company(client, track_db):
+    """"Control Systems Engineer |" / "GrayMatter |" are cleaned before filing —
+    the row lands with the pipe/space artifacts stripped."""
+    resp = client.post(
+        "/track",
+        json={"jobs": [_job(title="Control Systems Engineer |",
+                            company="GrayMatter |",
+                            location="Cincinnati, OH |",
+                            url="https://example.com/jobs/pipe")]},
+        headers={"Origin": _EXT_ORIGIN},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json() == {"added": 1, "failed": 0}
+    rows = db.get_all("interested")
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Control Systems Engineer"
+    assert rows[0]["company"] == "GrayMatter"
+    assert rows[0]["location"] == "Cincinnati, OH"
+
+
+def test_track_batch_mix_adds_only_clean_and_counts_honestly(client, track_db):
+    """A batch of clean + degenerate rows adds only the clean ones and the
+    reported counts match what actually landed (the badge/count must not lie)."""
+    resp = client.post(
+        "/track",
+        json={"jobs": [
+            _job(title="Data Engineer", company="Acme",
+                 url="https://example.com/jobs/1"),           # clean
+            _job(title="T", company="C",
+                 url="https://example.com/jobs/2"),           # degenerate title
+            _job(title="Nurse |", company="Mercy |",
+                 url="https://example.com/jobs/3"),           # pipe artifacts -> clean
+            _job(title="  ", company="Empty",
+                 url="https://example.com/jobs/4"),           # whitespace-only title
+        ]},
+        headers={"Origin": _EXT_ORIGIN},
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body == {"added": 2, "failed": 2}
+    rows = db.get_all("interested")
+    assert {(r["title"], r["company"]) for r in rows} == {
+        ("Data Engineer", "Acme"), ("Nurse", "Mercy")}
+
+
 # ── /track: origin gate + malformed body ──────────────────────────────────────
 
 def test_track_rejects_missing_origin(client, track_db):
