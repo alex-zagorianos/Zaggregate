@@ -66,3 +66,38 @@ def test_threshold_one_immediate(tmp_path):
     assert removed == ["Dead Co"]
     assert "_comment" in json.loads(cj.read_text())          # comment preserved
     assert any(c.get("_example") for c in json.loads(cj.read_text())["companies"])
+
+
+def test_browser_only_boards_are_never_probed_or_pruned(tmp_path):
+    """S34 review follow-up: a browser-only board (walled tenant / clipped
+    direct page) is by definition unreadable server-side — probing it is a
+    guaranteed fail-streak that would DELETE a board the user explicitly
+    browser-verified, and for a clipped direct slug the probe would issue the
+    very server-side fetch we promise never to make. prune_companies must skip
+    them: never probed, never penalized, never removed."""
+    cj, hp = tmp_path / "companies.json", tmp_path / "health.json"
+    cj.write_text(json.dumps({
+        "companies": [
+            {"name": "Walled Co", "ats_type": "workday_cxs", "slug": "walled:1:X",
+             "industries": [], "extra": {"browser_only": True}},
+            {"name": "Clipped Direct", "ats_type": "direct",
+             "slug": "https://careers.walled.example/jobs",
+             "industries": [], "extra": {"browser_only": True}},
+            {"name": "Dead Co", "ats_type": "greenhouse", "slug": "deadco",
+             "industries": []},
+        ],
+    }), encoding="utf-8")
+
+    probed = []
+    def probe(e):
+        probed.append(e.slug)
+        return False                       # everything probed looks dead
+
+    # Even at threshold=1 (immediate removal for real dead boards), the
+    # browser-only entries survive and were never even probed.
+    removed = prune_companies(threshold=1, json_path=cj, health_path=hp,
+                              probe=probe)
+    assert removed == ["Dead Co"]
+    assert probed == ["deadco"]            # only the normal entry was probed
+    left = {c["name"] for c in json.loads(cj.read_text(encoding="utf-8"))["companies"]}
+    assert left == {"Walled Co", "Clipped Direct"}

@@ -80,6 +80,15 @@ def prune_companies(
     for c in companies:
         if "_example" in c or not c.get("name"):
             continue
+        # Browser-only boards (S33/S34) are real, live companies the SERVER
+        # cannot read — a Cloudflare/CSRF-walled tenant or a browser-verified
+        # direct clip. Probing them here is a guaranteed-fail (or, for a
+        # clipped direct slug, a fetch we've promised never to make
+        # server-side), and letting the fail-streak accumulate would DELETE a
+        # board the user explicitly verified from their own browser. Skip:
+        # never probed, never penalized, never pruned.
+        if (c.get("extra") or {}).get("browser_only"):
+            continue
         entry = CompanyEntry(
             name=c["name"], ats_type=c.get("ats_type", "direct"),
             slug=c.get("slug", ""), industries=c.get("industries", []),
