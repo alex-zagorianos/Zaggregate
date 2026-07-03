@@ -30,11 +30,21 @@ Read the newest `docs/handoffs/handoff_*.md` first, then `brain/_index.md`. Hand
 
 Per-session brain docs in `brain/` (plans, reviews, findings). Canonical status: `brain/project-status.md`.
 
+**Brain-update rule (Alex, S34): after EVERY large batch change and at every
+session finalization**, update all three brain surfaces before closing out:
+`brain/project-status.md` (prepend the session entry), `_index.md` (status
+paragraph + Core Documents table + Open list), and a `docs/handoffs/handoff_*`
+narrative. The graphify graph self-maintains via the post-commit watcher hook
+(verify `graphify-out/graph.json` mtime advanced after your last commit — the
+rebuild log is `~/.cache/graphify-rebuild.log`); only run `graphify update .`
+manually if the watcher didn't fire.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
+
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
