@@ -6,13 +6,22 @@
   3. zip                      -> dist/Zaggregate.zip
 
 Run:
-  py build_package.py              # full build
+  py build_package.py              # full build -> the shippable zip
   py build_package.py --no-build   # reassemble from an existing dist/JobProgram
+  py build_package.py --production  # assemble a ready-to-run production/ folder
+                                    #   at the repo root (exe + every runtime file
+                                    #   + browser_ext/ + .env.example + QUICKSTART),
+                                    #   NOT zipped — a reproducible "hand this folder
+                                    #   to a user" artifact. Combine with --no-build
+                                    #   to skip PyInstaller and reuse dist/JobProgram.
 
 Requires `pip install pyinstaller` (pinned in requirements.txt). NO personal data
 is included: data/ carries only the neutral templates from data_templates/ and the
 public starter companies.json. The .exe resolves its data folder at <exe>/data, so
 the seeded data/ is placed next to JobProgram.exe.
+
+The `production/` folder (like dist/, build/) is a BUILD ARTIFACT — gitignored.
+The deliverable is THIS script + app.spec; run one command to regenerate the folder.
 """
 import argparse
 import shutil
@@ -33,6 +42,7 @@ APP_VERSION = config.APP_VERSION
 DIST = ROOT / "dist"
 APP_BUILD = DIST / "JobProgram"     # PyInstaller onedir output
 PKG = DIST / "Zaggregate"             # assembled package
+PROD = ROOT / "production"           # ready-to-run production folder (gitignored)
 TEMPLATES = ROOT / "data_templates"
 
 # data_templates filename -> seeded name in the user's data folder
@@ -139,6 +149,63 @@ echo Starting Zaggregate...
 start "" "JobProgram.exe"
 """
 
+# Top-level "start here" for the production/ folder. Deliberately SHORT: the app's
+# own in-app Guide (Help ▸ Guide) carries the full walkthrough — this just gets a
+# user from "unzipped folder" to "the wizard is open" and points at the extension.
+QUICKSTART_MD = f"""\
+# Zaggregate v{APP_VERSION} — Quick Start
+
+Zaggregate is a personal job search that ranks roles to YOUR preferences using
+your own AI (Claude, ChatGPT, Gemini, Copilot — a free tier is fine). Everything
+stays on this computer.
+
+## 1. Run the app
+
+Open the `JobProgram` folder and double-click **`JobProgram.exe`**.
+
+First time only, Windows may warn about an "unknown publisher" (the app is safe,
+it just isn't code-signed yet). See `JobProgram/FIRST-RUN.txt` for the two safe
+ways past it — or just double-click `JobProgram/launch.bat`.
+
+A short **Setup wizard** opens the first time and asks what jobs you want, where,
+your salary, and your resume. No files to edit. (Change your mind later from
+**Help ▸ Run Setup Wizard**.)
+
+## 2. Get a ranked inbox
+
+Search, then click **"Ask AI to rank these"**, paste the prompt into your own AI
+chat, and paste the reply back with **"Paste AI ranking"**. Optional: add an API
+key under **Tools ▸ "Connect your AI (API key)…"** to rank automatically.
+
+Turn on **Tools ▸ "Turn on daily updates"** to keep the Inbox filling on its own.
+
+## 3. (Optional) Capture jobs from your browser
+
+The **`browser_ext`** folder in here is a Chrome/Edge extension that clips a job
+straight from an employer's careers page into Zaggregate.
+
+1. In the app, open **Tools ▸ Capture** (starts the in-app receiver).
+2. In Chrome/Edge, go to `chrome://extensions`, turn on **Developer mode**, click
+   **Load unpacked**, and pick this `browser_ext` folder.
+3. On any job page, click the Zaggregate toolbar button to send it to your Inbox.
+
+The in-app **Help ▸ Guide** has the full, illustrated walkthrough.
+
+## Your data & upgrades
+
+Your saved jobs, preferences, and resume live in `JobProgram/data` (or, on a
+protected install, under `%LOCALAPPDATA%\\JobProgram`). App and data are kept
+separate, so upgrading to a newer version never loses your data — see
+`README.txt` in this folder for the upgrade steps.
+
+## Advanced: API keys and BYO-AI
+
+`.env.example` lists every optional API key (job sources, your AI backend). You do
+NOT need any of them to start — the app works keyless and via copy/paste. Power
+users can copy it to `.env` next to the exe, or paste keys into the in-app
+**"Connect job sources"** / **"Connect your AI"** dialogs.
+"""
+
 
 def write_first_run_kit(dest_dir):
     """Write the SmartScreen first-run helpers into *dest_dir*.
@@ -163,15 +230,14 @@ def run_pyinstaller() -> None:
                    cwd=ROOT, check=True)
 
 
-def assemble() -> None:
-    print("[2/3] Assembling package...")
-    if not APP_BUILD.exists():
-        sys.exit(f"No build at {APP_BUILD}. Run without --no-build first.")
-    if PKG.exists():
-        shutil.rmtree(PKG)
-    app = PKG / "JobProgram"
-    shutil.copytree(APP_BUILD, app)
+def _populate_app(app) -> dict:
+    """Turn a fresh copy of the PyInstaller onedir build (`app` = the JobProgram/
+    folder holding JobProgram.exe) into a runnable app: seed data/, drop the
+    SmartScreen first-run kit, and bundle browser_ext/ + the claude-code MCP
+    channel next to the exe. Shared by the zip package (assemble) and the
+    production folder (assemble_production) so both stay byte-identical.
 
+    Returns a manifest dict (seeded names, kit files, what bundled) for the log."""
     data = app / "data"                 # config resolves <exe>/data -> here
     data.mkdir(parents=True, exist_ok=True)
     created = []
@@ -215,13 +281,104 @@ def assemble() -> None:
         shutil.copyfile(req_mcp, app / "requirements-mcp.txt")
         req_bundled = True
 
+    return {
+        "seeded": created,
+        "kit": kit,
+        "ext_bundled": ext_bundled,
+        "cc_bundled": cc_bundled,
+        "req_bundled": req_bundled,
+    }
+
+
+def _print_app_manifest(m: dict) -> None:
+    print(f"      version: v{APP_VERSION}")
+    print(f"      data/ seeded: {', '.join(m['seeded'])}")
+    print(f"      first-run kit: {', '.join(m['kit'])}")
+    print(f"      browser_ext bundled: {m['ext_bundled']}")
+    print(f"      claude-code bundled: {m['cc_bundled']}; "
+          f"requirements-mcp: {m['req_bundled']}")
+
+
+def assemble() -> None:
+    print("[2/3] Assembling package...")
+    if not APP_BUILD.exists():
+        sys.exit(f"No build at {APP_BUILD}. Run without --no-build first.")
+    if PKG.exists():
+        shutil.rmtree(PKG)
+    app = PKG / "JobProgram"
+    shutil.copytree(APP_BUILD, app)
+
+    manifest = _populate_app(app)
+
     (PKG / "README.txt").write_text(README, encoding="utf-8")
     (PKG / "CHANGES.txt").write_text(CHANGES, encoding="utf-8")
-    print(f"      version: v{APP_VERSION}")
-    print(f"      data/ seeded: {', '.join(created)}")
-    print(f"      first-run kit: {', '.join(kit)}")
-    print(f"      browser_ext bundled: {ext_bundled}")
-    print(f"      claude-code bundled: {cc_bundled}; requirements-mcp: {req_bundled}")
+    _print_app_manifest(manifest)
+
+
+def production_contents() -> list[str]:
+    """The top-level entries the production/ folder is expected to contain, in a
+    stable order. A single source of truth so the build and its unit test agree on
+    exactly what a user receives. (JobProgram/ is the app; browser_ext/ is lifted
+    to the top level so the 'Load unpacked' target is obvious.)"""
+    return [
+        "JobProgram",       # the app folder: JobProgram.exe + runtime files + data/
+        "browser_ext",      # unpacked Chrome/Edge extension (Load unpacked here)
+        "QUICKSTART.md",    # start-here walkthrough
+        "README.txt",       # full readme (upgrade path, data location)
+        "CHANGES.txt",      # per-release changelog
+        ".env.example",     # optional API keys (BYO-AI / job sources)
+    ]
+
+
+def assemble_production() -> None:
+    """Assemble a ready-to-run `production/` folder at the repo root: the runnable
+    exe + every runtime file + a top-level browser_ext/ + .env.example + QUICKSTART.
+    NOT zipped — this is the 'here is the folder' artifact. Rebuildable, gitignored.
+
+    Layout:
+      production/
+        JobProgram/            JobProgram.exe + PyInstaller runtime + data/ +
+                               FIRST-RUN.txt + launch.bat + browser_ext/ + claude-code/
+        browser_ext/           the extension, lifted to the top level so the user's
+                               'Load unpacked' target is obvious (mirror of the copy
+                               inside JobProgram/, which the in-app Guide points at)
+        QUICKSTART.md          run the exe -> wizard -> load the extension
+        README.txt / CHANGES.txt
+        .env.example           optional keys; the app needs none to start
+    """
+    print("[2/3] Assembling production folder...")
+    if not APP_BUILD.exists():
+        sys.exit(f"No build at {APP_BUILD}. Run without --no-build first.")
+    if PROD.exists():
+        shutil.rmtree(PROD)
+    PROD.mkdir(parents=True)
+    app = PROD / "JobProgram"
+    shutil.copytree(APP_BUILD, app)
+
+    manifest = _populate_app(app)
+
+    # Lift browser_ext/ to the production root so the "Load unpacked" target is
+    # obvious without digging into JobProgram/. (JobProgram/browser_ext also exists
+    # for the in-app Guide's relative pointer — this is the friendly duplicate.)
+    ext_src = ROOT / "browser_ext"
+    if ext_src.exists():
+        shutil.copytree(ext_src, PROD / "browser_ext")
+
+    (PROD / "QUICKSTART.md").write_text(QUICKSTART_MD, encoding="utf-8")
+    (PROD / "README.txt").write_text(README, encoding="utf-8")
+    (PROD / "CHANGES.txt").write_text(CHANGES, encoding="utf-8")
+
+    # Optional keys, for power users. The app starts with none (keyless + copy/paste),
+    # so this is reference material, not a required step.
+    env_example = ROOT / ".env.example"
+    env_bundled = False
+    if env_example.exists():
+        shutil.copyfile(env_example, PROD / ".env.example")
+        env_bundled = True
+
+    _print_app_manifest(manifest)
+    print(f"      .env.example bundled: {env_bundled}")
+    print(f"      production/ -> {PROD}")
 
 
 def zip_name() -> str:
@@ -268,11 +425,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Build the Zaggregate distributable.")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip PyInstaller; reassemble from an existing dist/JobProgram.")
+    ap.add_argument("--production", action="store_true",
+                    help="Assemble a ready-to-run production/ folder at the repo "
+                         "root (exe + runtime files + browser_ext + .env.example + "
+                         "QUICKSTART) instead of the shippable zip. Gitignored artifact.")
     args = ap.parse_args()
     if not args.no_build:
         run_pyinstaller()
-    assemble()
-    zip_package()
+    if args.production:
+        assemble_production()
+    else:
+        assemble()
+        zip_package()
 
 
 if __name__ == "__main__":

@@ -31,6 +31,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+# The ready-to-run production/ folder assembled by `build_package.py --production`
+# (exe + runtime files + extension). Like dist/, it is a BUILD ARTIFACT — the
+# script + app.spec are the reproducibility anchor, not the folder.
+production/
 *.spec
 !app.spec
 .pytest_cache/
