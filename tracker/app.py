@@ -1,7 +1,21 @@
 """
-Job Application Tracker
-Run: py -m tracker.app
-Open: http://localhost:5001
+Job Application Tracker  — DEPRECATED (retired S36, 2026-07-04)
+
+This standalone Flask server on :5001 is DEPRECATED and no longer part of the
+running product. Its purpose — accepting tracked jobs from the browser extension —
+was folded into the browser receiver on :5002 (POST /track), and the extension no
+longer falls back to :5001 (browser_ext/popup.js). The web UI (py -m webui) + the
+desktop GUI are the tracker surfaces now.
+
+The file is kept (not deleted) so any external script still importing tracker.db
+helpers or a friend running the old command keeps working; actual removal is a
+follow-up once nothing references it. Do NOT wire this into new code — use the
+receiver (:5002) or the webui /api/applications routes instead.
+
+WARNING: importing this module calls init_db() at import time (a project-touching
+side effect) — never import it from the web/webui process.
+
+Run (legacy only): py -m tracker.app   ·   Open: http://localhost:5001
 """
 import sys
 from datetime import date

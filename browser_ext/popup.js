@@ -1,5 +1,4 @@
 const RECEIVER_URL = "http://localhost:5002";
-const TRACKER_URL = "http://localhost:5001";
 
 const countEl = document.getElementById("count");
 const detailLineEl = document.getElementById("detail-line");
@@ -147,59 +146,25 @@ sendBtn.addEventListener("click", async () => {
   }
 });
 
-// Track all collected jobs as "interested". Single-port story: try the
-// receiver's /track first (the embedded receiver a general user already has ON),
-// and only fall back to the legacy per-job 5001 tracker.app loop if the receiver
-// isn't reachable — so nothing regresses for anyone still running tracker.app.
+// Track all collected jobs as "interested" via the receiver's /track endpoint
+// (port 5002). Single-server story (S36): the legacy standalone tracker.app on
+// :5001 was retired and its routes folded into the receiver, so there is no
+// longer a fallback path — the embedded receiver every user runs (Zaggregate →
+// Tools → Capture jobs from my browser…) is the one and only tracker sink.
 async function trackViaReceiver(jobs) {
-  // Returns {added, failed} on success, or null if the receiver is unreachable
-  // (so the caller can fall back). A non-OK HTTP response is a real error, not
-  // "unreachable", so it does NOT trigger the fallback.
-  try {
-    const resp = await fetch(`${RECEIVER_URL}/track`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobs }),
-    });
-    if (!resp.ok) {
-      const data = await resp.json().catch(() => ({}));
-      throw new Error(data.error || resp.statusText);
-    }
-    return await resp.json();
-  } catch (e) {
-    // Connection failure (receiver down) -> signal fallback. Distinguish a
-    // network error (TypeError from fetch) from an HTTP error we threw above.
-    if (e instanceof TypeError) return null;
-    throw e;
+  // Returns {added, failed, skipped?} on success. A connection failure (receiver
+  // not running) throws a TypeError, surfaced to the user as the "turn on
+  // capture" hint; a non-OK HTTP response is a real error with its message.
+  const resp = await fetch(`${RECEIVER_URL}/track`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobs }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({}));
+    throw new Error(data.error || resp.statusText);
   }
-}
-
-async function trackViaTrackerApp(jobs) {
-  // Legacy path: per-job POST to tracker.app on port 5001.
-  let added = 0;
-  let failed = 0;
-  for (const job of jobs) {
-    try {
-      const resp = await fetch(`${TRACKER_URL}/api/add`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: job.title,
-          company: job.company,
-          location: job.location || "",
-          url: job.url || "",
-          salary_text: job.salary_text || "",
-          source: job.source || "browser",
-          status: "interested",
-        }),
-      });
-      if (resp.ok) added++;
-      else failed++;
-    } catch (_) {
-      failed++;
-    }
-  }
-  return { added, failed };
+  return await resp.json();
 }
 
 trackBtn.addEventListener("click", async () => {
@@ -216,12 +181,14 @@ trackBtn.addEventListener("click", async () => {
   let result;
   try {
     result = await trackViaReceiver(jobs);
-    if (result === null) {
-      // Receiver down — fall back to the standalone tracker.app loop.
-      result = await trackViaTrackerApp(jobs);
-    }
   } catch (e) {
-    setStatus(`Error adding to tracker: ${e.message}`, "err");
+    // A TypeError means the receiver isn't running (no fallback exists now that
+    // tracker.app is retired) — nudge the user to turn capture on.
+    const hint =
+      e instanceof TypeError
+        ? "Turn on Zaggregate → Tools → Capture jobs from my browser…"
+        : e.message;
+    setStatus(`Error adding to tracker: ${hint}`, "err");
     trackBtn.disabled = false;
     return;
   }
@@ -247,7 +214,7 @@ trackBtn.addEventListener("click", async () => {
   } else {
     setStatus(
       "Could not add to tracker. Turn on Zaggregate → Tools → " +
-        "Capture jobs from my browser… (or run: py -m tracker.app)",
+        "Capture jobs from my browser…",
       "err",
     );
     trackBtn.disabled = false;
