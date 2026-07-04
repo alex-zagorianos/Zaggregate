@@ -1336,11 +1336,29 @@ def inbox_all(order: str = "roundrobin") -> list[dict]:
     else:
         sql = f"SELECT * FROM inbox ORDER BY {rank} DESC, {recency}"
     with get_conn() as conn:
+        if not _inbox_table_ready(conn):
+            return []  # fresh data dir, no project/daily-run yet → nothing to triage
         rows = conn.execute(sql).fetchall()
     out = [dict(r) for r in rows]
     for r in out:
         r.pop("rk", None)
     return out
+
+
+def _inbox_table_ready(conn) -> bool:
+    """True if THIS db has the ``inbox`` table. get_conn() does NOT run schema
+    init (that's init_db()'s job, gated on a project/daily-run), so a brand-new
+    data dir with no active project has a connectable DB but no ``inbox`` table.
+    The inbox READ functions below check this first and return an empty result
+    instead of letting ``sqlite3.OperationalError: no such table: inbox`` escape
+    to a caller (e.g. the web UI's Top Picks / inbox routes, which a first-run
+    user can hit before ever creating a project). Mirrors the pre-migration
+    tolerance already in url_is_tracked(). A cheap sqlite_master lookup, correct
+    per-db (never shares process-global state with another connection)."""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='inbox'"
+    ).fetchone()
+    return row is not None
 
 
 # ── Full-text search over the inbox (STORAGE item 2) ───────────────────────────
@@ -1386,6 +1404,8 @@ def inbox_search(query: str) -> list[dict]:
     if not query:
         return []
     with get_conn() as conn:
+        if not _inbox_table_ready(conn):
+            return []  # fresh data dir, no project/daily-run yet
         if _inbox_fts_ready(conn):
             try:
                 rows = conn.execute(
@@ -1543,6 +1563,8 @@ def inbox_undo_last_rerank(scope: str) -> int:
 
 def inbox_count() -> int:
     with get_conn() as conn:
+        if not _inbox_table_ready(conn):
+            return 0  # fresh data dir, no project/daily-run yet
         return conn.execute("SELECT COUNT(*) FROM inbox").fetchone()[0]
 
 
@@ -1552,6 +1574,8 @@ def inbox_company_counts() -> dict[str, int]:
     just this run's batch). Empty company names are ignored."""
     counts: dict[str, int] = {}
     with get_conn() as conn:
+        if not _inbox_table_ready(conn):
+            return counts  # fresh data dir, no project/daily-run yet
         for r in conn.execute("SELECT company FROM inbox"):
             key = (r["company"] or "").lower().strip()
             if key:
@@ -1566,6 +1590,8 @@ def inbox_company_display_names() -> dict[str, str]:
     which lowercases its keys."""
     names: dict[str, str] = {}
     with get_conn() as conn:
+        if not _inbox_table_ready(conn):
+            return names  # fresh data dir, no project/daily-run yet
         for r in conn.execute("SELECT company FROM inbox"):
             raw = (r["company"] or "").strip()
             key = raw.lower()

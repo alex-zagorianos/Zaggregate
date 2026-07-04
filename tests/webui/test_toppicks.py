@@ -26,6 +26,19 @@ def test_toppicks_empty_when_unranked(client, tmp_db):
     assert body == {"ok": True, "rows": []}
 
 
+def test_toppicks_ok_envelope_on_unbootstrapped_db(client, tmp_path, monkeypatch):
+    """D5.3 regression: a first-run user hitting Top Picks before any project /
+    daily-run exists gets the {ok} envelope, not a raw 500. DB_PATH points at a
+    fresh path where init_db() has NOT run, so the ``inbox`` table is absent."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+    r = client.get("/api/toppicks")
+    assert r.status_code == 200
+    assert r.headers.get("Content-Type", "").startswith("application/json")
+    assert r.get_json() == {"ok": True, "rows": []}
+    # /api/inbox reaches the same read path (inbox_all/inbox_count) → also 200.
+    assert client.get("/api/inbox").get_json()["ok"] is True
+
+
 def test_toppicks_rows_shape(client, tmp_db):
     _seed_ranked(3)
     body = client.get("/api/toppicks").get_json()

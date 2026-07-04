@@ -67,3 +67,26 @@ def test_top_picks_latest_batch_supersedes(tmp_db):
 def test_top_picks_empty_when_unranked(tmp_db):
     db.inbox_add_many([_job("https://x/1")])
     assert service.top_picks() == []
+
+
+@pytest.fixture
+def unbootstrapped_db(tmp_path, monkeypatch):
+    """Point DB_PATH at a fresh path but do NOT run init_db(), so the ``inbox``
+    table does not exist — the exact state a brand-new data dir is in before any
+    project/daily-run creates the schema (get_conn does not init). Regression
+    guard for D5.3: inbox reads must degrade to empty, never raise
+    OperationalError('no such table: inbox')."""
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "tracker.db")
+    return db.DB_PATH
+
+
+def test_inbox_reads_tolerate_missing_table(unbootstrapped_db):
+    # None of these may raise on a fresh, un-migrated data dir.
+    assert db.inbox_all() == []
+    assert db.inbox_all(order="score") == []
+    assert db.inbox_count() == 0
+    assert db.inbox_company_counts() == {}
+    assert db.inbox_company_display_names() == {}
+    assert db.inbox_search("engineer") == []
+    assert service.top_picks() == []
+    assert service.top_picks(0) == []
