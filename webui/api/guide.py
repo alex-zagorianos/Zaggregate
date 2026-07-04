@@ -96,7 +96,12 @@ def backup_restore():
     ZIP-SLIP SAFE: extraction goes through ``help_core.safe_extract_zip`` which
     validates every member's resolved path stays inside the data root and refuses
     symlink members — a hostile ``../../etc/x`` / absolute-path / symlink member
-    raises before any write, surfaced here as a 400 (nothing extracted). Returns
+    raises before any write, surfaced here as a 400 (nothing extracted).
+
+    JOB-SAFE: an in-flight exclusive engine job (daily run / search / build-list /
+    seed-metro) is reading/writing the same data folder, so a restore mid-run is
+    refused with a 409 ``{ok:false, error:"another run is in progress", job_id}``
+    (nothing extracted) rather than clobbering the running job's files. Returns
     ``{ok, members:int, rollback:str}`` on success."""
     from ui.help_core import safe_extract_zip, make_backup, UnsafeZipEntry, backups_dir
 
@@ -109,6 +114,24 @@ def backup_restore():
     upload = request.files.get("file")
     if upload is None or not (upload.filename or "").strip():
         return jsonify({"ok": False, "error": "no backup file uploaded"}), 400
+
+    # Serialize against in-flight ENGINE jobs. A restore extracts over the entire
+    # data folder (tracker.db / companies.json / config.json), so running it while
+    # a daily-run / search / build-list / seed-metro job is mid-flight on a
+    # background thread would overwrite files that job is actively reading/writing
+    # — a corrupted or half-restored data folder. Restore is not itself a
+    # JobRunner job, so it can't take the exclusive mutex; instead it refuses with
+    # a 409 (same shape as the engine jobs' "another run is in progress") when any
+    # exclusive engine job holds the mutex. The user retries once the run finishes.
+    from ..jobs import runner
+    running = runner.exclusive_active()
+    if running is not None:
+        return jsonify({
+            "ok": False,
+            "error": ("another run is in progress — wait for it to finish before "
+                      "restoring (restore overwrites the whole data folder)"),
+            "job_id": running,
+        }), 409
 
     import config
     dest = Path(config.USER_DATA_DIR)

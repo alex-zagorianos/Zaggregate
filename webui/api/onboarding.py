@@ -96,13 +96,29 @@ def onboarding_apply():
     identical to the tk wizard's ``apply()`` (both funnel through the same Tk-free
     core, so the on-disk contract is byte-identical). Pins the active project
     across the writes (S27-safe) so a background project switch can't misroute
-    them. Body: ``{roles, location, remote_ok, salary_min, industry, level, about,
-    resume_text?}``. Returns ``{ok, onboarded:true, resume_restructured:bool}``.
+    them. When the industry box is left blank it is auto-derived from the roles
+    first (``_derive_industry`` — the exact step the tk wizard runs in _finish),
+    so the web and tk paths converge on the same field. Body: ``{roles, location,
+    remote_ok, salary_min, industry, level, about, resume_text?}``. Returns
+    ``{ok, onboarded:true, resume_restructured:bool, industry_detected:str}``
+    (``industry_detected`` is the auto-derived field, or '' when none — lets the
+    UI echo the tk "Field detected" notice).
     """
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify({"ok": False, "error": "expected a JSON object body"}), 400
     answers = _answers_from_body(data)
+
+    # Derive the field from the roles when the optional industry box is blank —
+    # the SAME step the tk wizard's _finish() runs before apply() (setup_wizard.py
+    # L628), so a non-engineering user who lists roles but leaves industry empty
+    # gets the same non-generic O*NET routing on the web path as in Tk instead of
+    # being silently routed as an engineer. No-op when a field is already set or no
+    # role resolves (keeps the eng path byte-identical).
+    detected = wizard._derive_industry(answers.get("industry", ""),
+                                       answers.get("roles", []))
+    if detected:
+        answers["industry"] = detected
 
     slug = workspace.active_slug()
     workspace.pin_active(slug)  # pin BEFORE the file writes (S27-safe)
@@ -111,7 +127,8 @@ def onboarding_apply():
     finally:
         workspace.unpin_active()
     return jsonify({"ok": True, "onboarded": True,
-                    "resume_restructured": bool(info.get("resume_restructured"))})
+                    "resume_restructured": bool(info.get("resume_restructured")),
+                    "industry_detected": detected or ""})
 
 
 @onboarding_bp.post("/onboarding/resume-structure")

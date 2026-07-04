@@ -249,6 +249,24 @@ class JobRunner:
         t.start()
         return job_id
 
+    def exclusive_active(self) -> Optional[str]:
+        """The id of the in-flight EXCLUSIVE engine job (daily run / search /
+        build-list / seed-metro), or None when no exclusive engine job is running.
+        Lets a NON-job data-folder mutation (e.g. backup/restore, which extracts
+        over ``config.USER_DATA_DIR`` and is not itself a JobRunner job) refuse to
+        run while an engine job is reading/writing that same folder — the same
+        serialization guarantee the exclusive mutex gives engine jobs against each
+        other. A stale holder id (finished without releasing — shouldn't happen)
+        reads as None."""
+        with self._lock:
+            holder_id = self._exclusive_active
+            if holder_id is None:
+                return None
+            holder = self._jobs.get(holder_id)
+            if holder is not None and holder.status == "running":
+                return holder_id
+            return None
+
     def cancel(self, job_id: str) -> bool:
         """Signal cooperative cancellation for a running job. Returns True if the
         job exists and was running (the fn must poll ``handle.cancelled``)."""

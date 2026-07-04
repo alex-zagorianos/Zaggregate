@@ -132,6 +132,59 @@ def test_restore_happy_overwrites_and_snapshots(client, tmp_data):
     assert Path(body["rollback"]).name.startswith("pre-restore-")
 
 
+# ── JOB-SAFE: restore must not clobber an in-flight engine job ────────────────
+def test_restore_refused_while_exclusive_job_running(client, tmp_data):
+    # A restore extracts over the whole data folder; running it while a daily-run/
+    # search/build-list/seed-metro exclusive engine job is mid-flight would
+    # overwrite tracker.db / companies.json out from under it. The restore must
+    # refuse with a 409 (same shape as the engine jobs) and write NOTHING.
+    import threading
+    from webui.jobs import runner
+
+    release = threading.Event()
+    started = threading.Event()
+
+    def _blocking(handle):
+        started.set()
+        release.wait(timeout=10)      # hold the exclusive mutex until released
+        return {"held": True}
+
+    job_id = runner.start("build_list", "slug-x", _blocking, exclusive=True)
+    try:
+        assert started.wait(timeout=5)          # the job is running + holds the mutex
+        zbytes = _make_zip({"preferences.md": b"SHOULD_NOT_LAND"})
+        resp = client.post(
+            "/api/backup/restore",
+            data={"file": (io.BytesIO(zbytes), "backup.zip"), "confirm": "true"},
+            headers={"Origin": _LOOPBACK},
+            content_type="multipart/form-data")
+        assert resp.status_code == 409
+        body = resp.get_json()
+        assert body["ok"] is False
+        assert body["job_id"] == job_id
+        assert "another run is in progress" in body["error"]
+        # CRITICAL: the in-flight job's data folder was NOT touched.
+        assert (tmp_data / "preferences.md").read_text() == "my profile"
+    finally:
+        release.set()
+
+    # Once the exclusive job releases, a restore is allowed again.
+    import time
+    for _ in range(50):
+        if runner.exclusive_active() is None:
+            break
+        time.sleep(0.05)
+    assert runner.exclusive_active() is None
+    zbytes = _make_zip({"preferences.md": b"NOW_ALLOWED"})
+    resp = client.post(
+        "/api/backup/restore",
+        data={"file": (io.BytesIO(zbytes), "backup.zip"), "confirm": "true"},
+        headers={"Origin": _LOOPBACK},
+        content_type="multipart/form-data")
+    assert resp.status_code == 200
+    assert (tmp_data / "preferences.md").read_text() == "NOW_ALLOWED"
+
+
 # ── ZIP-SLIP DEFENSE (security-critical) ──────────────────────────────────────
 def _hostile_zip(member_name: str, payload: bytes = b"pwned") -> bytes:
     """A zip carrying a single member with a traversal/absolute name."""

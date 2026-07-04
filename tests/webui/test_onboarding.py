@@ -71,7 +71,8 @@ def test_onboarding_apply_writes_golden_contract(client, isolated):
                        headers={"Origin": _LOOPBACK})
     assert resp.status_code == 200
     assert resp.get_json() == {"ok": True, "onboarded": True,
-                               "resume_restructured": False}
+                               "resume_restructured": False,
+                               "industry_detected": ""}
 
     # GOLDEN: what the tk wizard's pure core would produce from the same answers.
     golden_answers = {
@@ -104,6 +105,54 @@ def test_onboarding_apply_writes_golden_contract(client, isolated):
 
     # Marker written.
     assert wizard.is_onboarded() is True
+
+
+def test_onboarding_apply_blank_industry_derived_like_tk(client, isolated):
+    # The divergence guard: a web user who lists roles but leaves the industry box
+    # blank must get the SAME auto-derived non-generic field the tk wizard's
+    # _finish() produces (setup_wizard.py L628), instead of silent generic/eng
+    # routing. Golden = the wizard core's own _derive_industry on identical input.
+    golden_industry = wizard._derive_industry("", ["Registered Nurse"])
+    assert golden_industry and "nurse" in golden_industry.lower()  # sanity
+
+    resp = client.post("/api/onboarding",
+                       json={"roles": "Registered Nurse", "location": "Boston, MA",
+                             "industry": ""},              # blank, as the common case
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    # The derived field is echoed for the "Field detected" UI notice...
+    assert body["industry_detected"] == golden_industry
+    # ...AND persisted to the search config so industry-specific source routing
+    # (Muse/Jobicy) + registry tuning turn on — parity with the tk path.
+    cfg = workspace.load_config()
+    assert cfg["industry"] == golden_industry
+    assert cfg["industry"].lower() != "generic"
+
+
+def test_onboarding_apply_explicit_industry_not_overridden(client, isolated):
+    # An explicitly-typed field is never clobbered by derivation (byte-identical to
+    # the tk _derive_industry("<set>", ...) -> "" short-circuit).
+    resp = client.post("/api/onboarding",
+                       json={"roles": "Registered Nurse", "location": "Boston, MA",
+                             "industry": "health informatics"},
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    assert resp.get_json()["industry_detected"] == ""
+    assert workspace.load_config()["industry"] == "health informatics"
+
+
+def test_onboarding_apply_eng_role_blank_industry_stays_generic(client, isolated):
+    # Alex's eng path must stay byte-identical: an engineering role with a blank
+    # field must NOT get a field prefilled (mirrors test_derive_industry_eng_role).
+    resp = client.post("/api/onboarding",
+                       json={"roles": "Controls Engineer", "location": "Toledo, OH",
+                             "industry": ""},
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    assert resp.get_json()["industry_detected"] == ""
+    # No industry key was written (blank stays blank -> generic full reach).
+    assert not workspace.load_config().get("industry")
 
 
 def test_onboarding_apply_salary_freetext_parsed(client, isolated):
