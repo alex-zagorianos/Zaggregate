@@ -88,3 +88,11 @@ preferences.py` should show ZERO scoring-logic lines; rescore levers intact).
 Execution: parallel agents per section, findings consolidated, fix pass for
 anything actionable, re-verify. Deliverable: results appended to this doc +
 fixes committed.
+
+---
+
+## RESULTS (executed 2026-07-04 overnight, agent fleet)
+
+- D1+D7: 8/8 PASS. D2: parity CLEAN — `git diff d25247d..HEAD -- match/ ranker.py preferences.py` = ZERO (the 6be40b9-baseline hits were pre-migration S35/S35b commits); rescore lever harness + fresh 25-job three-revision worktree comparison all green. D3: 7 PASS + route-audit meta-test landed (every mutating /api route provably origin-gated). D4+D6: 16/16 PASS (2k-row /api/inbox timings within budget; bundle offline-clean; static fresh). D5 frozen: packaging sound (Phase 3-5 modules bundled, _MEIPASS static OK, masked keys OK frozen).
+- ★ ONE REAL DEFECT (D5.3): /api/toppicks + /api/inbox returned raw 500 on a fresh install with no project (`no such table: inbox` — get_conn never inits schema). FIXED `d999e3d`: inbox read paths return empty instead of raising (touches tracker/db.py read path ONLY — flagged for Alex); regression tests at db + HTTP levels.
+- Final gate: **2885 passed / 0 failed** Python; vitest 151/151; tsc clean; vite build clean (one pre-existing 781kB chunk-size advisory).
