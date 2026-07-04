@@ -74,6 +74,15 @@ _STOPLIST = frozenset({
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
     "sunday", "january", "february", "march", "april", "may", "june", "july",
     "august", "september", "october", "november", "december",
+    # Rubric/grade-scale boilerplate from long-form government/clinical postings
+    # (S36 scenario MINOR-5: a VA JD surfaced "ii"/"education"/"practice"/
+    # "dimension" as missing SKILLS). Structural section words + the common
+    # grade-level roman numerals. "iv" is deliberately KEPT OUT — it is
+    # ambiguous with intravenous (a real nursing skill); inclusion over
+    # precision applies to the gap list too.
+    "education", "practice", "practices", "dimension", "dimensions",
+    "scope", "criteria", "criterion", "grade", "grades", "level", "levels",
+    "ii", "iii", "vii", "viii",
 })
 
 _MIN_LEN = 2

@@ -123,3 +123,29 @@ def test_return_shape():
     assert set(out.keys()) == {"matched", "missing"}
     assert isinstance(out["matched"], list)
     assert isinstance(out["missing"], list)
+
+
+def test_rubric_boilerplate_not_reported_as_missing_skills():
+    # MINOR-5 (S36 scenario findings): federal grade-scale/rubric boilerplate
+    # ("Nurse II", "Dimension: Education", "Scope of Practice") must not
+    # surface in the gap list; genuine clinical/tech terms still do.
+    jd = (
+        "Nurse Practitioner II at the VA. Dimension: Education. "
+        "Scope of Practice is defined per Grade II and Grade III criteria. "
+        "Dimension: Practice. Experience with Epic and BLS certification "
+        "required. Level III candidates preferred."
+    )
+    out = skillgap.skill_gap(jd, skill_terms=frozenset())
+    for noise in ("ii", "iii", "education", "practice", "dimension",
+                  "scope", "grade", "level", "criteria"):
+        assert noise not in out["missing"], noise
+    assert "epic" in out["missing"]
+    assert "bls" in out["missing"]
+
+
+def test_iv_kept_out_of_stoplist_for_intravenous():
+    # "IV" is ambiguous with intravenous — a real nursing skill — so it must
+    # NOT be swallowed by the roman-numeral stoplist (inclusion over precision).
+    out = skillgap.skill_gap("IV therapy experience required.",
+                             skill_terms=frozenset())
+    assert "iv" in out["missing"]
