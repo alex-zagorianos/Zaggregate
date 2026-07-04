@@ -151,8 +151,13 @@ def test_confidence_shrinkage_pulls_title_only_toward_midpoint():
 
     # More data present -> less damping (the 3/5 job keeps more of its spread than
     # the 2/5 job would at the same composite). Adding a recency date lifts conf to
-    # 3/5, and the on-target title's score rises accordingly.
-    dated, nd = scorer.score_job(_job("Controls Engineer", created="2026-06-30"),
+    # 3/5, and the on-target title's score rises accordingly. The date must be
+    # RELATIVE to today: this asserts a recency-VALUE ordering, and a hardcoded
+    # date rots as wall-clock advances (it flipped 91->90 on 2026-07-03 when the
+    # decay crossed an integer-rounding boundary — S35).
+    from datetime import date, timedelta
+    fresh = (date.today() - timedelta(days=1)).isoformat()
+    dated, nd = scorer.score_job(_job("Controls Engineer", created=fresh),
                                  keywords=KW, location=LOC)
     assert "conf 3/5" in nd
     assert dated >= poor
