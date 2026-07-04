@@ -2,9 +2,28 @@ from pathlib import Path
 
 import requests
 
-from config import BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_URL, CAREERS_REQUEST_TIMEOUT
+from config import (
+    BRAVE_SEARCH_API_KEY, BRAVE_SEARCH_URL, CAREERS_REQUEST_TIMEOUT,
+    DISCOVERY_CACHE_TTL_HOURS,
+)
 from scrape.cache_helpers import read_cache, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
+
+# Process-local, run-scoped memo of (ats_label, keyword) -> the Brave payload
+# already fetched/read this run. discover_companies() is called once per
+# keyword by CareersClient.search_and_parse, so this only pays off when a
+# keyword repeats within the same process (an identical --add-keyword, a
+# re-run search, or a future caller that queries the same keyword twice) --
+# but it's a free, correctness-safe win either way: same cache-hit data,
+# just without the repeat disk read (S35 #25). NOT persisted across runs;
+# the on-disk cache (DISCOVERY_CACHE_TTL_HOURS) is what saves the network call.
+_RUN_QUERY_MEMO: dict[tuple[str, str], dict | None] = {}
+
+
+def reset_run_memo() -> None:
+    """Clear the in-run query memo. Call at the start of a run so a stale
+    result from a previous in-process run/test isn't reused."""
+    _RUN_QUERY_MEMO.clear()
 
 # Public-board host for each ATS we can discover via Brave site: search. The
 # key is the brave-cache label; the value is the host passed to `site:`. Ashby,
@@ -46,19 +65,34 @@ def discover_companies(
 
     for ats_label, site in _ATS_SITES.items():
         query = f'site:{site} "{keyword}"'
+        memo_key = (ats_label, keyword)
         cache_file = cache_dir / f"brave_{ats_label}_{slug_safe(keyword)}.json"
 
-        if cache_enabled:
-            data = read_cache(cache_file)
+        # In-run memo first: the SAME (ats_site, keyword) pair queried twice in
+        # one process (e.g. an --add-keyword duplicate, a re-run search) reuses
+        # whatever this run already fetched/read, with zero extra disk I/O and
+        # no possibility of a different answer mid-run (S35 #25).
+        if memo_key in _RUN_QUERY_MEMO:
+            data = _RUN_QUERY_MEMO[memo_key]
         else:
-            data = None
+            if cache_enabled:
+                # Discovery gets its own, much longer TTL than the generic
+                # CACHE_TTL_HOURS (24h): new boards appearing on a fixed ATS
+                # site for a fixed keyword don't change hour-to-hour, so a
+                # 24h TTL just re-fired a live Brave call on essentially every
+                # scheduled daily run (S35 #25).
+                data = read_cache(cache_file, ttl_hours=DISCOVERY_CACHE_TTL_HOURS)
+            else:
+                data = None
 
-        if data is None:
-            data = _brave_fetch(query)
-            if data and cache_enabled:
-                write_cache(cache_file, data)
-            if not data:
-                continue
+            if data is None:
+                data = _brave_fetch(query)
+                if data and cache_enabled:
+                    write_cache(cache_file, data)
+            _RUN_QUERY_MEMO[memo_key] = data
+
+        if not data:
+            continue
 
         for ats_type, slug, name in _extract_entries(data, site):
             if slug not in known_slugs:

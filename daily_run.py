@@ -234,6 +234,11 @@ def main():
     # pass (S32/L7) — presentation only, no scraping change.
     import applog
     applog.reset_run_warnings()
+    # Reset discovery's in-run query memo (S35 #25) so a stale result from a
+    # previous in-process run (tests, an embedding host, a prior GUI search)
+    # isn't reused for a DIFFERENT run's (ats_site, keyword) pair.
+    from scrape.discoverer import reset_run_memo
+    reset_run_memo()
 
     from search.cli import build_clients, load_user_config
     from search.search_engine import SearchEngine

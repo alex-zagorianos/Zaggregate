@@ -335,6 +335,13 @@ FAILED_TTL_TRANSIENT_HOURS = 1
 # never evicted -> grew to hundreds of MB. A GC pass at the end of a daily run
 # deletes entries older than this; anything still needed is re-fetched cheaply.
 CACHE_GC_MAX_AGE_HOURS = 168
+# Brave company-discovery (scrape/discoverer.py) used the generic 24h
+# CACHE_TTL_HOURS, which sits right at daily_run's ~24h schedule boundary --
+# in practice the cache was stale by the next scheduled run and re-fired a
+# LIVE Brave API call for every (ats_site, keyword) pair, every day (S35 #25).
+# New boards appearing on Greenhouse/Lever/etc. for a fixed keyword do not
+# change hour-to-hour, so discovery gets its own, much longer TTL: 7 days.
+DISCOVERY_CACHE_TTL_HOURS = 168
 
 # Flask server ports
 PORT_RESUME   = 5000
