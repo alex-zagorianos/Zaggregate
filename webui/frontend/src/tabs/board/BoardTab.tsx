@@ -439,7 +439,7 @@ function MoveMenu({
           variant="ghost"
           size="icon"
           aria-label={`Move ${card.company}`}
-          className="text-muted-foreground hover:text-primary size-7 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+          className="text-muted-foreground hover:text-primary size-7 shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
         >
           <MoveRight className="size-4" />
         </Button>

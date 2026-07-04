@@ -40,8 +40,11 @@ import {
   shownSummary,
 } from "@/lib/window-rows";
 import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
+import { postedLabel as postedLabelFromDate } from "@/lib/relative-time";
 import { ScoreChip } from "@/components/score-chip";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { ShortcutHint } from "@/components/kbd";
+import { TriageActions } from "@/components/row-actions";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,11 +54,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import { InboxFilterBar } from "./InboxFilterBar";
@@ -311,8 +309,15 @@ export function InboxTab() {
             Inbox
           </h1>
           <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-            Every match, ready to triage. <Kbd>t</Kbd> track, <Kbd>d</Kbd>{" "}
-            dismiss, <Kbd>o</Kbd> open on the focused row — or use the buttons.
+            <ShortcutHint
+              lead="Every match, ready to triage."
+              actions={[
+                { key: "t", label: "track" },
+                { key: "d", label: "dismiss" },
+                { key: "o", label: "open" },
+              ]}
+              tail="on the focused row — or use the buttons."
+            />
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -793,69 +798,32 @@ function RowActions({
   onOpen: (r: InboxRow) => void;
 }) {
   return (
-    <div
-      className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <IconAction
-        label="Track (t)"
-        onClick={() => onTrack(row)}
-        icon={<CheckCircle2 className="size-4" />}
-        tone="success"
-      />
-      <IconAction
-        label="Dismiss (d)"
-        onClick={() => onDismiss(row)}
-        icon={<XCircle className="size-4" />}
-        tone="danger"
-      />
-      <IconAction
-        label="Open (o)"
-        onClick={() => onOpen(row)}
-        icon={<ExternalLink className="size-4" />}
-        tone="muted"
-        disabled={!row.url}
-      />
-    </div>
-  );
-}
-
-function IconAction({
-  label,
-  onClick,
-  icon,
-  tone,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-  tone: "success" | "danger" | "muted";
-  disabled?: boolean;
-}) {
-  const toneCls =
-    tone === "success"
-      ? "hover:text-[var(--zg-success)]"
-      : tone === "danger"
-        ? "hover:text-destructive"
-        : "hover:text-primary";
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          tabIndex={-1}
-          disabled={disabled}
-          onClick={onClick}
-          aria-label={label}
-          className={cn("text-muted-foreground size-8", toneCls)}
-        >
-          {icon}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <TriageActions
+      actions={[
+        {
+          key: "track",
+          label: "Track (t)",
+          onClick: () => onTrack(row),
+          icon: <CheckCircle2 className="size-4" />,
+          tone: "success",
+        },
+        {
+          key: "dismiss",
+          label: "Dismiss (d)",
+          onClick: () => onDismiss(row),
+          icon: <XCircle className="size-4" />,
+          tone: "danger",
+        },
+        {
+          key: "open",
+          label: "Open (o)",
+          onClick: () => onOpen(row),
+          icon: <ExternalLink className="size-4" />,
+          tone: "muted",
+          disabled: !row.url,
+        },
+      ]}
+    />
   );
 }
 
@@ -908,25 +876,8 @@ function isRemote(row: InboxRow): boolean {
   return loc.includes("remote") || loc.includes("anywhere");
 }
 
-/** A compact posted label from `created` (falls back to date_added), shown as a
- * relative age. Blank → "—". */
+/** The Posted column's label: `created` falls back to `date_added`, formatted
+ * as a relative age by the shared lib/relative-time helper. */
 function postedLabel(row: InboxRow): string {
-  const raw = String(row.created || row.date_added || "").trim();
-  if (!raw) return "—";
-  const t = Date.parse(raw);
-  if (Number.isNaN(t)) return raw;
-  const days = Math.floor((Date.now() - t) / 86_400_000);
-  if (days <= 0) return "today";
-  if (days === 1) return "1d";
-  if (days < 30) return `${days}d`;
-  const months = Math.floor(days / 30);
-  return `${months}mo`;
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="border-border bg-secondary text-foreground zg-num mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 text-[0.7rem]">
-      {children}
-    </kbd>
-  );
+  return postedLabelFromDate(row.created || row.date_added);
 }

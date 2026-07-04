@@ -443,7 +443,7 @@ function DirectSeedLane({ onClose }: { onClose: () => void }) {
             onClick={onClose}
             disabled={running}
           >
-            {done ? "Close" : "Run in background"}
+            {done ? "Close" : "Close — keeps running"}
           </Button>
         </div>
       </>

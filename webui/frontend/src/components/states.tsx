@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Inbox, AlertTriangle, Loader2 } from "lucide-react";
+import { Inbox, AlertTriangle, Loader2, MousePointerClick } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,36 @@ export function LoadingState({ className }: { className?: string }) {
     >
       <Loader2 className="text-muted-foreground/60 size-7 animate-spin" />
       <span className="text-muted-foreground text-sm">Loading…</span>
+    </div>
+  );
+}
+
+interface SelectPromptProps {
+  icon?: LucideIcon;
+  title: string;
+  message: string;
+}
+
+/** The "nothing selected yet" placeholder for a split-view detail rail — the
+ * Inbox and Apply Queue detail panes both show this before a row is picked.
+ * Smaller and quieter than EmptyState (no CTA, tighter icon), since it's a
+ * transient prompt inside an already-populated layout, not a whole-panel empty
+ * state. */
+export function SelectPrompt({
+  icon: Icon = MousePointerClick,
+  title,
+  message,
+}: SelectPromptProps) {
+  return (
+    <div className="flex min-h-[46vh] flex-col items-center justify-center px-6 text-center">
+      <Icon
+        className="text-muted-foreground/40 mb-4 size-10"
+        strokeWidth={1.25}
+      />
+      <p className="zg-serif text-foreground text-lg font-medium">{title}</p>
+      <p className="text-muted-foreground mt-1.5 max-w-xs text-sm leading-relaxed">
+        {message}
+      </p>
     </div>
   );
 }

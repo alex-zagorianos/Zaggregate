@@ -4,7 +4,8 @@ import { Loader2, X, Terminal, Ban } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "@/api/queries";
-import { ApiError, type JobStatus } from "@/api/client";
+import type { JobStatus } from "@/api/client";
+import { friendlyError, friendlyServerError } from "@/lib/friendly-error";
 import {
   appendConsoleLine,
   appendConsoleLines,
@@ -73,7 +74,10 @@ export function RunConsole({
         onTerminal?.("failed");
         if (snap) {
           toast.error("Run failed", {
-            description: snap.error || "The pipeline stopped early.",
+            description: friendlyServerError(
+              snap.error,
+              "The pipeline stopped early.",
+            ),
           });
         } else {
           toast.error("Lost the run stream", {
@@ -91,7 +95,7 @@ export function RunConsole({
         }),
       onCancelError: (e) =>
         toast.error("Couldn't cancel", {
-          description: e instanceof ApiError ? e.message : "Please try again.",
+          description: friendlyError(e),
         }),
     });
 

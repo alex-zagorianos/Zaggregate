@@ -27,15 +27,12 @@ import {
 import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
 import { ScoreChip } from "@/components/score-chip";
 import { EmptyState } from "@/components/states";
+import { ShortcutHint } from "@/components/kbd";
+import { TriageActions } from "@/components/row-actions";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 import { useCompaniesFlows } from "@/tabs/companies/CompaniesFlows";
@@ -260,9 +257,15 @@ export function SearchTab() {
             Search
           </h1>
           <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-            Search every board at once. Each result is scored 0–100 for fit —{" "}
-            <Kbd>t</Kbd> track, <Kbd>d</Kbd> dismiss, <Kbd>o</Kbd> open on the
-            focused row.
+            <ShortcutHint
+              lead="Search every board at once. Each result is scored 0–100 for fit —"
+              actions={[
+                { key: "t", label: "track" },
+                { key: "d", label: "dismiss" },
+                { key: "o", label: "open" },
+              ]}
+              tail="on the focused row."
+            />
           </p>
         </div>
 
@@ -631,69 +634,32 @@ function RowActions({
   onOpen: (r: SearchRow) => void;
 }) {
   return (
-    <div
-      className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <IconAction
-        label="Track (t)"
-        onClick={() => onTrack(row)}
-        icon={<CheckCircle2 className="size-4" />}
-        tone="success"
-      />
-      <IconAction
-        label="Dismiss (d)"
-        onClick={() => onDismiss(row)}
-        icon={<XCircle className="size-4" />}
-        tone="danger"
-      />
-      <IconAction
-        label="Open (o)"
-        onClick={() => onOpen(row)}
-        icon={<ExternalLink className="size-4" />}
-        tone="muted"
-        disabled={!row.url}
-      />
-    </div>
-  );
-}
-
-function IconAction({
-  label,
-  onClick,
-  icon,
-  tone,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-  tone: "success" | "danger" | "muted";
-  disabled?: boolean;
-}) {
-  const toneCls =
-    tone === "success"
-      ? "hover:text-[var(--zg-success)]"
-      : tone === "danger"
-        ? "hover:text-destructive"
-        : "hover:text-primary";
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          tabIndex={-1}
-          disabled={disabled}
-          onClick={onClick}
-          aria-label={label}
-          className={cn("text-muted-foreground size-8", toneCls)}
-        >
-          {icon}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <TriageActions
+      actions={[
+        {
+          key: "track",
+          label: "Track (t)",
+          onClick: () => onTrack(row),
+          icon: <CheckCircle2 className="size-4" />,
+          tone: "success",
+        },
+        {
+          key: "dismiss",
+          label: "Dismiss (d)",
+          onClick: () => onDismiss(row),
+          icon: <XCircle className="size-4" />,
+          tone: "danger",
+        },
+        {
+          key: "open",
+          label: "Open (o)",
+          onClick: () => onOpen(row),
+          icon: <ExternalLink className="size-4" />,
+          tone: "muted",
+          disabled: !row.url,
+        },
+      ]}
+    />
   );
 }
 
@@ -717,13 +683,5 @@ function SearchEmpty() {
       title="Search for jobs"
       message="Enter keywords and a location above, then Search now. Every board runs at once and each result is scored for fit — track the good ones, add the batch to your Inbox, or dismiss the rest."
     />
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="border-border bg-secondary text-foreground zg-num mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 text-[0.7rem]">
-      {children}
-    </kbd>
   );
 }

@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 
 import "./index.css";
 import { App } from "./App";
-import { ThemeProvider } from "@/lib/theme";
+import { ThemeProvider, useTheme } from "@/lib/theme";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 /* Provider stack:
@@ -25,6 +25,28 @@ const queryClient = new QueryClient({
   },
 });
 
+/** The sonner Toaster, theme-aware. sonner defaults to a light-only palette
+ * unless told otherwise; without this it renders light toasts over a dark UI.
+ * Reads the app's own ThemeProvider (data-theme) rather than sonner's separate
+ * OS-preference default, so a toast always matches the app's current theme,
+ * light or dark, regardless of the OS setting. */
+function ThemedToaster() {
+  const { mode } = useTheme();
+  return (
+    <Toaster
+      theme={mode}
+      position="bottom-right"
+      toastOptions={{
+        classNames: {
+          toast: "!bg-card !text-card-foreground !border-border !rounded-md",
+          description: "!text-muted-foreground",
+          actionButton: "!bg-primary !text-primary-foreground",
+        },
+      }}
+    />
+  );
+}
+
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("#root not found");
 
@@ -36,17 +58,7 @@ createRoot(rootEl).render(
           <BrowserRouter basename="/app">
             <App />
           </BrowserRouter>
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              classNames: {
-                toast:
-                  "!bg-card !text-card-foreground !border-border !rounded-md",
-                description: "!text-muted-foreground",
-                actionButton: "!bg-primary !text-primary-foreground",
-              },
-            }}
-          />
+          <ThemedToaster />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

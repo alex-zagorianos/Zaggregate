@@ -71,9 +71,19 @@ export function ResumeStep({
 
         <div className="flex items-center justify-between gap-3">
           <p className="text-muted-foreground text-xs">
-            {text.trim()
-              ? `${text.trim().length.toLocaleString()} characters`
-              : "You can skip this and add it later."}
+            {text.trim() ? (
+              <>
+                {text.trim().length < 400
+                  ? "A bit short — paste the full resume for better matching"
+                  : "Looks thorough"}
+                <span className="zg-num opacity-60">
+                  {" "}
+                  ({text.trim().length.toLocaleString()} characters)
+                </span>
+              </>
+            ) : (
+              "You can skip this and add it later."
+            )}
           </p>
           <Button
             variant="outline"

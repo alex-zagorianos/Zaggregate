@@ -213,7 +213,7 @@ export function BuildListDialog({
                 onClick={() => onOpenChange(false)}
                 disabled={running}
               >
-                {done ? "Close" : "Run in background"}
+                {done ? "Close" : "Close — keeps running"}
               </Button>
             </div>
           </>

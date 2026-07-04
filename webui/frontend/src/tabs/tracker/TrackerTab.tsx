@@ -30,7 +30,11 @@ import {
   useDeleteApplication,
 } from "@/api/queries";
 import { ApiError, type AppRow } from "@/api/client";
-import { statusLabel } from "@/lib/status";
+import {
+  statusLabel,
+  statusChipStyle,
+  statusChipBorderTint,
+} from "@/lib/status";
 import { StatusChip } from "@/components/status-chip";
 import { JobDialog } from "@/components/job-dialog";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
@@ -306,7 +310,7 @@ function FilterChip({
                 color: "var(--zg-accent-fg)",
               }
           : color
-            ? { borderColor: `color-mix(in oklab, ${color} 35%, transparent)` }
+            ? statusChipBorderTint(color)
             : undefined
       }
     >
@@ -616,11 +620,7 @@ function QuickStatus({
     <div className="relative inline-flex">
       <span
         className="inline-flex items-center gap-1.5 rounded-[var(--radius-chip)] border px-2 py-0.5 text-xs font-medium"
-        style={{
-          color,
-          borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
-          backgroundColor: `color-mix(in oklab, ${color} 12%, transparent)`,
-        }}
+        style={statusChipStyle(color)}
       >
         <span
           aria-hidden

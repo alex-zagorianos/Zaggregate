@@ -314,7 +314,8 @@ export function AddCompaniesDialog({
                   }
                 >
                   {adding && <Loader2 className="size-3.5 animate-spin" />}
-                  Add {summary.willAdd > 0 ? summary.willAdd : ""}
+                  Add{" "}
+                  {summary.willAdd > 0 ? summary.willAdd : summary.unreachable}
                 </Button>
               </div>
             </div>

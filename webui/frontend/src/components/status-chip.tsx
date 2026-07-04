@@ -1,4 +1,4 @@
-import { statusVar, statusLabel } from "@/lib/status";
+import { statusVar, statusLabel, statusChipStyle } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 /* The application-status chip — a small pill whose color comes from the
@@ -28,11 +28,7 @@ export function StatusChip({
         "inline-flex items-center gap-1.5 rounded-[var(--radius-chip)] border px-2 py-0.5 text-xs font-medium whitespace-nowrap",
         className,
       )}
-      style={{
-        color,
-        borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
-        backgroundColor: `color-mix(in oklab, ${color} 12%, transparent)`,
-      }}
+      style={statusChipStyle(color)}
     >
       {dot && (
         <span

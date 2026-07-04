@@ -297,7 +297,7 @@ function FieldRow({
   // Placeholder shows the masked last-4 for a field already set on the server, so
   // an untouched masked field reads "already saved" rather than looking empty.
   const placeholder = field.set
-    ? (field.masked ?? "saved")
+    ? field.masked || "saved"
     : `Enter ${field.label.toLowerCase()}`;
   return (
     <div className="space-y-1.5">

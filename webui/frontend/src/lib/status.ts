@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 /* Application-status vocabulary for the Tracker + Board + JobDialog.
  *
  * The canonical list of statuses and their human labels is SERVED by the backend
@@ -50,4 +52,25 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 
 export function isTerminal(status: string | null | undefined): boolean {
   return TERMINAL_STATUSES.has((status ?? "").trim());
+}
+
+/** The shared status-chip color-mix recipe: ink text in the status color, a
+ * 40%-tint hairline border, and a 12%-tint background — the same formula
+ * StatusChip, the Tracker filter chip-bar, and the Tracker quick-status select
+ * all render with, so every status pill in the app reads as one family. Pass
+ * the already-resolved `--zg-status-*` var (statusVar(status)), not the raw
+ * status string. */
+export function statusChipStyle(color: string): CSSProperties {
+  return {
+    color,
+    borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
+    backgroundColor: `color-mix(in oklab, ${color} 12%, transparent)`,
+  };
+}
+
+/** The idle-chip border-only tint used by the Tracker filter chip-bar (a
+ * lighter-weight cousin of statusChipStyle — border tint only, no fill/text
+ * color, since the idle chip's text/background come from its own className). */
+export function statusChipBorderTint(color: string): CSSProperties {
+  return { borderColor: `color-mix(in oklab, ${color} 35%, transparent)` };
 }

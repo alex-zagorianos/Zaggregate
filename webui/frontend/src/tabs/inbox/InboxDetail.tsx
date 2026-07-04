@@ -1,5 +1,4 @@
 import {
-  MousePointerClick,
   ExternalLink,
   CheckCircle2,
   XCircle,
@@ -15,7 +14,8 @@ import { useInboxDetail } from "@/api/queries";
 import { ApiError, type InboxRow } from "@/api/client";
 import { ScoreChip } from "@/components/score-chip";
 import { Button } from "@/components/ui/button";
-import { ErrorState } from "@/components/states";
+import { ErrorState, SelectPrompt } from "@/components/states";
+import { scoreNoteLabel } from "@/lib/score";
 import { cn } from "@/lib/utils";
 
 /* The detail pane — the right rail that fills when a row is selected. Everything
@@ -44,19 +44,10 @@ export function InboxDetail({
 
   if (!row) {
     return (
-      <div className="flex min-h-[46vh] flex-col items-center justify-center px-6 text-center">
-        <MousePointerClick
-          className="text-muted-foreground/40 mb-4 size-10"
-          strokeWidth={1.25}
-        />
-        <p className="zg-serif text-foreground text-lg font-medium">
-          Select a job
-        </p>
-        <p className="text-muted-foreground mt-1.5 max-w-xs text-sm leading-relaxed">
-          Pick a row to see why it matched, its score breakdown, and a preview —
-          then track or dismiss it.
-        </p>
-      </div>
+      <SelectPrompt
+        title="Select a job"
+        message="Pick a row to see why it matched, its score breakdown, and a preview — then track or dismiss it."
+      />
     );
   }
 
@@ -235,7 +226,7 @@ function ScoreBreakdown({
             className="flex items-baseline justify-between gap-3 text-sm"
           >
             <span className="text-muted-foreground capitalize">
-              {label.replace(/_/g, " ")}
+              {scoreNoteLabel(label)}
             </span>
             <span
               className={cn(

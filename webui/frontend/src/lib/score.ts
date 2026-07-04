@@ -29,3 +29,25 @@ export const BAND_VAR: Record<ScoreBand, string> = {
   low: "var(--zg-score-low)",
   none: "var(--zg-score-none)",
 };
+
+/* Score-note labels — the Inbox detail pane's "Score breakdown" section renders
+ * the top-level keys of match/scorer.py::score_breakdown()'s return dict:
+ *   {components: [...], confidence: {present,total}|null,
+ *    size_adj: int|null, board_count: int|null, penalties: [...]}
+ * Friendly labels for the known keys; scoreNoteLabel() falls back to the old
+ * space-replace Title-ish rendering for anything unrecognized, so a future
+ * engine key still renders (never throws / never blank). */
+export const SCORE_NOTE_LABELS: Record<string, string> = {
+  components: "Weighted components",
+  confidence: "Confidence",
+  size_adj: "Company-size adjustment",
+  board_count: "Boards seen on",
+  penalties: "Penalties",
+};
+
+/** Human label for a score-note key: prefer SCORE_NOTE_LABELS, else fall back
+ * to the raw key with underscores turned into spaces (the pane's prior
+ * behavior, kept for forward-compat with an unlisted key). */
+export function scoreNoteLabel(key: string): string {
+  return SCORE_NOTE_LABELS[key] ?? key.replace(/_/g, " ");
+}

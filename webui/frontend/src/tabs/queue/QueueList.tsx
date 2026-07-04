@@ -9,7 +9,7 @@ import {
 
 import type { QueueRow } from "@/api/client";
 import { ScoreChip } from "@/components/score-chip";
-import { Button } from "@/components/ui/button";
+import { TriageActions } from "@/components/row-actions";
 import {
   Tooltip,
   TooltipContent,
@@ -160,72 +160,36 @@ export function QueueList({
                 </p>
               )}
             </div>
-            <div
-              className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-within:opacity-100"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <IconAction
-                label="Mark applied (t)"
-                onClick={() => onMarkApplied(row)}
-                icon={<CheckCircle2 className="size-4" />}
-                tone="success"
-              />
-              <IconAction
-                label="Dismiss (d)"
-                onClick={() => onDismiss(row)}
-                icon={<XCircle className="size-4" />}
-                tone="danger"
-              />
-              <IconAction
-                label="Open (o)"
-                onClick={() => onOpen(row)}
-                icon={<ExternalLink className="size-4" />}
-                tone="muted"
-                disabled={!row.url}
-              />
-            </div>
+            <TriageActions
+              justify={false}
+              actions={[
+                {
+                  key: "applied",
+                  label: "Mark applied (t)",
+                  onClick: () => onMarkApplied(row),
+                  icon: <CheckCircle2 className="size-4" />,
+                  tone: "success",
+                },
+                {
+                  key: "dismiss",
+                  label: "Dismiss (d)",
+                  onClick: () => onDismiss(row),
+                  icon: <XCircle className="size-4" />,
+                  tone: "danger",
+                },
+                {
+                  key: "open",
+                  label: "Open (o)",
+                  onClick: () => onOpen(row),
+                  icon: <ExternalLink className="size-4" />,
+                  tone: "muted",
+                  disabled: !row.url,
+                },
+              ]}
+            />
           </div>
         );
       })}
     </div>
-  );
-}
-
-function IconAction({
-  label,
-  onClick,
-  icon,
-  tone,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-  tone: "success" | "danger" | "muted";
-  disabled?: boolean;
-}) {
-  const toneCls =
-    tone === "success"
-      ? "hover:text-[var(--zg-success)]"
-      : tone === "danger"
-        ? "hover:text-destructive"
-        : "hover:text-primary";
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          tabIndex={-1}
-          disabled={disabled}
-          onClick={onClick}
-          aria-label={label}
-          className={cn("text-muted-foreground size-8", toneCls)}
-        >
-          {icon}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
   );
 }

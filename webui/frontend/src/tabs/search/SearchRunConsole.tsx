@@ -19,6 +19,7 @@ import {
   reduceProgress,
   emptyProgress,
   progressFraction,
+  sourceDisplay,
   type RunProgress,
   type SourceRow,
   type SourceStatus,
@@ -283,9 +284,3 @@ const STATUS_COLOR: Record<SourceStatus, string> = {
   throttled: "var(--zg-warn)",
   failed: "var(--zg-danger)",
 };
-
-/** Strip the "Client" suffix and title-case the source class name for display
- * (AdzunaClient -> Adzuna, CareerOneStopClient -> CareerOneStop). */
-function sourceDisplay(source: string): string {
-  return source.replace(/Client$/i, "") || source;
-}

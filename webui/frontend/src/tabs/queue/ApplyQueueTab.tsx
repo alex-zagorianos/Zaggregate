@@ -11,8 +11,8 @@ import {
 import { ApiError, endpoints, type QueueRow } from "@/api/client";
 import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { ShortcutHint } from "@/components/kbd";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -92,9 +92,6 @@ export function ApplyQueueTab() {
     [advanceFrom, setStatus],
   );
 
-  const [confirmDismiss, setConfirmDismiss] = React.useState<QueueRow | null>(
-    null,
-  );
   const onDismiss = React.useCallback(
     (row: QueueRow) => {
       advanceFrom(row.id);
@@ -206,9 +203,15 @@ export function ApplyQueueTab() {
             Apply Queue
           </h1>
           <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-            Jobs you're interested in, best match first. Make tailored docs,
-            then <Kbd>t</Kbd> mark applied, <Kbd>d</Kbd> dismiss, <Kbd>o</Kbd>{" "}
-            open.
+            <ShortcutHint
+              lead="Jobs you're interested in, best match first."
+              verb="Make tailored docs, then"
+              actions={[
+                { key: "t", label: "mark applied" },
+                { key: "d", label: "dismiss" },
+                { key: "o", label: "open." },
+              ]}
+            />
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -252,7 +255,7 @@ export function ApplyQueueTab() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               onMarkApplied={onMarkApplied}
-              onDismiss={(r) => setConfirmDismiss(r)}
+              onDismiss={onDismiss}
               onOpen={onOpen}
             />
           )}
@@ -263,7 +266,7 @@ export function ApplyQueueTab() {
             <QueueDetail
               row={selectedRow}
               onMarkApplied={onMarkApplied}
-              onDismiss={(r) => setConfirmDismiss(r)}
+              onDismiss={onDismiss}
               onOpen={onOpen}
               onDocsSaved={invalidateQueue}
             />
@@ -305,20 +308,6 @@ export function ApplyQueueTab() {
         submitLabel="Apply scores"
         pending={rankPending}
         onSubmit={submitRankReply}
-      />
-
-      <ConfirmDialog
-        open={confirmDismiss !== null}
-        onOpenChange={(o) => !o && setConfirmDismiss(null)}
-        title="Dismiss this job?"
-        description={
-          confirmDismiss
-            ? `“${confirmDismiss.title} · ${confirmDismiss.company}” will be archived and leave the queue. You can restore it from the Tracker archive.`
-            : ""
-        }
-        confirmLabel="Dismiss"
-        cancelLabel="Keep"
-        onConfirm={() => confirmDismiss && onDismiss(confirmDismiss)}
       />
     </section>
   );
@@ -362,13 +351,5 @@ function QueueEmpty() {
       title="Nothing to apply to yet"
       message="Your apply queue is every job you've marked interested. Track a Top Pick or an Inbox match, and it lands here — ranked, ready to tailor and apply."
     />
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="border-border bg-secondary text-foreground zg-num mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 text-[0.7rem]">
-      {children}
-    </kbd>
   );
 }

@@ -12,7 +12,6 @@ import {
   Sparkles,
   Users,
   FileSearch,
-  MousePointerClick,
   Loader2,
 } from "lucide-react";
 
@@ -22,10 +21,12 @@ import {
   type QueueRow,
   type BundleFile,
 } from "@/api/client";
+import { friendlyError } from "@/lib/friendly-error";
 import { ScoreChip } from "@/components/score-chip";
 import { PromptDialog } from "@/components/prompt-dialog";
 import { PasteDialog } from "@/components/paste-dialog";
 import { FileDownloads } from "@/components/file-downloads";
+import { SelectPrompt } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -80,19 +81,10 @@ export function QueueDetail({
 
   if (!row) {
     return (
-      <div className="flex min-h-[46vh] flex-col items-center justify-center px-6 text-center">
-        <MousePointerClick
-          className="text-muted-foreground/40 mb-4 size-10"
-          strokeWidth={1.25}
-        />
-        <p className="zg-serif text-foreground text-lg font-medium">
-          Select a job
-        </p>
-        <p className="text-muted-foreground mt-1.5 max-w-xs text-sm leading-relaxed">
-          Pick a job to see its fit rationale and tailor a resume — copy a
-          prompt, paste the reply, and download the docs.
-        </p>
-      </div>
+      <SelectPrompt
+        title="Select a job"
+        message="Pick a job to see its fit rationale and tailor a resume — copy a prompt, paste the reply, and download the docs."
+      />
     );
   }
 
@@ -164,8 +156,7 @@ export function QueueDetail({
           }
         } else {
           toast.error("Couldn't generate", {
-            description:
-              e instanceof ApiError ? e.message : "Please try again.",
+            description: friendlyError(e),
           });
         }
       })

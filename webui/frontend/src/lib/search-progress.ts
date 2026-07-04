@@ -256,3 +256,11 @@ function numberOr(v: unknown, fallback: number): number {
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
+
+/** Strip the "Client" suffix and title-case the source class name for display
+ * (AdzunaClient -> Adzuna, CareerOneStopClient -> CareerOneStop). Shared by the
+ * live per-source progress rows (SearchRunConsole) and the end-of-run Details
+ * popover (SourceHealthStrip) so both name sources identically. */
+export function sourceDisplay(source: string): string {
+  return source.replace(/Client$/i, "") || source;
+}

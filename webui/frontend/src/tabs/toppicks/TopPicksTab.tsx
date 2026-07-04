@@ -19,6 +19,8 @@ import { useTopPicks, useTrackInbox, useDismissInbox } from "@/api/queries";
 import type { TopPickRow, TopPicksLimit } from "@/api/client";
 import { ScoreChip } from "@/components/score-chip";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { ShortcutHint } from "@/components/kbd";
+import { TriageActions } from "@/components/row-actions";
 import {
   Table,
   TableHeader,
@@ -34,7 +36,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { ApiError } from "@/api/client";
 
 /* Top Picks — the AI recommendation shortlist over the inbox.
@@ -170,14 +171,22 @@ function Header({
           Top Picks
         </h1>
         <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-          Your AI-ranked shortlist. Triage with <Kbd>t</Kbd> track, <Kbd>d</Kbd>{" "}
-          dismiss, <Kbd>o</Kbd> open — or the row buttons.
+          <ShortcutHint
+            lead="Your AI-ranked shortlist."
+            verb="Triage with"
+            actions={[
+              { key: "t", label: "track" },
+              { key: "d", label: "dismiss" },
+              { key: "o", label: "open" },
+            ]}
+            tail="— or the row buttons."
+          />
         </p>
       </div>
       <div className="flex items-center gap-2">
         {count > 0 && (
-          <span className="text-muted-foreground zg-num hidden text-xs sm:inline">
-            {count} shown
+          <span className="text-muted-foreground hidden text-xs sm:inline">
+            <span className="zg-num">{count}</span> shown
           </span>
         )}
         <label className="text-muted-foreground text-sm">Show</label>
@@ -308,11 +317,11 @@ function PicksTable({
                 </TableCell>
 
                 <TableCell>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-foreground leading-snug font-medium">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-foreground truncate leading-snug font-medium">
                       {row.title || "Untitled role"}
                     </span>
-                    <span className="text-muted-foreground text-xs">
+                    <span className="text-muted-foreground truncate text-xs">
                       {row.company || "Unknown company"}
                     </span>
                   </div>
@@ -382,66 +391,33 @@ function RowActions({
   // out of the row's own tab-stop; the roving row + t/d/o keys are the primary
   // path, buttons are the pointer path.
   return (
-    <div className="flex items-center justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100">
-      <IconAction
-        label="Track (t)"
-        onClick={() => onTrack(row)}
-        icon={<CheckCircle2 className="size-4" />}
-        tone="success"
-      />
-      <IconAction
-        label="Dismiss (d)"
-        onClick={() => onDismiss(row)}
-        icon={<XCircle className="size-4" />}
-        tone="danger"
-      />
-      <IconAction
-        label="Open (o)"
-        onClick={() => onOpen(row)}
-        icon={<ExternalLink className="size-4" />}
-        tone="muted"
-        disabled={!row.url}
-      />
-    </div>
-  );
-}
-
-function IconAction({
-  label,
-  onClick,
-  icon,
-  tone,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  icon: React.ReactNode;
-  tone: "success" | "danger" | "muted";
-  disabled?: boolean;
-}) {
-  const toneCls =
-    tone === "success"
-      ? "hover:text-[var(--zg-success)]"
-      : tone === "danger"
-        ? "hover:text-destructive"
-        : "hover:text-primary";
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          tabIndex={-1}
-          disabled={disabled}
-          onClick={onClick}
-          aria-label={label}
-          className={cn("text-muted-foreground size-8", toneCls)}
-        >
-          {icon}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <TriageActions
+      actions={[
+        {
+          key: "track",
+          label: "Track (t)",
+          onClick: () => onTrack(row),
+          icon: <CheckCircle2 className="size-4" />,
+          tone: "success",
+        },
+        {
+          key: "dismiss",
+          label: "Dismiss (d)",
+          onClick: () => onDismiss(row),
+          icon: <XCircle className="size-4" />,
+          tone: "danger",
+        },
+        {
+          key: "open",
+          label: "Open (o)",
+          onClick: () => onOpen(row),
+          icon: <ExternalLink className="size-4" />,
+          tone: "muted",
+          disabled: !row.url,
+        },
+      ]}
+      stopPropagation={false}
+    />
   );
 }
 
@@ -483,12 +459,4 @@ function FlowStep({ icon, label }: { icon: React.ReactNode; label: string }) {
 
 function FlowArrow() {
   return <ArrowUpRight className="text-muted-foreground/40 size-4 rotate-45" />;
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="border-border bg-secondary text-foreground zg-num mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded border px-1 text-[0.7rem]">
-      {children}
-    </kbd>
-  );
 }

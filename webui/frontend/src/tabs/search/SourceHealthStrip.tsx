@@ -2,7 +2,7 @@ import * as React from "react";
 import { CheckCircle2, KeyRound, Timer, XCircle, Info } from "lucide-react";
 
 import type { SearchHealthRow } from "@/api/client";
-import type { SourceStatus } from "@/lib/search-progress";
+import { sourceDisplay, type SourceStatus } from "@/lib/search-progress";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -150,8 +150,4 @@ function SourceOutcome({ row }: { row: SearchHealthRow }) {
       {row.error || "failed"}
     </span>
   );
-}
-
-function sourceDisplay(source: string): string {
-  return source.replace(/Client$/i, "") || source;
 }
