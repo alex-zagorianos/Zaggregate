@@ -79,7 +79,17 @@ def test_funnel_host_level_and_enterprise_wiring(monkeypatch):
     assert calls["host"] == 1 and calls["slugs"] == 0
     assert "myworkdayjobs.com" in calls["hosts"] and "icims.com" in calls["hosts"]
 
-    # default (no flags) still uses the per-host slug path
+    # default (no flags) still uses the per-host slug path for the path-based
+    # hosts (greenhouse/lever/ashby/smartrecruiters/workable), AND (S35 #15)
+    # now ALSO host-level-harvests the subdomain-tenant ATSes
+    # (icims/taleo/successfactors) that are JSON-LD-scrapeable but were
+    # previously reachable only via the opt-in --discover-enterprise flag.
     calls["host"] = calls["slugs"] = 0
     funnel.run_funnel()
-    assert calls["slugs"] == 1 and calls["host"] == 0
+    assert calls["slugs"] == 1
+    assert calls["host"] == 1
+    assert set(calls["hosts"]) == {"icims.com", "taleo.net", "successfactors.com"}
+    # The enterprise-only hosts (myworkdayjobs.com, eightfold.ai, etc.) are
+    # still NOT part of the default surface -- only the 3 JSON-LD-scrapeable
+    # subdomain hosts graduated out of the enterprise-only gate.
+    assert "myworkdayjobs.com" not in calls["hosts"]
