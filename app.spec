@@ -123,6 +123,20 @@ for _opt in ('scrapling', 'playwright', 'patchright', 'browserforge'):
     except Exception:
         pass
 
+# Desktop mode (--desktop): pywebview native window over Edge WebView2. The
+# Windows backend rides pythonnet + clr_loader (Python.Runtime.dll ships as
+# clr_loader package data, so collect its data files too). Lazy-imported in
+# webui.__main__._run_desktop — static analysis misses all of it. Best-effort:
+# a build box without pywebview still builds fine, and the exe's --desktop
+# degrades to browser mode by design.
+for _dt in ('webview', 'clr_loader', 'pythonnet'):
+    try:
+        hiddenimports += [_dt] + collect_submodules(_dt)
+        datas += collect_data_files(_dt)
+    except Exception:
+        pass
+hiddenimports += ['clr']
+
 a = Analysis(
     ['gui.py'],
     pathex=[],

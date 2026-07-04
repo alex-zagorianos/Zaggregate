@@ -10,7 +10,7 @@ Read the newest `docs/handoffs/handoff_*.md` first, then `brain/_index.md`. Hand
 
 - **Always `py -3.12`** — NEVER bare `python` or `uv`. A `uv run python` hook redirects to an empty ephemeral 3.11; the real env is global 3.12 (pytest 8.3.5).
 - Tests: `py -3.12 -m pytest` — full suite expected green (~2195 as of S32).
-- Deps beyond `.env`: `ttkbootstrap rapidfuzz cleanco defusedxml` (pip-installed globally).
+- Deps beyond `.env`: `ttkbootstrap rapidfuzz cleanco defusedxml pywebview` (pip-installed globally; pywebview powers `--desktop` and is optional at runtime — missing → browser-mode fallback).
 
 ## Git discipline
 
