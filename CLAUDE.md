@@ -18,6 +18,15 @@ Read the newest `docs/handoffs/handoff_*.md` first, then `brain/_index.md`. Hand
 - User data is gitignored (`projects/`, `tracker.db`, `preferences.*`, `config_dad/user_config`). `companies.json` IS tracked (ships as starter registry).
 - Test projects: `gu-*` / `gs-*` / `test-*` slugs — disposable, currently kept pending Alex.
 
+## Design philosophy (Alex, S35)
+
+**Inclusion over precision: get as many potential jobs in front of the user as
+possible — the USER does the final dropping.** Never add a filter that can
+silently over-drop; when ambiguous, keep the job. Prefer down-ranking to
+dropping, and showing to down-ranking. Only cut what's clearly stated as
+unwanted (explicit dealbreaker token, hard salary floor, ToS-blocked source) or
+completely unrelated. Trade-offs + accepted gaps live in `docs/KNOWN_ISSUES.md`.
+
 ## Gotchas
 
 - **Never run two project-touching processes at once** — `current_db_path` reads the global `active` project; concurrent daily_runs corrupted inbox routing before the S27 pin. `daily_run --project X` flips the GLOBAL active project.

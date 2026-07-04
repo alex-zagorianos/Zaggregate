@@ -145,3 +145,36 @@ def test_migrate_from_user_config():
     assert "sales" in p["hard"]["dealbreakers"]
     assert "principal" in p["hard"]["seniority_exclude"]
     assert "controls engineer" in p["profile_md"]
+
+
+def test_hard_gate_blocker_is_word_boundary_not_substring():
+    """S35 (Alex-approved): design philosophy = never over-drop; the gate cuts a
+    clearly-stated blocker TOKEN only. A 'sales' dealbreaker must not kill
+    'Salesforce Engineer'; 'it' must not kill 'Editor'."""
+    hard = {**preferences._DEFAULT_HARD, "dealbreakers": ["sales", "it"]}
+    jobs = [
+        _job(title="Salesforce Engineer"),        # kept — 'sales' is a substring, not a token
+        _job(title="Sales Engineer"),             # dropped — 'sales' token
+        _job(title="Editor"),                     # kept — 'it' inside 'Editor'
+        _job(title="IT Support Specialist"),      # dropped — 'it' token
+        _job(title="Sales Development Rep"),      # dropped
+    ]
+    counts = {}
+    out = preferences.hard_gate(jobs, hard, counts=counts)
+    assert [j.title for j in out] == ["Salesforce Engineer", "Editor"]
+    assert counts["title"] == 3
+
+
+def test_hard_gate_blocker_with_nonword_edges_still_matches_own_token():
+    # Lookaround boundaries (not \b) so 'c++' / 'sr.' blockers match themselves.
+    hard = {**preferences._DEFAULT_HARD, "seniority_exclude": ["sr."]}
+    jobs = [_job(title="Sr. Staff Engineer"), _job(title="Engineer")]
+    out = preferences.hard_gate(jobs, hard)
+    assert [j.title for j in out] == ["Engineer"]
+
+
+def test_hard_gate_multiword_blocker_matches_phrase():
+    hard = {**preferences._DEFAULT_HARD, "dealbreakers": ["door to door"]}
+    jobs = [_job(title="Door to Door Sales"), _job(title="Front Door Product Lead")]
+    out = preferences.hard_gate(jobs, hard)
+    assert [j.title for j in out] == ["Front Door Product Lead"]

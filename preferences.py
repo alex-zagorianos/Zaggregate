@@ -7,6 +7,7 @@ pre-AI cut; `migrate_from_user_config()` seeds the new shape from the legacy
 user_config.json.
 """
 import json
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -108,9 +109,18 @@ def hard_gate(jobs, hard: dict, *, counts: Optional[dict] = None) -> list:
     smin = hard.get("salary_min")
     variants = _location_variants(hard.get("locations", []) or [])
     remote_ok = hard.get("remote_ok", True)
-    blockers = [s.lower() for s in
-                (list(hard.get("dealbreakers", [])) + list(hard.get("seniority_exclude", [])))
-                if s]
+    # Word-boundary blockers (S35, Alex-approved): plain substring over-dropped —
+    # a "sales" dealbreaker killed "Salesforce Engineer", "it" killed "Editor".
+    # Design philosophy: get as many potential jobs in front of the user as
+    # possible and let THEM drop; the gate only cuts a clearly-stated blocker
+    # TOKEN. Lookarounds instead of \b so blockers with non-word edges ("c++",
+    # "sr.") still match their own token.
+    blockers = [
+        re.compile(r"(?<!\w)" + re.escape(s.lower()) + r"(?!\w)")
+        for s in (list(hard.get("dealbreakers", []))
+                  + list(hard.get("seniority_exclude", [])))
+        if s
+    ]
     allowed_types = {str(t).strip().lower() for t in (hard.get("employment_types") or []) if t}
 
     tally = counts if counts is not None else {}
@@ -138,7 +148,7 @@ def hard_gate(jobs, hard: dict, *, counts: Optional[dict] = None) -> list:
             if _body_comp_below_floor(getattr(j, "description", "") or "", smin):
                 tally["salary"] += 1
                 continue
-        if any(b in title for b in blockers):
+        if any(b.search(title) for b in blockers):
             tally["title"] += 1
             continue
         if variants and loc:  # only gate when the job actually states a location
