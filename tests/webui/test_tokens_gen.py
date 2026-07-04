@@ -80,7 +80,7 @@ def test_status_badge_tokens_all_nine_statuses():
 
 def test_score_band_tokens_present():
     css = _TOKENS_CSS.read_text(encoding="utf-8")
-    for band in ("good", "mid", "low"):
+    for band in ("good", "mid", "low", "none"):
         assert f"--zg-score-{band}:" in css
 
 
@@ -97,3 +97,23 @@ def test_output_is_deterministic():
     """Two renders of the same source are identical (idempotent generator)."""
     src = (_REPO / "ui" / "theme.py").read_text(encoding="utf-8")
     assert gen.render(src) == gen.render(src)
+
+
+def test_non_literal_value_raises_friendly_error():
+    """A computed (non-literal) value in a theme.py palette dict must raise a
+    ValueError naming the assignment + the offending key, not an opaque
+    ast.literal_eval ValueError/SyntaxError. Synthetic module: _DARK['ACCENT'] is
+    a function call instead of a plain literal."""
+    synthetic_src = (
+        "def _compute():\n"
+        "    return '#000000'\n"
+        "\n"
+        "_LIGHT = {'WINDOW': '#ffffff'}\n"
+        "_DARK = {'WINDOW': '#000000', 'ACCENT': _compute()}\n"
+        "_STATUS_BADGE = {'light': {}, 'dark': {}}\n"
+        "SP = (4, 8)\n"
+        "RADIUS_BTN = 7\n"
+        "RADIUS_CHIP = 6\n"
+    )
+    with pytest.raises(ValueError, match=r"_DARK\['ACCENT'\].*not a plain literal"):
+        gen._parse_theme(synthetic_src)

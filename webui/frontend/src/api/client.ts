@@ -7,7 +7,8 @@
  * Query treat it as a rejected promise); on success it returns the parsed JSON
  * (still including `ok:true`, so callers can read sibling fields directly).
  *
- * Mutating requests (POST/PUT/DELETE) are same-origin to 127.0.0.1:5002, which
+ * Mutating requests (POST/PUT/DELETE) are relative `/api/*` paths, so they go
+ * to whatever origin served the page — same-origin by construction, which
  * satisfies the receiver's _origin_allowed() loopback gate. We send JSON bodies
  * and `X-Requested-With` so the server can distinguish app calls if needed.
  *

@@ -1,0 +1,27 @@
+# Scoped to webui/ only — the repo's core.autocrlf=true would otherwise let a
+# fresh Windows checkout re-CRLF the GENERATED webui/frontend/src/tokens.css and
+# the committed built assets in webui/static/, breaking byte-reproducibility
+# (tests/webui/test_tokens_gen.py asserts an exact byte match, and the built
+# webui/static/ output is meant to be usable as-is without a Node rebuild).
+# Deliberately NOT repo-wide — that would dirty every legacy file's line endings.
+
+# The generated token sheet: always LF, always text.
+webui/frontend/src/tokens.css text eol=lf
+
+# Frontend source: force LF for text, but call out real binaries explicitly so
+# `text=auto` never misdetects a font/image as text.
+webui/frontend/** text=auto eol=lf
+webui/frontend/**/*.woff binary
+webui/frontend/**/*.woff2 binary
+webui/frontend/**/*.png binary
+webui/frontend/**/*.ico binary
+webui/frontend/**/*.svg text eol=lf
+
+# Built output (committed so source users without Node still get the web UI):
+# built JS/CSS/HTML must stay LF; fonts/images stay binary.
+webui/static/** text eol=lf
+webui/static/**/*.woff binary
+webui/static/**/*.woff2 binary
+webui/static/**/*.png binary
+webui/static/**/*.ico binary
+webui/static/**/*.svg text eol=lf

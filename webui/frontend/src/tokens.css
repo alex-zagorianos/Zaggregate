@@ -34,6 +34,7 @@
   --zg-score-good: #3f8f5b;
   --zg-score-mid: #cf8a3c;
   --zg-score-low: #c14a34;
+  --zg-score-none: #8b909a;
   --zg-sp-1: 4px;
   --zg-sp-2: 8px;
   --zg-sp-3: 12px;
@@ -78,4 +79,5 @@
   --zg-score-good: #59c07a;
   --zg-score-mid: #e5a75a;
   --zg-score-low: #e8735a;
+  --zg-score-none: #69727f;
 }
