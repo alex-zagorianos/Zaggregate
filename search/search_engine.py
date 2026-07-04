@@ -259,6 +259,30 @@ class SearchEngine:
         for source in sorted(agg_n):
             print(f"[{source}] {agg_n[source]} results in ~{agg_t[source]:.1f}s")
 
+        # CareersClient's per-company scraper failures are fail-soft BY DESIGN
+        # (one broken ATS tenant must not sink the whole 'careers' source) and so
+        # never raise out of search_and_parse -- last_source_errors above only
+        # sees an error when a client's search_and_parse itself raises. Surface
+        # the aggregate here instead, once per run, through the SAME logging
+        # framework daily_run surfaces (S35 #6). Generic hasattr check (like
+        # finalize_tiering) so this isn't a CareersClient-specific special case.
+        for client in self.clients:
+            company_errors = getattr(client, "company_errors", None)
+            if not callable(company_errors):
+                continue
+            errs = company_errors()
+            failed_names = errs.get("failed", [])
+            if not failed_names:
+                continue
+            # Distinct boards that errored at least once this run (not the raw
+            # error count, which double-counts a board that fails on >1 keyword).
+            total = len(getattr(client, "_base_companies", []) or []) or len(failed_names)
+            shown = ", ".join(failed_names[:8])
+            more = f" (+{len(failed_names) - 8} more)" if len(failed_names) > 8 else ""
+            _log.warning(
+                f"[careers] {len(failed_names)}/{total} board(s) failed this run: "
+                f"{shown}{more} (see app.log)")
+
         self.last_raw_results = all_results  # for coverage/reach (membership)
         self.last_source_errors = dict(agg_err)  # for the run beacon (last_run.json)
         deduped = self._deduplicate(all_results)

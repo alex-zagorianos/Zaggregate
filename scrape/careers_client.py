@@ -87,6 +87,14 @@ class CareersClient(JobAPIClient):
         self._due_keys = None          # computed once per run on first search
         self._run_hits: dict[str, int] = {}
         self._run_ok: set[str] = set()  # boards that responded (reachable) this run
+        # Per-run per-company scrape failures (S35 #6): _scrape_all_parallel's
+        # except-and-continue never raises out of search_and_parse, so
+        # search_engine's last_source_errors never sees a broken board. Track
+        # them here instead so a caller (search_engine, via company_errors())
+        # can fold an aggregate summary into the run's health surfacing without
+        # changing the underlying per-board fail-soft behavior at all.
+        self._run_error_count = 0
+        self._run_failed_boards: list[str] = []
         if self._tiered:
             from scrape import tiering
             self._state = tiering.load_state(self._state_path)
@@ -162,7 +170,23 @@ class CareersClient(JobAPIClient):
                     results.extend(jobs)
                 except Exception as e:
                     _log.info(f"  [careers] {company.name}: error — {e}")
+                    # Per-board fail-soft is UNCHANGED (still swallowed here, the
+                    # run continues) -- only recorded so the run's end-of-search
+                    # summary can surface that N boards errored (S35 #6).
+                    self._run_error_count += 1
+                    if company.name not in self._run_failed_boards:
+                        self._run_failed_boards.append(company.name)
         return results
+
+    def company_errors(self) -> dict:
+        """Per-run per-company scrape failure count + names, accumulated across
+        every keyword pass this instance has run (search_and_parse is called
+        once per keyword by search_engine, and this client persists for the
+        whole run). Read by search_engine.run_full_search to fold ONE aggregate
+        summary line into the run's log/health surfacing -- see class docstring
+        note at __init__ (S35 #6)."""
+        return {"count": self._run_error_count,
+                "failed": list(self._run_failed_boards)}
 
     def finalize_tiering(self) -> None:
         """Persist this run's per-board activity so the next run can schedule by
