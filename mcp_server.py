@@ -44,8 +44,10 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
                 max_pages: int = 1) -> dict:
     """Run a job search across the configured no-key + careers sources, apply the
     preferences hard-gate, score locally, and add new postings to the inbox.
-    Defaults to the user's configured keywords/location. Returns counts; then call
-    list_inbox to rank the new postings."""
+    Defaults to the user's configured keywords/location. Returns counts plus
+    `skipped_keyless` (source names that self-skipped this run for a missing
+    free key — surface this to the user so a zero-coverage source isn't
+    silent); then call list_inbox to rank the new postings."""
     import config
     from search.cli import build_clients, load_user_config
     from search.search_engine import SearchEngine
@@ -57,10 +59,16 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
     from search.keyword_strategy import gate_tech_sources
     sources = gate_tech_sources(config.DAILY_SOURCES, cfg.get("industry") or "",
                                 cfg.get("sources", {}) or {})
+    # Collect sources that self-skipped for a missing free key this run
+    # (finding #1) so the caller (Claude, via this tool's return payload) can
+    # see the real zero-key gap instead of it being silent.
+    skipped_keyless: list[str] = []
     clients = build_clients(sources, cache_enabled=True,
-                            industry_filter=cfg.get("industry"), location=loc)
+                            industry_filter=cfg.get("industry"), location=loc,
+                            skipped_keyless=skipped_keyless)
     if not clients:
-        return {"error": "no sources could be initialized — check API keys."}
+        return {"error": "no sources could be initialized — check API keys.",
+                "skipped_keyless": skipped_keyless}
 
     results = SearchEngine(clients).run_full_search(
         keywords=kws, location=loc, salary_min=cfg.get("salary_min"),
@@ -86,7 +94,8 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
     added = db.inbox_add_many(
         results, per_company_cap=int(cfg.get("max_per_company", 15) or 0))
     return {"found": found, "after_hard_gate": len(results),
-            "added_to_inbox": added, "inbox_total": db.inbox_count()}
+            "added_to_inbox": added, "inbox_total": db.inbox_count(),
+            "skipped_keyless": skipped_keyless}
 
 
 @mcp.tool()

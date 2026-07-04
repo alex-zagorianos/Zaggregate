@@ -3090,6 +3090,10 @@ class SearchTab(ttk.Frame):
         self._results = []  # list[JobResult], indexed by tree iid
         self._user_cfg = self._load_cfg()
         self._open_guide_cb = open_guide_cb   # () -> None, opens Guide tab
+        # Source names that self-skipped THIS search for a missing free key
+        # (finding #1/#19) — populated by build_clients' skipped_keyless
+        # out-param so "skipped, no key" can be told apart from "ran, found 0".
+        self._skipped_keyless: list[str] = []
         self._build()
 
     @staticmethod
@@ -3268,6 +3272,7 @@ class SearchTab(ttk.Frame):
             return
         self._cancel_event = threading.Event()
         self._source_health = []
+        self._skipped_keyless = []
         self._health.set("")
         self._set_busy(True)
         set_status(self._status, "Searching…", "work")
@@ -3308,16 +3313,44 @@ class SearchTab(ttk.Frame):
                 self._pb.configure(value=done)
             except tk.TclError:
                 pass
+            src = event.get("source", "")
+            skipped = self._class_is_keyless_skipped(src, self._skipped_keyless)
             self._source_health.append({
-                "source": event.get("source", ""),
+                "source": src,
                 "count": event.get("count", 0),
                 "ok": bool(event.get("ok", True)),
                 "error": event.get("error", ""),
+                "skipped_keyless": skipped,
             })
-            src = event.get("source", "")
             set_status(self._status,
-                       f"source {done}/{total} — {src} ({event.get('count', 0)})",
+                       self._progress_line(src, done, total,
+                                           event.get("count", 0), skipped),
                        "work")
+
+    @staticmethod
+    def _class_is_keyless_skipped(class_name: str, skipped_keyless: list[str]) -> bool:
+        """True when `class_name` (a progress event's source, e.g. 'JoobleClient')
+        names one of the sources build_clients reported as keyless-skipped this
+        run (e.g. 'jooble'). Matches by case-insensitive prefix — every client
+        class is named '<SourceKey>Client' (AdzunaClient, CareerOneStopClient,
+        JoobleClient, ...) — so this never needs a hardcoded name table and
+        tracks whatever build_clients' own skip logic actually reported. Pure/
+        static so it is unit-testable without a Tk root."""
+        low = (class_name or "").lower()
+        return any(low.startswith((s or "").lower()) for s in (skipped_keyless or []))
+
+    @staticmethod
+    def _progress_line(src: str, done: int, total: int, count: int,
+                       skipped_keyless: bool) -> str:
+        """The per-source progress status text. A source build_clients flagged
+        as self-skipped (no key) says so explicitly instead of a bare '(0)',
+        which otherwise looks identical to a source that ran and legitimately
+        found nothing today. Pure/static so it is unit-testable without a Tk
+        root."""
+        if skipped_keyless:
+            return (f"source {done}/{total} — {src}: skipped — needs a free key "
+                    f"(Settings → Source keys)")
+        return f"source {done}/{total} — {src} ({count})"
 
     def _worker(self, keywords, location, salary_min, hide_tracked, cancel=None):
         try:
@@ -3340,10 +3373,16 @@ class SearchTab(ttk.Frame):
             # careers leg tier its scrape (active boards first) — the params
             # already exist in cli.build_clients; the GUI was running a full,
             # unfiltered 627-board scrape (P6). No-op for a blank industry.
+            # Collect sources that self-skipped for a missing free key this run
+            # (finding #1/#19) so the progress line + end summary can tell that
+            # apart from a source that ran and legitimately found 0.
+            _skipped: list[str] = []
             clients = build_clients(_sources, cache_enabled=True,
                                     industry_filter=_ind or None,
                                     tiered_careers=True,
-                                    location=location)
+                                    location=location,
+                                    skipped_keyless=_skipped)
+            self._skipped_keyless = _skipped
             # Broaden the QUERY keywords for API recall (search broad, score
             # narrow); the original `keywords` stay the scoring set below. No-op
             # for eng IC titles. Opt out with "broaden_keywords": false in config.
@@ -3424,22 +3463,35 @@ class SearchTab(ttk.Frame):
     def _update_health_summary(self):
         """One-line end-of-run source health: 'N ok, M skipped (no key), K
         throttled'. Click it for a per-source Details popup."""
-        rows = self._source_health
+        self._health.set(self._health_summary_line(self._source_health))
+
+    @staticmethod
+    def _health_summary_line(rows: list[dict]) -> str:
+        """Pure formatter for the end-of-run source-health line. `skipped` is
+        counted from each row's real `skipped_keyless` flag (set from
+        build_clients' own skip data — finding #1/#19) first; the old
+        error-string heuristic ("key"/"auth"/401/403) is kept only as a
+        fallback for a row that predates the flag, so a genuine auth failure
+        from a source that HAS a key (e.g. a revoked/expired one) still shows
+        as skipped rather than a bare failure. Pure/static so it is unit-
+        testable without a Tk root."""
         if not rows:
-            self._health.set("")
-            return
+            return ""
         ok = throttled = skipped = failed = 0
         for r in rows:
+            if r.get("skipped_keyless"):
+                skipped += 1
+                continue
             if r["ok"] and r["count"] >= 0:
                 ok += 1
+                continue
             err = (r.get("error") or "").lower()
-            if not r["ok"]:
-                if "429" in err or "throttl" in err or "rate" in err:
-                    throttled += 1
-                elif "key" in err or "auth" in err or "401" in err or "403" in err:
-                    skipped += 1
-                else:
-                    failed += 1
+            if "429" in err or "throttl" in err or "rate" in err:
+                throttled += 1
+            elif "key" in err or "auth" in err or "401" in err or "403" in err:
+                skipped += 1
+            else:
+                failed += 1
         parts = [f"{ok} ok"]
         if skipped:
             parts.append(f"{skipped} skipped (no key)")
@@ -3447,19 +3499,29 @@ class SearchTab(ttk.Frame):
             parts.append(f"{throttled} throttled")
         if failed:
             parts.append(f"{failed} failed")
-        self._health.set("Sources: " + ", ".join(parts) + "  (details)")
+        return "Sources: " + ", ".join(parts) + "  (details)"
 
     def _show_health_details(self):
         if not self._source_health:
             return
+        messagebox.showinfo("Source health (last search)",
+                            self._health_details_text(self._source_health),
+                            parent=self)
+
+    @staticmethod
+    def _health_details_text(rows: list[dict]) -> str:
+        """Pure formatter for the per-source Details popup body. A row flagged
+        skipped_keyless names the real reason instead of a bare result count.
+        Pure/static so it is unit-testable without a Tk root."""
         lines = []
-        for r in sorted(self._source_health, key=lambda x: x["source"].lower()):
-            if r["ok"]:
+        for r in sorted(rows, key=lambda x: x["source"].lower()):
+            if r.get("skipped_keyless"):
+                lines.append(f"{r['source']}: skipped — needs a free key")
+            elif r["ok"]:
                 lines.append(f"{r['source']}: {r['count']} result(s)")
             else:
                 lines.append(f"{r['source']}: FAILED — {r.get('error') or 'unknown'}")
-        messagebox.showinfo("Source health (last search)",
-                            "\n".join(lines), parent=self)
+        return "\n".join(lines)
 
     def _add_results_to_inbox(self):
         """Offer to add the current search results to the Inbox for triage. Uses

@@ -76,3 +76,70 @@ def test_save_searches_merges_not_clobbers(tmp_base):
 
 
 # ── safe_url is already tested in test_safe_url.py (Item 1) ──────────────────
+
+
+# ── S35 finding #19: manual-Search "skipped (no key)" surfacing ──────────────
+# Pure static helpers on gui.SearchTab -- importable/callable without a Tk root
+# (same pattern as gui.InboxTab._score_cell / _keyless_badge_text in
+# tests/ui/test_inbox_surfacing.py).
+
+def test_class_is_keyless_skipped_matches_by_source_prefix():
+    import gui
+    f = gui.SearchTab._class_is_keyless_skipped
+    assert f("JoobleClient", ["jooble"]) is True
+    assert f("CareerjetClient", ["careerjet"]) is True
+    assert f("AdzunaClient", ["adzuna", "usajobs"]) is True
+    assert f("USAJobsClient", ["adzuna", "usajobs"]) is True
+    assert f("CareerOneStopClient", ["careeronestop"]) is True
+    assert f("TheMuseClient", ["adzuna"]) is False
+    assert f("TheMuseClient", []) is False
+    assert f("", ["adzuna"]) is False
+
+
+def test_progress_line_names_skip_reason_not_bare_zero():
+    import gui
+    f = gui.SearchTab._progress_line
+    skipped = f("JoobleClient", 2, 5, 0, True)
+    assert "skipped" in skipped.lower()
+    assert "free key" in skipped.lower()
+    assert "(0)" not in skipped
+    normal = f("TheMuseClient", 2, 5, 0, False)
+    assert normal == "source 2/5 — TheMuseClient (0)"
+
+
+def test_health_summary_line_counts_real_skip_flag_not_error_text():
+    import gui
+    rows = [
+        {"source": "TheMuseClient", "count": 5, "ok": True, "error": "",
+         "skipped_keyless": False},
+        {"source": "JoobleClient", "count": 0, "ok": True, "error": "",
+         "skipped_keyless": True},
+        {"source": "CareerjetClient", "count": 0, "ok": True, "error": "",
+         "skipped_keyless": True},
+    ]
+    line = gui.SearchTab._health_summary_line(rows)
+    assert "1 ok" in line
+    assert "2 skipped (no key)" in line
+
+
+def test_health_summary_line_falls_back_to_error_text_heuristic():
+    # A row from an OLDER call site that never set skipped_keyless still gets
+    # bucketed via the pre-existing error-string heuristic (backward compat).
+    import gui
+    rows = [{"source": "AdzunaClient", "count": 0, "ok": False,
+             "error": "401 Unauthorized"}]
+    line = gui.SearchTab._health_summary_line(rows)
+    assert "1 skipped (no key)" in line
+
+
+def test_health_summary_line_empty_when_no_rows():
+    import gui
+    assert gui.SearchTab._health_summary_line([]) == ""
+
+
+def test_health_details_text_names_skip_reason():
+    import gui
+    rows = [{"source": "JoobleClient", "count": 0, "ok": True, "error": "",
+             "skipped_keyless": True}]
+    text = gui.SearchTab._health_details_text(rows)
+    assert text == "JoobleClient: skipped — needs a free key"
