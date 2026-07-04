@@ -77,3 +77,25 @@ def _block_network(request, monkeypatch):
         return
     monkeypatch.setattr(socket.socket, "connect", _blocked_connect)
     monkeypatch.setattr(socket.socket, "connect_ex", _blocked_connect_ex)
+
+
+@pytest.fixture(autouse=True)
+def _reset_per_run_module_state():
+    """Clear per-RUN module-global state between tests (S35b review finding).
+
+    applog._WARNED_ONCE dedups warn_once() per process: a test that warms a key
+    (e.g. 'careerjet:no-affid') silently swallows the SAME warning in a later
+    test, whose capsys assertion then fails — but only in orders that differ
+    from default collection (repro: test_b2_source_keys.py::test_careerjet_
+    keyless_self_skip followed by tests/search/test_careerjet.py::test_no_affid
+    _warns_and_empty). scrape.discoverer._RUN_QUERY_MEMO is the same class of
+    per-run global. Reset both here so no individual test has to remember to —
+    the inline resets scattered in older test files become harmless no-ops."""
+    import applog
+    applog.reset_run_warnings()
+    try:
+        from scrape import discoverer
+        discoverer.reset_run_memo()
+    except Exception:
+        pass  # discoverer optional in stripped-down environments
+    yield
