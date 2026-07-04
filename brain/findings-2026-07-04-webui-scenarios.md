@@ -170,3 +170,23 @@ What the web surface proved it can carry end-to-end (all three journeys): onboar
 ## Coverage gap (methodological, for the record)
 
 Only 3 of 5 journey reports reached synthesis (SC1/SC2/SC3). SC4 and SC5 produced no payload and no scratchpad artifact; their scenarios -- remote-lane population + remote-badge rendering (SC4) and the entire two-project/concurrency/backup-restore suite (SC5) -- are absent from this report. Findings above are complete and load-bearing for what was tested; the GO/NO-GO is deliberately scoped to exclude the untested surface. Re-running SC4/SC5 is the top follow-up.
+
+---
+
+## Addendum (orchestrator): SC4/SC5 + late fixes
+
+SC4 (remote-only marketer) and SC5 (two-project concurrency) reports missed the
+synthesis payload window but their defects WERE dispositioned in the fix passes:
+
+- SC4: remote-only home treated as a metro (local modes over-filtered) — FIXED
+  `04f7afa` (web + tk twin). 20 pass / 2 partial / 1 fail steps.
+- SC5: global onboarding marker, switch-under-pin silent no-op, cross-project
+  409 mislabel — all FIXED `04f7afa`; backup-restore 8MB 413 (critical) FIXED
+  `04f7afa`; **backup-restore WAL-sidecar critical (Windows) FIXED `edb9403`**
+  (root cause: `get_conn()` leaks open WAL connections — transaction-scoped
+  context manager; new `tracker.db.release_for_restore()` + sidecar exclusion
+  in backups). 12 pass / 4 partial / 4 fail steps, all fails now fixed.
+
+Post-fix state: **2903 passed / 0 failed**; all 2 criticals + 7 majors from the
+scenario run fixed; 12 minors + parity gaps remain catalogued above for the
+next-session queue.
