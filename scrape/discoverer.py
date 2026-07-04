@@ -79,6 +79,15 @@ def _brave_fetch(query: str) -> dict | None:
         "Accept-Encoding":      "gzip",
         "X-Subscription-Token": BRAVE_SEARCH_API_KEY,
     }
+    # Every failure branch below used to be a bare print() to a console the
+    # frozen exe discards, with no persisted signal and no run-scoped dedup --
+    # unlike the "no key at all" case in discover_companies() (S32/L7). This is
+    # a DISTINCT, plausible failure mode (a previously-working key that expires
+    # or gets rate-limited) that silently and permanently stops the registry
+    # from growing with no visible signal (S35 #22). Routed through the same
+    # applog.warn_once() run-scoped dedup so it logs ONCE per run (not once per
+    # ats_site/keyword pair -- _brave_fetch is called up to 5x per keyword).
+    import applog
     try:
         resp = requests.get(
             BRAVE_SEARCH_URL,
@@ -87,15 +96,25 @@ def _brave_fetch(query: str) -> dict | None:
             timeout=CAREERS_REQUEST_TIMEOUT,
         )
         if resp.status_code == 401:
-            print("  [discover] Brave Search: invalid API key — check BRAVE_SEARCH_API_KEY in .env")
+            applog.warn_once(
+                "  [discover] WARNING: Brave Search key rejected (401 invalid "
+                "API key) — check BRAVE_SEARCH_API_KEY in .env; company "
+                "discovery is contributing nothing this run.",
+                key="discover:brave-401")
             return None
         if resp.status_code == 429:
-            print("  [discover] Brave Search: rate limit hit — discovery skipped")
+            applog.warn_once(
+                "  [discover] WARNING: Brave Search rate limit hit (429) — "
+                "company discovery skipped for the rest of this run.",
+                key="discover:brave-429")
             return None
         resp.raise_for_status()
         return resp.json()
     except Exception as e:
-        print(f"  [discover] Brave Search request failed - {e}")
+        applog.warn_once(
+            f"  [discover] WARNING: Brave Search request failed — {e}; "
+            "company discovery is contributing nothing this run.",
+            key="discover:brave-exception")
         return None
 
 
