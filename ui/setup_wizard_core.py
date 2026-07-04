@@ -311,8 +311,22 @@ def _marker_path(slug: str | None = None) -> Path:
 def is_onboarded(slug: str | None = None) -> bool:
     """True when THIS project (the active one, or the named slug) has completed the
     wizard. Migration: for the root/'default' project the path resolves to the
-    legacy root marker, so a pre-migration install stays onboarded."""
-    return _marker_path(slug).exists()
+    legacy root marker, so a pre-migration install stays onboarded.
+
+    Legacy-config inference (S36b): projects configured BEFORE the per-project
+    marker existed have a complete config but no marker, which re-gated them
+    behind the wizard on every web load. A config that already carries the
+    wizard's core output (non-empty ``keywords``) counts as onboarded. Pure
+    READ — no marker is written here (GET /api/onboarding calls this; a read
+    route must not mutate state, and ``ai_setup.apply_setup(mark_onboarded=
+    False)`` relies on the marker staying absent until the wizard finishes)."""
+    if _marker_path(slug).exists():
+        return True
+    try:
+        cfg = workspace.load_config(slug)
+    except Exception:
+        return False
+    return bool(cfg.get("keywords"))
 
 
 def mark_onboarded(slug: str | None = None) -> None:

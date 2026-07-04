@@ -184,7 +184,12 @@ def test_apply_setup_marks_onboarded(isolated):
 def test_apply_setup_can_skip_onboarded(isolated):
     from ui import setup_wizard
     ai_setup.apply_setup(json.dumps(_GOOD), mark_onboarded=False)
-    assert setup_wizard.is_onboarded() is False
+    # S36b: the wizard-completion MARKER must stay absent (that is what
+    # mark_onboarded=False protects — the wizard finishes it later), but
+    # is_onboarded() now INFERS onboarded from the keyword-carrying config
+    # (legacy-config inference), so assert the marker file itself.
+    from ui.setup_wizard_core import _marker_path
+    assert not _marker_path().exists()
 
 
 def test_apply_setup_does_not_apply_on_bad_block(isolated):

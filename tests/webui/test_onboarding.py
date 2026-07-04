@@ -343,3 +343,41 @@ def test_onboarded_marker_default_slug_uses_root_path(tmp_path, monkeypatch):
     (tmp_path / ".onboarded").write_text("ok\n", encoding="utf-8")   # legacy marker
     assert wizard.is_onboarded("default") is True
     assert wizard._marker_path("default") == tmp_path / ".onboarded"
+
+
+# ── S36b: legacy-config inference (configured project ≠ re-gated wizard) ──────
+
+def test_configured_project_without_marker_counts_as_onboarded(tmp_path, monkeypatch):
+    """A project configured BEFORE the per-project marker existed (config.json
+    with keywords, no .onboarded file) must report onboarded:true — and the
+    marker self-heals so the inference runs once."""
+    import json
+    from ui import setup_wizard_core as core
+    import workspace
+
+    proj = tmp_path / "legacy-proj"
+    proj.mkdir()
+    (proj / "config.json").write_text(
+        json.dumps({"keywords": ["controls engineer"], "location": "Cincinnati"}),
+        encoding="utf-8")
+    monkeypatch.setattr(workspace, "project_dir", lambda slug=None: proj)
+    monkeypatch.setattr(workspace, "load_config",
+                        lambda slug=None: json.loads(
+                            (proj / "config.json").read_text(encoding="utf-8")))
+
+    assert not (proj / ".onboarded").exists()
+    assert core.is_onboarded() is True
+    # Pure inference — a READ never writes the marker.
+    assert not (proj / ".onboarded").exists()
+
+
+def test_unconfigured_project_still_gates(tmp_path, monkeypatch):
+    from ui import setup_wizard_core as core
+    import workspace
+
+    proj = tmp_path / "fresh-proj"
+    proj.mkdir()
+    monkeypatch.setattr(workspace, "project_dir", lambda slug=None: proj)
+    monkeypatch.setattr(workspace, "load_config", lambda slug=None: {})
+    assert core.is_onboarded() is False
+    assert not (proj / ".onboarded").exists()
