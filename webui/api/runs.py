@@ -86,9 +86,29 @@ def job_events(job_id: str):
 # ingest — the route never imports gui/tkinter, and the real ingest lives in the
 # Tk-free ``daily_run_core.run_ingest``. Late import inside the wrapper keeps the
 # module importable in a stripped/headless checkout.
-def _daily_ingest(slug, *, on_line=None, cancel=None) -> int:
+def _daily_ingest(slug, *, on_line=None, cancel=None,
+                  max_pages=None, min_score=None) -> int:
     import daily_run_core
-    return daily_run_core.run_ingest(slug, on_line=on_line, cancel=cancel)
+    return daily_run_core.run_ingest(slug, on_line=on_line, cancel=cancel,
+                                     max_pages=max_pages, min_score=min_score)
+
+
+def _opt_int(data: dict, key: str, lo: int, hi: int):
+    """Validate an optional integer body field. Returns ``(value, error)`` —
+    ``(None, None)`` when absent, ``(None, "<message>")`` when malformed or out
+    of range (strict: a bool or a float like 1.5 is rejected, not truncated)."""
+    v = data.get(key)
+    if v is None:
+        return None, None
+    if isinstance(v, bool) or not isinstance(v, (int, str)):
+        return None, f"{key} must be an integer"
+    try:
+        iv = int(v)
+    except (TypeError, ValueError):
+        return None, f"{key} must be an integer"
+    if not (lo <= iv <= hi):
+        return None, f"{key} must be between {lo} and {hi}"
+    return iv, None
 
 
 @runs_bp.post("/runs/daily")
@@ -107,7 +127,19 @@ def start_daily_run():
     ``exclusive=True`` is what wires the cross-project mutex; the daily job also
     pins the slug at start and unpins in ``finally`` inside ``run_ingest`` (mirrors
     ``gui.run_daily_ingest``/``daily_run.run_main`` — the S27-safe pin pattern).
+
+    Optional JSON body knobs (S36 parity gap P1 — CLI parity for run shaping):
+    ``{"max_pages": 1..10, "min_score": 0..100}``. Both optional; absent keeps
+    daily_run's own defaults exactly. Malformed/out-of-range values are a 400
+    ``{ok:false,error}`` — never silently clamped or ignored.
     """
+    data = request.get_json(silent=True) or {}
+    max_pages, err = _opt_int(data, "max_pages", 1, 10)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    min_score, err = _opt_int(data, "min_score", 0, 100)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
     # The TARGET project is the user's CURRENT registry active slug, NOT the pinned
     # one: if another project's run is pinned, active_slug() would return the pin,
     # so this run would take the pinned (kind,key) and a conflict would mislabel
@@ -116,11 +148,20 @@ def start_daily_run():
     # shape is accurate. (scenario finding #7)
     slug = workspace.registry_active_slug()
 
+    # Knobs are forwarded only when SET so the default web run keeps the exact
+    # legacy call shape (and argv) — parity with pre-knob behavior by construction.
+    knobs = {}
+    if max_pages is not None:
+        knobs["max_pages"] = max_pages
+    if min_score is not None:
+        knobs["min_score"] = min_score
+
     def _fn(handle):
         # Stream every pipeline stdout line into the job's SSE log; respect a
         # pre-start cancel via handle.cancelled (daily_run has no in-flight cancel
         # seam — cancel is best-effort-before-start; documented in run_ingest).
-        rc = _daily_ingest(slug, on_line=handle.log, cancel=handle.cancelled)
+        rc = _daily_ingest(slug, on_line=handle.log, cancel=handle.cancelled,
+                           **knobs)
         return {"rc": rc, "slug": slug}
 
     try:

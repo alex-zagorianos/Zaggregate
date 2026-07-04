@@ -9,6 +9,9 @@ import {
   Loader2,
   PanelRightClose,
   PanelRightOpen,
+  ChevronDown,
+  Zap,
+  Layers,
 } from "lucide-react";
 
 import {
@@ -20,6 +23,7 @@ import {
 import {
   endpoints,
   ApiError,
+  type DailyRunKnobs,
   type InboxRow,
   type RunConflictBody,
 } from "@/api/client";
@@ -40,6 +44,13 @@ import { ScoreChip } from "@/components/score-chip";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -130,10 +141,13 @@ export function InboxTab() {
   const [consoleOpen, setConsoleOpen] = React.useState(false);
   const [running, setRunning] = React.useState(false);
 
-  const startRun = React.useCallback(() => {
+  // `knobs` is the optional run-shaping body (S36 parity gap P1). The knobless
+  // `startRun` wrapper below is what buttons/palette/empty-state bind to, so a
+  // MouseEvent can never leak in as the knobs object.
+  const startRunWith = React.useCallback((knobs?: DailyRunKnobs) => {
     setRunning(true);
     endpoints
-      .startDailyRun()
+      .startDailyRun(knobs)
       .then((r) => {
         setRunJobId(r.job_id);
         setConsoleOpen(true);
@@ -159,6 +173,8 @@ export function InboxTab() {
         }
       });
   }, []);
+
+  const startRun = React.useCallback(() => startRunWith(), [startRunWith]);
 
   // ── triage actions ───────────────────────────────────────────────────────────
   const onTrack = React.useCallback(
@@ -301,14 +317,68 @@ export function InboxTab() {
         </div>
         <div className="flex items-center gap-2">
           <AiMenu filters={filters} />
-          <Button onClick={startRun} disabled={running}>
-            {running ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
-            Update my Inbox now
-          </Button>
+          {/* Split button: the main action keeps the engine-default run; the
+              chevron offers run depth (S36 parity gap P1 — CLI --max-pages). */}
+          <div className="flex items-center">
+            <Button
+              onClick={startRun}
+              disabled={running}
+              className="rounded-r-none"
+            >
+              {running ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              Update my Inbox now
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  disabled={running}
+                  size="icon"
+                  aria-label="Run options"
+                  className="border-primary-foreground/20 rounded-l-none border-l"
+                >
+                  <ChevronDown className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[16rem]">
+                <DropdownMenuLabel>Run depth</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={() => startRunWith({ max_pages: 1 })}
+                >
+                  <Zap className="size-4 opacity-70" />
+                  <div className="flex flex-col">
+                    <span>Quick run</span>
+                    <span className="text-muted-foreground text-xs">
+                      1 page per source — fastest, fewest calls
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => startRunWith()}>
+                  <RefreshCw className="size-4 opacity-70" />
+                  <div className="flex flex-col">
+                    <span>Standard run</span>
+                    <span className="text-muted-foreground text-xs">
+                      2 pages per source — the default
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => startRunWith({ max_pages: 3 })}
+                >
+                  <Layers className="size-4 opacity-70" />
+                  <div className="flex flex-col">
+                    <span>Deep run</span>
+                    <span className="text-muted-foreground text-xs">
+                      3 pages per source — widest net, slowest
+                    </span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 

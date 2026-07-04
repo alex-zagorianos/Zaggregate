@@ -408,7 +408,14 @@ export const endpoints = {
     api.post<ScoreReplyResponse>("/inbox/score-reply", { json: { text } }),
 
   // Runs / jobs
-  startDailyRun: () => api.post<StartRunResponse>("/runs/daily"),
+  // Optional run-shaping knobs (S36 parity gap P1): max_pages 1–10 caps the
+  // per-keyword pagination (CLI --max-pages, engine default 2); min_score
+  // 0–100 is the inbox threshold (CLI --min-score). Omitted -> engine defaults.
+  startDailyRun: (knobs?: DailyRunKnobs) =>
+    api.post<StartRunResponse>(
+      "/runs/daily",
+      knobs && Object.keys(knobs).length ? { json: knobs } : undefined,
+    ),
   // The job snapshot's `error` is `string | null` (an explicit null while
   // running), which doesn't fit ApiEnvelope's `error?: string`, so we fetch the
   // base envelope and cast to the richer shape rather than loosen ApiEnvelope.
@@ -725,6 +732,14 @@ export interface ScoreReplyResponse extends ApiEnvelope {
 // ── Runs / jobs (daily run + SSE) ─────────────────────────────────────────────
 export interface StartRunResponse extends ApiEnvelope {
   job_id: string;
+}
+
+/** Optional POST /runs/daily body — run-shaping knobs (S36 parity gap P1). */
+export interface DailyRunKnobs {
+  /** Per-keyword pagination cap, 1–10 (CLI --max-pages; engine default 2). */
+  max_pages?: number;
+  /** Inbox score threshold, 0–100 (CLI --min-score; engine default). */
+  min_score?: number;
 }
 
 /** 409 body shape carried on ApiError.body when a run is already in flight. */

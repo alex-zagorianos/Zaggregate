@@ -37,7 +37,8 @@ from ui.common import _LineSink
 
 
 def run_ingest(slug, *, on_line: Optional[Callable[[str], None]] = None,
-               cancel=None) -> int:
+               cancel=None, max_pages: Optional[int] = None,
+               min_score: Optional[int] = None) -> int:
     """Run the daily search->score->inbox pipeline for ONE project, pinned.
 
     ``slug``   — project slug (falls back to ``workspace.active_slug()``).
@@ -47,6 +48,11 @@ def run_ingest(slug, *, on_line: Optional[Callable[[str], None]] = None,
                   or ``JobHandle.cancelled``). Honored ONLY before ``run_main()``
                   starts (see module docstring — daily_run has no in-flight cancel
                   seam); a run cancelled while pending returns 130 without running.
+    ``max_pages``/``min_score`` — optional run-shaping knobs forwarded to
+                  ``daily_run``'s ``--max-pages``/``--min-score`` flags (S36
+                  parity gap P1: the web surface previously always ran CLI
+                  defaults). ``None`` keeps daily_run's own defaults — byte-
+                  identical argv to the pre-knob behavior.
 
     Returns daily_run's exit code (0 = ok, 130 = cancelled-before-start).
     """
@@ -57,7 +63,12 @@ def run_ingest(slug, *, on_line: Optional[Callable[[str], None]] = None,
     # the pin is live even if that internal pin is ever removed. run_main()'s
     # finally clears the process pin.
     workspace.pin_active(slug)
-    sys.argv = ["daily_run.py"] + (["--project", slug] if slug else [])
+    argv = ["daily_run.py"] + (["--project", slug] if slug else [])
+    if max_pages is not None:
+        argv += ["--max-pages", str(int(max_pages))]
+    if min_score is not None:
+        argv += ["--min-score", str(int(min_score))]
+    sys.argv = argv
     sink = _LineSink(on_line) if on_line else None
     try:
         # Best-effort pre-start cancel: if the job was cancelled while queued we
