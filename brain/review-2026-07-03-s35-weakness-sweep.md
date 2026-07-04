@@ -58,16 +58,29 @@ got both right + inferred remote). So the fix target = the hard-blocks, not the 
 
 ---
 
-## DEFERRED — needs Alex's approval (touches the scoring/filter → daily-run byte-identical rule)
+## ALEX'S DECISIONS (same day, after the report)
 
-| #   | Finding                                                                                                               | File                    | Recommended fix                      |
-| --- | --------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------ |
-| 7   | `hard_gate` title blocklist uses plain substring — a blocker "sales" drops "Salesforce Engineer", "it" drops "Editor" | preferences.py:141      | word-boundary match `\b…\b`          |
-| 28  | `_EXEC_RE` fires on IC titles containing "manager" (e.g. "Manager of one product") → flips rubric to senior           | match/rubric.py:27      | tighten regex / require exec context |
-| 37  | SOC penalty-role exemption only covers sales+maintenance, not other blue-collar SOCs                                  | industry_profile.py:250 | broaden exemption set                |
-| 38  | Skill-overlap component abstains to neutral for a thin résumé → dilutes title signal                                  | match/scorer.py:346     | weight-shift when skills absent      |
+> "I don't want anything to get over dropped, I want as much as possible, let the
+> users drop jobs but mark this down as a known issue, and the design philosophy is
+> to get as many potential jobs in front of the users. That being said we don't want
+> to waste users time by showing completely unrelated jobs. Lets wait on blue collar
+> but lets keep building out the seeded company list for a different session."
 
-_(These change which jobs survive/rank for Alex's eng run — I did not touch them per CLAUDE.md. Each is a one-shot approve-and-apply.)_
+Applied: **#7 FIXED** (`78fbc67` — word-boundary blockers; over-DROPS approved).
+Philosophy codified in CLAUDE.md (Design philosophy) + new `docs/KNOWN_ISSUES.md`.
+**#28/#37/#38 stay held** — they are RANKING accuracy, not drops (jobs still shown);
+listed in KNOWN_ISSUES. **#4 blue-collar: wait**; seeded-company-list buildout is a
+planned FUTURE SESSION. Also fixed same batch: a pre-existing wall-clock time-bomb
+test (`3ac80fa` — hardcoded created-date crossed a recency-rounding boundary today).
+Suite 2363 green.
+
+## Held ranking refinements (not drops — see KNOWN_ISSUES)
+
+| #   | Finding                                                                                                     | File                    | Recommended fix                      |
+| --- | ----------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------ |
+| 28  | `_EXEC_RE` fires on IC titles containing "manager" (e.g. "Manager of one product") → flips rubric to senior | match/rubric.py:27      | tighten regex / require exec context |
+| 37  | SOC penalty-role exemption only covers sales+maintenance, not other blue-collar SOCs                        | industry_profile.py:250 | broaden exemption set                |
+| 38  | Skill-overlap component abstains to neutral for a thin résumé → dilutes title signal                        | match/scorer.py:346     | weight-shift when skills absent      |
 
 ## DEFERRED — coverage/data & resilience (bigger or needs direction)
 

@@ -29,6 +29,15 @@ title substring over-drop ("sales"→drops Salesforce), #28 _EXEC_RE IC-title fa
 blue-collar starter registry; #15 non-tech ATS hosts; silent-failure surfacing #5/#6/#22/#23;
 zero-key transparency #18).** Full disposition of all 39: `brain/review-2026-07-03-s35-weakness-sweep.md`.
 PUSH HELD. See [[handoff_20260703_session35]].
+**→ ALEX DECIDED (same day): DESIGN PHILOSOPHY = inclusion over precision** — "get as
+many potential jobs in front of the users as possible, let the users drop, never
+over-drop; but don't show completely unrelated jobs." **#7 APPLIED** (`78fbc67`
+word-boundary blockers; +3 tests); philosophy baked into repo CLAUDE.md + new
+**`docs/KNOWN_ISSUES.md`** (living trade-offs doc); #28/#37/#38 held as known issues
+(ranking, not drops); **#4 blue-collar waits; seeded-company-list buildout = a planned
+FUTURE session.** Bonus: pre-existing wall-clock time-bomb test fixed (`3ac80fa` —
+hardcoded created-date crossed a recency-rounding boundary; repro'd on clean tree).
+Suite **2363 green**; 8 commits ahead, PUSH HELD.
 
 ---
 

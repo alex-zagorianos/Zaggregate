@@ -75,14 +75,29 @@ country param · #36 cache-GC-on-abort. Batch these on request.
 
 ## State
 
-- master = `24605fb` (5 S35 commits ahead of pushed `6be40b9`). PUSH HELD.
-- Suite 2360 passed / 0 failed. graphify self-maintains via post-commit watcher.
+- master = `78fbc67` (8 S35 commits ahead of pushed `6be40b9`). PUSH HELD.
+- Suite 2363 passed / 0 failed. graphify self-maintains via post-commit watcher.
 - Old worktree `ZAG0005-wt-12b-qat-t2f` still present (pre-existing).
+
+## Alex's decisions (same day — DESIGN PHILOSOPHY set)
+
+"Get as many potential jobs in front of the users as possible; let the users
+drop; never over-drop; but don't show completely unrelated jobs. Wait on blue
+collar; keep building the seeded company list in a DIFFERENT session."
+→ **#7 applied** (`78fbc67`: word-boundary blockers — "sales" no longer kills
+"Salesforce Engineer"); philosophy baked into CLAUDE.md + new
+`docs/KNOWN_ISSUES.md` (living trade-offs doc); **#28/#37/#38 held** (ranking,
+not drops — listed as known issues); **#4 waits**. Also fixed a pre-existing
+wall-clock time-bomb test (`3ac80fa` — hardcoded created-date crossed a
+recency-rounding boundary on 2026-07-03; repro'd on clean tree).
 
 ## Needs Alex
 
-1. Approve/decline the scoring/filter fixes (#7, #28, #37, #38).
-2. Steer the blue-collar registry build (#4) — which sectors/metros first.
-3. Say "push" when ready (5 commits held).
-4. (Carried) reload extension, re-clip edisonsmart, delete pre-fix junk tracker rows,
+1. Say "push" when ready (8 commits held).
+2. (Carried) reload extension, re-clip edisonsmart, delete pre-fix junk tracker rows,
    CareerOneStop key, experience.md PII-history decision.
+
+## Next session (planned per Alex)
+
+**Seeded-company-list buildout** — expand the shipped starter registry's breadth
+(sectors/metros per Alex's steer at session start; blue-collar explicitly waits).
