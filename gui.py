@@ -62,83 +62,14 @@ from ui import setup_wizard
 from ui import settings as uisettings
 from ui.kanban import KanbanTab
 
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
-def safe_url(url):
-    """Return url unchanged only when its scheme is http or https.
-    Rejects javascript:, data:, file:, and any other scheme.
-    Returns '' so callers can test: if u := safe_url(raw): webbrowser.open(u)"""
-    if not url:
-        return ""
-    try:
-        return url if urlparse(url).scheme in ("http", "https") else ""
-    except ValueError:
-        return ""
-
-
-def _call_prompt_via_api(prompt):
-    """Send a pre-built prompt to the Anthropic API and return the raw text reply.
-    Uses the key from ranker.api_key() and config.ANTHROPIC_MODEL. Raises
-    RuntimeError when no key is configured; re-raises any API error."""
-    import config as _cfg
-    key = _ranker_mod.api_key()
-    if not key:
-        raise RuntimeError(
-            "No Anthropic API key -- set ANTHROPIC_API_KEY or save one in "
-            "Tools > Connect your AI.")
-    import anthropic
-    client = anthropic.Anthropic(api_key=key, base_url=_cfg.anthropic_base_url())
-    msg = client.messages.create(
-        model=_cfg.ANTHROPIC_MODEL,
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return "".join(
-        getattr(b, "text", "") for b in msg.content
-        if getattr(b, "type", None) == "text"
-    )
-
-
-def _scored_status(applied, asked, missed) -> str:
-    """Status line for a fit-scoring round, surfacing partial coverage:
-    'Scored 17/20 - 3 not scored' (bridge partial-coverage, C2 P4). No missed
-    -> 'Scored 20/20.'"""
-    n_missed = len(missed) if missed else 0
-    if n_missed:
-        return f"Scored {applied}/{asked} - {n_missed} not scored"
-    return f"Scored {applied}/{asked}."
-
-
-class _LineSink(io.TextIOBase):
-    """A minimal text stream that forwards whole lines to a callback. Used to
-    capture the daily-ingest pipeline's print() output (per-source counts, a
-    429'd source, an expired key) so the GUI can render live progress instead of
-    discarding it — daily_run narrates via print(), not a passed-in log sink."""
-
-    def __init__(self, on_line):
-        self._on_line = on_line
-        self._buf = ""
-
-    def write(self, s):
-        if not s:
-            return 0
-        self._buf += s
-        while "\n" in self._buf:
-            line, self._buf = self._buf.split("\n", 1)
-            try:
-                self._on_line(line)
-            except Exception:
-                pass
-        return len(s)
-
-    def flush(self):
-        if self._buf:
-            try:
-                self._on_line(self._buf)
-            except Exception:
-                pass
-            self._buf = ""
+# ── COMPAT RE-EXPORT (S35 gui-split): shared GUI infra moved to ui/common.py.
+# Re-imported here so existing `gui.set_status` / `gui.db_guard` / etc. call
+# sites and test monkeypatch targets keep working unchanged.
+from ui.common import (
+    safe_url, _call_prompt_via_api, _scored_status, _LineSink,
+    _DATE_RE, db_guard, copy_or_warn, set_status, _sync_palette_aliases,
+)
+from ui import common as _ui_common
 
 
 def run_daily_ingest(slug, *, on_line=None) -> int:
@@ -170,46 +101,6 @@ def run_daily_ingest(slug, *, on_line=None) -> int:
     finally:
         sys.argv = prev_argv
         workspace.unpin_active()  # daily_run.run_main already unpins; idempotent
-
-
-# ── Palette ── all sourced from ui.theme (clean light/modern) so the whole app
-# shares one set of colors. Legacy names kept so existing call sites still read.
-DARK  = theme.INK       # dark ink (was the dark header navy)
-MID   = theme.MUTED
-BG    = theme.WINDOW    # app/background fills
-WHITE = theme.SURFACE   # cards / white surfaces
-ERR   = theme.DANGER
-
-# Named status colors for set_status(label, text, kind).
-OK    = theme.SUCCESS   # success / done (green)
-WORK  = theme.WARN      # in-progress (amber)
-INFO  = theme.ACCENT    # neutral notice (accent)
-MUTED = theme.MUTED     # de-emphasized (grey)
-
-_STATUS_COLORS = {
-    "ok": OK, "work": WORK, "info": INFO, "muted": MUTED, "err": ERR,
-}
-
-
-def _sync_palette_aliases():
-    """Re-point the legacy module-level color aliases at the *active* theme
-    palette. The aliases above are captured at import; after a light/dark switch
-    (theme.set_mode) this refreshes them so widgets rebuilt next use new colors."""
-    global DARK, MID, BG, WHITE, ERR, OK, WORK, INFO, MUTED, _STATUS_COLORS
-    DARK, MID, BG = theme.INK, theme.MUTED, theme.WINDOW
-    WHITE, ERR = theme.SURFACE, theme.DANGER
-    OK, WORK, INFO, MUTED = theme.SUCCESS, theme.WARN, theme.ACCENT, theme.MUTED
-    _STATUS_COLORS = {"ok": OK, "work": WORK, "info": INFO, "muted": MUTED,
-                      "err": ERR}
-
-
-def set_status(label, text, kind="muted"):
-    """Set a tk.Label's text and color by semantic kind (ok/work/info/muted/err)
-    instead of repeating inline hex at each call site."""
-    label.config(text=text, fg=_STATUS_COLORS.get(kind, MUTED))
-
-# Job-Tracker status badge colors are theme-aware (light/dark) via theme.STATUS_BADGE;
-# tabs are rebuilt on a theme switch so the tree re-reads the active set.
 
 
 # ── Add / Edit dialog ─────────────────────────────────────────────────────────
@@ -597,33 +488,6 @@ class PasteDialog(tk.Toplevel):
         self.destroy()
 
 
-def db_guard(parent, op, *, status_cb=None, action="operation"):
-    """Run a DB-mutating op, converting an sqlite3.Error (e.g. the daily run is
-    mid-write) into visible feedback instead of a silent crash. Returns
-    (ok, result): result is the op's return value on success, else None."""
-    try:
-        return True, op()
-    except sqlite3.Error as e:
-        msg = f"Database busy — {action} failed. Try again. ({e})"
-        if status_cb:
-            status_cb(msg)
-        else:
-            messagebox.showerror("Database error", msg, parent=parent)
-        return False, None
-
-
-def copy_or_warn(parent, text: str, status_cb=None) -> bool:
-    """Clipboard copy with a visible failure path; returns success."""
-    if to_clipboard(text):
-        if status_cb:
-            status_cb("Prompt copied — paste it into claude.ai, then paste "
-                      "the reply back here.")
-        return True
-    messagebox.showerror("Clipboard", "Could not copy to clipboard.",
-                         parent=parent)
-    return False
-
-
 # ── Job Tracker tab ───────────────────────────────────────────────────────────
 class TrackerTab(ttk.Frame):
 
@@ -695,7 +559,7 @@ class TrackerTab(ttk.Frame):
 
         # Action bar — contents depend on the view (active vs archive), rebuilt
         # by _rebuild_actionbar() when the view mode changes.
-        self._abar = tk.Frame(self, bg=BG, pady=6)
+        self._abar = tk.Frame(self, bg=_ui_common.BG, pady=6)
         self._abar.pack(fill="x", padx=6, side="bottom")
         self._qstatus = tk.StringVar()
         self._abar_mode = None
@@ -968,7 +832,7 @@ class ResumeTab(ttk.Frame):
         try:
             prompt = build_prompt(posting)
         except Exception as e:
-            self._status_lbl.config(text=f"Error: {e}", fg=ERR)
+            self._status_lbl.config(text=f"Error: {e}", fg=_ui_common.ERR)
             return
         copy_or_warn(self, prompt,
                      lambda m: self._status_lbl.config(text=m, fg=theme.WARN))
@@ -1019,7 +883,7 @@ class ResumeTab(ttk.Frame):
     def _on_error(self, msg):
         if self._gen_btn:
             self._gen_btn.config(state="normal")
-        self._status_lbl.config(text=f"Error: {msg}", fg=ERR)
+        self._status_lbl.config(text=f"Error: {msg}", fg=_ui_common.ERR)
 
     def _open_folder(self, _event=None):
         if self._output_dir:
@@ -1636,7 +1500,7 @@ class InboxTab(ttk.Frame):
         except Exception:
             pass
         if err:
-            self._count_lbl.config(text=f"Update failed: {err}", fg=ERR)
+            self._count_lbl.config(text=f"Update failed: {err}", fg=_ui_common.ERR)
             messagebox.showerror(
                 "Update my Inbox", f"The update didn't finish:\n\n{err}",
                 parent=self)
@@ -3924,7 +3788,7 @@ class ApplyQueueTab(ttk.Frame):
         text = f"Batch: saved docs for {saved}/{len(self._batch_order)} job(s)."
         if missing > 0:
             text += f" {missing} missing from the reply — re-paste or run singly."
-        self._status.config(text=text, fg=theme.SUCCESS if saved else ERR)
+        self._status.config(text=text, fg=theme.SUCCESS if saved else _ui_common.ERR)
         self.refresh(keep_selection=True)
 
     def _generate_api(self):
