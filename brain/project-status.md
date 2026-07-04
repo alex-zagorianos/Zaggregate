@@ -4,6 +4,35 @@
 
 ---
 
+## Session 35b (2026-07-04) — FIX-ALL + modularize + full-scale validation ✅
+
+Same conversation as S35. Alex: "fix all other findings that need it", "multiple
+files instead of one monolith", "full scale test of multiple profiles… make sure
+the refactoring didn't break anything", language question. **Wave 1 (3 Sonnet
+builders, worktrees):** ranking (#28 exec-intent split / #37 SOC-11 / #31 SOC 33+51
+routing / #38 honest skills chip — **eng parity byte-identical**), sources (keyless-
+skip on ALL 3 entry points, US-only skip for non-US, jobsacuk activation, careerjet/
+jooble country, adzuna cache versioning), resilience (no cache-on-error, careers/
+Brave failure surfacing, per-source ctor guard, careers fetch memo N-not-3N,
+discovery TTL+memo, GC-in-finally, icims/taleo/SF discovery hosts, harvest negative-
+cache). 4-region cli.py merge conflict hand-resolved. **Wave 2 (modularize):**
+gui.py **5,303→1,834** (10 ui/ modules, pure moves, compat re-exports); cli.py
+816→610 via `search/source_registry.py` (one function per source). **Review fleet
+over cumulative diff: 0 findings in merge/pure-move/interaction dims; 1 confirmed
+test-hygiene** — applog `_WARNED_ONCE` cross-test pollution → autouse conftest
+reset (`979397d`). **Full-scale validation ALL PASS:** 5 blank-slate profiles
+through real daily_run (eng 2255/280, nurse 507/136, warehouse 282/53, **London-UK
+555/304**, remote 784/125); live catch: Adzuna /gb/ + "London, United Kingdom"
+where-string = 0 results (geocoder chokes on country tails) → strip-when-tail-names-
+routed-country fix (`config.location_country_tail`) → **Adzuna gb 295 rows = UK
+lane's top source**; GUI compat 29/29; parity byte-identical through refactors;
+receiver live 200/403/**413**; **production exe rebuilt + clean launch** post-split.
+Language decision: engine stays Python; UI successor = local web UI over Flask
+(roadmap, KNOWN_ISSUES). Suite **2478 green** (S35 open = 2311). **+42 commits,
+PUSH HELD.** See [[handoff_20260704_session35b]].
+
+---
+
 ## Session 35 (2026-07-03) — Weakness sweep: cheap-AI onboarding + international + receiver ✅
 
 Alex: "keep testing… find flaws/inefficiencies… make sure cheap AIs can onboard
