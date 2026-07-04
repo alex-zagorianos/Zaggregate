@@ -200,6 +200,33 @@ ADZUNA_COUNTRIES = frozenset({
 })
 
 
+# Country NAMES a location string's comma-tail may carry -> Adzuna country code.
+# Shared by adzuna_country_for (routing) and location_country_tail (where-string
+# hygiene). US state abbreviations deliberately absent — a "City, ST" tail never
+# matches, so US locations flow through untouched.
+_COUNTRY_NAME_TO_CC = {
+    "usa": "us", "united states": "us", "us": "us",
+    "uk": "gb", "united kingdom": "gb", "england": "gb", "gb": "gb",
+    "canada": "ca", "australia": "au", "germany": "de", "france": "fr",
+    "spain": "es", "italy": "it", "netherlands": "nl", "poland": "pl",
+    "brazil": "br", "mexico": "mx", "india": "in", "singapore": "sg",
+    "new zealand": "nz", "austria": "at", "belgium": "be",
+    "switzerland": "ch", "south africa": "za",
+}
+
+
+def location_country_tail(location=None):
+    """The Adzuna country code named by the location's comma-TAIL, or None when
+    the tail isn't a recognized country name ('Cincinnati, OH' -> None,
+    'London, United Kingdom' -> 'gb'). Lets a caller that has already routed to
+    a country endpoint strip the redundant tail from the where-string."""
+    loc = (location or "").strip().lower()
+    if not loc or "," not in loc:
+        return None
+    cc = _COUNTRY_NAME_TO_CC.get(loc.rsplit(",", 1)[-1].strip())
+    return cc if cc in ADZUNA_COUNTRIES else None
+
+
 def adzuna_country_for(location=None, country=None):
     """Derive the Adzuna country code for a project. An explicit `country`
     (config's 'adzuna_country'/'country' field) wins; else a light location-tail
@@ -211,17 +238,7 @@ def adzuna_country_for(location=None, country=None):
             return cc
     loc = (location or "").strip().lower()
     if loc:
-        tail = loc.rsplit(",", 1)[-1].strip()
-        _NAME_TO_CC = {
-            "usa": "us", "united states": "us", "us": "us",
-            "uk": "gb", "united kingdom": "gb", "england": "gb", "gb": "gb",
-            "canada": "ca", "australia": "au", "germany": "de", "france": "fr",
-            "spain": "es", "italy": "it", "netherlands": "nl", "poland": "pl",
-            "brazil": "br", "mexico": "mx", "india": "in", "singapore": "sg",
-            "new zealand": "nz", "austria": "at", "belgium": "be",
-            "switzerland": "ch", "south africa": "za",
-        }
-        cc = _NAME_TO_CC.get(tail)
+        cc = _COUNTRY_NAME_TO_CC.get(loc.rsplit(",", 1)[-1].strip())
         if cc in ADZUNA_COUNTRIES:
             return cc
     return ADZUNA_COUNTRY

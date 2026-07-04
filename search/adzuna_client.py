@@ -67,6 +67,15 @@ class AdzunaClient(JobAPIClient):
         remote = is_remote_only(location)
         what = f"remote {keyword}".strip() if remote else keyword
         where = "" if remote else location
+        # Strip a country-name tail that names THIS client's routed country: the
+        # country already lives in the URL path, and Adzuna's geocoder returns 0
+        # for a where-string carrying it (live-verified S35b on /gb/: 'London'
+        # -> 231 results, 'London, United Kingdom' -> 0). A US "City, ST" tail
+        # never matches a country name, so US behavior is byte-identical.
+        if where:
+            tail_cc = config.location_country_tail(where)
+            if tail_cc and tail_cc == self.country:
+                where = where.rsplit(",", 1)[0].strip()
 
         key = cache_key("adzuna", self.country, what, where, salary_min, page,
                         _CACHE_SCHEMA_VERSION)

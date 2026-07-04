@@ -75,3 +75,75 @@ def test_international_local_job_classifies_local():
 
 def test_us_local_job_still_local():
     assert classify("Cincinnati, OH", "Engineer", "Cincinnati, OH") == "local"
+
+
+# ── Adzuna where-string country-tail hygiene (S35b live-validation finding) ───
+def test_location_country_tail_recognizes_country_names_only():
+    assert config.location_country_tail("London, United Kingdom") == "gb"
+    assert config.location_country_tail("Toronto, Canada") == "ca"
+    assert config.location_country_tail("Cincinnati, OH") is None      # state, not country
+    assert config.location_country_tail("Bangalore, Karnataka") is None  # region, not country
+    assert config.location_country_tail("London") is None              # no tail
+    assert config.location_country_tail("") is None
+
+
+def test_adzuna_strips_country_tail_matching_routed_country(monkeypatch):
+    # Live-verified S35b: Adzuna /gb/ geocodes 'London' (231 results) but returns
+    # 0 for 'London, United Kingdom' — the tail must be stripped when it names
+    # the routed country (already expressed in the URL path).
+    from search.adzuna_client import AdzunaClient
+    c = AdzunaClient(app_id="x", app_key="y", cache_enabled=False, country="gb")
+    captured = {}
+
+    def _fake_get(url, params=None, timeout=None, **kw):
+        captured["where"] = (params or {}).get("where")
+        class R:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self): return {"results": [], "count": 0}
+        return R()
+
+    monkeypatch.setattr(c.session, "get", _fake_get)
+    monkeypatch.setattr(c.limiter, "acquire", lambda *a, **k: None)
+    c.search("marketing manager", location="London, United Kingdom", page=1)
+    assert captured["where"] == "London"
+
+
+def test_adzuna_us_where_string_unchanged(monkeypatch):
+    from search.adzuna_client import AdzunaClient
+    c = AdzunaClient(app_id="x", app_key="y", cache_enabled=False, country="us")
+    captured = {}
+
+    def _fake_get(url, params=None, timeout=None, **kw):
+        captured["where"] = (params or {}).get("where")
+        class R:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self): return {"results": [], "count": 0}
+        return R()
+
+    monkeypatch.setattr(c.session, "get", _fake_get)
+    monkeypatch.setattr(c.limiter, "acquire", lambda *a, **k: None)
+    c.search("controls engineer", location="Cincinnati, OH", page=1)
+    assert captured["where"] == "Cincinnati, OH"   # byte-identical for US
+
+
+def test_adzuna_foreign_tail_not_matching_routed_country_kept(monkeypatch):
+    # A 'Toronto, Canada' search on a gb-routed client keeps its tail — stripping
+    # only applies when the tail IS the routed country.
+    from search.adzuna_client import AdzunaClient
+    c = AdzunaClient(app_id="x", app_key="y", cache_enabled=False, country="gb")
+    captured = {}
+
+    def _fake_get(url, params=None, timeout=None, **kw):
+        captured["where"] = (params or {}).get("where")
+        class R:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self): return {"results": [], "count": 0}
+        return R()
+
+    monkeypatch.setattr(c.session, "get", _fake_get)
+    monkeypatch.setattr(c.limiter, "acquire", lambda *a, **k: None)
+    c.search("analyst", location="Toronto, Canada", page=1)
+    assert captured["where"] == "Toronto, Canada"
