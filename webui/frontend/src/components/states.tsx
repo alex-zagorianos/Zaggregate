@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Inbox, AlertTriangle, Loader2 } from "lucide-react";
 
@@ -14,6 +15,9 @@ interface EmptyStateProps {
   title: string;
   message?: string;
   action?: { label: string; onClick: () => void };
+  /** Optional custom content below the message (e.g. an illustrative flow).
+   * Rendered after `action` if both are given. */
+  children?: ReactNode;
   className?: string;
 }
 
@@ -22,6 +26,7 @@ export function EmptyState({
   title,
   message,
   action,
+  children,
   className,
 }: EmptyStateProps) {
   return (
@@ -47,6 +52,7 @@ export function EmptyState({
           {action.label}
         </Button>
       )}
+      {children}
     </div>
   );
 }

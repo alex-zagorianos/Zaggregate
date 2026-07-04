@@ -1,8 +1,10 @@
+import { useNavigate } from "react-router-dom";
 import {
   Sun,
   Moon,
   FolderOpen,
   ChevronDown,
+  Settings,
   Command as CommandIcon,
 } from "lucide-react";
 
@@ -23,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTheme } from "@/lib/theme";
 import { useProjects, useSwitchProject } from "@/api/queries";
+import { isMac } from "@/lib/platform";
 
 /* The brand hero — mirrors ui/topbar.py: zag mark + "Zag" (accent) "gregate"
  * (ink) wordmark in Fraunces + the "find · rank · apply" tagline. Right side:
@@ -101,6 +104,8 @@ function ProjectSwitcher() {
 
 export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
   const { mode, toggle } = useTheme();
+  const navigate = useNavigate();
+  const mac = isMac();
   return (
     <header className="border-border bg-card/80 sticky top-0 z-40 border-b backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-4 px-4 sm:px-6">
@@ -114,14 +119,38 @@ export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
                 className="text-muted-foreground hidden gap-1.5 md:inline-flex"
                 onClick={onOpenPalette}
               >
-                <CommandIcon className="size-3.5" />
-                <span className="zg-num text-xs">Ctrl K</span>
+                {/* Platform-correct hint: the lucide Command icon IS the ⌘
+                    glyph, so it may only show on a Mac. Windows/Linux get plain
+                    "Ctrl K" with no glyph (the Phase-0 gate flagged the ⌘ showing
+                    on Windows). */}
+                {mac ? (
+                  <>
+                    <CommandIcon className="size-3.5" />
+                    <span className="zg-num text-xs">K</span>
+                  </>
+                ) : (
+                  <span className="zg-num text-xs">Ctrl K</span>
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent>Command palette</TooltipContent>
           </Tooltip>
 
           <ProjectSwitcher />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("/sources")}
+                aria-label="Connect job sources"
+              >
+                <Settings className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Connect job sources</TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>

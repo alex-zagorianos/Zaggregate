@@ -8,6 +8,7 @@ import {
   KanbanSquare,
   FileText,
   BookOpen,
+  PlugZap,
 } from "lucide-react";
 
 /* THE tab registry — single source of truth for nav order, routing, icons, and
@@ -32,7 +33,7 @@ export interface TabDef {
 
 export const TABS: readonly TabDef[] = [
   { path: "inbox", label: "Inbox", icon: Inbox, ready: false },
-  { path: "top-picks", label: "Top Picks", icon: Star, ready: false },
+  { path: "top-picks", label: "Top Picks", icon: Star, ready: true },
   { path: "search", label: "Search", icon: Search, ready: false },
   {
     path: "apply-queue",
@@ -44,6 +45,13 @@ export const TABS: readonly TabDef[] = [
   { path: "board", label: "Board", icon: KanbanSquare, ready: false },
   { path: "resume", label: "Resume", icon: FileText, ready: false },
   { path: "guide", label: "Guide", icon: BookOpen, ready: false },
+  {
+    path: "sources",
+    label: "Sources",
+    command: "Connect job sources",
+    icon: PlugZap,
+    ready: true,
+  },
 ] as const;
 
 /** The default landing tab. */

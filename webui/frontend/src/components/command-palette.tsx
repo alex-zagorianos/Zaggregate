@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
-import { Sun, Moon, type LucideIcon } from "lucide-react";
+import { Sun, Moon, PlugZap, type LucideIcon } from "lucide-react";
 
 import {
   CommandDialog,
@@ -41,19 +41,41 @@ export function CommandPalette({
     if (!open) setQuery("");
   }, [open]);
 
+  const { setMode } = useTheme();
+
   const commands = React.useMemo<Cmd[]>(() => {
     const navCmds: Cmd[] = TABS.map((tab) => ({
       label: tabCommand(tab),
       icon: tab.icon,
       run: () => navigate(`/${tab.path}`),
     }));
+    // Action commands beyond plain navigation. "Test job sources" jumps to the
+    // Sources tab where the per-source Test buttons live (the live probe is
+    // per-key, so the palette routes there rather than firing a bare test).
+    navCmds.push({
+      label: "Test job sources",
+      icon: PlugZap,
+      run: () => navigate("/sources"),
+    });
+    // Explicit theme commands (both directions always available) plus the toggle,
+    // so "dark"/"light" typed into the palette lands the intended mode directly.
+    navCmds.push({
+      label: "Switch to dark mode",
+      icon: Moon,
+      run: () => setMode("dark"),
+    });
+    navCmds.push({
+      label: "Switch to light mode",
+      icon: Sun,
+      run: () => setMode("light"),
+    });
     navCmds.push({
       label: mode === "dark" ? "Toggle light mode" : "Toggle dark mode",
       icon: mode === "dark" ? Sun : Moon,
       run: toggle,
     });
     return navCmds;
-  }, [navigate, mode, toggle]);
+  }, [navigate, mode, toggle, setMode]);
 
   const ordered = React.useMemo(() => {
     const byLabel = new Map(commands.map((c) => [c.label, c]));

@@ -145,7 +145,75 @@ export interface ThemeResponse extends ApiEnvelope {
   mode: ThemeMode;
 }
 
-/** Named endpoint wrappers for the shell. Phase 1+ extends this surface. */
+// ── Top Picks ─────────────────────────────────────────────────────────────────
+/** An inbox row as ranked into the Top Picks shortlist. Engine columns pass
+ * through as-is (serializers.inbox_row); we type the fields the tab reads and
+ * keep an index signature for the rest (extras, score_notes, dates, …). */
+export interface TopPickRow {
+  id: number;
+  rank: number;
+  title: string;
+  company: string;
+  location: string;
+  url: string;
+  /** Base match score (0–100) or -1/absent when unscored. */
+  score?: number | null;
+  /** AI re-rank fit (0–100) or -1/absent when not fit-scored. */
+  fit?: number | null;
+  /** One-line AI rationale for the fit (may be empty). */
+  fit_why?: string | null;
+  source?: string | null;
+  extras?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface TopPicksResponse extends ApiEnvelope {
+  rows: TopPickRow[];
+}
+
+/** `limit` maps to the engine's top_picks(limit): "all" | 0 = every ranked row. */
+export type TopPicksLimit = number | "all";
+
+export interface TrackResponse extends ApiEnvelope {
+  app_id: number;
+}
+
+// ── Source keys ───────────────────────────────────────────────────────────────
+export interface SourceField {
+  name: string;
+  label: string;
+  set: boolean;
+  /** Last-4 mask (e.g. "••••1234") when set; null when unset. Never the raw value. */
+  masked: string | null;
+}
+
+export interface SourceKeyInfo {
+  id: string;
+  label: string;
+  fields: SourceField[];
+  get_key_url: string;
+  impact: string;
+}
+
+export interface SourceKeysResponse extends ApiEnvelope {
+  sources: SourceKeyInfo[];
+}
+
+export interface SourceKeyPutResponse extends ApiEnvelope {
+  saved: string[];
+  warnings: { field: string; warning: string }[];
+}
+
+export interface SourceTestResponse extends ApiEnvelope {
+  result: { status: "ok" | "failed"; detail: string };
+}
+
+export interface AdzunaSplitResponse extends ApiEnvelope {
+  app_id?: string;
+  app_key?: string;
+}
+
+/** Named endpoint wrappers for the shell + Phase 1 tabs. Phase 1+ extends this. */
 export const endpoints = {
   status: () => api.get<StatusResponse>("/status"),
   projects: () => api.get<ProjectListResponse>("/project"),
@@ -154,4 +222,23 @@ export const endpoints = {
   getTheme: () => api.get<ThemeResponse>("/settings/theme"),
   setTheme: (mode: ThemeMode) =>
     api.put<ThemeResponse>("/settings/theme", { json: { mode } }),
+
+  // Top Picks
+  topPicks: (limit: TopPicksLimit) =>
+    api.get<TopPicksResponse>("/toppicks", { params: { limit } }),
+  trackInbox: (inboxId: number) =>
+    api.post<TrackResponse>(`/inbox/${inboxId}/track`),
+  dismissInbox: (inboxId: number) =>
+    api.post<ApiEnvelope>(`/inbox/${inboxId}/dismiss`),
+
+  // Source keys
+  sourceKeys: () => api.get<SourceKeysResponse>("/settings/keys"),
+  saveSourceKey: (source: string, fields: Record<string, string>) =>
+    api.put<SourceKeyPutResponse>(`/settings/keys/${source}`, { json: fields }),
+  testSourceKey: (source: string) =>
+    api.post<SourceTestResponse>(`/settings/keys/${source}/test`),
+  splitAdzuna: (clipboard: string) =>
+    api.post<AdzunaSplitResponse>("/settings/keys/adzuna/split", {
+      json: { clipboard },
+    }),
 };

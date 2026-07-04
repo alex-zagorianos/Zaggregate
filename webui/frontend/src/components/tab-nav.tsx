@@ -10,7 +10,18 @@ export function TabNav() {
   return (
     <nav className="border-border bg-background/60 sticky top-16 z-30 border-b backdrop-blur-sm">
       <div className="mx-auto max-w-[1400px] px-2 sm:px-4">
-        <div className="scrollbar-none flex items-stretch gap-0.5 overflow-x-auto">
+        {/* Overflow handling: the strip scrolls horizontally on narrow viewports
+            (never wraps/clips silently). A fade mask on both edges signals there
+            is more to scroll to — verified down to 800px. */}
+        <div
+          className="scrollbar-none flex items-stretch gap-0.5 overflow-x-auto"
+          style={{
+            maskImage:
+              "linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)",
+            WebkitMaskImage:
+              "linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%)",
+          }}
+        >
           {TABS.map((tab) => {
             const Icon = tab.icon;
             return (
