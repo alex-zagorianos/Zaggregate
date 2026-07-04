@@ -169,3 +169,58 @@ def test_recency_data_lifts_confidence():
                                  keywords=KW, location=LOC)
     assert "conf 2/5" in nb
     assert "conf 3/5" in nd  # recency now counts as real data
+
+
+# ── #38: thin/malformed resume -- skill weight renormalizes, notes stay honest ─
+
+def test_thin_resume_empty_skill_terms_renormalizes_not_neutral():
+    # A thin/malformed resume (no TECHNICAL SKILLS-equivalent section found) ->
+    # skill_terms is an empty frozenset. The skill component must NOT silently
+    # contribute a neutral 0.5 * its 25pt weight to the composite; its weight is
+    # dropped from the renormalization entirely (same mechanism that already
+    # excludes salary/recency when their data is absent).
+    job = _job("Controls Engineer", description="plc automation controls engineer role")
+    score, notes = scorer.score_job(job, keywords=KW, location=LOC,
+                                    skill_terms=frozenset())
+    assert "conf 2/5" in notes          # only title+loc counted as present
+    assert "skills" not in notes        # #38: no misleading "skills 50%" token
+
+
+def test_thin_resume_score_matches_manual_renormalization():
+    # The composite for an empty-skill_terms job must equal the same renormalized
+    # title+loc-only computation as an otherwise-identical job that has no
+    # description at all (which also renders skill_present False) -- proving the
+    # skill weight is genuinely excluded, not just hidden from the notes string.
+    job_no_desc = _job("Controls Engineer")
+    job_empty_terms = _job("Controls Engineer", description="plc automation controls")
+    s_no_desc, _ = scorer.score_job(job_no_desc, keywords=KW, location=LOC)
+    s_empty_terms, _ = scorer.score_job(job_empty_terms, keywords=KW, location=LOC,
+                                        skill_terms=frozenset())
+    assert s_no_desc == s_empty_terms
+
+
+def test_rich_resume_skills_token_and_score_unaffected_parity():
+    # Parity: a rich resume (Alex's eng profile always has skill_terms present)
+    # must be completely unaffected by the #38 notes-honesty fix -- the "skills"
+    # token still always appears and the score is unchanged.
+    job = _job("Controls Engineer", description="plc solidworks python automation")
+    terms = frozenset({"plc", "solidworks", "python", "automation"})
+    score, notes = scorer.score_job(job, keywords=KW, location=LOC, skill_terms=terms)
+    assert "skills" in notes
+    assert "conf 3/5" in notes
+
+
+def test_malformed_resume_via_bad_experience_file_still_scores_by_title(tmp_path):
+    # End-to-end: extract_skill_terms() degrades a malformed experience.md to an
+    # empty frozenset (see match/scorer.extract_skill_terms + test_scorer_bad_
+    # experience.py); score_job must renormalize around it rather than diluting
+    # the title signal with a neutral skill score.
+    bad = tmp_path / "experience.md"
+    bad.write_text("Just some unstructured prose with no headings at all.",
+                   encoding="utf-8")
+    terms = scorer.extract_skill_terms(experience_path=bad)
+    assert terms == frozenset()
+    job = _job("Controls Engineer", description="plc automation controls")
+    score, notes = scorer.score_job(job, keywords=KW, location=LOC, skill_terms=terms)
+    assert "skills" not in notes
+    assert "title 100%" in notes

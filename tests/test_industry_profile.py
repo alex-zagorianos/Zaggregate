@@ -283,6 +283,39 @@ def test_soc_major_groups_only_emit_valid_muse_categories():
             assert cat in ip.MUSE_CATEGORIES_ALL, f"group {code} -> invalid Muse category {cat!r}"
 
 
+# ── #31: Protective Service (33) / Production (51) get real Muse routing ─────
+def test_protective_service_soc_routes_to_cleaning_and_facilities():
+    # SOC 33 (security guards, correctional officers, ...) previously routed to
+    # nothing ([]); now shares the nearest on-site/physical-presence category
+    # already used by SOC 37 (Building/Grounds Cleaning & Maintenance).
+    knobs = ip.SOC_MAJOR_GROUPS["33"]
+    assert knobs["muse"] == ["Cleaning and Facilities"]
+    assert knobs["jobicy"] is None
+
+
+def test_production_soc_routes_to_installation_maintenance_repairs():
+    # SOC 51 (assembly-line/factory/machine operators) previously routed to
+    # nothing ([]); now shares the hands-on manufacturing-tier category already
+    # used by SOC 49 (Installation, Maintenance, and Repair Occupations).
+    knobs = ip.SOC_MAJOR_GROUPS["51"]
+    assert knobs["muse"] == ["Installation, Maintenance, and Repairs"]
+    assert knobs["jobicy"] is None
+
+
+def test_farming_fishing_forestry_soc_stays_unrouted():
+    # SOC 45 has no analog anywhere in the Muse taxonomy -- stays [] (full-reach
+    # fallback), not force-mapped to an unrelated category.
+    knobs = ip.SOC_MAJOR_GROUPS["45"]
+    assert knobs["muse"] == []
+    assert knobs["jobicy"] is None
+
+
+def test_engineering_soc_groups_unaffected_by_31_fix():
+    # Parity: the #31 routing additions must not touch engineering's own groups.
+    assert ip.SOC_MAJOR_GROUPS["15"]["muse"] == ["Software Engineering", "Data and Analytics"]
+    assert ip.SOC_MAJOR_GROUPS["17"]["muse"] == ["Science and Engineering"]
+
+
 # ── O*NET-SOC exact-match tier (item 22) ────────────────────────────────────
 # NOTE: this tier deliberately does a DETERMINISTIC lookup against
 # coverage.entity._onet()'s table (+ title_core normalization), NOT
@@ -424,6 +457,41 @@ def test_penalty_role_to_drop_eng_is_none():
     # An eng/tech field must keep the default penalty set (byte-identical for Alex).
     assert ip.penalty_role_to_drop(industry="controls engineer") is None
     assert ip.penalty_role_to_drop(industry="") is None
+
+
+# ── #37: SOC-based penalty exemption extended to Management (SOC 11) ────────
+def test_penalty_role_to_drop_management_soc_drops_manage():
+    # SOC 11 (Management Occupations) -> a manager/supervisor's own core work IS
+    # people management, so "manage" must be exempted the same way sales (41)
+    # and maintain (49) already are.
+    assert ip.penalty_role_to_drop(soc_code="11-1021.00") == "manage"   # General/Ops Managers
+    assert ip.penalty_role_to_drop(soc_code="11-9111.00") == "manage"   # Medical/Health Managers
+
+
+def test_soc_major_penalty_drop_has_exactly_three_entries():
+    # #37: the only real collisions with _DEFAULT_PENALTY_ROLES (sales/maintain/
+    # manage) are SOC 11/41/49 -- every other major group's core work (protective
+    # service 33, food service 35, production 51, admin support 43, transportation
+    # 53, ...) does not collide with any of the three penalty roles, so they must
+    # NOT be mapped (a fabricated exemption would be worse than the gap).
+    assert ip.SOC_MAJOR_PENALTY_DROP == {"11": "manage", "41": "sales", "49": "maintain"}
+
+
+def test_penalty_role_to_drop_non_colliding_socs_stay_none():
+    # Protective service, food service, production, admin support, and
+    # transportation major groups have NO entry -> default penalty set intact.
+    for code in ("33-9032.00",  # Security Guards (Protective Service)
+                 "35-3023.00",  # Fast Food and Counter Workers
+                 "51-2092.00",  # Team Assemblers (Production)
+                 "43-9061.00",  # Office Clerks, General (Office/Admin Support)
+                 "53-3032.00"):  # Heavy Truck Drivers (Transportation)
+        assert ip.penalty_role_to_drop(soc_code=code) is None, code
+
+
+def test_penalty_role_to_drop_engineering_soc_no_new_exemption():
+    # Parity: engineering SOC major groups (15/17) must map to NO exemption.
+    assert ip.penalty_role_to_drop(soc_code="15-1252.00") is None
+    assert ip.penalty_role_to_drop(soc_code="17-2141.00") is None
 
 
 # ── item 5 / ranking #7: curated SOC aliases (EXACT match only) ──────────────

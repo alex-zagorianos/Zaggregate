@@ -225,29 +225,59 @@ SOC_MAJOR_GROUPS: dict[str, dict] = {
     "27": {"muse": [], "jobicy": "design"},
     "29": {"muse": ["Healthcare"], "jobicy": None},
     "31": {"muse": ["Healthcare"], "jobicy": None},
-    "33": {"muse": [], "jobicy": None},
+    # #31: Protective Service (security guards, correctional officers, private
+    # detectives) is on-site facility/site-security work in the same spirit as
+    # SOC 37's Building/Grounds Cleaning & Maintenance -> Cleaning and Facilities
+    # (the nearest real Muse category for site-based physical-presence work;
+    # no dedicated "Security"/"Protective Service" category exists in the Muse
+    # taxonomy — see MUSE_CATEGORIES_ALL). jobicy stays None (not a remote-tech
+    # field, matching every other blue-collar group in this table).
+    "33": {"muse": ["Cleaning and Facilities"], "jobicy": None},
     "35": {"muse": ["Food and Hospitality Services"], "jobicy": None},
     "37": {"muse": ["Cleaning and Facilities"], "jobicy": None},
     "39": {"muse": ["Sports, Fitness, and Recreation"], "jobicy": None},
     "41": {"muse": ["Sales", "Account Management"], "jobicy": "sales"},
     "43": {"muse": ["Business Operations"], "jobicy": "admin"},
+    # Farming/Fishing/Forestry: no analog exists anywhere in the Muse taxonomy
+    # (see MUSE_CATEGORIES_ALL) -- left as [] (full-reach fallback) rather than
+    # forcing a mismatched category onto genuinely agricultural/outdoor-labor
+    # work. Not a regression: this group already had no routing.
     "45": {"muse": [], "jobicy": None},
     "47": {"muse": ["Construction"], "jobicy": None},
     "49": {"muse": ["Installation, Maintenance, and Repairs"], "jobicy": None},
-    "51": {"muse": [], "jobicy": None},
+    # #31: Production (assembly-line/factory workers, machine operators) is
+    # hands-on manufacturing labor, the same tier as SOC 49's Installation/
+    # Maintenance/Repair and SOC 53's transportation pairing below -- reuse that
+    # existing category rather than leaving it unrouted.
+    "51": {"muse": ["Installation, Maintenance, and Repairs"], "jobicy": None},
     "53": {"muse": ["Business Operations", "Installation, Maintenance, and Repairs"], "jobicy": None},
     "55": {"muse": [], "jobicy": None},
 }
 
 
-# ── SOC major group -> penalty role to DROP (item 10) ─────────────────────────
+# ── SOC major group -> penalty role to DROP (item 10 / #37) ───────────────────
 # rubric.build_rubric downweights certain generic role_types ("sales", "maintain",
 # "manage") by default. But when the user's OWN field IS one of those roles, that
 # core work must not be penalized: a maintenance tech (SOC 49) should not have
 # "maintain" downweighted, a salesperson (SOC 41) not "sales". This maps a SOC
 # major group to the penalty role rubric should REMOVE for that field. Everything
 # not listed is unchanged (default penalty set intact). Consumed by match/rubric.
+#
+# #37: _DEFAULT_PENALTY_ROLES only ever contains exactly these three role types
+# (sales/maintain/manage — see match/rubric.py), so the only groups that can
+# genuinely collide are ones whose CORE work IS one of those three. Checked every
+# other major group's core work (protective service 33, food service 35,
+# production 51, office/admin support 43, transportation/material moving 53,
+# etc.) against match/facts.py's ROLE_KEYWORDS for sales/maintain/manage — none
+# of their core duties are sales-, maintenance-, or people-management-flavored,
+# so they get NO new entry here (mapping a non-collision would be a fabricated
+# exemption, not a fix). The one real, previously-missing collision: SOC 11
+# (Management Occupations) — a manager/supervisor's own core work IS people
+# management ("manage a team", "direct reports"), exactly the "manage" penalty
+# keywords, so it must be exempted the same way sales/maintain already are.
+# Engineering (SOC 15/17) is untouched -> no new exemption for Alex (parity).
 SOC_MAJOR_PENALTY_DROP: dict[str, str] = {
+    "11": "manage",    # Management Occupations
     "41": "sales",     # Sales and Related Occupations
     "49": "maintain",  # Installation, Maintenance, and Repair Occupations
 }

@@ -844,7 +844,21 @@ def score_job(
             penalties.append(b)
 
     score = int(max(0, min(100, round(score))))
-    notes = f"title {t:.0%} | skills {k:.0%} | salary {s:.0%} | loc {l:.0%} | new {r:.0%}"
+    # #38: only report the "skills" component when skill data was actually
+    # present (skill_present -- same gate the renormalization already uses to
+    # exclude its weight from the composite). A thin/malformed resume with no
+    # skill_terms contributes 0.0 to the score (verified above), but previously
+    # the notes string still always printed "skills 50%" -- implying a real
+    # neutral MEASUREMENT rather than "no data to measure," which is dishonest
+    # about data-presence and would render a misleading "Skills 50%" chip in the
+    # GUI scorecard (score_breakdown parses whatever tokens are present). Mirrors
+    # how "sem" is already conditionally appended only when sem_present. A
+    # rich-resume profile (skill_present True, e.g. Alex's eng profile) is
+    # completely unaffected -- the token still always appears (parity).
+    notes = f"title {t:.0%}"
+    if skill_present:
+        notes += f" | skills {k:.0%}"
+    notes += f" | salary {s:.0%} | loc {l:.0%} | new {r:.0%}"
     if sem_present:
         notes += f" | sem {m:.0%}"
     notes += f" | conf {present}/5"

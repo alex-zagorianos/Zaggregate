@@ -79,3 +79,57 @@ def test_penalty_roles_drop_sales_for_sales_field():
                         {"keywords": ["sales representative"],
                          "onet_soc_code": "41-4012.00"})
     assert "sales" not in rb["penalty_roles"]
+
+
+# ── #28: _EXEC_RE must not fire on bare-"manager" IC compound titles ─────────
+def test_product_manager_does_not_flip_exec():
+    # An IC "Product Manager" seeker must NOT get exec posture: no management
+    # unlock, no senior-exec target, default 8-year cap, default penalty_roles.
+    rb = R.build_rubric({"profile_md": "", "hard": {}},
+                        {"keywords": ["Product Manager"]})
+    assert rb["allow_management"] is False
+    assert rb["seniority_target"] == "entry-mid"
+    assert rb["years_cap"] == 8
+    assert rb["penalty_roles"] == ["sales", "maintain", "manage"]
+
+
+def test_account_manager_and_community_manager_do_not_flip_exec():
+    for kw in ["Account Manager", "Community Manager", "Program Manager",
+               "Project Manager", "Engagement Manager"]:
+        rb = R.build_rubric({"profile_md": "", "hard": {}}, {"keywords": [kw]})
+        assert rb["allow_management"] is False, kw
+        assert rb["seniority_target"] == "entry-mid", kw
+        assert rb["years_cap"] == 8, kw
+
+
+def test_engineering_manager_allows_management_but_not_exec():
+    # A genuine people-management title ("Engineering Manager") still unlocks
+    # allow_management (the gate must not hard-drop management postings for a
+    # manager-seeker) but is NOT an executive -> senior (non-exec) tier, not
+    # senior-exec, and years_cap 15 (the senior tier), not 25.
+    rb = R.build_rubric({"profile_md": "", "hard": {}},
+                        {"keywords": ["Engineering Manager"]})
+    assert rb["allow_management"] is True
+    assert rb["seniority_target"] == "senior"
+    assert rb["years_cap"] == 15
+    assert "manage" not in rb["penalty_roles"]
+
+
+def test_vp_engineering_is_true_exec():
+    rb = R.build_rubric({"profile_md": "", "hard": {}},
+                        {"keywords": ["VP Engineering"]})
+    assert rb["allow_management"] is True
+    assert rb["seniority_target"] == "senior-exec"
+    assert rb["years_cap"] == 25
+    assert "manage" not in rb["penalty_roles"]
+
+
+def test_controls_engineer_parity_nothing_flips():
+    # Parity guard: an eng-shaped IC keyword must be completely untouched by the
+    # #28 split (byte-identical rubric for Alex's daily run).
+    rb = R.build_rubric({"profile_md": "", "hard": {}},
+                        {"keywords": ["controls engineer"]})
+    assert rb["allow_management"] is False
+    assert rb["seniority_target"] == "entry-mid"
+    assert rb["years_cap"] == 8
+    assert rb["penalty_roles"] == ["sales", "maintain", "manage"]
