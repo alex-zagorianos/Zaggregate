@@ -115,23 +115,24 @@ def _text(el, tag: str) -> str:
 
 
 def _parse_feed(raw) -> list[dict]:
-    """Parse the RSS 2.0 XML into plain dicts (JSON-cacheable). A malformed or
-    unparseable document yields an empty list rather than raising."""
-    try:
-        root = _safe_fromstring(raw)  # XXE/billion-laughs-safe
-    except Exception:
-        return []
+    """Parse the RSS 2.0 XML into plain dicts (JSON-cacheable).
+
+    RAISES on a malformed/unparseable document (a maintenance page, a CAPTCHA/
+    anti-bot HTML response with HTTP 200, a schema change) instead of swallowing
+    to []. This distinguishes "the feed broke" from "the feed genuinely has zero
+    items today" -- the caller's fetch() lets the exception propagate so
+    SingleFeedClient._cached() never caches a parse failure as if it were a
+    successful empty result (S35 finding #5: that used to silence the whole
+    source for a full cache TTL)."""
+    root = _safe_fromstring(raw)  # XXE/billion-laughs-safe; raises on bad XML
     items = []
-    try:
-        for item in root.iter("item"):
-            items.append({
-                "title": _text(item, "title"),
-                "link": _text(item, "link"),
-                "description": _text(item, "description"),
-                "pubDate": _text(item, "pubDate"),
-            })
-    except Exception:
-        return []
+    for item in root.iter("item"):
+        items.append({
+            "title": _text(item, "title"),
+            "link": _text(item, "link"),
+            "description": _text(item, "description"),
+            "pubDate": _text(item, "pubDate"),
+        })
     return items
 
 

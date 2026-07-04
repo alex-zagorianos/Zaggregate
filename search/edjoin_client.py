@@ -201,17 +201,20 @@ class EdjoinClient(SingleFeedClient):
         def fetch():
             # Honor robots.txt live and fail closed before touching LoadJobs. Only
             # runs on a cache MISS (inside the fetch closure), so a warm cache never
-            # re-checks robots — same politeness/cost profile as REAP.
+            # re-checks robots — same politeness/cost profile as REAP. This is a
+            # legitimate "0 rows" outcome (not a parse error), so it's fine to cache.
             if not self._endpoint_allows():
                 return {"data": []}
             self.limiter.acquire()
             resp = self.session.get(EDJOIN_LOADJOBS_URL, params=self._params(keyword),
                                     timeout=30)
             resp.raise_for_status()
-            try:
-                payload = resp.json()
-            except ValueError:
-                return {"data": []}  # server returned an HTML error page -> no rows
+            # A non-JSON 200 body (an HTML maintenance/CAPTCHA/error page) means the
+            # endpoint broke, not that today's search genuinely has zero postings.
+            # RAISE so SingleFeedClient._cached() skips the cache write and logs a
+            # warning (S35 finding #5) instead of caching a false "empty" result for
+            # the full TTL.
+            payload = resp.json()
             return {"data": payload.get("data", []) or []}
 
         raw = self._cached(key, fetch)

@@ -165,12 +165,15 @@ def _clean_school(td) -> str:
 
 def _parse_rows(html_text: str, portal: str) -> list[dict]:
     """Parse REAP result rows out of a jobsrch.php page into plain dicts
-    (JSON-cacheable). Each ``<tr class="jobfirstrow">`` is one posting. A
-    malformed page yields [] rather than raising."""
-    try:
-        soup = BeautifulSoup(html_text or "", "html.parser")
-    except Exception:
-        return []
+    (JSON-cacheable). Each ``<tr class="jobfirstrow">`` is one posting.
+
+    RAISES if BeautifulSoup can't parse the page at all (a portal outage page,
+    a maintenance/CAPTCHA response) instead of swallowing to [] -- see
+    search.higheredjobs_client._parse_feed's docstring: this must propagate so
+    SingleFeedClient._cached() skips the cache write (S35 finding #5). A
+    well-formed page with genuinely zero ``jobfirstrow`` matches (no jobs open
+    right now) is NOT an error -- the for-loop below simply yields []."""
+    soup = BeautifulSoup(html_text or "", "html.parser")
     out: list[dict] = []
     for tr in soup.find_all("tr", class_="jobfirstrow"):
         link = tr.find("a", href=re.compile(r"/job_postings/"))

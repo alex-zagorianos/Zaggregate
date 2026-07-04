@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import applog
 from search.base_client import JobAPIClient
 from search.http_util import FileCache, RateLimiter, make_session
 
@@ -54,12 +55,26 @@ class SingleFeedClient(JobAPIClient):
         Returns the cached value for ``key`` if caching is on and a fresh entry
         exists; otherwise calls ``fetch()`` (which does the rate-limited HTTP
         work and returns the data dict), stores it, and returns it.
+
+        If ``fetch()`` RAISES (a transport error, or a feed parser like
+        ``_parse_feed`` signaling "this response was unparseable" rather than
+        "a genuinely empty feed"), the failure is logged via applog and the
+        cache is NOT written for this key -- a transient feed-format hiccup
+        must not silence the source for the full cache TTL (S35 finding #5).
+        The exception still propagates so the caller's per-keyword error
+        handling (search_engine._run_client) sees it exactly as before.
         """
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:
                 return cached
-        data = fetch()
+        try:
+            data = fetch()
+        except Exception as e:
+            applog.get_logger("sources").warning(
+                f"  [{self.cache_subdir}] fetch/parse failed for {key!r} — "
+                f"{type(e).__name__}: {e} (not cached; will retry next run)")
+            raise
         if self.cache_enabled:
             self.cache.put(key, data)
         return data
