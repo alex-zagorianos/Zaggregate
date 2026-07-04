@@ -4,6 +4,31 @@
 
 ---
 
+## Session 36b (2026-07-04, same conversation) — scenario minors + P1 knobs FIXED ✅
+
+Morning continuation: Alex said "start working on the changes that surfaced
+that need fixing" → the findings-report queue executed inline, one commit per
+fix, test-first. **MINOR-1** garbage `location_mode` fails OPEN to All
+locations (`geo/filter.py location_visible`, covers web+tk) `701ccba`.
+**MINOR-2** blanket `{ok,error}` JSON envelope on routing-layer /api errors
+(HTTPException handler scoped by `request.path`; literal `../` + 405 + unknown
+routes; non-API paths untouched) `fb2f91f`. **MINOR-3** `.ics` SUMMARY
+humanized `6b6f7ca`. **MINOR-4** reach-badge copy branches on
+`is_knowledge_work(industry)` (auto-resolves active config per call)
+`8c16f0e`. **MINOR-5** rubric/grade-scale stoplist in `match/skillgap.py`
+(display/tailoring only — NOT the scoring path; "iv" kept for intravenous)
+`e731cae`. **P1 parity gap**: `POST /api/runs/daily` accepts
+`{max_pages:1-10, min_score:0-100}` → threaded to `--max-pages/--min-score`
+argv; absent = byte-identical legacy argv; bad values 400 never clamped; Inbox
+"Update my Inbox now" is now a split button w/ Quick/Standard/Deep run-depth
+menu (verified live in preview) `fbcfc1a`. **Suite 2903 → 2927 / 0 failed;
+vitest 151; PUSH STILL HELD (now ~51 commits).** §6 GO/NO-GO blockers all
+cleared; remaining queue: web create-project flow (P3), filter URL sync,
+sector-source status API (improvement #3), inefficiencies #2/#3. Details in
+`brain/findings-2026-07-04-webui-scenarios.md` Addendum 2.
+
+---
+
 ## Session 36 (2026-07-04 overnight) — WEB-UI MIGRATION: all phases + deep + scenario testing ✅
 
 Alex approved the tkinter→web roadmap item and slept; fleet executed the whole

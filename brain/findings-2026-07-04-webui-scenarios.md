@@ -107,11 +107,11 @@ carries the reporting scenario(s) + evidence.
 
 ## 4. Parity gaps (web vs tk / CLI)
 
-| # | Gap | Reachable in tk/CLI | On web | Scenario |
-|---|-----|---------------------|--------|----------|
-| P1 | Run-shaping knobs (`daily_run.py --max-pages`, `--min-score`, source list, keyword scope) | Yes (CLI flags) | NONE -- `/api/runs/daily` takes no body/query params; always CLI defaults | SC1, SC2, SC3 |
-| P2 | Per-source "why is this source inert for my industry" visibility | Visible in run log | Only in transient SSE log; `/api/settings/keys` covers keyed sources only, not free/gated sector sources (RNJobSite/HigherEdJobs/REAP/Edjoin) | SC2 |
-| P3 | Multi-project registry / project switch | tk multi-project | `/api/project` shows `active:null, projects:[]` even after full onboarding + run + tracked apps; no web path observed that registers a project into `projects.json` | SC2 (noted; SC5 owns this and did not report -- treat as unverified) |
+| #   | Gap                                                                                       | Reachable in tk/CLI | On web                                                                                                                                                              | Scenario                                                             |
+| --- | ----------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| P1  | Run-shaping knobs (`daily_run.py --max-pages`, `--min-score`, source list, keyword scope) | Yes (CLI flags)     | NONE -- `/api/runs/daily` takes no body/query params; always CLI defaults                                                                                           | SC1, SC2, SC3                                                        |
+| P2  | Per-source "why is this source inert for my industry" visibility                          | Visible in run log  | Only in transient SSE log; `/api/settings/keys` covers keyed sources only, not free/gated sector sources (RNJobSite/HigherEdJobs/REAP/Edjoin)                       | SC2                                                                  |
+| P3  | Multi-project registry / project switch                                                   | tk multi-project    | `/api/project` shows `active:null, projects:[]` even after full onboarding + run + tracked apps; no web path observed that registers a project into `projects.json` | SC2 (noted; SC5 owns this and did not report -- treat as unverified) |
 
 P1 is the load-bearing parity gap: it recurs in all three journeys and blocks a deliberately-cheap web run. P3 is only partially observed (SC5, which owned the concurrency/project-switch verification, is missing) -- do not treat P3 as confirmed.
 
@@ -121,27 +121,27 @@ P1 is the load-bearing parity gap: it recurs in all three journeys and blocks a 
 
 Reads are single-digit-to-low-hundreds ms; the only outlier is the daily run itself (a batch job, expected). No unexplained >2 s reads were found. SC1 timings are raw Flask view time (sub-ms possible on an isolated dir); SC2/SC3 include client round-trip.
 
-| Step | SC1 (ms) | SC2 (ms) | SC3 (ms) |
-|------|---------:|---------:|---------:|
-| Bootstrap / status | 100 (up) | 124 | 2 |
-| GET /api/onboarding | 2 | 159 | 1.6 |
-| Onboarding POST (wizard) | 6 | 197 | 76.6 |
-| GET /api/settings/keys | 1.4 | 124 | 1.6 |
-| POST /api/runs/daily (start) | 134 | 161 | 123 |
-| Daily run to completion (SSE) | ~704,000 (~11m44s) | ~5,000 shown* | ~754,000 (~12.5m) |
-| GET /api/inbox (baseline) | 2 | 151 | 133 |
-| Inbox filters (min_score/q/location_mode) | 2 | 159 | 80 |
-| GET /api/inbox/{id}/detail | 2 | 148 | 11 |
-| Track / dismiss | 11 / 16 | 220 / 139 | 12 |
-| Bulk-dismiss + undo | 5 | 183 / 126 | -- |
-| Export-for-AI | 6 | 129 | -- |
-| Import synthesized scores | 243 | 152 | -- |
-| Top picks | fast | 132 | -- |
-| Board valid move | 14 | 135 | -- |
-| Board invalid move (400/404) | fast | 127 | -- |
-| Add round + `.ics` | 12 | 134 | -- |
-| Resume prompt build | 75 | 218 | -- |
-| Resume paste -> DOCX | 56 | 164 | -- |
+| Step                                      |           SC1 (ms) |      SC2 (ms) |          SC3 (ms) |
+| ----------------------------------------- | -----------------: | ------------: | ----------------: |
+| Bootstrap / status                        |           100 (up) |           124 |                 2 |
+| GET /api/onboarding                       |                  2 |           159 |               1.6 |
+| Onboarding POST (wizard)                  |                  6 |           197 |              76.6 |
+| GET /api/settings/keys                    |                1.4 |           124 |               1.6 |
+| POST /api/runs/daily (start)              |                134 |           161 |               123 |
+| Daily run to completion (SSE)             | ~704,000 (~11m44s) | ~5,000 shown* | ~754,000 (~12.5m) |
+| GET /api/inbox (baseline)                 |                  2 |           151 |               133 |
+| Inbox filters (min_score/q/location_mode) |                  2 |           159 |                80 |
+| GET /api/inbox/{id}/detail                |                  2 |           148 |                11 |
+| Track / dismiss                           |            11 / 16 |     220 / 139 |                12 |
+| Bulk-dismiss + undo                       |                  5 |     183 / 126 |                -- |
+| Export-for-AI                             |                  6 |           129 |                -- |
+| Import synthesized scores                 |                243 |           152 |                -- |
+| Top picks                                 |               fast |           132 |                -- |
+| Board valid move                          |                 14 |           135 |                -- |
+| Board invalid move (400/404)              |               fast |           127 |                -- |
+| Add round + `.ics`                        |                 12 |           134 |                -- |
+| Resume prompt build                       |                 75 |           218 |                -- |
+| Resume paste -> DOCX                      |                 56 |           164 |                -- |
 
 \* SC2's SSE figure is stream-read time on a small (4-row) run, not the full ingest wall time; SC1/SC3 report true end-to-end ingest duration. Takeaway is consistent: all reads/mutations are fast; the daily ingest is the only long pole (~11-12 min, career-scrape-dominated).
 
@@ -190,3 +190,24 @@ synthesis payload window but their defects WERE dispositioned in the fix passes:
 Post-fix state: **2903 passed / 0 failed**; all 2 criticals + 7 majors from the
 scenario run fixed; 12 minors + parity gaps remain catalogued above for the
 next-session queue.
+
+## Addendum 2 (S36 continuation, same day): minors + P1 dispositioned
+
+MINOR-1..5 and parity gap P1 are now **FIXED** (commits `701ccba` MINOR-1,
+`fb2f91f` MINOR-2, `6b6f7ca` MINOR-3, `8c16f0e` MINOR-4, `e731cae` MINOR-5,
+`fbcfc1a` P1 knobs + Inbox run-depth split button; suite 2927/0, vitest 151,
+knobs menu verified live in the preview). Notes against the ledger above:
+
+- MINOR-5 landed in `match/skillgap.py`'s `_STOPLIST` (display/tailoring layer
+  — `skill_gap` is never on the scoring path, eng parity untouched). "iv" was
+  deliberately NOT stoplisted (ambiguous with intravenous, a real nursing
+  skill; inclusion over precision).
+- P1 = `POST /api/runs/daily` body `{max_pages: 1-10, min_score: 0-100}`;
+  absent knobs keep the legacy argv byte-identical. The GO/NO-GO §6 blocker
+  list is now fully cleared (MAJOR-1/2 fixed earlier, P1 shipped) — the
+  remaining tk-retirement condition is Alex's call plus the still-queued web
+  create-project flow (P3).
+
+Still open from this report: inefficiency #2 (first-run careers-scrape wall
+time — UX, not a defect), #3 (description retransmission), improvement #3
+(sector-source inert/active API), P2/P3 parity gaps, filter URL sync.

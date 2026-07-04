@@ -50,22 +50,23 @@ mechanism, not the fetch pipeline.
   `brain/findings-2026-07-04-webui-scenarios.md`):
   - **No web create-project / new-person flow** (tk App chrome not migrated) —
     the biggest gap; web is effectively single-project until built.
-  - **Web daily run has no CLI knobs** (`--max-pages`/`--min-score` have no
-    web equivalent; runs use defaults).
   - Filter state not URL-synced (back/refresh resets the Inbox view).
-  - Scenario-test minors (MINOR-1..5 in the findings report): garbage
-    `location_mode` fails CLOSED to Local-only (should fail OPEN per the
-    inclusion philosophy — top fix candidate), Werkzeug HTML 404s on unknown
-    /api/* + literal `../` download paths (envelope inconsistency; the
-    security boundary itself holds), `.ics` SUMMARY casing, reach-badge
-    hardcoded "remote/tech" reason copy, ATS missing-skills rubric
-    boilerplate.
   - **Pending Alex decisions**: tk-tab retirement (GO/NO-GO read in the
     findings report §6), deletion of the deprecated `tracker/app.py` (:5001
     retired; file kept), Tauri wrap (still optional/later).
 
 ## Fixed since first written (kept for history)
 
+- ~~S36 scenario minors + P1 parity gap~~ — **FIXED in the S36 continuation
+  (2026-07-04)**: MINOR-1 garbage `location_mode` now fails OPEN to All
+  locations (shared `location_visible` predicate, web + tk); MINOR-2 blanket
+  `{ok,error}` JSON envelope on routing-layer /api errors (unknown routes,
+  405s, literal `../`); MINOR-3 `.ics` SUMMARY humanized ("Phone Screen");
+  MINOR-4 reach-badge copy branches on `is_knowledge_work` (nurses no longer
+  read "mostly remote/tech jobs"); MINOR-5 rubric/grade-scale stoplist in the
+  ATS gap list ("iv" deliberately kept — intravenous); **P1: `POST
+/api/runs/daily` accepts `{max_pages, min_score}`** + Inbox split-button
+  run-depth menu (Quick 1 / Standard 2 / Deep 3 pages).
 - ~~tkinter ceiling (S35b roadmap)~~ — **BUILT in S36 (2026-07-04)**: full web
   UI shipped (all tabs + wizard + dialogs), deep-tested (scoring parity
   proven) + 5 scenario journeys (2 criticals + 7 majors found and fixed, incl.
