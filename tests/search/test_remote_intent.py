@@ -104,7 +104,11 @@ def test_national_row_locality_state_aware():
     ms = metro_state_set("Cincinnati, OH")
     assert national_row_locality("Cincinnati, OH", mv, ms) == "metro"
     assert national_row_locality("Edgewood, KY", mv, ms) == "state"   # in-metro suburb, kept
-    assert national_row_locality("Hamilton, OH", mv, ms) == "state"
+    # Hamilton OH is a Cincinnati-MSA satellite since the S36b widening
+    # (metro_satellites.csv) — promoted from "state" to "metro". Dayton has its
+    # own MSA, so it stays the in-state-but-not-metro case.
+    assert national_row_locality("Hamilton, OH", mv, ms) == "metro"
+    assert national_row_locality("Dayton, OH", mv, ms) == "state"
     assert national_row_locality("Chicago, IL", mv, ms) == "other"    # out-of-area
     assert national_row_locality("Remote", mv, ms) == "remote"
     # Same-name out-of-state city that only matched the bare-city substring.

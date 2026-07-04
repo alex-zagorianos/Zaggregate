@@ -12,6 +12,46 @@ def _rows() -> list[dict]:
     except OSError:
         return []
 
+
+# US state abbreviation -> full name, for satellite-city variant strings. Local
+# copy (search.search_engine has one too) so coverage/ keeps zero search deps.
+_STATE_NAMES = {
+    "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas",
+    "ca": "california", "co": "colorado", "ct": "connecticut", "de": "delaware",
+    "fl": "florida", "ga": "georgia", "hi": "hawaii", "id": "idaho",
+    "il": "illinois", "in": "indiana", "ia": "iowa", "ks": "kansas",
+    "ky": "kentucky", "la": "louisiana", "me": "maine", "md": "maryland",
+    "ma": "massachusetts", "mi": "michigan", "mn": "minnesota",
+    "ms": "mississippi", "mo": "missouri", "mt": "montana", "ne": "nebraska",
+    "nv": "nevada", "nh": "new hampshire", "nj": "new jersey",
+    "nm": "new mexico", "ny": "new york", "nc": "north carolina",
+    "nd": "north dakota", "oh": "ohio", "ok": "oklahoma", "or": "oregon",
+    "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina",
+    "sd": "south dakota", "tn": "tennessee", "tx": "texas", "ut": "utah",
+    "vt": "vermont", "va": "virginia", "wa": "washington",
+    "wv": "west virginia", "wi": "wisconsin", "dc": "district of columbia",
+}
+
+
+@functools.lru_cache(maxsize=1)
+def _satellites() -> dict[str, list[tuple[str, str]]]:
+    """cbsa_code -> [(city, state_abbrev), ...] from metro_satellites.csv — the
+    suburb/satellite municipalities of a metro that job postings name instead of
+    the principal city ("Mason, OH", "Florence, KY" are Cincinnati-metro jobs).
+    Same graceful degradation as _rows(): missing file -> no satellites."""
+    try:
+        with static_path("metro_satellites.csv").open(encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+    except OSError:
+        return {}
+    out: dict[str, list[tuple[str, str]]] = {}
+    for r in rows:
+        city = (r.get("city") or "").strip().casefold()
+        st = (r.get("state") or "").strip().casefold()
+        if city and st:
+            out.setdefault((r.get("cbsa_code") or "").strip(), []).append((city, st))
+    return out
+
 def resolve_cbsa(city: str | None, state: str | None) -> str | None:
     if not city or not state:
         return None
@@ -31,6 +71,27 @@ def metro_variants(area: str) -> set[str]:
             out.add(r["principal_city"].casefold())
             bare = title.split(",")[0].replace(" metro area", "").strip()
             out.add(bare)
+            # Multi-principal-city titles ("minneapolis-st. paul-bloomington")
+            # carry every principal city hyphen-joined — add each one so a
+            # posting naming any of them counts as metro. Additive only
+            # (inclusion over precision); single-city titles are unchanged.
+            for piece in bare.split("-"):
+                piece = piece.strip()
+                if len(piece) >= 3:
+                    out.add(piece)
+            # Satellite municipalities (metro_satellites.csv): postings name
+            # the suburb, not the principal city ("Mason, OH" is a Cincinnati
+            # job). Emitted WITH the state suffix in both abbrev and full-name
+            # form ("florence, ky" / "florence, kentucky") — never bare, so an
+            # ambiguous name can't cross-match another state (Aurora CO vs
+            # Aurora IN, Loveland CO, Alexandria VA...). "city, oh" is itself
+            # a prefix-substring of "city, ohio", but both forms are emitted
+            # anyway to keep the matching rule dumb and obvious.
+            for city, st in _satellites().get(r["cbsa_code"], []):
+                out.add(f"{city}, {st}")
+                full = _STATE_NAMES.get(st)
+                if full:
+                    out.add(f"{city}, {full}")
     # Non-US / unrecognized-metro fallback (S35): when NO US CBSA row matched, a
     # "City, Country" area (e.g. "London, United Kingdom") kept only its exact
     # string, so a posting listed as bare "London" or "London, England" was
