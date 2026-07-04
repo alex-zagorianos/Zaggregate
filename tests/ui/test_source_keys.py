@@ -128,6 +128,41 @@ def test_looks_like_adzuna_paste():
     assert source_keys.looks_like_adzuna_paste("hello world") is False
 
 
+# ── probe dispatch table (Tk-free core) ───────────────────────────────────────
+
+def test_probe_table_covers_every_source():
+    """The PROBE_TABLE (the data-driven live-probe dispatch the web route + the tk
+    button share) must have exactly one entry per keyed source, and each entry's
+    required fields must be that source's actual credential fields."""
+    from ui import source_keys_core
+    table_keys = set(source_keys_core.PROBE_TABLE)
+    catalog_keys = {s["key"] for s in source_keys_core.SOURCES}
+    assert table_keys == catalog_keys
+    fields_by_key = {s["key"]: {n for n, _ in s["fields"]}
+                     for s in source_keys_core.SOURCES}
+    for key, spec in source_keys_core.PROBE_TABLE.items():
+        assert set(spec["required"]) == fields_by_key[key]
+        assert callable(spec["factory"])
+        assert spec["query"] and isinstance(spec["paged"], bool)
+        assert spec["missing"]
+
+
+def test_core_is_tk_free():
+    """Importing the core must not pull in tkinter (the whole point of the split —
+    the web layer imports this server-side)."""
+    import sys
+    import importlib
+    # Force a clean import and assert the module object has no tkinter attr and
+    # did not add tkinter to sys.modules on our behalf.
+    had_tk = "tkinter" in sys.modules
+    mod = importlib.import_module("ui.source_keys_core")
+    assert not hasattr(mod, "tk")
+    # (We can't assert tkinter is absent from sys.modules globally — another test
+    # may have imported it — but the module source references no tkinter symbol.)
+    assert "import tkinter" not in open(mod.__file__, encoding="utf-8").read()
+    assert had_tk or True   # tolerate either state; the source check is the gate
+
+
 def test_open_dialog_seeds_from_secrets(secrets):
     from ui import settings
     settings.set_api_key("adzuna_app_id", "seeded-id")

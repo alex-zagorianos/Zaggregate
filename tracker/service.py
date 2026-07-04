@@ -219,6 +219,17 @@ def dismiss_job(inbox_id: int) -> None:
     db.inbox_dismiss(inbox_id)
 
 
+def inbox_exists(inbox_id: int) -> bool:
+    """True if an inbox row with this id is currently present. Used by the web
+    API's dismiss route to distinguish a real dismiss from an unknown id (a clean
+    404) — ``dismiss_job`` itself is silent on a missing row by design."""
+    with db.get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM inbox WHERE id=? LIMIT 1", (inbox_id,)
+        ).fetchone()
+    return row is not None
+
+
 # Inbox columns we can round-trip for Undo (id/rk are not re-inserted; id is
 # reassigned, rk is a query artifact).
 _INBOX_RESTORE_COLS = (
