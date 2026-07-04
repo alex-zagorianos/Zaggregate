@@ -1318,7 +1318,100 @@ def _run_headless_daily(argv) -> int:
     return run_daily_ingest(slug)
 
 
+def _web_smoke(port: int | None = None) -> dict:
+    """Headless proof that the frozen bundle can serve the web UI, WITHOUT Tk.
+
+    Runs the receiver's Flask app (webui blueprint already mounted at import) on
+    a loopback port in a daemon thread, then GETs ``/app`` and ``/api/status``
+    over urllib and returns a result dict. This exercises the exact bundle seams
+    Phase 0d must prove: app.spec's ``collect_submodules('webui')`` (no frozen
+    ImportError) and the ``webui/static`` datas entry resolving through
+    ``paths.static_dir()`` (the ``_MEIPASS`` branch when frozen). Env-gated in
+    ``main()`` so it never runs for real users; port defaults to
+    ``$ZAGGREGATE_SMOKE_PORT`` or 5003 (NOT the live 5002 receiver/preview port).
+    """
+    import os
+    import json as _json
+    import socket as _sk
+    import threading as _th
+    import time as _time
+    import urllib.request as _req
+
+    if port is None:
+        port = int(os.environ.get("ZAGGREGATE_SMOKE_PORT", "5003"))
+    host = "127.0.0.1"
+
+    # The receiver module builds `app` and calls register_webui(app) at import,
+    # so this is the frozen-bundle Flask app with /app + /api mounted.
+    from scrape import browser_receiver as _rcv
+
+    def _serve():
+        # threaded=True so /app and /api/status can be served without the single
+        # dev-server request from blocking the poll below.
+        _rcv.app.run(host=host, port=port, debug=False,
+                     use_reloader=False, threaded=True)
+
+    t = _th.Thread(target=_serve, name="web-smoke", daemon=True)
+    t.start()
+
+    # Wait until the socket accepts connections (or the thread died on bind).
+    deadline = _time.monotonic() + 8.0
+    listening = False
+    while _time.monotonic() < deadline:
+        try:
+            with _sk.create_connection((host, port), timeout=0.25):
+                listening = True
+                break
+        except OSError:
+            if not t.is_alive():
+                break
+            _time.sleep(0.1)
+
+    result: dict = {"ok": False, "port": port, "listening": listening,
+                    "app": {}, "status": {}}
+    if not listening:
+        result["error"] = "receiver did not start listening"
+        return result
+
+    def _get(path: str) -> tuple[int, str, str]:
+        with _req.urlopen(f"http://{host}:{port}{path}", timeout=5) as r:
+            body = r.read().decode("utf-8", "replace")
+            return r.status, r.headers.get("Content-Type", ""), body
+
+    try:
+        a_code, a_ctype, a_body = _get("/app")
+        app_ok = (a_code == 200 and "text/html" in a_ctype
+                  and 'id="root"' in a_body)
+        result["app"] = {"code": a_code, "content_type": a_ctype,
+                         "has_root": 'id="root"' in a_body, "ok": app_ok}
+
+        s_code, _s_ctype, s_body = _get("/api/status")
+        try:
+            s_json = _json.loads(s_body)
+        except ValueError:
+            s_json = {}
+        status_ok = (s_code == 200 and bool(s_json.get("ok")))
+        result["status"] = {"code": s_code, "ok": status_ok,
+                            "project": s_json.get("project"),
+                            "version": s_json.get("version")}
+
+        result["ok"] = bool(app_ok and status_ok)
+    except Exception as e:  # noqa: BLE001 — smoke reports, never raises
+        result["error"] = f"{type(e).__name__}: {e}"
+    return result
+
+
 def main() -> int:
+    # Frozen web-UI smoke (Phase 0d): env-gated, BEFORE any Tk. Proves the
+    # bundle carries webui + its static assets by serving /app + /api/status
+    # in-process and printing the result as JSON. Never trips for real users.
+    import os as _os
+    if _os.environ.get("ZAGGREGATE_WEB_SMOKE") == "1":
+        import json as _json
+        res = _web_smoke()
+        print(_json.dumps(res))
+        return 0 if res.get("ok") else 1
+
     # Headless daily mode: the single shipped exe serves both the GUI and the
     # scheduled `--daily` run (app.spec builds only gui.py). Detect the flag
     # before creating any Tk window.

@@ -78,6 +78,10 @@ datas = [
     ('data_templates', 'data_templates'),
     ('search/templates', 'search/templates'),
     ('resume/templates', 'resume/templates'),
+    # Built web-UI frontend (Vite output, committed). webui/paths.static_dir()
+    # resolves this to <_MEIPASS>/webui/static when frozen, so register_webui()
+    # serves /app + assets from inside the exe bundle (no sibling folder).
+    ('webui/static', 'webui/static'),
 ]
 
 # Lazy-imported optional clients; PyInstaller's static analysis misses them
@@ -103,7 +107,7 @@ datas += collect_data_files('ttkbootstrap')
 # miss them. Pull in every submodule so the frozen exe never hits an
 # ImportError on first use.
 for _pkg in ('search', 'scrape', 'coverage', 'discover', 'rerank',
-             'resume', 'tracker', 'match', 'geo', 'ui'):
+             'resume', 'tracker', 'match', 'geo', 'ui', 'webui'):
     hiddenimports += collect_submodules(_pkg)
 
 # Optional Scrapling stealth/JS fetch fallback (scrape/stealth_fetch.py). Bundle
