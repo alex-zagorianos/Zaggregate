@@ -18,12 +18,17 @@ def build_api_blueprint() -> Blueprint:
     from .inbox import inbox_bp
     from .settings import settings_bp
     from .runs import runs_bp
+    from .applications import applications_bp
+    from .board import board_bp
 
     # Nested blueprints inherit the /api prefix; each submodule declares its own
-    # leaf paths (e.g. /status, /toppicks, /inbox/<id>/track, /settings/theme).
+    # leaf paths (e.g. /status, /toppicks, /inbox/<id>/track, /settings/theme,
+    # /applications, /board).
     api.register_blueprint(system_bp)
     api.register_blueprint(toppicks_bp)
     api.register_blueprint(inbox_bp)
     api.register_blueprint(settings_bp)
     api.register_blueprint(runs_bp)
+    api.register_blueprint(applications_bp)
+    api.register_blueprint(board_bp)
     return api
