@@ -54,8 +54,13 @@ def test_ai_setup_dialog_apply_empty_reply_is_gentle(root):
 
 def test_add_companies_dialog_has_seed_prompt_button(root, monkeypatch):
     import gui
+    from ui import common as ui_common
     copied = {}
-    monkeypatch.setattr(gui, "to_clipboard",
+    # copy_or_warn (used by AddCompaniesDialog._copy_seed_prompt) now lives in
+    # ui/common.py (S35 gui-split) and resolves to_clipboard via ITS OWN module
+    # globals, so the patch target moved from gui.to_clipboard to
+    # ui.common.to_clipboard.
+    monkeypatch.setattr(ui_common, "to_clipboard",
                         lambda t: copied.setdefault("text", t) is None or True)
     dlg = gui.AddCompaniesDialog(root, default_industry="nursing",
                                  default_metro="Boise, ID")
