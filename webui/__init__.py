@@ -19,13 +19,28 @@ blueprints (Flask raises on a duplicate blueprint name otherwise).
 """
 from __future__ import annotations
 
-from flask import jsonify, send_from_directory
-from werkzeug.exceptions import NotFound
+from flask import jsonify, request, send_from_directory
+from werkzeug.exceptions import HTTPException, NotFound
 
 from . import paths
 from .api import build_api_blueprint
 
 _REGISTERED_FLAG = "_webui_registered"
+
+
+def _api_http_error(e: HTTPException):
+    """App-wide HTTP-error hook that keeps the ``{ok:false, error}`` JSON envelope
+    on EVERY ``/api/*`` response, including errors raised at the ROUTING layer
+    before any view runs (unknown route -> 404, wrong method -> 405, a literal
+    ``../`` in a download path that werkzeug normalizes-and-404s, an oversized
+    body -> 413). Views that already return their own JSON errors never reach
+    this handler. Non-API paths (``/app`` SPA assets, receiver routes) return the
+    exception unchanged — Flask then renders its default page, so only the API
+    surface changes shape. (S36 scenario finding MINOR-2.)"""
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False,
+                        "error": (e.name or "error").lower()}), e.code or 500
+    return e
 
 
 def _looks_like_spa_route(subpath: str) -> bool:
@@ -66,6 +81,7 @@ def register_webui(app) -> None:
         return
 
     app.register_blueprint(build_api_blueprint())
+    app.register_error_handler(HTTPException, _api_http_error)
 
     @app.get("/app")
     def _app_index():
