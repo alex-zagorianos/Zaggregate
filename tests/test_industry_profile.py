@@ -596,3 +596,34 @@ def test_soc_alias_codes_exist_in_bundled_onet_dataset():
     real_codes = {soc for soc, _title in _onet().values()}
     for _phrase, (code, _title) in ip._SOC_ALIASES.items():
         assert code in real_codes, f"{code} not in bundled O*NET dataset"
+
+
+# ── singular-aware gate tokens (scenario finding #2) ──────────────────────────
+def test_gate_tokens_singularizes_plural_titles():
+    # A plural O*NET occupation title (what resolve_soc persists for many fields)
+    # must yield singular gate tokens so a singular-keyed source gate still fires.
+    assert "nurse" in ip.gate_tokens("Registered Nurses")
+    assert "teacher" in ip.gate_tokens("Postsecondary Teachers")
+    assert "competency" in ip.gate_tokens("Core Competencies")
+    # The original plural token is retained too (superset, never lossy).
+    assert "nurses" in ip.gate_tokens("Registered Nurses")
+
+
+def test_singularize_is_conservative():
+    # Never mangles a singular / double-s / short word.
+    assert ip._singularize("business") == "business"   # double-s untouched
+    assert ip._singularize("process") == "process"
+    assert ip._singularize("bus") == "bus"             # too short (<4)
+    assert ip._singularize("data") == "data"           # no trailing 's'
+    # Strips clean plurals.
+    assert ip._singularize("nurses") == "nurse"
+    assert ip._singularize("teachers") == "teacher"
+    assert ip._singularize("systems") == "system"
+    assert ip._singularize("competencies") == "competency"
+    assert ip._singularize("branches") == "branch"
+
+
+def test_gate_tokens_does_not_alter_scoring_tokens():
+    # _tokens (the scoring tokenizer) stays singular-agnostic — only gate_tokens
+    # adds the singularized forms, so scoring behavior is byte-identical.
+    assert ip._tokens("Registered Nurses") == ["registered", "nurses"]

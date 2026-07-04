@@ -72,4 +72,15 @@ def project_switch():
     if not slug or slug not in known:
         return jsonify({"ok": False, "error": "unknown project"}), 400
     workspace.set_active(slug)
-    return jsonify({"ok": True, "active": workspace.active_slug()})
+    # Echo the slug we just PERSISTED, not active_slug(): while a pinned engine run
+    # is in flight, active_slug() returns the PINNED project, so echoing it would
+    # report the switch as a silent no-op even though projects.json now holds the
+    # new slug. The write is what took effect; report it. (scenario finding #6)
+    body = {"ok": True, "active": slug}
+    pin = workspace.pinned()
+    if pin is not None and pin != slug:
+        # A run is holding a different project pinned; the switch is persisted but
+        # won't be LIVE (DB resolution stays on the pin) until the run finishes.
+        # Surface it so the UI can explain the delay instead of looking broken.
+        body["pending_pinned"] = pin
+    return jsonify(body)

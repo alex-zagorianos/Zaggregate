@@ -88,6 +88,11 @@ def test_higheredjobs_industry_gating():
     assert _categories_for_industry("nursing") == []
     assert _categories_for_industry("") == []              # Alex default -> inert
     assert _categories_for_industry(None) == []
+    # PLURAL O*NET occupation titles the wizard persists verbatim must also
+    # activate — the gate is singular-aware (scenario finding #2).
+    assert _categories_for_industry("Postsecondary Teachers")
+    assert _categories_for_industry("Registrars")
+    assert _categories_for_industry("Registered Nurses") == []   # nursing != highered
 
 
 def test_higheredjobs_self_skip_search_returns_empty(tmp_path):
@@ -145,6 +150,11 @@ def test_rnjobsite_industry_gating():
     assert not _should_poll("controls engineering")
     assert not _should_poll("")        # Alex default -> inert
     assert not _should_poll(None)
+    # The wizard auto-derives industry='Registered Nurses' (plural — 29-1141.00's
+    # real O*NET title). The one daily source built for nurses MUST poll for it;
+    # the singular-only gate previously went inert here. (scenario finding #2)
+    assert _should_poll("Registered Nurses")
+    assert _should_poll("Licensed Practical and Licensed Vocational Nurses")
 
 
 def test_rnjobsite_self_skip_search_returns_empty(tmp_path):

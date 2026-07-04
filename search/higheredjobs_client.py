@@ -86,7 +86,10 @@ def _categories_for_industry(industry: Optional[str]) -> list[int]:
     (Alex's engineering default) returns [] -> the client is inert, so adding it
     to DAILY_SOURCES changes nothing for a non-education project."""
     import industry_profile
-    toks = set(industry_profile._tokens(industry or ""))
+    # gate_tokens (not _tokens) so a PLURAL O*NET title ("Postsecondary Teachers",
+    # "Registrars") the wizard persists still intersects the singular gate set —
+    # the same plural-token miss that silenced RNJobSite. (scenario finding #2)
+    toks = industry_profile.gate_tokens(industry or "")
     if not toks:
         return []
     if toks & _EDUCATION_TOKENS:

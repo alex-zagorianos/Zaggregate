@@ -108,7 +108,13 @@ def start_daily_run():
     pins the slug at start and unpins in ``finally`` inside ``run_ingest`` (mirrors
     ``gui.run_daily_ingest``/``daily_run.run_main`` — the S27-safe pin pattern).
     """
-    slug = workspace.active_slug()
+    # The TARGET project is the user's CURRENT registry active slug, NOT the pinned
+    # one: if another project's run is pinned, active_slug() would return the pin,
+    # so this run would take the pinned (kind,key) and a conflict would mislabel
+    # itself as "already running" (same_gate) instead of the true cross-project
+    # "another run is in progress". Resolve the intent from the registry so the 409
+    # shape is accurate. (scenario finding #7)
+    slug = workspace.registry_active_slug()
 
     def _fn(handle):
         # Stream every pipeline stdout line into the job's SSE log; respect a

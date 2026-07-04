@@ -284,6 +284,17 @@ def pinned() -> str | None:
 def active_slug() -> str | None:
     if _PINNED_SLUG is not None:
         return _PINNED_SLUG
+    return registry_active_slug()
+
+
+def registry_active_slug() -> str | None:
+    """The active project persisted in projects.json, IGNORING the process-local
+    pin. ``active_slug()`` deliberately shadows this with the pin so every in-flight
+    DB call resolves to the pinned project for the duration of a run. But a request
+    handler that wants the user's CURRENT intended project (e.g. to echo a switch it
+    just wrote, or to resolve the TARGET of a new run) must read the registry
+    directly — under a pin the two diverge, and using the pin misattributes the
+    caller's intent to the running project. (scenario findings #6/#7)"""
     reg = _registry()
     slug = reg.get("active")
     if slug:

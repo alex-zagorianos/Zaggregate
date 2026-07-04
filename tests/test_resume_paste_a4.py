@@ -101,6 +101,56 @@ def test_structure_does_not_promote_sentences():
     assert "my education" in out  # sentence body intact, not turned into a heading
 
 
+# -- bare "Experience" heading: orphan work-history must not be dropped ----------
+_BARE_EXPERIENCE_PLAIN = """\
+Alex Fresh
+Mechanical Engineer
+
+Experience
+Manufacturing Engineer, Acme Corp, 2022-2026
+- Designed fixtures for CNC machining
+
+Education
+BS Mechanical Engineering, State University, 2022
+"""
+
+
+def test_structure_bare_experience_heading_keeps_work_history():
+    """A résumé that uses a bare 'Experience' heading (a very common convention)
+    used to lose its ENTIRE work history: the parser deliberately won't alias a
+    bare 'Experience' (H1-title collision), so Path A promoted only 'Education' and
+    left the name/title/Experience-block as orphan text the downstream parser
+    drops — while still reporting restructured=True. The orphan block before the
+    first recognized heading must now be folded into CONTACT/WORK EXPERIENCE, so no
+    pasted text is invisible. (scenario-test finding #1)"""
+    out, changed = sw.structure_resume_text(_BARE_EXPERIENCE_PLAIN)
+    assert changed is True
+    assert "## WORK EXPERIENCE" in out
+    assert "## EDUCATION" in out
+    # The load-bearing content — the actual job entry — must survive, not vanish.
+    assert "Manufacturing Engineer" in out
+    assert "Acme Corp" in out
+    assert "Designed fixtures for CNC machining" in out
+
+
+def test_bare_experience_paste_reaches_parser_work_experience(isolated):
+    """End-to-end: the bare-'Experience' paste applied through the wizard must land
+    real work-history in the parser's work_experience section, not an empty one."""
+    sw.apply({
+        "roles": ["mechanical engineer"],
+        "location": "Cincinnati, OH",
+        "remote_ok": True,
+        "salary_min": None,
+        "resume_text": _BARE_EXPERIENCE_PLAIN,
+        "about": "",
+    })
+    parsed = ep.load_experience(workspace.experience_file())  # strict, must not raise
+    assert parsed["work_experience"], "work history was silently dropped"
+    assert "Manufacturing Engineer" in parsed["work_experience"]
+    assert "Acme Corp" in parsed["work_experience"]
+    assert parsed["education"]
+
+
 # -- the mandatory acceptance test -----------------------------------------------
 def test_nurse_paste_wizard_completes_and_parses(isolated):
     """A plain-text nurse resume paste -> apply() succeeds -> load_experience()

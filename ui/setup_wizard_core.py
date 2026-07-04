@@ -144,6 +144,19 @@ def _looks_like_contact(line: str) -> bool:
     return bool(_EMAIL_RE.search(line) or _PHONE_RE.search(line))
 
 
+# A bare "Experience"-family line. The parser DELIBERATELY does not alias a bare
+# "EXPERIENCE" to WORK EXPERIENCE (it is commonly a document H1 title that would
+# shadow the real '## WORK EXPERIENCE' section — see experience_parser
+# _HEADING_ALIASES). But when we are folding ORPHAN lines that sit BEFORE the first
+# recognized heading (Path A), such a line is unambiguously a section label, not
+# the doc title, so it is safe to treat it as the WORK EXPERIENCE heading here.
+_BARE_EXPERIENCE_RE = re.compile(r"^\s*(work\s+)?experiences?\s*:?\s*$", re.I)
+
+
+def _is_bare_experience(line: str) -> bool:
+    return bool(_BARE_EXPERIENCE_RE.match(line or ""))
+
+
 def structure_resume_text(text: str) -> tuple[str, bool]:
     """Return (structured_markdown, was_restructured).
 
@@ -162,19 +175,50 @@ def structure_resume_text(text: str) -> tuple[str, bool]:
     # Path A: promote recognizable ALL-CAPS/alias heading lines in place.
     promoted: list[str] = []
     n_headings = 0
-    for line in lines:
+    first_heading_idx: int | None = None
+    for i, line in enumerate(lines):
         canon = _looks_like_heading(line, table)
         if canon is not None:
+            if first_heading_idx is None:
+                first_heading_idx = i
             promoted.append(f"## {canon}")
             n_headings += 1
         else:
             promoted.append(line)
     if n_headings:
+        # Any non-blank line BEFORE the first recognized heading is "orphan" text
+        # the downstream parser can't see (it lives under no section, so
+        # load_experience drops it — that silently deleted a whole résumé whose
+        # work history sat under a bare "Experience" line the parser deliberately
+        # won't alias). Rather than drop it, fold the orphan block into
+        # CONTACT/WORK EXPERIENCE sections exactly like Path B does, so no pasted
+        # text is ever invisible. (scenario-test finding #1)
+        assert first_heading_idx is not None
+        orphans = lines[:first_heading_idx]
+        rest = promoted[first_heading_idx:]
+        if any(o.strip() for o in orphans):
+            folded = _wrap_orphan_block(orphans)
+            head = (folded + [""]) if folded else []
+            return "\n".join(head + rest).strip(), True
         return "\n".join(promoted).strip(), True
 
     # Path B: no recognizable headings at all -- wrap. Leading contact-looking
     # lines (name/email/phone/address at the top) go under CONTACT; the body
     # under WORK EXPERIENCE so the parser + scorer both have real content.
+    folded = _wrap_orphan_block(lines)
+    return "\n".join(folded).strip() if folded else raw, True
+
+
+def _wrap_orphan_block(lines: list[str]) -> list[str]:
+    """Wrap unheaded résumé lines into ``## CONTACT`` / ``## WORK EXPERIENCE``
+    sections so the parser + scorer see real content instead of dropping it.
+
+    Leading contact-looking lines (name/email/phone/address at the very top) go
+    under CONTACT; everything after goes under WORK EXPERIENCE. A bare
+    "Experience"/"Work Experience" label inside the block is consumed as the
+    section header itself (it is unambiguously a label here, not a doc title).
+    Returns the wrapped lines (no trailing/leading blank trimming — the caller
+    joins + strips)."""
     contact: list[str] = []
     body_start = 0
     for i, line in enumerate(lines[:6]):  # only scan the top of the document
@@ -186,7 +230,14 @@ def structure_resume_text(text: str) -> tuple[str, bool]:
             body_start = i + 1
         else:
             break
-    body = "\n".join(lines[body_start:]).strip()
+    body_lines = lines[body_start:]
+    # Drop a leading bare "Experience" label — the "## WORK EXPERIENCE" heading we
+    # emit below replaces it (so it isn't repeated as literal body text).
+    while body_lines and not body_lines[0].strip():
+        body_lines = body_lines[1:]
+    if body_lines and _is_bare_experience(body_lines[0]):
+        body_lines = body_lines[1:]
+    body = "\n".join(body_lines).strip()
     out: list[str] = []
     if contact:
         out.append("## CONTACT")
@@ -195,8 +246,8 @@ def structure_resume_text(text: str) -> tuple[str, bool]:
         out.append("")
     out.append("## WORK EXPERIENCE")
     out.append("")
-    out.append(body if body else raw)
-    return "\n".join(out).strip(), True
+    out.append(body if body else "\n".join(lines).strip())
+    return out
 
 
 # ── connected-source detection (keys step) ──────────────────────────────────────
@@ -240,17 +291,32 @@ def connected_source_labels() -> list[str]:
     return out
 
 
-# ── onboarding marker ───────────────────────────────────────────────────────────
-def _marker_path() -> Path:
-    return Path(config.USER_DATA_DIR) / _MARKER_NAME
+# ── onboarding marker (PER-PROJECT) ─────────────────────────────────────────────
+# The wizard-completion marker is scoped to the PROJECT's data dir, not a single
+# installation-wide root file. A global marker made every project after the first
+# report onboarded:true even though it was never wizard-configured (its resume/
+# about/salary/industry all blank) — so the wizard never offered to set them up.
+# For the root/'default' slug, workspace.project_dir() returns USER_DATA_DIR, so
+# the marker path is byte-identical to the legacy location: an existing single-
+# project install's root .onboarded keeps marking the default project onboarded
+# (automatic migration, no move needed). (scenario finding #5)
+def _marker_path(slug: str | None = None) -> Path:
+    try:
+        base = workspace.project_dir(slug)
+    except Exception:
+        base = Path(config.USER_DATA_DIR)
+    return Path(base) / _MARKER_NAME
 
 
-def is_onboarded() -> bool:
-    return _marker_path().exists()
+def is_onboarded(slug: str | None = None) -> bool:
+    """True when THIS project (the active one, or the named slug) has completed the
+    wizard. Migration: for the root/'default' project the path resolves to the
+    legacy root marker, so a pre-migration install stays onboarded."""
+    return _marker_path(slug).exists()
 
 
-def mark_onboarded() -> None:
-    p = _marker_path()
+def mark_onboarded(slug: str | None = None) -> None:
+    p = _marker_path(slug)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("ok\n", encoding="utf-8")

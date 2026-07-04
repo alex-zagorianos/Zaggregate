@@ -109,7 +109,19 @@ def _resolve_home() -> dict:
     if not floor:
         floor = cfg.get("salary_min")
     home_area = area or DEFAULT_LOCATION
-    has_home = bool((home_area or "").strip())
+    # A remote-only home ('Remote', 'Anywhere', 'Remote - US', ...) is NOT a real
+    # metro to key a local-focus filter on: metro_variants('Remote') resolves to
+    # {'remote'}, which then substring-matches the word 'remote' inside almost
+    # every row's location and mislabels the whole search as 'local' — while
+    # DROPPING the one genuinely-remote row whose location text lacks that word.
+    # Treat remote-only like "no home metro" so both local-focus modes short-circuit
+    # to All-locations (the contract the frontend already assumes). (scenario #4)
+    try:
+        from search.remote_intent import is_remote_only
+        _remote_only = is_remote_only(home_area)
+    except Exception:
+        _remote_only = False
+    has_home = bool((home_area or "").strip()) and not _remote_only
     try:
         pay_floor = int(floor) if floor else None
     except (TypeError, ValueError):
@@ -202,6 +214,10 @@ def _badges() -> dict:
                 "timestamp": info.get("timestamp"),
                 "added": info.get("added", 0),
                 "keyless_skipped": list(info.get("keyless_skipped") or []),
+                # US-only sources skipped because this project's country isn't 'us'
+                # — a distinct badge from keyless (not fixable by adding a key), so
+                # the web UI can honestly report the country gate. (finding #3)
+                "country_skipped": list(info.get("country_skipped") or []),
             }
     except Exception:
         last_run = None

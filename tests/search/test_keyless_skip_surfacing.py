@@ -65,3 +65,42 @@ def test_jooble_not_keyless_with_key(keyless_env, monkeypatch):
     skipped: list[str] = []
     cli.build_clients(["jooble"], cache_enabled=False, skipped_keyless=skipped)
     assert "jooble" not in skipped
+
+
+# ── country-gated skips (US-only sources) — scenario finding #3 ───────────────
+def test_country_skipped_collects_us_only_for_non_us(keyless_env):
+    """US-only sources that self-skip for a non-US country land in the SEPARATE
+    skipped_country out-param, not skipped_keyless — the two have different fixes
+    (a key vs. an inherent country gate). A UK project must report usajobs +
+    careeronestop as country-skipped."""
+    keyless: list[str] = []
+    country: list[str] = []
+    cli.build_clients(
+        ["usajobs", "careeronestop", "themuse"],
+        cache_enabled=False, skipped_keyless=keyless, skipped_country=country,
+        location="London, United Kingdom")   # -> country 'gb'
+    assert set(country) == {"usajobs", "careeronestop"}
+    # The country skip happens BEFORE the key check, so they are NOT keyless here.
+    assert "usajobs" not in keyless and "careeronestop" not in keyless
+
+
+def test_country_skipped_empty_for_us_location(keyless_env):
+    """A US project never country-skips these sources — they go through the normal
+    (keyless, here) path instead."""
+    keyless: list[str] = []
+    country: list[str] = []
+    cli.build_clients(
+        ["usajobs", "careeronestop", "themuse"],
+        cache_enabled=False, skipped_keyless=keyless, skipped_country=country,
+        location="Cincinnati, OH")   # -> country 'us'
+    assert country == []
+    # With no key set (keyless_env), the US path reports them as keyless instead.
+    assert set(keyless) == {"usajobs", "careeronestop"}
+
+
+def test_skipped_country_is_optional_and_backward_compatible(keyless_env):
+    # A caller that doesn't pass skipped_country still works (no crash), even for a
+    # non-US location that would have country-skipped.
+    clients = cli.build_clients(["usajobs", "themuse"], cache_enabled=False,
+                                location="Berlin, Germany")
+    assert [type(c).__name__ for c in clients] == ["TheMuseClient"]

@@ -318,9 +318,13 @@ def main():
     # this run, so the GUI can surface it (review: keyless self-skips leave only
     # console lines). Populated from the sources' own skip conditions.
     keyless_skipped: list[str] = []
+    # US-only sources (usajobs/careeronestop) that self-skip because this project's
+    # country isn't 'us' — surfaced separately from keyless so the UI can show an
+    # honest "US-only sources skipped for your country" badge. (scenario finding #3)
+    country_skipped: list[str] = []
     clients = build_clients(sources, cache_enabled=True, industry_filter=industry,
                             tiered_careers=tiered, skipped_keyless=keyless_skipped,
-                            location=location)
+                            location=location, skipped_country=country_skipped)
     if not clients:
         log("ABORT: no sources could be initialized (check .env).")
         # Don't leave the beacon row stuck 'running' — this is a failed run.
@@ -603,6 +607,9 @@ def main():
             # Sources that self-skipped this run for a missing free key — the GUI
             # turns this into an actionable "N sources skipped (no key)" line.
             "keyless_skipped": list(keyless_skipped),
+            # US-only sources skipped because this project's country isn't 'us' —
+            # surfaced separately (different fix than a missing key). (finding #3)
+            "country_skipped": list(country_skipped),
         }, project_slug=run_project or None)
     except Exception as e:  # status reporting must never kill a run
         log(f"WARN: last_run.json write skipped: {type(e).__name__}: {e}")

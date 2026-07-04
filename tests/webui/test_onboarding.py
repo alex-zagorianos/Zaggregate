@@ -300,3 +300,46 @@ def test_ai_setup_apply_headerless_403(client, isolated):
                        json={"text": json.dumps(_GOOD_BLOCK)})   # no Origin
     assert resp.status_code == 403
     assert wizard.is_onboarded() is False
+
+
+# ── per-project onboarding marker (scenario finding #5) ───────────────────────
+def test_onboarded_marker_is_per_project(tmp_path, monkeypatch):
+    """The wizard-completion marker is scoped to the PROJECT's data dir, not one
+    installation-wide root file. Onboarding project A must NOT make a brand-new
+    project B report onboarded:true (B was never wizard-configured). Migration:
+    the root/'default' project keeps using the legacy root marker path."""
+    # Two isolated project dirs under a tmp root; drive project_dir directly so the
+    # test doesn't depend on the live registry.
+    dirs = {"proj-a": tmp_path / "projects" / "proj-a",
+            "proj-b": tmp_path / "projects" / "proj-b",
+            "default": tmp_path}   # root/'default' -> USER_DATA_DIR (migration parity)
+    for d in dirs.values():
+        d.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(config, "USER_DATA_DIR", tmp_path)
+    monkeypatch.setattr(workspace, "project_dir",
+                        lambda slug=None: dirs.get(slug, tmp_path))
+
+    # Fresh: nothing onboarded anywhere.
+    assert wizard.is_onboarded("proj-a") is False
+    assert wizard.is_onboarded("proj-b") is False
+
+    # Onboard A only.
+    wizard.mark_onboarded("proj-a")
+    assert wizard.is_onboarded("proj-a") is True
+    # B is untouched — the bug was a global marker flipping B to true too.
+    assert wizard.is_onboarded("proj-b") is False
+
+    # The marker really lives in A's dir, not the root.
+    assert (dirs["proj-a"] / ".onboarded").exists()
+    assert not (tmp_path / ".onboarded").exists()
+
+
+def test_onboarded_marker_default_slug_uses_root_path(tmp_path, monkeypatch):
+    """Migration guard: the 'default' slug resolves to USER_DATA_DIR, so a legacy
+    single-project install's root .onboarded keeps marking it onboarded."""
+    monkeypatch.setattr(config, "USER_DATA_DIR", tmp_path)
+    monkeypatch.setattr(workspace, "project_dir",
+                        lambda slug=None: tmp_path)   # default -> root
+    (tmp_path / ".onboarded").write_text("ok\n", encoding="utf-8")   # legacy marker
+    assert wizard.is_onboarded("default") is True
+    assert wizard._marker_path("default") == tmp_path / ".onboarded"

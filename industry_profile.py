@@ -73,6 +73,42 @@ def _tokens(industry: str) -> list[str]:
     return [t for t in re.split(r"[\s_\-/,]+", (industry or "").lower()) if t]
 
 
+def _singularize(tok: str) -> str:
+    """Best-effort English singular of one lowercase token. Conservative — it only
+    strips clearly-plural endings so it never mangles a singular word:
+      competencies -> competency ;  nurses -> nurse ;  analyses -> analysis(≈) ;
+      teachers -> teacher ;  systems -> system.
+    A short token, a non-'s' ending, or a double-'s' ('business', 'process') is
+    returned unchanged. Not linguistically perfect (it isn't meant to be) — just
+    enough to make a plural O*NET occupation title ('Registered Nurses',
+    'Postsecondary Teachers') intersect a singular industry-token gate set."""
+    t = tok
+    if len(t) < 4 or not t.endswith("s") or t.endswith("ss"):
+        return t
+    if t.endswith("ies"):            # competencies -> competency
+        return t[:-3] + "y"
+    if t.endswith(("ches", "shes", "sses", "xes", "zes")):
+        return t[:-2]                # branches -> branch, taxes -> tax
+    return t[:-1]                    # nurses -> nurse, teachers -> teacher
+
+
+def gate_tokens(industry: str) -> set[str]:
+    """Tokens for matching an industry against a per-source/per-signal GATE set.
+
+    Superset of ``_tokens`` that ALSO includes a singularized form of each token,
+    so a gate keyed on singular words ('nurse', 'teacher') still fires for a plural
+    industry string ('Registered Nurses', 'Postsecondary Teachers') — the exact
+    form ``resolve_soc`` persists for many O*NET occupation titles. Shared by every
+    industry-token gate (RNJobSite / HigherEdJobs / keyword_strategy signals) so no
+    gate has to carry per-plural token patches. Never used for scoring — the
+    scoring tokenizer (``_tokens``) is deliberately left untouched."""
+    out: set[str] = set()
+    for t in _tokens(industry):
+        out.add(t)
+        out.add(_singularize(t))
+    return out
+
+
 # ── shipped seed rules ────────────────────────────────────────────────────────
 # Each rule: a set of industry tokens -> the knobs. First rule whose tokens
 # intersect the industry wins. Engineering first so eng-flavored fields resolve to

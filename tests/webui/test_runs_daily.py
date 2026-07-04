@@ -40,7 +40,11 @@ def _reset_runner():
 @pytest.fixture(autouse=True)
 def _active_slug(monkeypatch):
     """Pin a deterministic active project so ``runs/daily`` keys the job on a known
-    slug (and so the pin/unpin assertions have a concrete value)."""
+    slug (and so the pin/unpin assertions have a concrete value). ``start_daily_run``
+    resolves the run TARGET from ``registry_active_slug`` (the un-pinned intent — see
+    scenario finding #7), so patch that seam; keep ``active_slug`` in sync for any
+    other reader."""
+    monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projA")
     monkeypatch.setattr(workspace, "active_slug", lambda: "projA")
 
 
@@ -134,14 +138,15 @@ def test_daily_run_exclusive_mutex_across_projects(client, monkeypatch):
         return 0
     monkeypatch.setattr(runs_mod, "_daily_ingest", blocking_ingest)
 
-    # Start A.
-    monkeypatch.setattr(workspace, "active_slug", lambda: "projA")
+    # Start A. (The route resolves the target via registry_active_slug — scenario
+    # finding #7 — so patch that seam to switch the "active project" per request.)
+    monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projA")
     r1 = client.post("/api/runs/daily", headers=_H)
     j1 = r1.get_json()["job_id"]
     try:
         # Now B is the active project — a DIFFERENT (kind,key), so single-flight
         # alone would allow it; the exclusive mutex must still 409.
-        monkeypatch.setattr(workspace, "active_slug", lambda: "projB")
+        monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projB")
         r2 = client.post("/api/runs/daily", headers=_H)
         assert r2.status_code == 409
         body = r2.get_json()
@@ -153,14 +158,56 @@ def test_daily_run_exclusive_mutex_across_projects(client, monkeypatch):
     _wait_status(client, j1, "done")
 
 
+def test_daily_run_target_from_registry_not_pin_gives_cross_project_409(client, monkeypatch):
+    """When project A's run is in flight (and pins A), and the user has already
+    switched the registry to B, a daily-run POST must resolve its TARGET from the
+    registry (B) — so it is correctly blocked by the CROSS-project exclusive mutex
+    with ``same_gate=False`` ("another run is in progress"), not mislabeled as a
+    same-project "already running". (scenario finding #7)"""
+    import threading
+    gate = threading.Event()
+
+    def blocking_ingest(slug, *, on_line=None, cancel=None):
+        # Emulate the S27-safe pin the real run_ingest holds for its duration.
+        workspace.pin_active(slug)
+        try:
+            gate.wait(3.0)
+        finally:
+            workspace.unpin_active()
+        return 0
+    monkeypatch.setattr(runs_mod, "_daily_ingest", blocking_ingest)
+
+    # Start A's run (registry active = A). Its ingest pins A.
+    monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projA")
+    j1 = client.post("/api/runs/daily", headers=_H).get_json()["job_id"]
+    # Wait for the pin to be taken so the divergence is real.
+    for _ in range(200):
+        if workspace.pinned() == "projA":
+            break
+        time.sleep(0.01)
+    assert workspace.pinned() == "projA"
+    try:
+        # The user has switched the registry to B mid-run. A new run's TARGET is B.
+        monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projB")
+        r2 = client.post("/api/runs/daily", headers=_H)
+        assert r2.status_code == 409
+        body = r2.get_json()
+        # The ACCURATE cross-project shape — the bug returned "already running".
+        assert body["error"] == "another run is in progress"
+        assert body["job_id"] == j1
+    finally:
+        gate.set()
+    _wait_status(client, j1, "done")
+
+
 def test_exclusive_slot_freed_after_completion(client, monkeypatch):
     """Once A's exclusive job finishes, B may start (the slot is released in the
     runner's finally)."""
     monkeypatch.setattr(runs_mod, "_daily_ingest", lambda slug, **k: 0)
-    monkeypatch.setattr(workspace, "active_slug", lambda: "projA")
+    monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projA")
     j1 = client.post("/api/runs/daily", headers=_H).get_json()["job_id"]
     _wait_status(client, j1, "done")
-    monkeypatch.setattr(workspace, "active_slug", lambda: "projB")
+    monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projB")
     r2 = client.post("/api/runs/daily", headers=_H)
     assert r2.status_code == 200
     _wait_status(client, r2.get_json()["job_id"], "done")

@@ -132,6 +132,33 @@ def test_restore_happy_overwrites_and_snapshots(client, tmp_data):
     assert Path(body["rollback"]).name.startswith("pre-restore-")
 
 
+# ── large-upload: the app-wide 8 MB cap must not break a real backup restore ──
+def test_restore_accepts_upload_over_receiver_8mb_cap(client, tmp_data):
+    """The receiver app sets MAX_CONTENT_LENGTH=8 MB (sized for extension capture
+    POSTs). A real data-folder backup zip routinely exceeds 8 MB, so the blanket
+    cap used to reject the restore with a raw HTML 413 before the route ran. The
+    route now lifts the cap per-request; a >8 MB restore must succeed (200) and
+    honor the JSON envelope, not 413."""
+    # A zip whose stored payload is comfortably over 8 MB. Use incompressible
+    # random bytes so the on-the-wire multipart body actually exceeds the cap.
+    big_payload = os.urandom(9 * 1024 * 1024)  # 9 MiB, > the 8 MiB cap
+    zbytes = _make_zip({"preferences.md": b"BIG_RESTORE",
+                        "blob.bin": big_payload})
+    assert len(zbytes) > 8 * 1024 * 1024  # the upload really is over the cap
+    resp = client.post(
+        "/api/backup/restore",
+        data={"file": (io.BytesIO(zbytes), "backup.zip"), "confirm": "true"},
+        headers={"Origin": _LOOPBACK},
+        content_type="multipart/form-data")
+    assert resp.status_code == 200, (
+        f"large restore rejected ({resp.status_code}); the 8 MB cap still gates it")
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["members"] == 2
+    assert (tmp_data / "preferences.md").read_text() == "BIG_RESTORE"
+    assert (tmp_data / "blob.bin").read_bytes() == big_payload
+
+
 # ── JOB-SAFE: restore must not clobber an in-flight engine job ────────────────
 def test_restore_refused_while_exclusive_job_running(client, tmp_data):
     # A restore extracts over the whole data folder; running it while a daily-run/

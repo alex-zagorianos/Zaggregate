@@ -35,6 +35,18 @@ from ..security import require_local_origin
 
 guide_bp = Blueprint("webui_guide", __name__)
 
+# The receiver app sets an 8 MB MAX_CONTENT_LENGTH sized for browser-extension
+# job-capture POSTs. A real data-folder backup zip (tracker.db + companies.json +
+# preferences + output) routinely exceeds that, so the blanket cap would reject a
+# legitimate restore with a raw HTML 413 BEFORE this route runs — breaking the
+# documented restore flow and the JSON error-envelope contract. Restore is
+# origin-gated + confirm-guarded + ZIP-SLIP-safe, so a generous per-request cap is
+# safe here. 1 GiB comfortably covers a large personal data folder while still
+# bounding a runaway upload. Applied by raising ``request.max_content_length``
+# (Flask 3.1 per-request override) as the FIRST statement in the route, before any
+# body access, so the multipart parse honors the raised limit.
+_RESTORE_MAX_CONTENT_LENGTH = 1024 * 1024 * 1024  # 1 GiB
+
 
 @guide_bp.get("/guide")
 def guide():
@@ -104,6 +116,12 @@ def backup_restore():
     (nothing extracted) rather than clobbering the running job's files. Returns
     ``{ok, members:int, rollback:str}`` on success."""
     from ui.help_core import safe_extract_zip, make_backup, UnsafeZipEntry, backups_dir
+
+    # Lift the app-wide 8 MB body cap for THIS request only, before any body
+    # access (request.form below parses the multipart body and would 413 under the
+    # default). A real backup zip is larger than 8 MB; without this the restore is
+    # unconditionally broken. See _RESTORE_MAX_CONTENT_LENGTH above.
+    request.max_content_length = _RESTORE_MAX_CONTENT_LENGTH
 
     if not _truthy(request.form.get("confirm")):
         return jsonify({

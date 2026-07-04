@@ -436,7 +436,17 @@ class InboxTab(ttk.Frame):
         # local-focus filter has nothing to key on, so fall back to 'All
         # locations' and hint the user to set their location in Setup, instead of
         # silently hiding jobs against an empty home string.
-        self._has_home = bool((self._home_area or "").strip())
+        # A remote-only home ('Remote'/'Anywhere'/...) is likewise NOT a metro to
+        # key on: metro_variants('Remote') -> {'remote'} substring-matches the word
+        # 'remote' in nearly every row (mislabeling all as 'local') and drops the
+        # one row without it. Treat it as "no home" so local-focus short-circuits to
+        # All-locations. Mirrors webui/api/inbox._resolve_home. (scenario #4)
+        try:
+            from search.remote_intent import is_remote_only
+            _remote_only = is_remote_only(self._home_area)
+        except Exception:
+            _remote_only = False
+        self._has_home = bool((self._home_area or "").strip()) and not _remote_only
         self._home_remote_ok = remote_ok
         try:
             self._pay_floor = int(floor) if floor else None

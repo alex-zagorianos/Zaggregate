@@ -270,7 +270,15 @@ _HANDSON_TEXT_SIGNALS = frozenset({
 def _text_knowledge_signal(industry: str) -> Optional[bool]:
     """True/False from the industry TEXT alone, or None when it says nothing.
     A hands-on signal wins over a knowledge signal when both appear."""
-    toks = set(re.split(r"[\s_\-/,]+", (industry or "").lower()))
+    # gate_tokens (singular-aware) so a PLURAL O*NET title ("Registered Nurses")
+    # still matches the singular hands-on/knowledge signal sets — otherwise a
+    # nursing field the wizard persists as plural reads as "says nothing" and can
+    # mis-route to knowledge boards. (scenario finding #2)
+    try:
+        import industry_profile
+        toks = industry_profile.gate_tokens(industry or "")
+    except Exception:
+        toks = set(re.split(r"[\s_\-/,]+", (industry or "").lower()))
     if not toks:
         return None
     if toks & _HANDSON_TEXT_SIGNALS:

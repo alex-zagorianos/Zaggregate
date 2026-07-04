@@ -56,6 +56,7 @@ def build_clients(
     tiered_careers: bool = False,
     skipped_keyless: list[str] | None = None,
     location: str | None = None,
+    skipped_country: list[str] | None = None,
 ) -> list[JobAPIClient]:
     """Build the requested source clients.
 
@@ -65,12 +66,23 @@ def build_clients(
     key-gated client, or a registered client reporting keyless() is True), never
     a hardcoded source list. The caller surfaces this so a user learns which
     sources are contributing zero for lack of a key (review: silent self-skip).
+
+    skipped_country (optional out-param): parallel to skipped_keyless but for
+    US-ONLY sources (usajobs, careeronestop) that self-skip because the project's
+    country isn't 'us'. Kept SEPARATE from keyless so the UI can render an honest
+    "US-only sources skipped for your country" badge distinct from "needs a free
+    key" (they have different fixes — the country skip is not user-fixable by
+    adding a key). (scenario finding #3)
     """
     clients: list[JobAPIClient] = []
 
     def _note_keyless(name: str) -> None:
         if skipped_keyless is not None and name not in skipped_keyless:
             skipped_keyless.append(name)
+
+    def _note_country_skip(name: str) -> None:
+        if skipped_country is not None and name not in skipped_country:
+            skipped_country.append(name)
     # Route per-source init failures/skips through the logging framework so a
     # keyless-skip or throttle finally PERSISTS to <data>/logs/app.log (a friend
     # can send it) instead of print()-ing to a console the frozen exe discards.
@@ -97,6 +109,7 @@ def build_clients(
         country=_country,
         slog=slog,
         note_keyless=_note_keyless,
+        note_country_skip=_note_country_skip,
     )
 
     for source in sources:

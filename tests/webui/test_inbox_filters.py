@@ -207,6 +207,36 @@ def test_location_mode_no_home_never_hides(client, tmp_db, monkeypatch):
     assert client.get("/api/inbox?location_mode=Local only").get_json()["shown"] == 1
 
 
+def test_resolve_home_remote_only_is_not_a_metro(client, monkeypatch):
+    # A remote-only home ('Remote') is NOT a metro to key a local-focus filter on:
+    # has_home must be False so both Local modes short-circuit to All locations,
+    # rather than substring-matching the word 'remote' across rows. (scenario #4)
+    import workspace
+    monkeypatch.setattr(workspace, "load_config", lambda: {"location": "Remote"})
+    import preferences
+    monkeypatch.setattr(preferences, "load",
+                        lambda: {"hard": {"remote_ok": True, "locations": ["Remote"]}})
+    from webui.api.inbox import _resolve_home
+    home = _resolve_home()
+    assert home["home_area"] == "Remote"
+    assert home["has_home"] is False   # the fix: remote-only != a keyable metro
+
+
+def test_remote_only_home_local_mode_keeps_remote_row(client, tmp_db, monkeypatch):
+    # End-to-end: a remote-only user on 'Local only' must still see a bona-fide
+    # remote row whose location text does NOT contain the word 'remote' (the exact
+    # row the old substring-metro logic silently dropped). (scenario #4)
+    import workspace
+    monkeypatch.setattr(workspace, "load_config", lambda: {"location": "Remote"})
+    import preferences
+    monkeypatch.setattr(preferences, "load",
+                        lambda: {"hard": {"remote_ok": True, "locations": ["Remote"]}})
+    db.inbox_add_many([_job("https://x/r", title="Marketing Lead",
+                            location="United States")])   # 100%-remote posting, no 'remote' token
+    shown = client.get("/api/inbox?location_mode=Local only").get_json()["shown"]
+    assert shown == 1, "remote-only user's remote row was wrongly hidden under Local only"
+
+
 # ── order roundrobin | score ──────────────────────────────────────────────────
 
 def test_order_roundrobin_vs_score(client, tmp_db):
@@ -253,6 +283,32 @@ def test_badges_shape(client, tmp_db):
     badges = client.get("/api/inbox").get_json()["badges"]
     assert set(badges) == {"last_run", "reach", "demo"}
     assert isinstance(badges["demo"], bool)
+
+
+def test_badges_surface_country_skipped(client, tmp_db, monkeypatch):
+    """US-only sources (usajobs/careeronestop) that self-skip for a non-US country
+    must appear in the STRUCTURED badge (badges.last_run.country_skipped), not only
+    as free text in the run log — so the web UI can render an honest "US-only
+    sources skipped for your country" badge. (scenario finding #3)"""
+    import applog
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: {
+        "timestamp": "2026-07-04T00:00:00+00:00", "added": 5,
+        "keyless_skipped": ["jooble", "careerjet"],
+        "country_skipped": ["usajobs", "careeronestop"]})
+    lr = client.get("/api/inbox").get_json()["badges"]["last_run"]
+    assert lr["keyless_skipped"] == ["jooble", "careerjet"]
+    assert lr["country_skipped"] == ["usajobs", "careeronestop"]
+
+
+def test_badges_country_skipped_defaults_empty(client, tmp_db, monkeypatch):
+    # A last_run.json from before this field existed (or a US run) has no
+    # country_skipped — the badge must default it to [] rather than KeyError.
+    import applog
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: {
+        "timestamp": "2026-07-04T00:00:00+00:00", "added": 3,
+        "keyless_skipped": ["careeronestop"]})   # no country_skipped key
+    lr = client.get("/api/inbox").get_json()["badges"]["last_run"]
+    assert lr["country_skipped"] == []
 
 
 # ── detail endpoint ───────────────────────────────────────────────────────────

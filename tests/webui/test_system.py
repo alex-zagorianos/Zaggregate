@@ -92,3 +92,28 @@ def test_project_switch_loopback_origin_allowed(client, tmp_projects):
                        headers={"Origin": "http://127.0.0.1:5002"})
     assert resp.status_code == 200
     assert workspace.active_slug() == b
+
+
+def test_project_switch_under_pin_echoes_written_slug(client, tmp_projects):
+    """While a pinned engine run holds project A, a switch to B must NOT report a
+    silent no-op: active_slug() returns the pinned A, but the write to B DID take
+    effect. The route echoes the persisted slug (B) + a ``pending_pinned`` note so
+    the UI can explain the switch goes live once the run finishes. (finding #6)"""
+    a, b = tmp_projects
+    workspace.pin_active(a)          # simulate an in-flight run pinned to A
+    try:
+        resp = client.post("/api/project", json={"slug": b},
+                           headers={"Origin": "http://127.0.0.1:5002"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        # Echoes the slug we actually persisted (B), not the pinned live slug (A).
+        assert body["active"] == b
+        assert body["pending_pinned"] == a
+        # The registry really was switched (the write was not a no-op)…
+        assert workspace.registry_active_slug() == b
+        # …even though live resolution still returns the pin until the run ends.
+        assert workspace.active_slug() == a
+    finally:
+        workspace.unpin_active()
+    # Once the pin releases, resolution catches up to the persisted switch.
+    assert workspace.active_slug() == b

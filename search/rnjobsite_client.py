@@ -58,7 +58,11 @@ def _should_poll(industry: Optional[str]) -> bool:
     Empty/None (Alex's engineering default) -> False -> the client is inert, so
     adding it to DAILY_SOURCES changes nothing for a non-nursing project."""
     import industry_profile
-    toks = set(industry_profile._tokens(industry or ""))
+    # gate_tokens (not _tokens) so a PLURAL O*NET title the wizard persists
+    # verbatim ("Registered Nurses" — 29-1141.00's real title) still intersects
+    # the singular gate set; without this the one daily source built for nurses
+    # went inert for the exact string the wizard auto-derives. (scenario finding #2)
+    toks = industry_profile.gate_tokens(industry or "")
     return bool(toks & _NURSING_TOKENS)
 
 

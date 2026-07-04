@@ -50,6 +50,11 @@ class BuildContext:
     country: str = "us"
     slog: object = None  # logging.Logger-like (applog.get_logger("sources"))
     note_keyless: Callable[[str], None] = field(default=lambda name: None)
+    # Records a source that self-skipped because it is US-ONLY and the project's
+    # country isn't 'us' (distinct from a missing key). Surfaced structurally so the
+    # web UI can render an honest "US-only sources skipped for your country" badge
+    # instead of leaving it only in the free-text run log. (scenario finding #3)
+    note_country_skip: Callable[[str], None] = field(default=lambda name: None)
 
 
 # A builder either returns a constructed client (to be appended), or None if
@@ -101,6 +106,7 @@ def _usajobs(ctx: BuildContext) -> JobAPIClient | None:
     if ctx.country != "us":
         ctx.slog.info(f"  [usajobs] US-only source — skipped for "
                        f"{ctx.location or '(no location)'!r} (country={ctx.country}).")
+        ctx.note_country_skip("usajobs")
         return None
     from search.usajobs_client import USAJobsClient
     try:
@@ -117,6 +123,7 @@ def _careeronestop(ctx: BuildContext) -> JobAPIClient | None:
     if ctx.country != "us":
         ctx.slog.info(f"  [careeronestop] US-only source — skipped for "
                        f"{ctx.location or '(no location)'!r} (country={ctx.country}).")
+        ctx.note_country_skip("careeronestop")
         return None
     from search.careeronestop_client import CareerOneStopClient
     try:
