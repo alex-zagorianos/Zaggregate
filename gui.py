@@ -1363,9 +1363,17 @@ def _web_smoke(port: int | None = None) -> dict:
         return result
 
     def _get(path: str) -> tuple[int, str, str]:
-        with _req.urlopen(f"http://{host}:{port}{path}", timeout=5) as r:
-            body = r.read().decode("utf-8", "replace")
-            return r.status, r.headers.get("Content-Type", ""), body
+        # Capture HTTP error codes (4xx/5xx) instead of raising so one failing
+        # probe doesn't abort the rest of the smoke sweep — the frozen exe must
+        # report EVERY endpoint's status, not stop at the first non-2xx.
+        import urllib.error as _uerr
+        try:
+            with _req.urlopen(f"http://{host}:{port}{path}", timeout=5) as r:
+                body = r.read().decode("utf-8", "replace")
+                return r.status, r.headers.get("Content-Type", ""), body
+        except _uerr.HTTPError as he:
+            body = he.read().decode("utf-8", "replace") if he.fp else ""
+            return he.code, he.headers.get("Content-Type", "") if he.headers else "", body
 
     try:
         a_code, a_ctype, a_body = _get("/app")
@@ -1384,7 +1392,48 @@ def _web_smoke(port: int | None = None) -> dict:
                             "project": s_json.get("project"),
                             "version": s_json.get("version")}
 
-        result["ok"] = bool(app_ok and status_ok)
+        # Extended frozen probes (deep-test D5.3): read-only endpoints from the
+        # Phase 3-5 modules (toppicks/guide/settings/onboarding) + one hashed
+        # asset, all served from inside the bundle. Each asserts 200 + the shape
+        # key the frontend depends on. This catches frozen-only ImportError/data
+        # gaps that /app + /api/status alone would miss. `probes` is ADDITIVE —
+        # existing keys (app/status/ok/listening/port) are unchanged.
+        def _probe_json(path: str, shape_key: str) -> dict:
+            code, _ct, body = _get(path)
+            try:
+                j = _json.loads(body)
+            except ValueError:
+                j = {}
+            has_shape = isinstance(j, dict) and (shape_key in j)
+            return {"code": code, "ok": bool(code == 200 and j.get("ok")
+                                             and has_shape),
+                    "shape_key": shape_key, "has_shape": has_shape}
+
+        probes: dict = {}
+        probes["toppicks"] = _probe_json("/api/toppicks", "rows")
+        probes["guide"] = _probe_json("/api/guide", "sections")
+        probes["settings_keys"] = _probe_json("/api/settings/keys", "sources")
+        probes["onboarding"] = _probe_json("/api/onboarding", "prefill")
+
+        # One hashed asset: discover the built JS filename from index.html so the
+        # probe follows the frozen bundle's Vite output (no stale hardcode).
+        import re as _re
+        m = _re.search(r'assets/(index-[A-Za-z0-9_-]+\.js)', a_body)
+        asset_name = m.group(1) if m else None
+        if asset_name:
+            ac, act, _ab = _get(f"/app/assets/{asset_name}")
+            probes["asset"] = {"name": asset_name, "code": ac,
+                               "content_type": act,
+                               "ok": bool(ac == 200
+                                          and "javascript" in act.lower())}
+        else:
+            probes["asset"] = {"name": None, "code": 0, "ok": False,
+                               "error": "no hashed asset in index.html"}
+
+        result["probes"] = probes
+        probes_ok = all(p.get("ok") for p in probes.values())
+
+        result["ok"] = bool(app_ok and status_ok and probes_ok)
     except Exception as e:  # noqa: BLE001 — smoke reports, never raises
         result["error"] = f"{type(e).__name__}: {e}"
     return result
