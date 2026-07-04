@@ -80,27 +80,16 @@ def run_daily_ingest(slug, *, on_line=None) -> int:
     a line sink fed the pipeline's stdout. Returns daily_run's exit code (0 = ok).
 
     Shared by the in-GUI 'Update my Inbox now' button and the frozen exe's
-    `--daily` headless mode so both take the identical, S27-safe path."""
-    import daily_run
-    slug = slug or workspace.active_slug()
-    prev_argv = sys.argv
-    # daily_run.main() re-parses argv and re-pins from --project; pin here too so
-    # the pin is live even if that internal pin is ever removed. run_main()'s
-    # finally clears the process pin.
-    workspace.pin_active(slug)
-    sys.argv = ["daily_run.py"] + (["--project", slug] if slug else [])
-    sink = _LineSink(on_line) if on_line else None
-    try:
-        if sink is not None:
-            with contextlib.redirect_stdout(sink):
-                rc = daily_run.run_main()
-            sink.flush()
-        else:
-            rc = daily_run.run_main()
-        return rc
-    finally:
-        sys.argv = prev_argv
-        workspace.unpin_active()  # daily_run.run_main already unpins; idempotent
+    `--daily` headless mode so both take the identical, S27-safe path.
+
+    S36 web migration: the implementation moved to the Tk-free ``daily_run_core``
+    module so the web backend can run the same ingest without importing
+    gui/tkinter. This stays a thin re-export wrapper — existing test monkeypatch
+    targets (``gui.run_daily_ingest``, and swapping ``daily_run`` in ``sys.modules``
+    then calling this) are unchanged, and the pin/argv/sink/finally path is
+    identical (it lives in ``daily_run_core.run_ingest`` now)."""
+    import daily_run_core
+    return daily_run_core.run_ingest(slug, on_line=on_line)
 
 
 # ── COMPAT RE-EXPORT (S35 gui-split): JobDialog/_RoundDialog moved to

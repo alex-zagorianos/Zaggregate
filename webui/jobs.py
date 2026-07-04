@@ -41,13 +41,29 @@ _DONE = object()
 
 
 class JobConflict(Exception):
-    """Raised by :meth:`JobRunner.start` when a job with the same ``(kind, key)``
-    is still running. Carries the id of the in-flight job so the route can answer
-    409 ``{ok:false, error:"already running", job_id: <running>}``."""
+    """Raised by :meth:`JobRunner.start` when a job can't start because another is
+    still running. Carries the id of the in-flight job so the route can answer
+    409 ``{ok:false, error:"already running", job_id: <running>}``.
 
-    def __init__(self, running_job_id: str):
+    ``same_gate`` distinguishes the two conflict shapes:
+
+    * ``same_gate=True`` — a job with the SAME ``(kind, key)`` is running (e.g. the
+      same project's daily run is already in flight). This is the ordinary
+      single-flight conflict.
+    * ``same_gate=False`` — a DIFFERENT exclusive engine job is running (e.g.
+      project A's daily run is in flight and the caller asked to start project B's).
+      Blocked by the process-wide exclusive mutex, because the engine's per-run
+      process globals (``applog._WARNED_ONCE`` / ``discoverer._RUN_QUERY_MEMO``) and
+      the single-active-project assumption make two concurrent in-process ingests
+      unsafe REGARDLESS of project.
+
+    Both are 409s carrying the running job's id; the flag lets the route tailor the
+    error message ("already running" vs "another run is in progress")."""
+
+    def __init__(self, running_job_id: str, *, same_gate: bool = True):
         super().__init__(f"a {running_job_id} job is already running")
         self.running_job_id = running_job_id
+        self.same_gate = same_gate
 
 
 class JobHandle:
@@ -74,6 +90,7 @@ class _Job:
         self.id = job_id
         self.kind = kind
         self.key = key
+        self.exclusive = False  # set True by JobRunner.start(exclusive=True)
         self.status = "running"
         self.result: Any = None
         self.error: Optional[str] = None
@@ -141,26 +158,54 @@ class JobRunner:
     def __init__(self):
         self._jobs: dict[str, _Job] = {}
         self._active: dict[tuple[str, str], str] = {}  # (kind, key) -> job_id
+        # The single in-flight EXCLUSIVE engine job's id, or None. Any exclusive
+        # job blocks every OTHER exclusive job process-wide, regardless of
+        # (kind, key) — see start(exclusive=True) and the JobConflict docstring.
+        self._exclusive_active: Optional[str] = None
         self._lock = threading.Lock()
 
-    def start(self, kind: str, key: str, fn: Callable[[JobHandle], Any]) -> str:
+    def start(self, kind: str, key: str, fn: Callable[[JobHandle], Any],
+              *, exclusive: bool = False) -> str:
         """Launch ``fn(handle)`` on a daemon thread; return the new job id.
 
         Single-flight: if a job with the same ``(kind, key)`` is still running,
-        raise :class:`JobConflict` carrying that job's id (route -> 409). This is
-        the serialization guarantee that makes the per-run engine-global reset
-        below safe.
+        raise :class:`JobConflict` (``same_gate=True``) carrying that job's id
+        (route -> 409). This is the serialization guarantee that makes the per-run
+        engine-global reset below safe.
+
+        ``exclusive=True`` additionally enforces a PROCESS-WIDE engine mutex: at
+        most one exclusive job may run at a time across the whole process, even for
+        a DIFFERENT ``(kind, key)``. A second exclusive start while one is in flight
+        raises :class:`JobConflict` with ``same_gate=False`` carrying the running
+        exclusive job's id. This is what stops two different projects from ingesting
+        concurrently in-process — the engine's per-run process globals
+        (``applog._WARNED_ONCE`` / ``discoverer._RUN_QUERY_MEMO``) and the
+        single-active-project path assume strictly serial engine runs. The
+        exclusive slot is released in ``finish()`` (success, failure, or cancel).
         """
         gate = (str(kind), str(key))
         job_id = uuid.uuid4().hex
         with self._lock:
+            # Same-(kind,key) single-flight (applies to every job).
             running = self._active.get(gate)
             if running is not None and running in self._jobs \
                     and self._jobs[running].status == "running":
-                raise JobConflict(running)
+                raise JobConflict(running, same_gate=True)
+            # Process-wide exclusive mutex (engine jobs only). A different
+            # exclusive job already holding the slot blocks this one.
+            if exclusive and self._exclusive_active is not None:
+                holder = self._jobs.get(self._exclusive_active)
+                if holder is not None and holder.status == "running":
+                    raise JobConflict(self._exclusive_active, same_gate=False)
+                # Holder finished without releasing (shouldn't happen — finish()
+                # releases — but never wedge the mutex on a stale id).
+                self._exclusive_active = None
             job = _Job(job_id, str(kind), str(key))
+            job.exclusive = exclusive
             self._jobs[job_id] = job
             self._active[gate] = job_id
+            if exclusive:
+                self._exclusive_active = job_id
 
         handle = JobHandle(job)
 
@@ -181,12 +226,23 @@ class JobRunner:
             except ImportError:
                 pass
             try:
-                result = fn(handle)
-            except Exception as exc:  # noqa: BLE001 — capture ANY failure for status
-                job.finish("failed", None, f"{type(exc).__name__}: {exc}")
-                return
-            status = "cancelled" if job.cancel_event.is_set() else "done"
-            job.finish(status, result, None)
+                try:
+                    result = fn(handle)
+                except Exception as exc:  # noqa: BLE001 — capture ANY failure for status
+                    job.finish("failed", None, f"{type(exc).__name__}: {exc}")
+                    return
+                status = "cancelled" if job.cancel_event.is_set() else "done"
+                job.finish(status, result, None)
+            finally:
+                # ALWAYS release the process-wide exclusive slot when an exclusive
+                # job leaves the running state (done / failed / cancelled), so the
+                # next engine job can start. Guarded by the runner lock and a
+                # same-id check so a late release can't clear a slot a *newer*
+                # exclusive job already holds.
+                if exclusive:
+                    with self._lock:
+                        if self._exclusive_active == job_id:
+                            self._exclusive_active = None
 
         t = threading.Thread(target=_run, name=f"job-{kind}-{job_id[:8]}",
                              daemon=True)

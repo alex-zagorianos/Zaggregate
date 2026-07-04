@@ -18,9 +18,11 @@ from __future__ import annotations
 import json
 import sys
 
-from flask import Blueprint, jsonify, Response, current_app
+from flask import Blueprint, jsonify, Response, current_app, request
 
-from ..jobs import runner, DONE
+import workspace
+from ..jobs import runner, DONE, JobConflict
+from ..security import require_local_origin
 
 runs_bp = Blueprint("webui_runs", __name__)
 
@@ -76,6 +78,64 @@ def job_events(job_id: str):
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
+
+
+# ── daily-run job (Phase 3) ───────────────────────────────────────────────────
+# The seam the job fn calls. Named at module scope (not captured in the request
+# handler) so tests can monkeypatch ``webui.api.runs._daily_ingest`` with a fake
+# ingest — the route never imports gui/tkinter, and the real ingest lives in the
+# Tk-free ``daily_run_core.run_ingest``. Late import inside the wrapper keeps the
+# module importable in a stripped/headless checkout.
+def _daily_ingest(slug, *, on_line=None, cancel=None) -> int:
+    import daily_run_core
+    return daily_run_core.run_ingest(slug, on_line=on_line, cancel=cancel)
+
+
+@runs_bp.post("/runs/daily")
+@require_local_origin
+def start_daily_run():
+    """Start the daily search->score->inbox pipeline for the active project on a
+    background thread, streaming progress over SSE. Returns ``{ok, job_id}``.
+
+    Conflicts (both 409 carrying the running job's id):
+    * the SAME project already has a daily run in flight -> ``error:"already
+      running"`` (single-flight on ``(kind="daily", key=slug)``);
+    * a DIFFERENT project's engine job is running -> ``error:"another run is in
+      progress"`` (the process-wide exclusive engine mutex — two projects can't
+      ingest concurrently in-process; see JobRunner.start(exclusive=True)).
+
+    ``exclusive=True`` is what wires the cross-project mutex; the daily job also
+    pins the slug at start and unpins in ``finally`` inside ``run_ingest`` (mirrors
+    ``gui.run_daily_ingest``/``daily_run.run_main`` — the S27-safe pin pattern).
+    """
+    slug = workspace.active_slug()
+
+    def _fn(handle):
+        # Stream every pipeline stdout line into the job's SSE log; respect a
+        # pre-start cancel via handle.cancelled (daily_run has no in-flight cancel
+        # seam — cancel is best-effort-before-start; documented in run_ingest).
+        rc = _daily_ingest(slug, on_line=handle.log, cancel=handle.cancelled)
+        return {"rc": rc, "slug": slug}
+
+    try:
+        job_id = runner.start("daily", str(slug or ""), _fn, exclusive=True)
+    except JobConflict as jc:
+        msg = ("already running" if jc.same_gate
+               else "another run is in progress")
+        return jsonify({"ok": False, "error": msg,
+                        "job_id": jc.running_job_id}), 409
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@runs_bp.post("/jobs/<job_id>/cancel")
+@require_local_origin
+def cancel_job(job_id: str):
+    """Signal cooperative cancellation for a running job (sets its cancel event).
+    Returns ``{ok:true, cancelled:bool}`` — ``cancelled`` is False when the id is
+    unknown or the job already finished. For the daily run, cancel is honored only
+    BEFORE the heavy pipeline starts (daily_run offers no in-flight seam; see
+    ``daily_run_core.run_ingest``)."""
+    return jsonify({"ok": True, "cancelled": runner.cancel(job_id)})
 
 
 # ── private test hooks ────────────────────────────────────────────────────────
