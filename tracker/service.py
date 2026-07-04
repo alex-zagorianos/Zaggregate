@@ -150,7 +150,9 @@ def round_to_ics(app: dict, rnd: dict) -> str:
 
     company = app.get("company", "") or ""
     title = app.get("title", "") or ""
-    kind = (rnd.get("kind") or "other").title()
+    # Humanize the internal snake_case round kind before it hits user-facing
+    # calendar copy: "phone_screen" -> "Phone Screen", not "Phone_Screen".
+    kind = (rnd.get("kind") or "other").replace("_", " ").title()
     summary = f"{kind} interview - {company}".strip(" -")
     desc_bits = []
     if title:

@@ -184,6 +184,19 @@ def test_round_ics_parses_back(tmp_db, tmp_path):
     assert "\\," in fields["DESCRIPTION"] and "\\;" in fields["DESCRIPTION"]
 
 
+def test_round_ics_humanizes_snake_case_kind(tmp_db):
+    # MINOR-3 (S36 scenario findings): "phone_screen" must render as
+    # "Phone Screen interview - ...", not "Phone_Screen interview - ...".
+    jid = db.add_job("Eng", "eightsleep", status="interview")
+    rid = db.add_interview_round(jid, kind="phone_screen",
+                                 scheduled_at="2026-08-15T14:30:00")
+    ics = svc.round_to_ics(db.get_job(jid), db.get_interview_round(rid))
+    summary = next(ln for ln in ics.replace("\r\n", "\n").splitlines()
+                   if ln.startswith("SUMMARY:"))
+    assert "Phone Screen interview - eightsleep" in summary
+    assert "_" not in summary
+
+
 def test_write_round_ics_creates_file(tmp_db, tmp_path):
     jid = db.add_job("Eng", "Beta", status="interview")
     rid = db.add_interview_round(jid, kind="final", scheduled_at="2026-09-01")
