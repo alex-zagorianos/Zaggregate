@@ -105,10 +105,21 @@ def require_local_origin(fn):
     origin OR absent entirely, before the handler runs any side effect. Uses the
     STRICT :func:`_mutating_origin_allowed` verdict (denies the header-less case),
     not the lenient read-context :func:`origin_allowed`. JSON body matches the API
-    envelope ``{ok:false, error:"forbidden origin"}``."""
+    envelope ``{ok:false, error:"forbidden origin"}``.
+
+    The wrapper carries an introspectable marker ``__origin_gated__ = True`` so a
+    meta-test can enumerate ``app.url_map`` and assert every mutating ``/api/*``
+    route is gated (``functools.wraps``'s ``__wrapped__`` only proves *some*
+    decorator is present, not this one; ``__origin_gated__`` is unambiguous). Set
+    on the WRAPPER (not copied from ``fn``), so it reads True only through this
+    gate — ``functools.wraps`` copying an inner fn's dunders can't forge it, and
+    stacking another decorator OUTSIDE this one still surfaces the marker via
+    ``functools.wraps`` propagating ``__dict__`` up the chain (the audit also
+    walks ``__wrapped__`` as a fallback)."""
     @functools.wraps(fn)
     def _wrapped(*args, **kwargs):
         if not _mutating_origin_allowed(_flask_request):
             return jsonify({"ok": False, "error": "forbidden origin"}), 403
         return fn(*args, **kwargs)
+    _wrapped.__origin_gated__ = True
     return _wrapped
