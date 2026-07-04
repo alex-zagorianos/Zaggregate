@@ -19,15 +19,52 @@ _DEFAULT_SENIORITY_TARGET = "entry-mid"
 _DEFAULT_YEARS_CAP = 8                # a posting demanding >= this many years is a drop
 _DEFAULT_PENALTY_ROLES = ["sales", "maintain", "manage"]
 
-# Management/executive intent, detected from the roles the user is targeting.
-# When present, the gate must NOT drop people-management roles or treat senior
-# titles as a "stretch", and 8+ years stops being disqualifying. This adapts the
-# whole pipeline to a VP/Director/Chief seeker from the keywords they already
-# typed — no extra onboarding question, no tokens spent.
+# Executive intent, detected from the roles the user is targeting. When present,
+# the gate must NOT drop people-management roles or treat senior titles as a
+# "stretch", 8+ years stops being disqualifying, AND the seniority_target jumps
+# to senior-exec. This adapts the whole pipeline to a VP/Director/Chief seeker
+# from the keywords they already typed — no extra onboarding question, no tokens
+# spent. Deliberately requires a CLEAR exec modifier (director/VP/chief/president/
+# "head of"/"managing director") — bare "manager"/"management" is NOT here (#28):
+# a "Product Manager"/"Account Manager"/"Community Manager" seeker is an
+# individual contributor, not an executive, and must not get years_cap=25 /
+# seniority_target=senior-exec.
 _EXEC_RE = re.compile(
     r"\b(chief|c[efimosx]o|cmio|ciso|vp|svp|evp|vice\s+president|president|"
-    r"head\s+of|director|executive|manager|management|managing\s+director)\b",
+    r"head\s+of|director|executive|managing\s+director)\b",
     re.I)
+
+# People-MANAGEMENT intent (#28): bare "manager"/"management" in the target
+# role, e.g. "Engineering Manager"/"Sr. Manager". Distinct from _EXEC_RE — this
+# only unlocks allow_management (don't hard-drop people-management postings for
+# someone who is themselves targeting a manager title); it does NOT by itself
+# push seniority_target to senior-exec or years_cap to 25 (that stays reserved
+# for a genuine director/VP/chief target — see _has_exec_intent).
+_MANAGEMENT_RE = re.compile(r"\b(manager|management)\b", re.I)
+
+# Individual-contributor titles that happen to CONTAIN "manager"/"management" as
+# part of a compound IC role name, not a people-management position (#28):
+# "Product Manager", "Account Manager", "Community Manager", "Engagement
+# Manager", "Program/Project Manager", social-media/marketing-coordinator-level
+# titles. These must NOT trip _MANAGEMENT_RE (no allow_management flip, no
+# senior-tier bump) — they read as ordinary IC keywords.
+_IC_MANAGER_COMPOUND_RE = re.compile(
+    r"\b(product|program|project|account|community|social\s+media|marketing|"
+    r"brand|customer\s+success|vendor|category|engagement|partner(?:ship)?|"
+    r"client)\s+manager\b",
+    re.I)
+
+
+def _is_ic_manager_compound(role: str) -> bool:
+    """True when every 'manager'/'management' mention in `role` is part of a
+    known IC-compound title (Product Manager, Account Manager, ...), so the
+    bare-word management match should be suppressed."""
+    role = role or ""
+    if not _MANAGEMENT_RE.search(role):
+        return False
+    stripped = _IC_MANAGER_COMPOUND_RE.sub("", role)
+    return not _MANAGEMENT_RE.search(stripped)
+
 
 # A "senior" (but non-exec) target: a 15-year senior IC's own tier. Raises the
 # years cap from 8 to 15 so a "10+ years" senior posting still reaches AI ranking
@@ -38,6 +75,17 @@ _SENIOR_YEARS_CAP = 15
 
 def _has_exec_intent(target_roles) -> bool:
     return any(_EXEC_RE.search(r or "") for r in target_roles)
+
+
+def _has_management_intent(target_roles) -> bool:
+    """True when a target role carries genuine people-management intent (a bare
+    'manager'/'management' title that is NOT one of the known IC compounds).
+    "Engineering Manager"/"Sr. Manager" -> True; "Product Manager" -> False."""
+    for r in target_roles:
+        r = r or ""
+        if _MANAGEMENT_RE.search(r) and not _is_ic_manager_compound(r):
+            return True
+    return False
 
 
 def _has_senior_intent(target_roles) -> bool:
@@ -86,13 +134,27 @@ def build_rubric(prefs: dict | None = None, cfg: dict | None = None) -> dict:
     # e.g. "VP Health Informatics"), unless the config overrides explicitly. This
     # flips the entry-mid IC defaults that would otherwise drop every VP/Director
     # role before the AI ever sees it.
+    #
+    # #28 fix: exec_intent (true exec tokens: director/VP/chief/president/"head
+    # of"/managing director) and management_intent (bare "manager"/"management",
+    # EXCLUDING known IC-compound titles like "Product Manager") are now separate
+    # signals. allow_management is unlocked by EITHER (a people-management-title
+    # seeker, like an exec seeker, must not have the gate hard-drop management
+    # postings) — but only exec_intent bumps seniority_target to senior-exec /
+    # years_cap to 25. A bare "Engineering Manager" seeker instead lands on the
+    # SENIOR (non-exec) tier via management_intent (mirroring _has_senior_intent),
+    # and a "Product Manager"/"Account Manager"/"Community Manager" IC seeker
+    # trips neither signal at all — fully unchanged entry-mid defaults (parity).
     exec_intent = _has_exec_intent(target_roles)
-    senior_intent = _has_senior_intent(target_roles)
-    allow_management = bool(cfg.get("allow_management", exec_intent))
+    management_intent = _has_management_intent(target_roles)
+    senior_intent = _has_senior_intent(target_roles) or management_intent
+    allow_management = bool(cfg.get("allow_management", exec_intent or management_intent))
     seniority_target = cfg.get("seniority_target") or (
-        "senior-exec" if exec_intent else _DEFAULT_SENIORITY_TARGET)
-    # years cap: exec 25, senior (non-exec) 15, else the default 8. A senior IC's
-    # own tier ("10+ years" postings) must still reach AI ranking (item 9).
+        "senior-exec" if exec_intent else
+        ("senior" if senior_intent else _DEFAULT_SENIORITY_TARGET))
+    # years cap: exec 25, senior/management (non-exec) 15, else the default 8. A
+    # senior IC's own tier ("10+ years" postings) must still reach AI ranking
+    # (item 9); a people-management (non-exec) seeker gets the same tier (#28).
     if exec_intent:
         default_cap = 25
     elif senior_intent:
@@ -102,8 +164,9 @@ def build_rubric(prefs: dict | None = None, cfg: dict | None = None) -> dict:
     years_cap = int(cfg.get("years_cap", default_cap))
     penalty_roles = cfg.get("penalty_roles")
     if penalty_roles is None:
-        # An exec seeker should not be penalized for "manage".
-        base_penalties = ["sales", "maintain"] if exec_intent else list(_DEFAULT_PENALTY_ROLES)
+        # An exec or people-management seeker should not be penalized for "manage".
+        base_penalties = (["sales", "maintain"] if (exec_intent or management_intent)
+                          else list(_DEFAULT_PENALTY_ROLES))
         # Field-aware (item 10): a field whose OWN core work is a penalty role
         # (a maintenance tech's "maintain", a salesperson's "sales") must not have
         # that role downweighted. Drop the field's core penalty role by SOC major
