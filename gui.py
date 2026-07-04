@@ -1401,6 +1401,18 @@ def main() -> int:
         print(_json.dumps(res))
         return 0 if res.get("ok") else 1
 
+    # Web-UI mode: `--web` (or the frozen exe with --web) delegates to the
+    # headless `py -m webui` launcher BEFORE any Tk import/window, so a friend can
+    # run the modern web UI from the same single exe. The PyInstaller entry stays
+    # gui.py, so the frozen bundle gets --web for free (app.spec needs nothing new).
+    if "--web" in sys.argv[1:]:
+        try:
+            from webui.__main__ import main as _web_main
+            return _web_main(sys.argv[1:])
+        except Exception as e:
+            _log_fatal(e)
+            return 1
+
     # Headless daily mode: the single shipped exe serves both the GUI and the
     # scheduled `--daily` run (app.spec builds only gui.py). Detect the flag
     # before creating any Tk window.
