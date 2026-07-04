@@ -1,26 +1,19 @@
 import * as React from "react";
 import {
   Loader2,
-  CheckCircle2,
-  XCircle,
   X,
   Ban,
   Search as SearchIcon,
   ChevronDown,
 } from "lucide-react";
 
-import {
-  endpoints,
-  jobEventsUrl,
-  type JobStatus,
-  type SearchResult,
-} from "@/api/client";
+import { endpoints, type JobStatus, type SearchResult } from "@/api/client";
 import {
   appendConsoleLine,
   appendConsoleLines,
   capConsole,
-  isAtBottom,
 } from "@/lib/sse-console";
+import { useJobConsole } from "@/lib/useJobConsole";
 import {
   parseLine,
   reduceProgress,
@@ -30,23 +23,25 @@ import {
   type SourceRow,
   type SourceStatus,
 } from "@/lib/search-progress";
+import { JobStatusPill } from "@/components/JobStatusPill";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /* The Search run console — a bottom drawer that streams live per-source progress
  * over SSE while a search job runs, then hands the scored results back to the tab.
  *
- * This is the Inbox RunConsole generalized for Search's STRUCTURED progress: the
- * same SSE line handling (sse-console de-dupe + cap + stick-to-bottom) drives a raw
- * log body, but a structured HEADER sits above it — a determinate bar (sources
- * done/total) plus a per-source row list with status dots, folded from the `@event`
- * JSON-line frames (search-progress.parseLine + reduceProgress). Plain lines (the
- * closing "N result(s)." summary) render in the raw log.
+ * The EventSource lifecycle, scroll-stick, error-reconciliation, and cancel POST
+ * are the SHARED `useJobConsole` engine (webui/frontend/src/lib/useJobConsole.ts),
+ * the same one driving the Inbox daily-run console. This console plugs in Search's
+ * STRUCTURED progress: the `line` frames split into `@event` JSON frames (folded
+ * into a determinate header + per-source row list via search-progress.parseLine +
+ * reduceProgress) and plain human lines (the closing "N result(s)." summary, into
+ * a collapsible raw log with the same sse-console de-dupe + cap).
  *
- * On the terminal `done` frame we fetch the job snapshot, read {rows, health} off
- * `.result`, and call `onResult` so the tab renders the table + health strip. Cancel
- * posts to the shared cancel route (the engine finishes in-flight sources, starts no
- * new work, scores partials — same as the tk Cancel button). */
+ * On the terminal `done` we fetch the job snapshot, read {rows, health} off
+ * `.result`, and call `onResult` so the tab renders the table + health strip.
+ * Cancel posts to the shared cancel route (the engine finishes in-flight sources,
+ * starts no new work, scores partials — same as the tk Cancel button). */
 
 export interface SearchRunConsoleProps {
   jobId: string | null;
@@ -67,12 +62,7 @@ export function SearchRunConsole({
 }: SearchRunConsoleProps) {
   const [lines, setLines] = React.useState<string[]>([]);
   const [progress, setProgress] = React.useState<RunProgress>(emptyProgress);
-  const [status, setStatus] = React.useState<JobStatus>("running");
-  const [cancelling, setCancelling] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
-
-  const logRef = React.useRef<HTMLDivElement | null>(null);
-  const stickRef = React.useRef(true);
 
   // Fetch the scored result once, on the terminal done, and forward it up.
   const finish = React.useCallback(
@@ -88,85 +78,35 @@ export function SearchRunConsole({
     [onResult, onTerminal],
   );
 
-  React.useEffect(() => {
-    if (!jobId) return;
-    setLines([]);
-    setProgress(emptyProgress());
-    setStatus("running");
-    setLogOpen(false);
-    stickRef.current = true;
-
-    const es = new EventSource(jobEventsUrl(jobId));
-
-    es.addEventListener("line", (e) => {
-      const data = (e as MessageEvent).data as string;
-      const parsed = parseLine(data);
-      if (parsed.kind === "event") {
-        setProgress((prev) => reduceProgress(prev, parsed.event));
-      } else {
-        // Plain human line — into the raw log (de-duped at the SSE boundary).
-        setLines((prev) => capConsole(appendConsoleLine(prev, parsed.text)));
-      }
+  const { status, cancelling, logRef, stickRef, onScroll, onCancel } =
+    useJobConsole(jobId, {
+      onReset: () => {
+        setLines([]);
+        setProgress(emptyProgress());
+        setLogOpen(false);
+      },
+      onLine: (data) => {
+        const parsed = parseLine(data);
+        if (parsed.kind === "event") {
+          setProgress((prev) => reduceProgress(prev, parsed.event));
+        } else {
+          // Plain human line — into the raw log (de-duped at the SSE boundary).
+          setLines((prev) => capConsole(appendConsoleLine(prev, parsed.text)));
+        }
+      },
+      onDone: (terminal) => {
+        if (jobId) finish(jobId, terminal);
+        else onTerminal?.(terminal);
+      },
+      onFailed: () => onTerminal?.("failed"),
+      onReconcileLines: (tail) =>
+        setLines((prev) => capConsole(appendConsoleLines(prev, tail))),
     });
-
-    es.addEventListener("done", () => {
-      setStatus("done");
-      es.close();
-      finish(jobId, "done");
-    });
-
-    es.addEventListener("error", () => {
-      // Transport drop OR a server error frame — reconcile via a status fetch.
-      es.close();
-      endpoints
-        .jobStatus(jobId)
-        .then((snap) => {
-          setLines((prev) =>
-            capConsole(appendConsoleLines(prev, snap.lines_tail)),
-          );
-          if (snap.status === "failed") {
-            setStatus("failed");
-            onTerminal?.("failed");
-          } else if (snap.status === "done" || snap.status === "cancelled") {
-            setStatus(snap.status);
-            finish(jobId, snap.status);
-          }
-        })
-        .catch(() => {
-          setStatus("failed");
-          onTerminal?.("failed");
-        });
-    });
-
-    return () => es.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
 
   React.useEffect(() => {
     const el = logRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [lines, logOpen]);
-
-  const onScroll = () => {
-    const el = logRef.current;
-    if (!el) return;
-    stickRef.current = isAtBottom(
-      el.scrollTop,
-      el.scrollHeight,
-      el.clientHeight,
-    );
-  };
-
-  const onCancel = () => {
-    if (!jobId) return;
-    setCancelling(true);
-    endpoints
-      .cancelJob(jobId)
-      .catch(() => {
-        /* best-effort — the console surfaces the terminal state either way */
-      })
-      .finally(() => setCancelling(false));
-  };
+  }, [lines, logOpen, logRef, stickRef]);
 
   if (!open) return null;
 
@@ -188,7 +128,7 @@ export function SearchRunConsole({
             <span className="text-foreground text-sm font-medium">
               Searching job boards
             </span>
-            <StatusPill status={status} />
+            <JobStatusPill status={status} />
             {progress.total > 0 && (
               <span className="text-muted-foreground zg-num text-xs">
                 {progress.completed}/{progress.total} sources
@@ -348,44 +288,4 @@ const STATUS_COLOR: Record<SourceStatus, string> = {
  * (AdzunaClient -> Adzuna, CareerOneStopClient -> CareerOneStop). */
 function sourceDisplay(source: string): string {
   return source.replace(/Client$/i, "") || source;
-}
-
-function StatusPill({ status }: { status: JobStatus }) {
-  const map: Record<
-    JobStatus,
-    { label: string; icon: React.ReactNode; cls: string }
-  > = {
-    running: {
-      label: "Running",
-      icon: <Loader2 className="size-3 animate-spin" />,
-      cls: "text-primary border-primary/40 bg-primary/10",
-    },
-    done: {
-      label: "Done",
-      icon: <CheckCircle2 className="size-3" />,
-      cls: "text-[var(--zg-success)] border-[var(--zg-success)]/40 bg-[var(--zg-success)]/12",
-    },
-    cancelled: {
-      label: "Cancelled",
-      icon: <Ban className="size-3" />,
-      cls: "text-muted-foreground border-border bg-secondary",
-    },
-    failed: {
-      label: "Failed",
-      icon: <XCircle className="size-3" />,
-      cls: "text-destructive border-destructive/40 bg-destructive/10",
-    },
-  };
-  const s = map[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-[var(--radius-chip)] border px-1.5 py-0.5 text-[0.7rem] font-medium",
-        s.cls,
-      )}
-    >
-      {s.icon}
-      {s.label}
-    </span>
-  );
 }

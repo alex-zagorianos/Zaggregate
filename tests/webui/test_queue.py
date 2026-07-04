@@ -127,6 +127,20 @@ def test_resume_from_paste_parse_error_400(client, tmp_db, monkeypatch):
     assert resp.get_json()["error"] == "could not parse reply"
 
 
+def test_resume_from_paste_real_parser_truncated_400(client, tmp_db):
+    """The route surfaces a REAL BridgeParseError (not a monkeypatched stand-in):
+    feed the genuine parser a truncated reply (mirrors tests/test_claude_bridge.py
+    ::test_resume_truncated_reply_raises_clearly) and assert the route lifts the
+    parser's own message via str(e). No parser patch — this guards the actual
+    exception→400 wiring against a change in how e's message is extracted."""
+    jid = _add(description="desc")
+    truncated = '{"contact": {"name": "Pat"}, "summary": "s", "skills": ["a"'
+    resp = client.post(f"/api/queue/{jid}/resume-from-paste", headers=_H,
+                       json={"text": truncated})
+    assert resp.status_code == 400
+    assert "cut off" in resp.get_json()["error"]
+
+
 # ── batch prompt / paste ──────────────────────────────────────────────────────
 
 def test_batch_prompt_default_top5_needing_docs(client, tmp_db, monkeypatch):
@@ -202,6 +216,27 @@ def test_batch_from_paste_parse_error_400(client, tmp_db, monkeypatch):
     resp = client.post("/api/queue/batch-from-paste", headers=_H,
                        json={"text": "x", "ids": [1]})
     assert resp.status_code == 400
+
+
+def test_batch_from_paste_real_parser_no_valid_objects_400(client, tmp_db):
+    """Real parser, no stand-in: a JSON array whose objects all lack the mandatory
+    echoed "i" yields zero usable entries -> parse_batch_resume_response raises
+    "No valid resume objects found…" (mirrors test_batch_no_positional_fallback…);
+    the route must surface it as 400 with the parser's real message."""
+    import json
+    jid = _add(company="Acme", description="d")
+    # A well-formed resume object but WITHOUT the required "i" -> skipped -> empty.
+    obj = {
+        "contact": {"name": "Pat", "email": "", "phone": "", "location": ""},
+        "summary": "s", "skills": ["python"],
+        "experience": [{"company": "X", "title": "Eng", "bullets": ["b"]}],
+        "education": [{"institution": "Y", "degree": "BS"}],
+        "cover_letter": "c",
+    }
+    resp = client.post("/api/queue/batch-from-paste", headers=_H,
+                       json={"text": json.dumps([obj]), "ids": [jid]})
+    assert resp.status_code == 400
+    assert "No valid resume objects" in resp.get_json()["error"]
 
 
 # ── server-side API generate ──────────────────────────────────────────────────
@@ -313,6 +348,29 @@ def test_rank_reply_parse_error_400(client, tmp_db, monkeypatch):
     resp = client.post("/api/queue/rank", headers=_H,
                        json={"mode": "reply", "text": "x"})
     assert resp.status_code == 400
+
+
+def test_rank_reply_real_parser_error_400(client, tmp_db, monkeypatch):
+    """Real fit parser (score_applications_from_reply -> parse_fit_response), no
+    stand-in: only the prompt-set builder is patched (it reaches into match/ and
+    isn't under test). A JSON array whose objects carry no "fit" score yields no
+    valid scores -> BridgeParseError("No valid job scores…"); the route must
+    surface it as 400 with the parser's real message."""
+    import json
+    from tracker import service
+    from models import JobResult
+    kept = JobResult(title="A", company="Acme", location="", salary_min=None,
+                     salary_max=None, description="", url="https://x/1",
+                     source_keyword="", created="", job_id="1")
+    monkeypatch.setattr(service, "compact_fit_prompt_for_rows",
+                        lambda rows, prefs=None, cfg=None: ("P", [kept], []))
+    _add(title="A", url="https://x/1")
+    # Valid JSON, but every entry lacks the mandatory "fit" key -> all skipped.
+    reply = json.dumps([{"i": 1, "why": "no score here"}])
+    resp = client.post("/api/queue/rank", headers=_H,
+                       json={"mode": "reply", "text": reply})
+    assert resp.status_code == 400
+    assert "No valid job scores" in resp.get_json()["error"]
 
 
 def test_rank_unknown_mode_400(client, tmp_db):

@@ -1,23 +1,18 @@
 import * as React from "react";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, XCircle, X, Terminal, Ban } from "lucide-react";
+import { Loader2, X, Terminal, Ban } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "@/api/queries";
-import {
-  endpoints,
-  jobEventsUrl,
-  ApiError,
-  type JobStatus,
-} from "@/api/client";
+import { ApiError, type JobStatus } from "@/api/client";
 import {
   appendConsoleLine,
   appendConsoleLines,
   capConsole,
-  isAtBottom,
 } from "@/lib/sse-console";
+import { useJobConsole } from "@/lib/useJobConsole";
+import { JobStatusPill } from "@/components/JobStatusPill";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 /* The daily-run console drawer — a bottom sheet that streams the live pipeline log
  * over SSE while "Update my Inbox now" runs.
@@ -27,11 +22,13 @@ import { cn } from "@/lib/utils";
  * (JSON result) or `event: error` (message). The replay/live boundary can repeat a
  * line — we de-dupe adjacent identicals (sse-console.appendConsoleLine).
  *
- * Auto-scroll sticks to the bottom UNLESS the user scrolls up to read history.
- * On `done` we invalidate the inbox queries (new rows landed) and toast a summary;
- * on `error` we toast the failure. Cancel posts to the cancel route (best-effort —
- * the daily run only honors a pre-start cancel; the button is always shown but the
- * server decides). */
+ * The EventSource lifecycle, scroll-stick, error-reconciliation, and cancel POST
+ * are the SHARED `useJobConsole` engine (webui/frontend/src/lib/useJobConsole.ts),
+ * composed here with the Inbox-specific frame handling: raw-line rendering, inbox
+ * query invalidation on finish, and the finish/failure toasts. On `done` we
+ * invalidate the inbox queries (new rows landed) and toast a summary; on `error`
+ * we toast the failure. Cancel posts to the cancel route (best-effort — the daily
+ * run only honors a pre-start cancel; the server decides). */
 
 export interface RunConsoleProps {
   jobId: string | null;
@@ -49,116 +46,60 @@ export function RunConsole({
 }: RunConsoleProps) {
   const qc = useQueryClient();
   const [lines, setLines] = React.useState<string[]>([]);
-  const [status, setStatus] = React.useState<JobStatus>("running");
-  const [cancelling, setCancelling] = React.useState(false);
 
-  const logRef = React.useRef<HTMLDivElement | null>(null);
-  const stickRef = React.useRef(true); // follow the tail unless the user scrolls up
+  const refreshInbox = React.useCallback(() => {
+    // New inbox rows may have landed — refresh the flagship + shortlist.
+    qc.invalidateQueries({ queryKey: queryKeys.inboxAll });
+    qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });
+  }, [qc]);
 
-  // (Re)subscribe whenever the job id changes. Reset the buffer for a fresh job.
-  React.useEffect(() => {
-    if (!jobId) return;
-    setLines([]);
-    setStatus("running");
-    stickRef.current = true;
-
-    const es = new EventSource(jobEventsUrl(jobId));
-
-    es.addEventListener("line", (e) => {
-      const data = (e as MessageEvent).data as string;
-      setLines((prev) => capConsole(appendConsoleLine(prev, data)));
-    });
-
-    es.addEventListener("done", () => {
-      setStatus("done");
-      es.close();
-      // New inbox rows may have landed — refresh the flagship + shortlist.
-      qc.invalidateQueries({ queryKey: queryKeys.inboxAll });
-      qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });
-      onTerminal?.("done");
-      toast.success("Inbox updated", {
-        description: "Your latest run finished. New matches are in the Inbox.",
-      });
-    });
-
-    es.addEventListener("error", (e) => {
-      // The SSE `error` event fires both for a server-sent terminal error frame
-      // AND for a transport drop. Reconcile via a status fetch: if the job failed,
-      // surface it; if it actually finished, treat as done; otherwise it's a
-      // reconnect the browser handles — leave the stream alone.
-      const raw = (e as MessageEvent).data as string | undefined;
-      es.close();
-      endpoints
-        .jobStatus(jobId)
-        .then((snap) => {
-          setLines((prev) =>
-            capConsole(appendConsoleLines(prev, snap.lines_tail)),
-          );
-          if (snap.status === "failed") {
-            setStatus("failed");
-            onTerminal?.("failed");
-            toast.error("Run failed", {
-              description: snap.error || raw || "The pipeline stopped early.",
-            });
-          } else if (snap.status === "done" || snap.status === "cancelled") {
-            setStatus(snap.status);
-            qc.invalidateQueries({ queryKey: queryKeys.inboxAll });
-            qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });
-            onTerminal?.(snap.status);
-          }
-        })
-        .catch(() => {
-          setStatus("failed");
-          onTerminal?.("failed");
+  const { status, cancelling, logRef, stickRef, onScroll, onCancel } =
+    useJobConsole(jobId, {
+      onReset: () => setLines([]),
+      onLine: (data) =>
+        setLines((prev) => capConsole(appendConsoleLine(prev, data))),
+      onDone: (terminal, origin) => {
+        refreshInbox();
+        onTerminal?.(terminal);
+        // Only toast the live finish; a reconnected finish refreshes silently.
+        if (origin === "frame") {
+          toast.success("Inbox updated", {
+            description:
+              "Your latest run finished. New matches are in the Inbox.",
+          });
+        }
+      },
+      onFailed: (snap) => {
+        onTerminal?.("failed");
+        if (snap) {
+          toast.error("Run failed", {
+            description: snap.error || "The pipeline stopped early.",
+          });
+        } else {
           toast.error("Lost the run stream", {
             description: "The connection dropped. Check the Inbox for results.",
           });
-        });
+        }
+      },
+      onReconcileLines: (tail) =>
+        setLines((prev) => capConsole(appendConsoleLines(prev, tail))),
+      onCancelResult: (r) =>
+        toast(r.cancelled ? "Cancel requested" : "Nothing to cancel", {
+          description: r.cancelled
+            ? "The run will stop at the next safe point."
+            : "The run already finished or can't be interrupted.",
+        }),
+      onCancelError: (e) =>
+        toast.error("Couldn't cancel", {
+          description: e instanceof ApiError ? e.message : "Please try again.",
+        }),
     });
-
-    return () => es.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId]);
 
   // Auto-scroll to the tail when stuck to bottom.
   React.useEffect(() => {
     const el = logRef.current;
     if (el && stickRef.current) el.scrollTop = el.scrollHeight;
-  }, [lines]);
-
-  const onScroll = () => {
-    const el = logRef.current;
-    if (!el) return;
-    stickRef.current = isAtBottom(
-      el.scrollTop,
-      el.scrollHeight,
-      el.clientHeight,
-    );
-  };
-
-  const onCancel = () => {
-    if (!jobId) return;
-    setCancelling(true);
-    endpoints
-      .cancelJob(jobId)
-      .then((r) => {
-        if (r.cancelled) {
-          toast("Cancel requested", {
-            description: "The run will stop at the next safe point.",
-          });
-        } else {
-          toast("Nothing to cancel", {
-            description: "The run already finished or can't be interrupted.",
-          });
-        }
-      })
-      .catch((e) =>
-        toast.error("Couldn't cancel", {
-          description: e instanceof ApiError ? e.message : "Please try again.",
-        }),
-      )
-      .finally(() => setCancelling(false));
-  };
+  }, [lines, logRef, stickRef]);
 
   if (!open) return null;
 
@@ -177,7 +118,7 @@ export function RunConsole({
             <span className="text-foreground text-sm font-medium">
               Updating your Inbox
             </span>
-            <StatusPill status={status} />
+            <JobStatusPill status={status} />
           </div>
           <div className="flex items-center gap-1.5">
             {status === "running" && (
@@ -221,52 +162,12 @@ export function RunConsole({
                 key={i}
                 className="text-foreground/85 whitespace-pre-wrap break-words"
               >
-                {ln || " "}
+                {ln || " "}
               </div>
             ))
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-function StatusPill({ status }: { status: JobStatus }) {
-  const map: Record<
-    JobStatus,
-    { label: string; icon: React.ReactNode; cls: string }
-  > = {
-    running: {
-      label: "Running",
-      icon: <Loader2 className="size-3 animate-spin" />,
-      cls: "text-primary border-primary/40 bg-primary/10",
-    },
-    done: {
-      label: "Done",
-      icon: <CheckCircle2 className="size-3" />,
-      cls: "text-[var(--zg-success)] border-[var(--zg-success)]/40 bg-[var(--zg-success)]/12",
-    },
-    cancelled: {
-      label: "Cancelled",
-      icon: <Ban className="size-3" />,
-      cls: "text-muted-foreground border-border bg-secondary",
-    },
-    failed: {
-      label: "Failed",
-      icon: <XCircle className="size-3" />,
-      cls: "text-destructive border-destructive/40 bg-destructive/10",
-    },
-  };
-  const s = map[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-[var(--radius-chip)] border px-1.5 py-0.5 text-[0.7rem] font-medium",
-        s.cls,
-      )}
-    >
-      {s.icon}
-      {s.label}
-    </span>
   );
 }
