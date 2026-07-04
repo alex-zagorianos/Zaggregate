@@ -11,6 +11,15 @@ from search.base_client import JobAPIClient
 from search.http_util import FileCache, RateLimiter, cache_key, make_session, to_float
 from search.remote_intent import is_remote_only
 
+# Cache-schema version for the remote-intent tagging path. Bump this whenever
+# is_remote_only()/the remote-fan-copy detection semantics change so an OLDER
+# cache entry (written under a different remote-tagging meaning) can never be
+# silently read back and misinterpreted under new logic — it's folded into the
+# cache key, so a version bump is a one-time, scoped invalidation of only the
+# affected entries (they simply miss and re-fetch) rather than a manual
+# cache-wide TTL/clear firefight.
+_CACHE_SCHEMA_VERSION = 1
+
 
 class AdzunaClient(JobAPIClient):
     # Keyword-parameterized + stateless across keywords → SearchEngine may fetch
@@ -59,7 +68,8 @@ class AdzunaClient(JobAPIClient):
         what = f"remote {keyword}".strip() if remote else keyword
         where = "" if remote else location
 
-        key = cache_key("adzuna", self.country, what, where, salary_min, page)
+        key = cache_key("adzuna", self.country, what, where, salary_min, page,
+                        _CACHE_SCHEMA_VERSION)
         if self.cache_enabled:
             cached = self.cache.get(key)
             if cached is not None:

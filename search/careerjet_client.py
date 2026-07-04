@@ -14,6 +14,13 @@ class CareerjetClient(SingleFeedClient):
     cache_subdir = "careerjet"
     rate_limit = CAREERJET_RATE_LIMIT
 
+    def __init__(self, *args, country: Optional[str] = None, **kwargs):
+        # `country` (a two-letter code, e.g. from config.adzuna_country_for) picks
+        # Careerjet's locale_code param. None/'us' -> no locale_code sent, so a US
+        # caller's request is byte-identical to before this was added.
+        super().__init__(*args, **kwargs)
+        self.country = country
+
     @staticmethod
     def _affid():
         # Re-resolve env-then-secret at call time (config constant froze at
@@ -40,14 +47,20 @@ class CareerjetClient(SingleFeedClient):
                 "(free affiliate id at careerjet.com/partners/).",
                 key="careerjet:no-affid")
             return {"jobs": []}
-        key = cache_key("careerjet", keyword, location)
+        locale_code = config.careerjet_locale_for(self.country)
+        key = cache_key("careerjet", keyword, location, locale_code)
 
         def fetch():
             self.limiter.acquire()
-            resp = self.session.get(CAREERJET_URL, params={
+            params = {
                 "keywords": keyword, "location": location, "affid": affid,
                 "pagesize": 50, "user_ip": "11.22.33.44", "user_agent": self.user_agent,
-            }, timeout=30)
+            }
+            # Only sent for a mapped non-US country -- a US/unmapped request
+            # omits the param exactly as before (byte-identical for Alex).
+            if locale_code:
+                params["locale_code"] = locale_code
+            resp = self.session.get(CAREERJET_URL, params=params, timeout=30)
             resp.raise_for_status()
             return {"jobs": resp.json().get("jobs", [])}
 

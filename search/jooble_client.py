@@ -14,6 +14,14 @@ class JoobleClient(SingleFeedClient):
     cache_subdir = "jooble"
     rate_limit = JOOBLE_RATE_LIMIT
 
+    def __init__(self, *args, country: Optional[str] = None, **kwargs):
+        # `country` (a two-letter code, e.g. from config.adzuna_country_for)
+        # picks Jooble's per-country hostname. None/'us'/unmapped -> the bare
+        # jooble.org host, so a US caller's request is byte-identical to before
+        # this was added.
+        super().__init__(*args, **kwargs)
+        self.country = country
+
     @staticmethod
     def _api_key():
         # Re-resolve env-then-secret at call time (config constant froze at
@@ -27,6 +35,15 @@ class JoobleClient(SingleFeedClient):
         the source's own logic (not a hardcoded list)."""
         return not cls._api_key()
 
+    def _base_url(self) -> str:
+        """JOOBLE_URL with the host swapped for the country-scoped one when
+        `country` maps to a known Jooble site; the bare jooble.org host (today's
+        URL) otherwise."""
+        host = config.jooble_host_for(self.country)
+        if host == "jooble.org":
+            return JOOBLE_URL
+        return JOOBLE_URL.replace("jooble.org", host, 1)
+
     def search(self, keyword: str, location: str = "", salary_min: Optional[int] = None,
                page: int = 1) -> dict:
         if page > 1:
@@ -39,12 +56,13 @@ class JoobleClient(SingleFeedClient):
                 "  [jooble] WARNING: JOOBLE_API_KEY unset — Jooble skipped "
                 "(free key at jooble.org/api/about).", key="jooble:no-key")
             return {"jobs": []}
-        key = cache_key("jooble", keyword, location)
+        base_url = self._base_url()
+        key = cache_key("jooble", keyword, location, base_url)
 
         def fetch():
             self.limiter.acquire()
             resp = self.session.post(
-                f"{JOOBLE_URL}{api_key}",
+                f"{base_url}{api_key}",
                 json={"keywords": keyword, "location": location},
                 timeout=30)
             resp.raise_for_status()

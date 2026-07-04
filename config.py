@@ -226,6 +226,52 @@ def adzuna_country_for(location=None, country=None):
             return cc
     return ADZUNA_COUNTRY
 
+
+# Careerjet's public search API is locale-scoped (its ~90 country sites each
+# have a `locale_code` like "en_GB", "de_DE"); a bare US-English default is
+# implicit when the param is omitted, so 'us' stays byte-identical (no
+# locale_code sent — see careerjet_client.py). Only countries Careerjet
+# documents a locale for are mapped; anything else (including an unmapped
+# ADZUNA_COUNTRIES member) falls back to omitting locale_code entirely, same
+# as today.
+CAREERJET_LOCALES: dict = {
+    "gb": "en_GB", "ca": "en_CA", "au": "en_AU", "in": "en_IN", "sg": "en_SG",
+    "nz": "en_NZ", "za": "en_ZA", "de": "de_DE", "fr": "fr_FR", "es": "es_ES",
+    "it": "it_IT", "nl": "nl_NL", "pl": "pl_PL", "br": "pt_BR", "mx": "es_MX",
+    "at": "de_AT", "be": "fr_BE", "ch": "de_CH",
+}
+
+# Jooble is a per-country-hostname aggregator (`{cc}.jooble.org/api/{key}`); the
+# bare `jooble.org` host (no subdomain) is its US/international default, so
+# 'us' stays byte-identical (no host change — see jooble_client.py). Only
+# countries with a known Jooble country site are mapped.
+JOOBLE_COUNTRY_HOSTS: dict = {
+    "gb": "uk.jooble.org", "ca": "ca.jooble.org", "au": "au.jooble.org",
+    "in": "in.jooble.org", "de": "de.jooble.org", "fr": "fr.jooble.org",
+    "es": "es.jooble.org", "it": "it.jooble.org", "nl": "nl.jooble.org",
+    "pl": "pl.jooble.org", "br": "br.jooble.org", "mx": "mx.jooble.org",
+    "at": "at.jooble.org", "be": "be.jooble.org", "ch": "ch.jooble.org",
+    "nz": "nz.jooble.org", "za": "za.jooble.org", "sg": "sg.jooble.org",
+}
+
+
+def careerjet_locale_for(country: str | None = None) -> str | None:
+    """Careerjet `locale_code` for a two-letter country code, or None (omit the
+    param — US/default behavior) when unmapped or 'us'."""
+    cc = (country or "us").strip().lower()
+    if cc == "us":
+        return None
+    return CAREERJET_LOCALES.get(cc)
+
+
+def jooble_host_for(country: str | None = None) -> str:
+    """Jooble API hostname for a two-letter country code; the bare 'jooble.org'
+    default (US/international) when unmapped or 'us'."""
+    cc = (country or "us").strip().lower()
+    if cc == "us":
+        return "jooble.org"
+    return JOOBLE_COUNTRY_HOSTS.get(cc, "jooble.org")
+
 # Anthropic
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -416,7 +462,7 @@ SEMANTIC_TITLE_CAP = 0.6
 DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
                  "remoteok", "remotive", "jobicy", "himalayas", "hn",
                  "weworkremotely", "workingnomads", "jooble", "careerjet",
-                 "higheredjobs", "rnjobsite", "reap", "edjoin"]
+                 "higheredjobs", "rnjobsite", "reap", "edjoin", "jobsacuk"]
 # weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
 # risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
 # OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
@@ -429,8 +475,13 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # (education-family / nursing). They INDUSTRY-GATE at construction — inert (fetch
 # nothing) for any field that doesn't map (an eng/finance/trade/Alex project polls
 # neither), so adding them to the daily net is byte-identical for a non-education,
-# non-nursing user. jobsacuk (UK academic) is deliberately NOT here: it is opt-in
-# (config flag or non-US country) and stays out of a default US run.
+# non-nursing user. jobsacuk (UK academic, S35) IS now here: it registers on every
+# run but self-gates via its OWN opt_in_active() (a truthy config flag OR a non-US
+# adzuna_country_for(location)) — a US project (including Alex's) never satisfies
+# either trigger, so `c.active` is False and search()/parse_results() make zero
+# network calls (see jobsacuk_client.search: `if ... not self.active: return
+# {"items": []}` before any request). Registering-but-inert is the SAME contract
+# reap/edjoin/higheredjobs/rnjobsite already use above.
 # reap + edjoin (2026-07-02, S32b): free/keyless K-12 EDUCATION sources — REAP
 # (per-state public teacher portals; light HTML, robots.txt honored live) and
 # EdJoin (public /Home/LoadJobs JSON, California-centric). Both INDUSTRY-GATE to

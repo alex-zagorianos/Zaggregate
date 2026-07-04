@@ -318,11 +318,17 @@ def test_clients_registered_in_all_sources():
         assert s in ALL_SOURCES
 
 
-def test_daily_sources_has_sector_feeds_but_not_jobsacuk():
+def test_daily_sources_has_sector_feeds_and_jobsacuk():
+    # S35: jobsacuk now registers in the daily net too — it self-gates via its
+    # OWN opt_in_active() (truthy config flag OR non-US adzuna_country_for), the
+    # same "register but inert by default" contract higheredjobs/rnjobsite
+    # already use. A default US project never satisfies either trigger, so it
+    # stays a zero-network no-op (test_build_clients_sector_feeds_inert_for_eng
+    # below pins that).
     from config import DAILY_SOURCES
     assert "higheredjobs" in DAILY_SOURCES
     assert "rnjobsite" in DAILY_SOURCES
-    assert "jobsacuk" not in DAILY_SOURCES  # opt-in only
+    assert "jobsacuk" in DAILY_SOURCES
 
 
 def test_build_clients_sector_feeds_inert_for_eng(tmp_path, monkeypatch):

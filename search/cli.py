@@ -79,6 +79,14 @@ def build_clients(
     # print() lines (the bare-message console formatter adds no prefix).
     slog = applog.get_logger("sources")
 
+    # Derive the project's country ONCE (same heuristic Adzuna already uses:
+    # explicit config wins, else a location-tail lookup, else the 'us' default)
+    # so every source below can gate on it consistently. A US location/blank
+    # location resolves to 'us' exactly as today — this is a pure read with no
+    # side effects, so it changes nothing for a US run.
+    import config as _cfg
+    _country = _cfg.adzuna_country_for(location)
+
     for source in sources:
         if source == "adzuna":
             try:
@@ -86,10 +94,9 @@ def build_clients(
                 # this, a non-US user (e.g. "London, United Kingdom") always hit
                 # the /us/ endpoint and got US-only jobs. adzuna_country_for is a
                 # no-op for US locations (returns the module default).
-                import config as _cfg
                 clients.append(AdzunaClient(
                     cache_enabled=cache_enabled,
-                    country=_cfg.adzuna_country_for(location)))
+                    country=_country))
             except ValueError as e:
                 slog.info(f"  [adzuna] Skipping — {e}")
                 _note_keyless("adzuna")
@@ -106,19 +113,34 @@ def build_clients(
                 _note_keyless("jsearch")
 
         elif source == "usajobs":
-            try:
-                clients.append(USAJobsClient(cache_enabled=cache_enabled))
-            except ValueError as e:
-                slog.info(f"  [usajobs] Skipping — {e}")
-                _note_keyless("usajobs")
+            # US-federal-jobs-only API: a non-US project gets 0 every run (wrong
+            # country entirely), burning the free-tier quota/cache slot and adding
+            # runtime for zero payoff. Self-report inert instead of registering.
+            # US users (country == 'us', including a blank/unresolvable location,
+            # which resolves to the 'us' default): unchanged.
+            if _country != "us":
+                slog.info(f"  [usajobs] US-only source — skipped for "
+                          f"{location or '(no location)'!r} (country={_country}).")
+            else:
+                try:
+                    clients.append(USAJobsClient(cache_enabled=cache_enabled))
+                except ValueError as e:
+                    slog.info(f"  [usajobs] Skipping — {e}")
+                    _note_keyless("usajobs")
 
         elif source == "careeronestop":
-            from search.careeronestop_client import CareerOneStopClient
-            try:
-                clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
-            except ValueError as e:
-                slog.info(f"  [careeronestop] Skipping — {e}")
-                _note_keyless("careeronestop")
+            # US DOL / National Labor Exchange — US-only, same reasoning as
+            # usajobs above. Non-US projects never register it.
+            if _country != "us":
+                slog.info(f"  [careeronestop] US-only source — skipped for "
+                          f"{location or '(no location)'!r} (country={_country}).")
+            else:
+                from search.careeronestop_client import CareerOneStopClient
+                try:
+                    clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
+                except ValueError as e:
+                    slog.info(f"  [careeronestop] Skipping — {e}")
+                    _note_keyless("careeronestop")
 
         elif source == "themuse":
             from search.themuse_client import TheMuseClient
@@ -161,7 +183,10 @@ def build_clients(
 
         elif source == "jooble":
             from search.jooble_client import JoobleClient
-            c = JoobleClient(cache_enabled=cache_enabled)
+            # Route to the user's country-scoped Jooble host (uk.jooble.org etc.)
+            # — a no-op for 'us'/unmapped countries (bare jooble.org, same URL as
+            # before this was added).
+            c = JoobleClient(cache_enabled=cache_enabled, country=_country)
             clients.append(c)
             # Registers unconditionally then self-skips at fetch time when
             # unkeyed; ask the client's OWN key predicate so the count tracks the
@@ -173,7 +198,9 @@ def build_clients(
 
         elif source == "careerjet":
             from search.careerjet_client import CareerjetClient
-            c = CareerjetClient(cache_enabled=cache_enabled)
+            # Route to the user's Careerjet locale_code — a no-op for 'us'/
+            # unmapped countries (param omitted, same request as before).
+            c = CareerjetClient(cache_enabled=cache_enabled, country=_country)
             clients.append(c)
             if getattr(c, "keyless", lambda: False)():
                 slog.info("  [careerjet] CAREERJET_AFFID unset — will self-skip "
@@ -229,10 +256,14 @@ def build_clients(
 
         elif source == "jobsacuk":
             # Sector RSS: UK academic/health. OPT-IN only (config flag or non-US
-            # country); inert in a default US run. PROVISIONAL endpoint.
+            # country); inert in a default US run. PROVISIONAL endpoint. Pass the
+            # run's location through so opt_in_active's own non-US-country check
+            # (config.adzuna_country_for) can see it — build_clients doesn't carry
+            # a full cfg dict, so a minimal one is synthesized here.
             from search.jobsacuk_client import JobsAcUkClient
             c = JobsAcUkClient(cache_enabled=cache_enabled,
-                               industry=industry_filter)
+                               industry=industry_filter,
+                               cfg={"location": location})
             if not c.active:
                 slog.info("  [jobsacuk] Inert — UK academic feeds are opt-in "
                           "(set 'jobsacuk' in config or a non-US country).")
@@ -597,6 +628,10 @@ def main():
             f"month (this run may use up to ~{_est})"
         )
 
+    # Collect which requested sources self-skipped this run for lack of a FREE
+    # key (finding #1/#32/#7) — driven by each source's own skip condition, same
+    # mechanism daily_run.py already uses, just not previously wired here.
+    skipped_keyless: list[str] = []
     clients = build_clients(
         sources,
         cache_enabled=not args.no_cache,
@@ -605,6 +640,7 @@ def main():
         discovery_enabled=not args.no_discover,
         companies_file=companies_file,
         location=location,
+        skipped_keyless=skipped_keyless,
     )
 
     if not clients:
@@ -612,7 +648,21 @@ def main():
         sys.exit(1)
 
     active = [type(c).__name__ for c in clients]
-    print(f"Active sources: {active}\n")
+    print(f"Active sources: {active}")
+    if skipped_keyless:
+        print(
+            f"Skipped {len(skipped_keyless)} source(s) for a missing free key: "
+            f"{', '.join(skipped_keyless)} -- see python -m ui.source_keys or "
+            f"Tools > Connect job sources to add keys."
+        )
+    # Aggregate zero-key-experience line (finding #7): reuses the same real skip
+    # data, never a hardcoded source count/list.
+    n_active = len(sources) - len(skipped_keyless)
+    print(
+        f"Running with {n_active} of {len(sources)} sources "
+        f"({len(skipped_keyless)} need free keys -- Settings > Source keys)."
+    )
+    print()
 
     engine = SearchEngine(clients)
     results = engine.run_full_search(
