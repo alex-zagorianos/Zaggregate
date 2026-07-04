@@ -1450,11 +1450,12 @@ def main() -> int:
         print(_json.dumps(res))
         return 0 if res.get("ok") else 1
 
-    # Web-UI mode: `--web` (or the frozen exe with --web) delegates to the
-    # headless `py -m webui` launcher BEFORE any Tk import/window, so a friend can
-    # run the modern web UI from the same single exe. The PyInstaller entry stays
-    # gui.py, so the frozen bundle gets --web for free (app.spec needs nothing new).
-    if "--web" in sys.argv[1:]:
+    # Web-UI mode: `--web` (browser) / `--desktop` (native pywebview window)
+    # delegate to the headless `py -m webui` launcher BEFORE any Tk import/window,
+    # so a friend can run the modern web UI from the same single exe. The
+    # PyInstaller entry stays gui.py, so the frozen bundle gets both for free
+    # (app.spec only needs the pywebview hidden imports for --desktop).
+    if "--web" in sys.argv[1:] or "--desktop" in sys.argv[1:]:
         try:
             from webui.__main__ import main as _web_main
             return _web_main(sys.argv[1:])

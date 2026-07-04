@@ -156,3 +156,85 @@ def test_gui_no_web_flag_does_not_delegate(monkeypatch):
     rc = gui.main()
     assert rc == 0
     assert web_called["n"] == 0   # web launcher never invoked
+
+
+# ── desktop mode (--desktop -> pywebview native window; S36b) ─────────────────
+
+class _FakeWebview:
+    """Stands in for the pywebview module: records create_window/start args."""
+    def __init__(self):
+        self.created = None
+        self.started = None
+
+    def create_window(self, title, url, **kw):
+        self.created = {"title": title, "url": url, **kw}
+
+    def start(self, **kw):
+        self.started = kw
+
+
+def test_main_desktop_opens_native_window(monkeypatch):
+    import sys as _sys
+    import userdata, workspace
+    monkeypatch.setattr(userdata, "bootstrap", lambda: None)
+    monkeypatch.setattr(workspace, "active_slug", lambda: None)
+    monkeypatch.setattr(workspace, "pin_active", lambda slug: None)
+
+    fake = _FakeWebview()
+    monkeypatch.setitem(_sys.modules, "webview", fake)
+
+    threads = []
+
+    class _RecThread:
+        def __init__(self, *a, **k):
+            threads.append(k.get("name"))
+        def start(self):
+            pass
+
+    monkeypatch.setattr(wm.threading, "Thread", _RecThread)
+    monkeypatch.setattr(wm, "_serve", lambda app, host, port: None)
+
+    rc = wm.main(["--desktop"])
+    assert rc == 0
+    from config import PORT_RECEIVER
+    # The native window hosts /app on loopback…
+    assert fake.created["url"] == f"http://127.0.0.1:{PORT_RECEIVER}/app"
+    assert fake.created["title"] == "Zaggregate"
+    # …and localStorage must survive relaunches (theme choice lives there).
+    assert fake.started == {"private_mode": False}
+    # The server runs on a daemon thread (the window owns the main thread).
+    assert "web-server" in threads
+
+
+def test_main_desktop_without_pywebview_falls_back_to_browser(monkeypatch):
+    import sys as _sys
+    import userdata, workspace
+    monkeypatch.setattr(userdata, "bootstrap", lambda: None)
+    monkeypatch.setattr(workspace, "active_slug", lambda: None)
+    monkeypatch.setattr(workspace, "pin_active", lambda slug: None)
+
+    # A None entry in sys.modules makes `import webview` raise ImportError.
+    monkeypatch.setitem(_sys.modules, "webview", None)
+    monkeypatch.setattr(wm.threading, "Thread", lambda *a, **k: _NoopThread())
+
+    served = {}
+    monkeypatch.setattr(wm, "_serve",
+                        lambda app, host, port: served.setdefault("ok", True))
+    assert wm.main(["--desktop"]) == 0
+    assert served.get("ok") is True   # browser-mode serve took over
+
+
+def test_gui_desktop_flag_delegates_to_launcher(monkeypatch):
+    import sys
+    import gui
+
+    called = {}
+
+    def fake_web_main(argv):
+        called["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(wm, "main", fake_web_main)
+    monkeypatch.setattr(sys, "argv", ["gui.py", "--desktop"])
+    assert gui.main() == 0
+    assert called["argv"] == ["--desktop"]
