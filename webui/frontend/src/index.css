@@ -1,0 +1,265 @@
+/* Zaggregate — Aegean Paper, web edition.
+ *
+ * Load order matters:
+ *   1. tokens.css      GENERATED from ui/theme.py — the raw --zg-* palette
+ *   2. self-hosted fonts (Vite bundles the woff2 locally — ZERO runtime network)
+ *   3. tailwind + tw-animate-css
+ *   4. the shadcn semantic-variable mapping (below) wires --zg-* -> --background,
+ *      --primary, etc. so every shadcn/Radix component renders in Aegean Paper.
+ */
+@import "./tokens.css";
+
+/* Self-hosted variable fonts. Fraunces = editorial serif (headlines/wordmark
+ * ONLY); Inter = body/UI; JetBrains Mono = numerals/scores/tabular data. All
+ * bundled by Vite as local woff2 — the UI works fully offline. */
+@import "@fontsource-variable/fraunces/index.css";
+@import "@fontsource-variable/inter/index.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/600.css";
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Dark mode is driven by data-theme="dark" on <html> (the tk app's convention),
+ * NOT Tailwind's default .dark class. Point Tailwind's dark: variant at it. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ── shadcn semantic tokens, mapped onto the Aegean palette ─────────────────────
+ * shadcn/Radix components read var(--background), var(--primary), var(--border),
+ * var(--ring), etc. We alias each to a --zg-* token so there is NO default-gray
+ * shadcn look anywhere — the whole component library inherits Aegean Paper. The
+ * raw --zg-* vars remain available for app-specific chrome (score chips, status
+ * badges, the wordmark). */
+:root {
+  --radius: 0.4375rem; /* 7px — RADIUS_BTN */
+
+  --background: var(--zg-window);
+  --foreground: var(--zg-ink);
+
+  --card: var(--zg-surface);
+  --card-foreground: var(--zg-ink);
+
+  --popover: var(--zg-surface);
+  --popover-foreground: var(--zg-ink);
+
+  --primary: var(--zg-accent);
+  --primary-foreground: var(--zg-accent-fg);
+
+  --secondary: var(--zg-alt);
+  --secondary-foreground: var(--zg-ink);
+
+  --muted: var(--zg-alt);
+  --muted-foreground: var(--zg-muted);
+
+  --accent: var(--zg-accent-tint);
+  --accent-foreground: var(--zg-accent);
+
+  --destructive: var(--zg-danger);
+  --destructive-foreground: var(--zg-accent-fg);
+
+  --border: var(--zg-border);
+  --input: var(--zg-border);
+  --ring: var(--zg-accent);
+
+  /* Sidebar tokens some shadcn blocks read — kept on-palette for consistency. */
+  --sidebar: var(--zg-surface);
+  --sidebar-foreground: var(--zg-ink);
+  --sidebar-primary: var(--zg-accent);
+  --sidebar-primary-foreground: var(--zg-accent-fg);
+  --sidebar-accent: var(--zg-accent-tint);
+  --sidebar-accent-foreground: var(--zg-accent);
+  --sidebar-border: var(--zg-border);
+  --sidebar-ring: var(--zg-accent);
+
+  /* Chart palette (used from Phase 2 funnel/analytics) — Aegean-derived. */
+  --chart-1: var(--zg-accent);
+  --chart-2: var(--zg-success);
+  --chart-3: var(--zg-warn);
+  --chart-4: var(--zg-danger);
+  --chart-5: var(--zg-muted);
+}
+
+[data-theme="dark"] {
+  --background: var(--zg-window);
+  --foreground: var(--zg-ink);
+  --card: var(--zg-surface);
+  --card-foreground: var(--zg-ink);
+  --popover: var(--zg-surface);
+  --popover-foreground: var(--zg-ink);
+  --primary: var(--zg-accent);
+  --primary-foreground: var(--zg-accent-fg);
+  --secondary: var(--zg-alt);
+  --secondary-foreground: var(--zg-ink);
+  --muted: var(--zg-alt);
+  --muted-foreground: var(--zg-muted);
+  --accent: var(--zg-accent-tint);
+  --accent-foreground: var(--zg-ink);
+  --destructive: var(--zg-danger);
+  --destructive-foreground: var(--zg-accent-fg);
+  --border: var(--zg-border);
+  --input: var(--zg-border);
+  --ring: var(--zg-accent);
+  --sidebar: var(--zg-surface);
+  --sidebar-foreground: var(--zg-ink);
+  --sidebar-primary: var(--zg-accent);
+  --sidebar-primary-foreground: var(--zg-accent-fg);
+  --sidebar-accent: var(--zg-accent-tint);
+  --sidebar-accent-foreground: var(--zg-ink);
+  --sidebar-border: var(--zg-border);
+  --sidebar-ring: var(--zg-accent);
+  --chart-1: var(--zg-accent);
+  --chart-2: var(--zg-success);
+  --chart-3: var(--zg-warn);
+  --chart-4: var(--zg-danger);
+  --chart-5: var(--zg-muted);
+}
+
+/* Expose the mapped tokens + typography to Tailwind utilities (v4 @theme inline).
+ * This is what makes `bg-background`, `text-primary`, `border-border`,
+ * `font-serif`, `rounded-md`, etc. resolve to Aegean values. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Score-band + status colors, reachable as text-score-good / bg-status-applied. */
+  --color-score-good: var(--zg-score-good);
+  --color-score-mid: var(--zg-score-mid);
+  --color-score-low: var(--zg-score-low);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-chip: 6px;
+
+  /* Typography — Fraunces (serif) is opt-in via font-serif, never the default. */
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  /* Aegean spacing scale mirrored from theme.SP for app-level rhythm. */
+  --spacing-zg1: var(--zg-sp-1);
+  --spacing-zg2: var(--zg-sp-2);
+  --spacing-zg3: var(--zg-sp-3);
+  --spacing-zg4: var(--zg-sp-4);
+  --spacing-zg5: var(--zg-sp-5);
+  --spacing-zg6: var(--zg-sp-6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: light;
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-feature-settings:
+      "cv11",
+      /* Inter's single-story a — a touch more editorial */ "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* 150–200ms ease palette transition on theme flip (plan micro-polish). */
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  /* Tabular numerals everywhere numbers matter (scores, salaries, counts). */
+  .zg-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Editorial headline face — h1/h2/wordmark only. */
+  .zg-serif {
+    font-family: var(--font-serif);
+    font-optical-sizing: auto;
+  }
+
+  /* Accent focus ring, keyboard-only (plan: focus-visible rings in accent). */
+  :focus-visible {
+    outline: none;
+  }
+
+  /* Hairline scrollbars that stay on-palette in both themes. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--zg-border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--zg-border);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--zg-faint);
+    background-clip: padding-box;
+  }
+}
+
+/* Subtle paper grain behind the whole app — atmosphere, not texture-noise. Pure
+ * CSS radial speckle at very low alpha; invisible-but-felt, per the "designed
+ * product not a Bootstrap panel" bar. */
+@layer base {
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+    background-image: radial-gradient(
+      var(--zg-border) 0.5px,
+      transparent 0.5px
+    );
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 78%);
+  }
+}

@@ -41,6 +41,16 @@ production/
 .mypy_cache/
 .ruff_cache/
 
+# === FRONTEND (webui/frontend Vite app) ===
+# node_modules is transient; reinstall with `npm install`. The BUILT output
+# (webui/static/) is intentionally COMMITTED so source users without Node still
+# get the web UI — do NOT ignore it.
+webui/frontend/node_modules/
+webui/frontend/node_modules
+# Vite's local build caches / tsbuildinfo
+webui/frontend/.vite/
+webui/frontend/**/*.tsbuildinfo
+
 # === VIRTUAL ENVIRONMENTS ===
 venv/
 .venv/

@@ -1,0 +1,54 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  Inbox,
+  Star,
+  Search,
+  ClipboardList,
+  ListChecks,
+  KanbanSquare,
+  FileText,
+  BookOpen,
+} from "lucide-react";
+
+/* THE tab registry — single source of truth for nav order, routing, icons, and
+ * palette commands. To ADD a tab (Phase 1+):
+ *   1. Add an entry here (path, label, icon, `ready: true`, and a `element`
+ *      importer once the tab component exists).
+ *   2. That's it — TabNav, the router, and the Ctrl+K palette all read this list.
+ * A tab with `ready: false` renders the ComingSoon empty state automatically.
+ */
+
+export interface TabDef {
+  /** URL segment under /app (react-router). "" is the index (Inbox). */
+  path: string;
+  /** Nav + palette label. */
+  label: string;
+  /** Palette command text ("Go to <label>") — overridable. */
+  command?: string;
+  icon: LucideIcon;
+  /** false → renders the ComingSoon placeholder (still in the desktop app). */
+  ready: boolean;
+}
+
+export const TABS: readonly TabDef[] = [
+  { path: "inbox", label: "Inbox", icon: Inbox, ready: false },
+  { path: "top-picks", label: "Top Picks", icon: Star, ready: false },
+  { path: "search", label: "Search", icon: Search, ready: false },
+  {
+    path: "apply-queue",
+    label: "Apply Queue",
+    icon: ClipboardList,
+    ready: false,
+  },
+  { path: "tracker", label: "Tracker", icon: ListChecks, ready: false },
+  { path: "board", label: "Board", icon: KanbanSquare, ready: false },
+  { path: "resume", label: "Resume", icon: FileText, ready: false },
+  { path: "guide", label: "Guide", icon: BookOpen, ready: false },
+] as const;
+
+/** The default landing tab. */
+export const DEFAULT_TAB = TABS[0];
+
+export function tabCommand(tab: TabDef): string {
+  return tab.command ?? `Go to ${tab.label}`;
+}

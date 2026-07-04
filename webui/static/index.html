@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Zaggregate</title>
+    <script>
+      // Set data-theme before paint to avoid a flash of the wrong palette. The
+      // authoritative theme comes from GET /api/settings/theme once React mounts;
+      // this just reuses the last-known value cached in localStorage.
+      (function () {
+        try {
+          var t = localStorage.getItem("zg-theme");
+          if (t === "dark")
+            document.documentElement.setAttribute("data-theme", "dark");
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/app/assets/index-CUf4n4i3.js"></script>
+    <link rel="stylesheet" crossorigin href="/app/assets/index-BWyq4pBE.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
