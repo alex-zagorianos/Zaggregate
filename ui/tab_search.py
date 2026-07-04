@@ -12,6 +12,7 @@ from config import DEFAULT_LOCATION
 from tracker import service as tracker_service
 from tracker.db import seen_urls, normalize_url
 from ui import theme
+from ui import tab_search_core as _search_core
 from ui.common import safe_url, db_guard, set_status
 from ui.companies_dialogs import AddCompaniesDialog, BuildCompanyListDialog
 
@@ -270,30 +271,12 @@ class SearchTab(ttk.Frame):
                                            event.get("count", 0), skipped),
                        "work")
 
-    @staticmethod
-    def _class_is_keyless_skipped(class_name: str, skipped_keyless: list[str]) -> bool:
-        """True when `class_name` (a progress event's source, e.g. 'JoobleClient')
-        names one of the sources build_clients reported as keyless-skipped this
-        run (e.g. 'jooble'). Matches by case-insensitive prefix — every client
-        class is named '<SourceKey>Client' (AdzunaClient, CareerOneStopClient,
-        JoobleClient, ...) — so this never needs a hardcoded name table and
-        tracks whatever build_clients' own skip logic actually reported. Pure/
-        static so it is unit-testable without a Tk root."""
-        low = (class_name or "").lower()
-        return any(low.startswith((s or "").lower()) for s in (skipped_keyless or []))
-
-    @staticmethod
-    def _progress_line(src: str, done: int, total: int, count: int,
-                       skipped_keyless: bool) -> str:
-        """The per-source progress status text. A source build_clients flagged
-        as self-skipped (no key) says so explicitly instead of a bare '(0)',
-        which otherwise looks identical to a source that ran and legitimately
-        found nothing today. Pure/static so it is unit-testable without a Tk
-        root."""
-        if skipped_keyless:
-            return (f"source {done}/{total} — {src}: skipped — needs a free key "
-                    f"(Settings → Source keys)")
-        return f"source {done}/{total} — {src} ({count})"
+    # These pure classifier helpers moved to ``ui.tab_search_core`` (S36 web
+    # migration) so the web Search job shares the SAME logic without importing
+    # tkinter; re-exported here as staticmethods to preserve every existing call
+    # site / patch target and keep the tk tab byte-for-byte unchanged.
+    _class_is_keyless_skipped = staticmethod(_search_core.class_is_keyless_skipped)
+    _progress_line = staticmethod(_search_core.progress_line)
 
     def _worker(self, keywords, location, salary_min, hide_tracked, cancel=None):
         try:
@@ -408,41 +391,10 @@ class SearchTab(ttk.Frame):
         throttled'. Click it for a per-source Details popup."""
         self._health.set(self._health_summary_line(self._source_health))
 
-    @staticmethod
-    def _health_summary_line(rows: list[dict]) -> str:
-        """Pure formatter for the end-of-run source-health line. `skipped` is
-        counted from each row's real `skipped_keyless` flag (set from
-        build_clients' own skip data — finding #1/#19) first; the old
-        error-string heuristic ("key"/"auth"/401/403) is kept only as a
-        fallback for a row that predates the flag, so a genuine auth failure
-        from a source that HAS a key (e.g. a revoked/expired one) still shows
-        as skipped rather than a bare failure. Pure/static so it is unit-
-        testable without a Tk root."""
-        if not rows:
-            return ""
-        ok = throttled = skipped = failed = 0
-        for r in rows:
-            if r.get("skipped_keyless"):
-                skipped += 1
-                continue
-            if r["ok"] and r["count"] >= 0:
-                ok += 1
-                continue
-            err = (r.get("error") or "").lower()
-            if "429" in err or "throttl" in err or "rate" in err:
-                throttled += 1
-            elif "key" in err or "auth" in err or "401" in err or "403" in err:
-                skipped += 1
-            else:
-                failed += 1
-        parts = [f"{ok} ok"]
-        if skipped:
-            parts.append(f"{skipped} skipped (no key)")
-        if throttled:
-            parts.append(f"{throttled} throttled")
-        if failed:
-            parts.append(f"{failed} failed")
-        return "Sources: " + ", ".join(parts) + "  (details)"
+    # Pure formatters moved to ``ui.tab_search_core`` (S36) and re-exported so the
+    # web Search health list and the tk summary/details agree byte-for-byte.
+    _health_summary_line = staticmethod(_search_core.health_summary_line)
+    _health_details_text = staticmethod(_search_core.health_details_text)
 
     def _show_health_details(self):
         if not self._source_health:
@@ -450,21 +402,6 @@ class SearchTab(ttk.Frame):
         messagebox.showinfo("Source health (last search)",
                             self._health_details_text(self._source_health),
                             parent=self)
-
-    @staticmethod
-    def _health_details_text(rows: list[dict]) -> str:
-        """Pure formatter for the per-source Details popup body. A row flagged
-        skipped_keyless names the real reason instead of a bare result count.
-        Pure/static so it is unit-testable without a Tk root."""
-        lines = []
-        for r in sorted(rows, key=lambda x: x["source"].lower()):
-            if r.get("skipped_keyless"):
-                lines.append(f"{r['source']}: skipped — needs a free key")
-            elif r["ok"]:
-                lines.append(f"{r['source']}: {r['count']} result(s)")
-            else:
-                lines.append(f"{r['source']}: FAILED — {r.get('error') or 'unknown'}")
-        return "\n".join(lines)
 
     def _add_results_to_inbox(self):
         """Offer to add the current search results to the Inbox for triage. Uses

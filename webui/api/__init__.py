@@ -20,10 +20,11 @@ def build_api_blueprint() -> Blueprint:
     from .runs import runs_bp
     from .applications import applications_bp
     from .board import board_bp
+    from .search import search_bp
 
     # Nested blueprints inherit the /api prefix; each submodule declares its own
     # leaf paths (e.g. /status, /toppicks, /inbox/<id>/track, /settings/theme,
-    # /applications, /board).
+    # /applications, /board, /search).
     api.register_blueprint(system_bp)
     api.register_blueprint(toppicks_bp)
     api.register_blueprint(inbox_bp)
@@ -31,4 +32,5 @@ def build_api_blueprint() -> Blueprint:
     api.register_blueprint(runs_bp)
     api.register_blueprint(applications_bp)
     api.register_blueprint(board_bp)
+    api.register_blueprint(search_bp)
     return api
