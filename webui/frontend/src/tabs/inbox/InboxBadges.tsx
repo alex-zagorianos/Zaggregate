@@ -7,6 +7,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import { relTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
 
 /* The header badge strip under the Inbox title: the last-run summary (when + how
@@ -122,22 +123,4 @@ function BadgePill({
       <span>{children}</span>
     </span>
   );
-}
-
-/** A compact relative time ("2h ago", "just now") from an ISO-ish timestamp; falls
- * back to the raw string when it can't be parsed (never blank). */
-function relTime(ts: string | null): string {
-  if (!ts) return "—";
-  const t = Date.parse(ts);
-  if (Number.isNaN(t)) return ts;
-  const secs = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (secs < 45) return "just now";
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  const wks = Math.floor(days / 7);
-  return `${wks}w ago`;
 }
