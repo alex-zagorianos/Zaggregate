@@ -43,13 +43,34 @@ mechanism, not the fetch pipeline.
 - **Zero-key regression floor (from #8)**: a standing CI test pinning "N
   keyless sources / companies.json ≥ 400" is a suggested follow-up so breadth
   can't silently shrink.
-- **tkinter ceiling**: the UI is at ttkbootstrap's limits. Roadmap decision
-  (S35b): engine stays Python permanently; the eventual UI successor is a
-  local web UI served by the Flask receiver (tab-by-tab migration — the gui.py
-  split made each tab an independently replaceable unit), optionally wrapped
-  in Tauri later for single-exe distribution.
+- **Web-UI era (S36, 2026-07-04 — the tkinter-ceiling roadmap item is BUILT).**
+  The web UI (React/shadcn served by the receiver at 127.0.0.1:5002/app,
+  launcher `py -m webui` / exe `--web`) now twins every tk surface. Accepted
+  gaps carried as the next-session queue (full detail + evidence in
+  `brain/findings-2026-07-04-webui-scenarios.md`):
+  - **No web create-project / new-person flow** (tk App chrome not migrated) —
+    the biggest gap; web is effectively single-project until built.
+  - **Web daily run has no CLI knobs** (`--max-pages`/`--min-score` have no
+    web equivalent; runs use defaults).
+  - Filter state not URL-synced (back/refresh resets the Inbox view).
+  - Scenario-test minors (MINOR-1..5 in the findings report): garbage
+    `location_mode` fails CLOSED to Local-only (should fail OPEN per the
+    inclusion philosophy — top fix candidate), Werkzeug HTML 404s on unknown
+    /api/* + literal `../` download paths (envelope inconsistency; the
+    security boundary itself holds), `.ics` SUMMARY casing, reach-badge
+    hardcoded "remote/tech" reason copy, ATS missing-skills rubric
+    boilerplate.
+  - **Pending Alex decisions**: tk-tab retirement (GO/NO-GO read in the
+    findings report §6), deletion of the deprecated `tracker/app.py` (:5001
+    retired; file kept), Tauri wrap (still optional/later).
 
-## Fixed since first written (S35b, 2026-07-04 — kept for history)
+## Fixed since first written (kept for history)
+
+- ~~tkinter ceiling (S35b roadmap)~~ — **BUILT in S36 (2026-07-04)**: full web
+  UI shipped (all tabs + wizard + dialogs), deep-tested (scoring parity
+  proven) + 5 scenario journeys (2 criticals + 7 majors found and fixed, incl.
+  the `get_conn()` WAL-connection leak and the resume bare-"Experience"
+  work-history drop).
 
 - ~~Ranking refinements #28/#37/#38~~ — fixed (exec-intent split, SOC-11
   exemption, honest skills chip); eng-profile parity proven byte-identical.
