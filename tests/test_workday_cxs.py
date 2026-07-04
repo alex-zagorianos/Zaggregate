@@ -315,7 +315,9 @@ def test_parse_line_names_workday_cxs():
 
 def test_dispatch_routes_workday_cxs(tmp_path, monkeypatch):
     # careers_client routes ats_type == "workday_cxs" to the cxs fetcher, passing
-    # the slug + the registry display name.
+    # the slug + the registry display name. workday_cxs is a memoizable ats_type
+    # (S35 #24): _scrape_one dispatches it ONCE per company with keyword="" and
+    # re-filters in Python, so the underlying scraper always sees keyword="".
     import scrape.careers_client as cc
     captured = {}
 
@@ -329,5 +331,5 @@ def test_dispatch_routes_workday_cxs(tmp_path, monkeypatch):
     company = CompanyEntry("Marsh McLennan", "workday_cxs", "mmc:1:MMC")
     client._scrape_one(company, "consultant")
     assert captured["slug"] == "mmc:1:MMC"
-    assert captured["keyword"] == "consultant"
+    assert captured["keyword"] == ""
     assert captured["company_name"] == "Marsh McLennan"

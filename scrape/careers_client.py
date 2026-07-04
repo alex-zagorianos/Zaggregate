@@ -1,3 +1,5 @@
+import dataclasses
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
@@ -37,6 +39,41 @@ from scrape.pinpoint_scraper import fetch as scrape_pinpoint
 from scrape.teamtailor_scraper import fetch as scrape_teamtailor
 from scrape.jazzhr_scraper import fetch as scrape_jazzhr
 from scrape.jsonld_scraper import scrape_jsonld
+
+# S35 #24: per-instance in-run memo so a keyword-independent board fetch isn't
+# re-walked/re-fetched once PER KEYWORD (10 DEFAULT_KEYWORDS -> 10 full passes
+# over the registry today). Every scraper below already fetches the WHOLE
+# board and filters client-side (verified per-file: none pass `keyword` as a
+# server-side query param) -- fetch each board ONCE per run with keyword=""
+# (every listed scraper either skips its `if keyword:` filter entirely when
+# empty, or its unconditional keyword_matches("", title) is vacuously True via
+# search.query.parse("")'s `_Always` node), then re-filter the memoized
+# JobResult rows in Python for every subsequent keyword using the SAME matcher
+# shape the scraper itself would have used (see _SHALLOW_MATCH_ATS/
+# _DEEP_MATCH_ATS below). Deliberately EXCLUDES:
+#   * "workday" (legacy type) -- POSTs `searchText: keyword` SERVER-SIDE and
+#     bakes the keyword into its own cache filename; a keyword-less fetch
+#     would return the WRONG (unfiltered-by-the-server) result set.
+#   * "smartrecruiters" -- keyword-first-15-matches gates a capped per-posting
+#     description detail-fetch (smartrecruiters_scraper.py), so fetching with
+#     keyword="" would detail-fetch the first 15 board-order postings instead
+#     of the first 15 postings that match the REAL keyword -- a real, if
+#     subtle, output difference this fix must not introduce.
+# Both excluded types dispatch every keyword exactly as before (no memo).
+
+# Title-only match (mirrors each scraper's own `_matches`/`keyword_matches`).
+_SHALLOW_MATCH_ATS = frozenset({
+    "greenhouse", "lever", "ashby", "direct", "jsonld", "icims", "taleo",
+    "successfactors",
+})
+# Title+description "deep" match (mirrors each scraper's own
+# `keyword_matches_deep`), and skips filtering entirely when keyword="".
+_DEEP_MATCH_ATS = frozenset({
+    "workable", "recruitee", "rippling", "personio", "bamboohr", "paylocity",
+    "eightfold", "adp", "oracle_orc", "phenom", "breezy", "pinpoint",
+    "teamtailor", "jazzhr", "workday_cxs", "vincere",
+})
+_MEMOIZABLE_ATS_TYPES = _SHALLOW_MATCH_ATS | _DEEP_MATCH_ATS
 
 
 class CareersClient(JobAPIClient):
@@ -95,6 +132,22 @@ class CareersClient(JobAPIClient):
         # changing the underlying per-board fail-soft behavior at all.
         self._run_error_count = 0
         self._run_failed_boards: list[str] = []
+        # S35 #24: per-instance, per-run memo of a memoizable board's UNFILTERED
+        # JobResult rows (fetched once with keyword=""), keyed by
+        # (company.slug, company.ats_type) -- NOT slug alone, since a
+        # jsonld/icims/taleo/successfactors "slug" is the raw career-page URL
+        # and two different ats_type entries could otherwise collide on it.
+        # search_and_parse is called once per keyword by search_engine, so the
+        # 2nd+ keyword's pass re-filters this in Python instead of re-dispatching
+        # into the scraper (see _MEMOIZABLE_ATS_TYPES above for exactly which
+        # ats_types this applies to, and why two are deliberately excluded).
+        # Guarded by a lock: _scrape_one runs inside _scrape_all_parallel's
+        # ThreadPoolExecutor, so two different companies could populate the
+        # memo concurrently (each writes only its OWN key, but dict resize
+        # under concurrent inserts is cheap insurance, not a correctness
+        # requirement here).
+        self._board_memo: dict[tuple[str, str], list[JobResult]] = {}
+        self._board_memo_lock = threading.Lock()
         if self._tiered:
             from scrape import tiering
             self._state = tiering.load_state(self._state_path)
@@ -222,6 +275,57 @@ class CareersClient(JobAPIClient):
         return save_companies(list(self._discovered_winners.values()), companies_file)
 
     def _scrape_one(self, company: CompanyEntry, keyword: str) -> list[JobResult]:
+        """Per-company scrape for one keyword pass. For an ats_type in
+        _MEMOIZABLE_ATS_TYPES, the board is dispatched with keyword="" (a full,
+        unfiltered fetch) ONCE per company per run and cached in
+        self._board_memo; every keyword pass -- including the first -- then
+        gets its result via _filter_memoized, which re-runs the SAME matcher
+        shape the scraper itself would have used, entirely in Python (no
+        re-dispatch, no re-fetch, no re-decode of the on-disk cache file).
+        Excluded types (workday, smartrecruiters) dispatch _dispatch() with the
+        real keyword every time, exactly as before this fix (S35 #24)."""
+        if company.ats_type not in _MEMOIZABLE_ATS_TYPES:
+            return self._dispatch(company, keyword)
+
+        # Keyed by (slug, ats_type), not slug alone: a jsonld/icims/taleo/
+        # successfactors "slug" is the raw career-page URL, so two DIFFERENT
+        # ats_type entries could otherwise collide on the same slug string.
+        memo_key = (company.slug, company.ats_type)
+        rows = self._board_memo.get(memo_key)
+        if rows is None:
+            with self._board_memo_lock:
+                rows = self._board_memo.get(memo_key)
+                if rows is None:
+                    rows = self._dispatch(company, "")
+                    self._board_memo[memo_key] = rows
+        return self._filter_memoized(rows, company.ats_type, keyword)
+
+    @staticmethod
+    def _filter_memoized(rows: list[JobResult], ats_type: str,
+                         keyword: str) -> list[JobResult]:
+        """Re-filter a memoized (keyword="") board fetch for one real keyword,
+        using the same matcher shape _scrape_one's original scraper call would
+        have used, and stamping source_keyword to the real keyword (the memoized
+        rows carry keyword="" or the empty-query pass-through, never the real
+        one). A falsy keyword (page-1 baseline callers, if any) returns every
+        row -- matching parse("").matches(...)'s own "match everything" rule."""
+        if not keyword:
+            return list(rows)
+        from scrape.text_match import keyword_matches, keyword_matches_deep
+        out = []
+        for jr in rows:
+            if ats_type in _DEEP_MATCH_ATS:
+                matched = keyword_matches_deep(keyword, jr.title, jr.description)
+            else:
+                matched = keyword_matches(keyword, jr.title)
+            if not matched:
+                continue
+            if jr.source_keyword != keyword:
+                jr = dataclasses.replace(jr, source_keyword=keyword)
+            out.append(jr)
+        return out
+
+    def _dispatch(self, company: CompanyEntry, keyword: str) -> list[JobResult]:
         if company.ats_type == "greenhouse":
             return scrape_greenhouse(company, keyword, self.cache_dir, self.cache_enabled)
         elif company.ats_type == "lever":
