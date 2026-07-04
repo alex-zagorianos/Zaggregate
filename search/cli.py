@@ -80,207 +80,225 @@ def build_clients(
     slog = applog.get_logger("sources")
 
     for source in sources:
-        if source == "adzuna":
-            try:
-                # Route to the user's country (one free key covers ~19). Without
-                # this, a non-US user (e.g. "London, United Kingdom") always hit
-                # the /us/ endpoint and got US-only jobs. adzuna_country_for is a
-                # no-op for US locations (returns the module default).
-                import config as _cfg
-                clients.append(AdzunaClient(
+        # S35 #23: everything for ONE source lives inside this outer try, so a
+        # non-ValueError exception during construction (a malformed
+        # user_config.json hitting a KeyError/TypeError, a registry-loading bug
+        # in CareersClient.__init__, etc.) degrades only THIS source instead of
+        # propagating out of build_clients and aborting the entire run (the
+        # user would otherwise get ZERO jobs from every source). The existing
+        # per-source `except ValueError` blocks below are untouched -- they
+        # still catch the documented "missing key" signal themselves and never
+        # reach this outer handler; only an exception NONE of them already
+        # catches lands here.
+        try:
+            if source == "adzuna":
+                try:
+                    # Route to the user's country (one free key covers ~19). Without
+                    # this, a non-US user (e.g. "London, United Kingdom") always hit
+                    # the /us/ endpoint and got US-only jobs. adzuna_country_for is a
+                    # no-op for US locations (returns the module default).
+                    import config as _cfg
+                    clients.append(AdzunaClient(
+                        cache_enabled=cache_enabled,
+                        country=_cfg.adzuna_country_for(location)))
+                except ValueError as e:
+                    slog.info(f"  [adzuna] Skipping — {e}")
+                    _note_keyless("adzuna")
+
+            elif source == "jsearch":
+                try:
+                    clients.append(JSearchClient(cache_enabled=cache_enabled))
+                    slog.info(
+                        "  [jsearch] NOTE: Free tier is 200 req/month. "
+                        "Each keyword/page costs 1 request."
+                    )
+                except ValueError as e:
+                    slog.info(f"  [jsearch] Skipping — {e}")
+                    _note_keyless("jsearch")
+
+            elif source == "usajobs":
+                try:
+                    clients.append(USAJobsClient(cache_enabled=cache_enabled))
+                except ValueError as e:
+                    slog.info(f"  [usajobs] Skipping — {e}")
+                    _note_keyless("usajobs")
+
+            elif source == "careeronestop":
+                from search.careeronestop_client import CareerOneStopClient
+                try:
+                    clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
+                except ValueError as e:
+                    slog.info(f"  [careeronestop] Skipping — {e}")
+                    _note_keyless("careeronestop")
+
+            elif source == "themuse":
+                from search.themuse_client import TheMuseClient
+                clients.append(TheMuseClient(cache_enabled=cache_enabled))
+
+            elif source == "remoteok":
+                from search.remoteok_client import RemoteOKClient
+                clients.append(RemoteOKClient(cache_enabled=cache_enabled))
+
+            elif source == "remotive":
+                from search.remotive_client import RemotiveClient
+                clients.append(RemotiveClient(cache_enabled=cache_enabled))
+
+            elif source == "jobicy":
+                from search.jobicy_client import JobicyClient
+                clients.append(JobicyClient(cache_enabled=cache_enabled))
+
+            elif source == "himalayas":
+                from search.himalayas_client import HimalayasClient
+                clients.append(HimalayasClient(cache_enabled=cache_enabled))
+
+            elif source == "hn":
+                from search.hn_client import HNClient
+                clients.append(HNClient(cache_enabled=cache_enabled))
+
+            elif source == "careers":
+                from scrape.careers_client import CareersClient
+                clients.append(CareersClient(
                     cache_enabled=cache_enabled,
-                    country=_cfg.adzuna_country_for(location)))
-            except ValueError as e:
-                slog.info(f"  [adzuna] Skipping — {e}")
-                _note_keyless("adzuna")
+                    top_n=top_n,
+                    industry_filter=industry_filter,
+                    discovery_enabled=discovery_enabled,
+                    companies_file=companies_file,
+                    tiered=tiered_careers,
+                ))
 
-        elif source == "jsearch":
-            try:
-                clients.append(JSearchClient(cache_enabled=cache_enabled))
-                slog.info(
-                    "  [jsearch] NOTE: Free tier is 200 req/month. "
-                    "Each keyword/page costs 1 request."
-                )
-            except ValueError as e:
-                slog.info(f"  [jsearch] Skipping — {e}")
-                _note_keyless("jsearch")
+            elif source == "arbeitnow":
+                from search.arbeitnow_client import ArbeitnowClient
+                clients.append(ArbeitnowClient(cache_enabled=cache_enabled))
 
-        elif source == "usajobs":
-            try:
-                clients.append(USAJobsClient(cache_enabled=cache_enabled))
-            except ValueError as e:
-                slog.info(f"  [usajobs] Skipping — {e}")
-                _note_keyless("usajobs")
+            elif source == "jooble":
+                from search.jooble_client import JoobleClient
+                c = JoobleClient(cache_enabled=cache_enabled)
+                clients.append(c)
+                # Registers unconditionally then self-skips at fetch time when
+                # unkeyed; ask the client's OWN key predicate so the count tracks the
+                # real skip condition, not a source list here.
+                if getattr(c, "keyless", lambda: False)():
+                    slog.info("  [jooble] JOOBLE_API_KEY unset — will self-skip "
+                              "(free key at jooble.org/api/about).")
+                    _note_keyless("jooble")
 
-        elif source == "careeronestop":
-            from search.careeronestop_client import CareerOneStopClient
-            try:
-                clients.append(CareerOneStopClient(cache_enabled=cache_enabled))
-            except ValueError as e:
-                slog.info(f"  [careeronestop] Skipping — {e}")
-                _note_keyless("careeronestop")
+            elif source == "careerjet":
+                from search.careerjet_client import CareerjetClient
+                c = CareerjetClient(cache_enabled=cache_enabled)
+                clients.append(c)
+                if getattr(c, "keyless", lambda: False)():
+                    slog.info("  [careerjet] CAREERJET_AFFID unset — will self-skip "
+                              "(free affiliate id at careerjet.com/partners).")
+                    _note_keyless("careerjet")
 
-        elif source == "themuse":
-            from search.themuse_client import TheMuseClient
-            clients.append(TheMuseClient(cache_enabled=cache_enabled))
+            elif source == "linkedin_guest":
+                from search.linkedin_guest_client import LinkedInGuestClient
+                slog.info("  [linkedin_guest] NOTE: logged-out PUBLIC guest endpoint only — "
+                          "no login/cookies. Review LinkedIn ToS before enabling.")
+                clients.append(LinkedInGuestClient(cache_enabled=cache_enabled))
 
-        elif source == "remoteok":
-            from search.remoteok_client import RemoteOKClient
-            clients.append(RemoteOKClient(cache_enabled=cache_enabled))
+            elif source == "serpapi":
+                from search.serpapi_client import SerpApiClient
+                try:
+                    clients.append(SerpApiClient(cache_enabled=cache_enabled))
+                    slog.info(f"  [serpapi] BYO Google-Jobs backend active "
+                              f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
+                except ValueError as e:
+                    slog.info(f"  [serpapi] Skipping — {e}")
+                    _note_keyless("serpapi")
 
-        elif source == "remotive":
-            from search.remotive_client import RemotiveClient
-            clients.append(RemotiveClient(cache_enabled=cache_enabled))
+            elif source == "weworkremotely":
+                from search.weworkremotely_client import WeWorkRemotelyClient
+                clients.append(WeWorkRemotelyClient(cache_enabled=cache_enabled))
 
-        elif source == "jobicy":
-            from search.jobicy_client import JobicyClient
-            clients.append(JobicyClient(cache_enabled=cache_enabled))
+            elif source == "workingnomads":
+                from search.workingnomads_client import WorkingNomadsClient
+                clients.append(WorkingNomadsClient(cache_enabled=cache_enabled))
 
-        elif source == "himalayas":
-            from search.himalayas_client import HimalayasClient
-            clients.append(HimalayasClient(cache_enabled=cache_enabled))
+            elif source == "higheredjobs":
+                # Sector RSS: education/faculty/admin. Self-skips (fetches nothing)
+                # for a non-education field via its industry gate — safe to always
+                # register. industry_filter is the active project's field.
+                from search.higheredjobs_client import HigherEdJobsClient
+                c = HigherEdJobsClient(cache_enabled=cache_enabled,
+                                       industry=industry_filter)
+                if not c.cat_ids:
+                    slog.info(f"  [higheredjobs] Inert for industry "
+                              f"{industry_filter or '(none)'!r} — no education categories map.")
+                clients.append(c)
 
-        elif source == "hn":
-            from search.hn_client import HNClient
-            clients.append(HNClient(cache_enabled=cache_enabled))
+            elif source == "rnjobsite":
+                # Sector RSS: registered-nurse specialties. Self-skips for a
+                # non-nursing field via its industry gate.
+                from search.rnjobsite_client import RNJobSiteClient
+                c = RNJobSiteClient(cache_enabled=cache_enabled,
+                                    industry=industry_filter)
+                if not c.active:
+                    slog.info(f"  [rnjobsite] Inert for industry "
+                              f"{industry_filter or '(none)'!r} — not a nursing field.")
+                clients.append(c)
 
-        elif source == "careers":
-            from scrape.careers_client import CareersClient
-            clients.append(CareersClient(
-                cache_enabled=cache_enabled,
-                top_n=top_n,
-                industry_filter=industry_filter,
-                discovery_enabled=discovery_enabled,
-                companies_file=companies_file,
-                tiered=tiered_careers,
-            ))
-
-        elif source == "arbeitnow":
-            from search.arbeitnow_client import ArbeitnowClient
-            clients.append(ArbeitnowClient(cache_enabled=cache_enabled))
-
-        elif source == "jooble":
-            from search.jooble_client import JoobleClient
-            c = JoobleClient(cache_enabled=cache_enabled)
-            clients.append(c)
-            # Registers unconditionally then self-skips at fetch time when
-            # unkeyed; ask the client's OWN key predicate so the count tracks the
-            # real skip condition, not a source list here.
-            if getattr(c, "keyless", lambda: False)():
-                slog.info("  [jooble] JOOBLE_API_KEY unset — will self-skip "
-                          "(free key at jooble.org/api/about).")
-                _note_keyless("jooble")
-
-        elif source == "careerjet":
-            from search.careerjet_client import CareerjetClient
-            c = CareerjetClient(cache_enabled=cache_enabled)
-            clients.append(c)
-            if getattr(c, "keyless", lambda: False)():
-                slog.info("  [careerjet] CAREERJET_AFFID unset — will self-skip "
-                          "(free affiliate id at careerjet.com/partners).")
-                _note_keyless("careerjet")
-
-        elif source == "linkedin_guest":
-            from search.linkedin_guest_client import LinkedInGuestClient
-            slog.info("  [linkedin_guest] NOTE: logged-out PUBLIC guest endpoint only — "
-                      "no login/cookies. Review LinkedIn ToS before enabling.")
-            clients.append(LinkedInGuestClient(cache_enabled=cache_enabled))
-
-        elif source == "serpapi":
-            from search.serpapi_client import SerpApiClient
-            try:
-                clients.append(SerpApiClient(cache_enabled=cache_enabled))
-                slog.info(f"  [serpapi] BYO Google-Jobs backend active "
-                          f"(free tier {__import__('config').SERPAPI_MONTHLY_LIMIT}/month).")
-            except ValueError as e:
-                slog.info(f"  [serpapi] Skipping — {e}")
-                _note_keyless("serpapi")
-
-        elif source == "weworkremotely":
-            from search.weworkremotely_client import WeWorkRemotelyClient
-            clients.append(WeWorkRemotelyClient(cache_enabled=cache_enabled))
-
-        elif source == "workingnomads":
-            from search.workingnomads_client import WorkingNomadsClient
-            clients.append(WorkingNomadsClient(cache_enabled=cache_enabled))
-
-        elif source == "higheredjobs":
-            # Sector RSS: education/faculty/admin. Self-skips (fetches nothing)
-            # for a non-education field via its industry gate — safe to always
-            # register. industry_filter is the active project's field.
-            from search.higheredjobs_client import HigherEdJobsClient
-            c = HigherEdJobsClient(cache_enabled=cache_enabled,
+            elif source == "jobsacuk":
+                # Sector RSS: UK academic/health. OPT-IN only (config flag or non-US
+                # country); inert in a default US run. PROVISIONAL endpoint.
+                from search.jobsacuk_client import JobsAcUkClient
+                c = JobsAcUkClient(cache_enabled=cache_enabled,
                                    industry=industry_filter)
-            if not c.cat_ids:
-                slog.info(f"  [higheredjobs] Inert for industry "
-                          f"{industry_filter or '(none)'!r} — no education categories map.")
-            clients.append(c)
+                if not c.active:
+                    slog.info("  [jobsacuk] Inert — UK academic feeds are opt-in "
+                              "(set 'jobsacuk' in config or a non-US country).")
+                clients.append(c)
 
-        elif source == "rnjobsite":
-            # Sector RSS: registered-nurse specialties. Self-skips for a
-            # non-nursing field via its industry gate.
-            from search.rnjobsite_client import RNJobSiteClient
-            c = RNJobSiteClient(cache_enabled=cache_enabled,
-                                industry=industry_filter)
-            if not c.active:
-                slog.info(f"  [rnjobsite] Inert for industry "
-                          f"{industry_filter or '(none)'!r} — not a nursing field.")
-            clients.append(c)
+            elif source == "reap":
+                # Sector: K-12 education, per-STATE public REAP portals. Self-skips
+                # for a non-education field OR a state REAP doesn't cover (routes by
+                # the user's location). robots.txt is honored live before any fetch.
+                from search.reap_client import ReapClient
+                c = ReapClient(cache_enabled=cache_enabled,
+                               industry=industry_filter, location=location)
+                if not c.active:
+                    if not c.portal and industry_filter and __import__(
+                            "search.reap_client", fromlist=["_is_education"]
+                            )._is_education(industry_filter):
+                        slog.info(f"  [reap] Inert — no REAP portal for location "
+                                  f"{location or '(none)'!r} (covered states: "
+                                  f"CT/MO/NM/OH/PA).")
+                    else:
+                        slog.info(f"  [reap] Inert for industry "
+                                  f"{industry_filter or '(none)'!r} — not an education field.")
+                clients.append(c)
 
-        elif source == "jobsacuk":
-            # Sector RSS: UK academic/health. OPT-IN only (config flag or non-US
-            # country); inert in a default US run. PROVISIONAL endpoint.
-            from search.jobsacuk_client import JobsAcUkClient
-            c = JobsAcUkClient(cache_enabled=cache_enabled,
-                               industry=industry_filter)
-            if not c.active:
-                slog.info("  [jobsacuk] Inert — UK academic feeds are opt-in "
-                          "(set 'jobsacuk' in config or a non-US country).")
-            clients.append(c)
-
-        elif source == "reap":
-            # Sector: K-12 education, per-STATE public REAP portals. Self-skips
-            # for a non-education field OR a state REAP doesn't cover (routes by
-            # the user's location). robots.txt is honored live before any fetch.
-            from search.reap_client import ReapClient
-            c = ReapClient(cache_enabled=cache_enabled,
-                           industry=industry_filter, location=location)
-            if not c.active:
-                if not c.portal and industry_filter and __import__(
-                        "search.reap_client", fromlist=["_is_education"]
-                        )._is_education(industry_filter):
-                    slog.info(f"  [reap] Inert — no REAP portal for location "
-                              f"{location or '(none)'!r} (covered states: "
-                              f"CT/MO/NM/OH/PA).")
-                else:
-                    slog.info(f"  [reap] Inert for industry "
+            elif source == "edjoin":
+                # Sector: K-12 education, EdJoin public JSON search (California-centric;
+                # graceful 0 for non-CA metros). Self-skips for a non-education field.
+                from search.edjoin_client import EdjoinClient
+                c = EdjoinClient(cache_enabled=cache_enabled,
+                                 industry=industry_filter, location=location)
+                if not c.active:
+                    slog.info(f"  [edjoin] Inert for industry "
                               f"{industry_filter or '(none)'!r} — not an education field.")
-            clients.append(c)
+                clients.append(c)
 
-        elif source == "edjoin":
-            # Sector: K-12 education, EdJoin public JSON search (California-centric;
-            # graceful 0 for non-CA metros). Self-skips for a non-education field.
-            from search.edjoin_client import EdjoinClient
-            c = EdjoinClient(cache_enabled=cache_enabled,
-                             industry=industry_filter, location=location)
-            if not c.active:
-                slog.info(f"  [edjoin] Inert for industry "
-                          f"{industry_filter or '(none)'!r} — not an education field.")
-            clients.append(c)
+            elif source == "socrata":
+                from search.socrata_client import SocrataClient
+                from config import SOCRATA_APP_TOKEN, SOCRATA_CITIES
+                clients.append(SocrataClient(
+                    cities=SOCRATA_CITIES, app_token=SOCRATA_APP_TOKEN,
+                    cache_enabled=cache_enabled,
+                ))
+                if not SOCRATA_CITIES:
+                    slog.info("  [socrata] No SOCRATA_CITIES configured — client is inert "
+                              "(add a city key, e.g. 'nyc', to config.SOCRATA_CITIES).")
 
-        elif source == "socrata":
-            from search.socrata_client import SocrataClient
-            from config import SOCRATA_APP_TOKEN, SOCRATA_CITIES
-            clients.append(SocrataClient(
-                cities=SOCRATA_CITIES, app_token=SOCRATA_APP_TOKEN,
-                cache_enabled=cache_enabled,
-            ))
-            if not SOCRATA_CITIES:
-                slog.info("  [socrata] No SOCRATA_CITIES configured — client is inert "
-                          "(add a city key, e.g. 'nyc', to config.SOCRATA_CITIES).")
-
-        else:
-            slog.warning(f"  Unknown source {source!r} — ignoring.")
+            else:
+                slog.warning(f"  Unknown source {source!r} — ignoring.")
+        except Exception as e:
+            # A bug/malformed-config exception during THIS source's construction
+            # (anything the source's own ValueError handler above didn't already
+            # catch) must not take down every other source with it.
+            slog.warning(
+                f"  [{source}] failed to initialize — skipped: "
+                f"{type(e).__name__}: {e}")
 
     return clients
 
