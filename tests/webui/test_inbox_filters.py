@@ -412,3 +412,17 @@ def test_filter_rows_bypasses_when_all_demo():
                      "company": "Z", "fit": -1, "location": ""}]
     out2 = inbox_filters.filter_rows(mixed, min_score=100)
     assert out2 == []    # min_score=100 drops all (no bypass)
+
+
+def test_unknown_location_mode_fails_open_like_all_locations():
+    # MINOR-1 (S36 scenario findings): a garbage location_mode from the query
+    # string must behave as "All locations" (fail OPEN), not "Local only".
+    from webui.inbox_filters import filter_rows
+    rows = [
+        {"location": "Cincinnati, OH", "title": "E"},
+        {"location": "Remote - US", "title": "E"},
+        {"location": "Austin, TX", "title": "E"},
+    ]
+    out = filter_rows(list(rows), location_mode="NotARealMode",
+                      home_area="Cincinnati, OH")
+    assert out == rows

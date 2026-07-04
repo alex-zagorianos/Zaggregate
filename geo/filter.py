@@ -78,8 +78,12 @@ def location_visible(location: str, title: str, area: str, mode: str,
                      *, remote_ok: bool = True) -> bool:
     """Should this posting show under the given Inbox Location `mode`?
     Local-focused views always keep "local" and "unknown" (don't over-cut);
-    "Local + remote" additionally keeps "remote"; "All locations" keeps all."""
-    if mode == "All locations":
+    "Local + remote" additionally keeps "remote"; "All locations" keeps all.
+
+    An unrecognized `mode` (typo'd query param, outdated frontend enum) fails
+    OPEN to "All locations" — a garbage mode string must never narrow to the
+    strictest local view (inclusion over precision: never silently over-drop)."""
+    if mode == "All locations" or mode not in LOCATION_MODES:
         return True
     bucket = classify(location, title, area, remote_ok=remote_ok)
     if bucket in ("local", "unknown"):

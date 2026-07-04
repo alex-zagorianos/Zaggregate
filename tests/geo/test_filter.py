@@ -79,6 +79,16 @@ def test_visible_all_locations_shows_everything():
         assert location_visible(loc, "E", A, m)
 
 
+def test_visible_unknown_mode_fails_open_to_all_locations():
+    # A garbage/unknown mode (typo'd query param, outdated frontend enum) must
+    # behave as "All locations", NEVER as the strictest local view (inclusion
+    # over precision — scenario finding MINOR-1).
+    A = "Cincinnati, OH"
+    for m in ("NotARealMode", "local only", "LOCAL_ONLY", "", None):
+        for loc in ("Cincinnati, OH", "Remote - US", "Austin, TX", ""):
+            assert location_visible(loc, "E", A, m), (m, loc)
+
+
 def test_default_mode_is_local_plus_remote():
     assert DEFAULT_LOCATION_MODE == "Local + remote"
     assert DEFAULT_LOCATION_MODE in LOCATION_MODES
