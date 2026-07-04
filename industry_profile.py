@@ -117,12 +117,38 @@ def gate_tokens(industry: str) -> set[str]:
 _RULES: list[tuple[set[str], dict]] = [
     ({"software", "developer", "programming", "backend", "frontend", "fullstack",
       "devops", "sre", "web"},
-     {"muse": _ENG_MUSE, "jobicy": "engineering", "syn": [],
+     {"muse": _ENG_MUSE, "jobicy": "engineering",
+      "syn": ["software developer", "backend developer",
+              "full stack developer", "application developer",
+              "platform engineer"],
       "titles": ["engineer", "developer", "software"]}),
-    ({"engineering", "engineer", "controls", "control", "robotics", "robot",
-      "embedded", "mechanical", "mechatronics", "automation", "hardware",
-      "electrical", "manufacturing", "industrial", "aerospace", "systems",
-      "ai", "ml", "applied"},
+    # Specific eng sub-rules BEFORE the generic eng fallback (first-match-wins):
+    # same muse/jobicy/titles knobs as the generic rule — the ONLY delta is the
+    # curated query_synonyms (S36b recall widening; the syn tier only ever ADDS
+    # capped query terms, never displaces a user keyword — keyword_strategy
+    # enforces _MAX_SYNONYMS). NOTE the AI tokens deliberately exclude bare
+    # "machine"/"learning" ("learning and development" is HR, "machine design"
+    # is mech) — ambiguous fields fall through to mech/generic instead.
+    ({"ai", "ml", "llm", "mlops", "genai", "deep"},
+     {"muse": _ENG_MUSE, "jobicy": "engineering",
+      "syn": ["machine learning engineer", "ai engineer", "mlops engineer",
+              "applied scientist", "computer vision engineer", "llm engineer"],
+      "titles": ["engineer", "engineering", "technician"]}),
+    ({"controls", "control", "embedded", "mechatronics", "automation",
+      "firmware", "robotics", "robot"},
+     {"muse": _ENG_MUSE, "jobicy": "engineering",
+      "syn": ["instrumentation engineer", "plc programmer",
+              "industrial automation engineer", "scada engineer",
+              "process controls engineer", "electrical controls engineer"],
+      "titles": ["engineer", "engineering", "technician"]}),
+    ({"mechanical", "manufacturing", "industrial", "cad", "mechdesign"},
+     {"muse": _ENG_MUSE, "jobicy": "engineering",
+      "syn": ["mechanical design engineer", "product design engineer",
+              "design engineer", "cad engineer", "manufacturing engineer",
+              "npi engineer"],
+      "titles": ["engineer", "engineering", "technician"]}),
+    ({"engineering", "engineer", "hardware", "electrical", "aerospace",
+      "systems", "applied"},
      {"muse": _ENG_MUSE, "jobicy": "engineering", "syn": [],
       "titles": ["engineer", "engineering", "technician"]}),
     # Marketing BEFORE health so "digital marketing" is not captured by the
@@ -625,11 +651,23 @@ def resolve(industry: Optional[str]) -> IndustryProfile:
         _cache[key] = prof
         return prof
 
-    # 2) empty / eng -> engineering profile (Alex path)
+    # 2) empty / eng -> engineering profile (Alex path). S36b: a NAMED eng field
+    # additionally borrows the curated query_synonyms from the matching eng
+    # sub-rule in _RULES (controls/mech/AI/software) — the syn tier only ever
+    # ADDS capped query terms (keyword_strategy._MAX_SYNONYMS), never displaces
+    # a user keyword. An EMPTY industry stays syn-free (byte-identical for
+    # projects that never set one).
     if not key or eng:
+        syns: list[str] = []
+        if key:
+            toks = set(_tokens(industry))
+            for rule_tokens, knobs in _RULES:
+                if knobs.get("syn") and toks & rule_tokens:
+                    syns = list(knobs["syn"])
+                    break
         prof = IndustryProfile(
             industry=key or "engineering", muse_categories=list(_ENG_MUSE),
-            jobicy_industry="engineering", query_synonyms=[],
+            jobicy_industry="engineering", query_synonyms=syns,
             title_terms=["engineer", "engineering"], eng_like=True, source="seed")
         _cache[key] = prof
         return prof

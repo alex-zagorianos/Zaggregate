@@ -195,6 +195,10 @@ def test_education_all_muse_categories_valid():
 
 # -- regression guards: engineering + consulting (S30) unchanged --
 def test_s32_engineering_profile_byte_identical():
+    # S36b: named eng sub-fields now ALSO carry curated query_synonyms (an
+    # additive, capped query-widening Alex requested in the S36b search-
+    # optimization pass). Everything else — muse/jobicy/titles/eng_like — stays
+    # byte-identical, and the EMPTY industry stays fully identical (no syns).
     for q in ("", "engineering", "mechanical engineering", "controls engineering",
               "software", "robotics", "embedded"):
         ip.clear_cache()
@@ -203,7 +207,9 @@ def test_s32_engineering_profile_byte_identical():
         assert p.muse_categories == ["Software Engineering", "Science and Engineering"]
         assert p.jobicy_industry == "engineering"
         assert p.title_terms == ["engineer", "engineering"]
-        assert p.query_synonyms == []
+    ip.clear_cache()
+    assert ip.resolve("").query_synonyms == []
+    assert ip.resolve("engineering").query_synonyms == []  # generic eng fallback
 
 
 def test_s32_consulting_profile_unchanged():
@@ -627,3 +633,36 @@ def test_gate_tokens_does_not_alter_scoring_tokens():
     # _tokens (the scoring tokenizer) stays singular-agnostic — only gate_tokens
     # adds the singularized forms, so scoring behavior is byte-identical.
     assert ip._tokens("Registered Nurses") == ["registered", "nurses"]
+
+
+# ── S36b: curated eng query synonyms (recall widening) ────────────────────────
+
+def test_eng_subfields_get_curated_query_synonyms():
+    import industry_profile as ip
+    controls = ip.resolve("controls_engineering")
+    assert controls.eng_like is True
+    assert "plc programmer" in controls.query_synonyms
+    mech = ip.resolve("mechanical engineer")
+    assert "mechanical design engineer" in mech.query_synonyms
+    ai = ip.resolve("applied ai")
+    assert "machine learning engineer" in ai.query_synonyms
+
+
+def test_empty_industry_stays_synonym_free():
+    # Projects with no industry set must keep the byte-identical eng profile.
+    import industry_profile as ip
+    assert ip.resolve("").query_synonyms == []
+    assert ip.resolve("").eng_like is True
+
+
+def test_generic_eng_fallback_unchanged():
+    import industry_profile as ip
+    p = ip.resolve("aerospace engineering")
+    assert p.eng_like is True
+    assert p.query_synonyms == []
+
+
+def test_non_eng_rules_unchanged_by_eng_split():
+    import industry_profile as ip
+    assert "clinical informatics" in ip.resolve("health_informatics").query_synonyms
+    assert ip.resolve("nursing").eng_like is False
