@@ -342,6 +342,13 @@ CACHE_GC_MAX_AGE_HOURS = 168
 # New boards appearing on Greenhouse/Lever/etc. for a fixed keyword do not
 # change hour-to-hour, so discovery gets its own, much longer TTL: 7 days.
 DISCOVERY_CACHE_TTL_HOURS = 168
+# discover/inbox_harvest.py had NO negative-cache at all: a company name whose
+# domain-guess never resolves (very common -- multi-word names, name != domain,
+# renamed companies) was re-probed with 3 live HTTP round-trips EVERY daily run,
+# forever (S35 #26). 14 days: long enough that a bad guess isn't re-hammered
+# daily, short enough that a company that later gets a real careers page (a
+# renamed domain, a new ATS) is retried well within a month.
+INBOX_HARVEST_NEGATIVE_TTL_HOURS = 336
 
 # Flask server ports
 PORT_RESUME   = 5000

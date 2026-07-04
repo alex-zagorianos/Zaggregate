@@ -2,7 +2,9 @@
 
 All five external seams (inbox_company_counts, find_career_url, detect_ats,
 probe_count, save_companies) are monkeypatched on the module itself, so no
-test here touches the network or a real database.
+test here touches the network or a real database. Every harvest_inbox_companies()
+call also passes cache_dir=tmp_path (S35 #26 negative-cache) so a test run
+never writes into the real cache/inbox_harvest/.
 """
 import json
 
@@ -30,7 +32,7 @@ def test_skips_names_already_in_registry(monkeypatch, tmp_path):
         return len(entries)
     monkeypatch.setattr(H, "save_companies", fake_save)
 
-    result = H.harvest_inbox_companies(companies_json=companies_json)
+    result = H.harvest_inbox_companies(companies_json=companies_json, cache_dir=tmp_path)
 
     assert result.candidates == 2
     assert result.already_in_registry == 1        # "Acme Robotics" canonicalizes to the seeded entry
@@ -50,7 +52,8 @@ def test_min_count_and_limit(monkeypatch, tmp_path):
     monkeypatch.setattr(H, "save_companies", _no_save)
 
     result = H.harvest_inbox_companies(min_count=2, limit=1,
-                                       companies_json=tmp_path / "companies.json")
+                                       companies_json=tmp_path / "companies.json",
+                                       cache_dir=tmp_path)
 
     # min_count=2 drops Gamma Inc (count 1) before candidates is even computed.
     assert result.candidates == 2
@@ -72,7 +75,8 @@ def test_junk_names_dropped(monkeypatch, tmp_path):
     monkeypatch.setattr(H, "probe_count", lambda entry: 5)
     monkeypatch.setattr(H, "save_companies", _no_save)
 
-    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json")
+    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json",
+                                       cache_dir=tmp_path)
 
     assert result.candidates == 1     # only "Real Company" survives the junk filter
     assert [e.name for e in result.entries] == ["Real Company"]
@@ -89,7 +93,8 @@ def test_all_guesses_fail_probe_not_added(monkeypatch, tmp_path):
     monkeypatch.setattr(H, "probe_count", lambda entry: 0)   # board found, zero live jobs
     monkeypatch.setattr(H, "save_companies", _no_save)
 
-    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json")
+    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json",
+                                       cache_dir=tmp_path)
 
     assert result.candidates == 1
     assert result.resolved == 1       # detect_ats succeeded on a guess
@@ -110,7 +115,8 @@ def test_dry_run_does_not_save(monkeypatch, tmp_path):
         return len(entries)
     monkeypatch.setattr(H, "save_companies", fake_save)
 
-    result = H.harvest_inbox_companies(dry_run=True, companies_json=tmp_path / "companies.json")
+    result = H.harvest_inbox_companies(dry_run=True, companies_json=tmp_path / "companies.json",
+                                       cache_dir=tmp_path)
 
     assert calls["n"] == 0
     assert result.verified == 1
@@ -126,11 +132,13 @@ def test_industries_tag_correct(monkeypatch, tmp_path):
     monkeypatch.setattr(H, "save_companies", _no_save)
 
     monkeypatch.setattr(H, "inbox_company_counts", lambda: {"Tagged Co": 5})
-    tagged = H.harvest_inbox_companies("robotics", companies_json=tmp_path / "companies.json")
+    tagged = H.harvest_inbox_companies("robotics", companies_json=tmp_path / "companies.json",
+                                       cache_dir=tmp_path)
     assert tagged.entries[0].industries == ["robotics"]
 
     monkeypatch.setattr(H, "inbox_company_counts", lambda: {"Default Co": 5})
-    default = H.harvest_inbox_companies(None, companies_json=tmp_path / "companies.json")
+    default = H.harvest_inbox_companies(None, companies_json=tmp_path / "companies.json",
+                                        cache_dir=tmp_path)
     assert default.entries[0].industries == ["harvested"]
 
 
@@ -147,7 +155,8 @@ def test_display_casing_preserved(monkeypatch, tmp_path):
     monkeypatch.setattr(H, "probe_count", lambda entry: 5)
     monkeypatch.setattr(H, "save_companies", _no_save)
 
-    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json")
+    result = H.harvest_inbox_companies(companies_json=tmp_path / "companies.json",
+                                       cache_dir=tmp_path)
 
     assert [e.name for e in result.entries] == ["Acme Robotics, Inc."]  # NOT lowercased
 
