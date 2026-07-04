@@ -289,7 +289,7 @@ function FilterChip({
         "inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] border px-2.5 py-1 text-xs font-medium transition-colors",
         "focus-visible:ring-ring/50 outline-none focus-visible:ring-2",
         active
-          ? "text-white"
+          ? undefined
           : "border-border text-muted-foreground hover:text-foreground hover:border-ring/40",
       )}
       style={
@@ -298,7 +298,7 @@ function FilterChip({
             ? {
                 backgroundColor: color,
                 borderColor: color,
-                color: "#fff",
+                color: "var(--zg-accent-fg)",
               }
             : {
                 backgroundColor: "var(--zg-accent)",
@@ -315,8 +315,16 @@ function FilterChip({
       <span
         className={cn(
           "zg-num rounded px-1 text-[0.7rem]",
-          active ? "bg-white/20" : "bg-secondary text-muted-foreground",
+          active ? "" : "bg-secondary text-muted-foreground",
         )}
+        style={
+          active
+            ? {
+                backgroundColor:
+                  "color-mix(in oklab, var(--zg-accent-fg) 20%, transparent)",
+              }
+            : undefined
+        }
       >
         {count}
       </span>

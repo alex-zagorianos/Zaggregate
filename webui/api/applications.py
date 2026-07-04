@@ -145,11 +145,24 @@ def update_application(app_id: int):
 @applications_bp.post("/applications/<int:app_id>/status")
 @require_local_origin
 def set_application_status(app_id: int):
-    """Funnel move — the kanban drag-drop target. Validates the requested status
-    against ``db.STATUSES`` (a bad status is a 400) and 404s an unknown id, then
-    writes it through ``service.set_status`` (which records the status_history
-    transition + auto-stamps date_applied on 'applied'). Returns the refetched
-    row so the client reflects any auto-stamped side effects."""
+    """Set an application's status. The kanban drag-drop target AND the general
+    status-edit seam. Validates the requested status against ``db.STATUSES`` (a bad
+    status is a 400) and 404s an unknown id, then writes it through
+    ``service.set_status`` (which records the status_history transition +
+    auto-stamps date_applied on 'applied'). Returns the refetched row so the client
+    reflects any auto-stamped side effects.
+
+    Forward-only is a UI CONVENTION, not an engine invariant, and this endpoint
+    intentionally accepts ANY valid status — including a backward move. The Board's
+    "only advances forward" guarantee (``board-logic.ts`` ``canDrop`` /
+    ``rejectReason``) is enforced entirely client-side off the server-supplied
+    ``forward_targets`` list (``ui.kanban_core.forward_targets``); the server is
+    deliberately the permissive escape hatch that the tk job-editor's freeform
+    status field and the JobDialog's status picker both rely on to correct a status
+    to an arbitrary value. Do NOT add a ``forward_targets`` gate here — it would
+    break those legitimate corrections. (``kanban_core.forward_targets`` documents
+    the same split: the db model permits any status set; the board merely surfaces
+    non-downgrading choices.)"""
     if service.get_job(app_id) is None:
         return jsonify({"ok": False, "error": "unknown application"}), 404
     status = (_body().get("status") or "").strip()
