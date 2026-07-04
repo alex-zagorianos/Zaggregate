@@ -41,8 +41,8 @@ export const TABS: readonly TabDef[] = [
     icon: ClipboardList,
     ready: false,
   },
-  { path: "tracker", label: "Tracker", icon: ListChecks, ready: false },
-  { path: "board", label: "Board", icon: KanbanSquare, ready: false },
+  { path: "tracker", label: "Tracker", icon: ListChecks, ready: true },
+  { path: "board", label: "Board", icon: KanbanSquare, ready: true },
   { path: "resume", label: "Resume", icon: FileText, ready: false },
   { path: "guide", label: "Guide", icon: BookOpen, ready: false },
   {

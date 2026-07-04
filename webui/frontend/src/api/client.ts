@@ -114,6 +114,10 @@ export const api = {
     path: string,
     opts?: RequestOptions,
   ) => request<T>("PUT", path, opts),
+  patch: <T extends ApiEnvelope = ApiEnvelope>(
+    path: string,
+    opts?: RequestOptions,
+  ) => request<T>("PATCH", path, opts),
   del: <T extends ApiEnvelope = ApiEnvelope>(
     path: string,
     opts?: RequestOptions,
@@ -213,6 +217,115 @@ export interface AdzunaSplitResponse extends ApiEnvelope {
   app_key?: string;
 }
 
+// ── Applications (Tracker + Board + JobDialog) ────────────────────────────────
+/** A tracked-application row (serializers.app_row) — engine columns pass through
+ * as-is. We type the fields the UI reads and keep an index signature for the rest
+ * (offer_*, contact, timestamps a future column adds). */
+export interface AppRow {
+  id: number;
+  title: string;
+  company: string;
+  location?: string | null;
+  salary_text?: string | null;
+  url?: string | null;
+  status: string;
+  date_applied?: string | null;
+  date_added?: string | null;
+  follow_up_date?: string | null;
+  deadline?: string | null;
+  contact?: string | null;
+  notes?: string | null;
+  source?: string | null;
+  archived?: number | boolean | null;
+  offer_amount?: string | null;
+  offer_deadline?: string | null;
+  offer_notes?: string | null;
+  [key: string]: unknown;
+}
+
+/** Funnel counts keyed by status, plus the synthetic `all` / `archived` totals. */
+export type AppCounts = Record<string, number>;
+
+export interface AppListResponse extends ApiEnvelope {
+  rows: AppRow[];
+  counts: AppCounts;
+  followups_due: number;
+}
+
+/** A status-history / note timeline entry (service.status_timeline). */
+export interface TimelineEntry {
+  old_status?: string | null;
+  new_status?: string | null;
+  changed_at: string | null;
+  note?: string | null;
+  /** "status" for a transition, "note" for a standalone note. */
+  kind: "status" | "note";
+  [key: string]: unknown;
+}
+
+/** An interview round row (service.list_interview_rounds). */
+export interface InterviewRound {
+  id: number;
+  app_id: number;
+  round_no: number;
+  kind: string;
+  scheduled_at?: string | null;
+  interviewer?: string | null;
+  notes?: string | null;
+  outcome?: string | null;
+  [key: string]: unknown;
+}
+
+/** The one-call JobDialog payload (GET /api/applications/<id>). */
+export interface AppDetailResponse extends ApiEnvelope {
+  job: AppRow;
+  timeline: TimelineEntry[];
+  rounds: InterviewRound[];
+  /** "" when no known contact at the company. */
+  referral: string;
+  statuses: string[];
+  status_labels: Record<string, string>;
+}
+
+export interface AddAppResponse extends ApiEnvelope {
+  id: number;
+}
+
+export interface AppMutationResponse extends ApiEnvelope {
+  job: AppRow;
+}
+
+export interface NotesResponse extends ApiEnvelope {
+  timeline: TimelineEntry[];
+}
+
+export interface RoundsResponse extends ApiEnvelope {
+  rounds: InterviewRound[];
+  id?: number;
+}
+
+/** A board card = an app row + the funnel augmentation the /board route adds. */
+export interface BoardCardRow extends AppRow {
+  days_in_stage: number | null;
+  days_label: string;
+  forward_targets: string[];
+}
+
+export interface BoardColumn {
+  status: string;
+  label: string;
+  cards: BoardCardRow[];
+}
+
+export interface BoardResponse extends ApiEnvelope {
+  columns: BoardColumn[];
+}
+
+/** Fields the add/edit endpoints accept (a Partial keeps the wrappers honest
+ * without re-listing the whole column set). */
+export type AppFields = Partial<Record<string, string>>;
+export type RoundFields = Partial<Record<string, string | number>>;
+
 /** Named endpoint wrappers for the shell + Phase 1 tabs. Phase 1+ extends this. */
 export const endpoints = {
   status: () => api.get<StatusResponse>("/status"),
@@ -241,4 +354,85 @@ export const endpoints = {
     api.post<AdzunaSplitResponse>("/settings/keys/adzuna/split", {
       json: { clipboard },
     }),
+
+  // ── Applications (Tracker + Board + JobDialog) ──────────────────────────────
+  listApplications: (status?: string) =>
+    api.get<AppListResponse>("/applications", {
+      params: status ? { status } : undefined,
+    }),
+  getApplication: (id: number) =>
+    api.get<AppDetailResponse>(`/applications/${id}`),
+  addApplication: (fields: AppFields) =>
+    api.post<AddAppResponse>("/applications", { json: fields }),
+  updateApplication: (id: number, fields: AppFields) =>
+    api.patch<AppMutationResponse>(`/applications/${id}`, { json: fields }),
+  setApplicationStatus: (id: number, status: string) =>
+    api.post<AppMutationResponse>(`/applications/${id}/status`, {
+      json: { status },
+    }),
+  archiveApplication: (id: number) =>
+    api.post<ApiEnvelope>(`/applications/${id}/archive`),
+  restoreApplication: (id: number) =>
+    api.post<ApiEnvelope>(`/applications/${id}/restore`),
+  deleteApplication: (id: number) =>
+    api.del<ApiEnvelope>(`/applications/${id}`),
+  addAppNote: (id: number, note: string) =>
+    api.post<NotesResponse>(`/applications/${id}/notes`, { json: { note } }),
+  addRound: (id: number, fields: RoundFields) =>
+    api.post<RoundsResponse>(`/applications/${id}/rounds`, { json: fields }),
+  updateRound: (id: number, rid: number, fields: RoundFields) =>
+    api.patch<RoundsResponse>(`/applications/${id}/rounds/${rid}`, {
+      json: fields,
+    }),
+  deleteRound: (id: number, rid: number) =>
+    api.del<RoundsResponse>(`/applications/${id}/rounds/${rid}`),
+
+  // Board
+  board: () => api.get<BoardResponse>("/board"),
 };
+
+/** Path (relative to /api) for a round's .ics — used by downloadIcs, NOT fetched
+ * through the JSON client (the response is text/calendar). */
+export function roundIcsUrl(id: number, rid: number): string {
+  return `/api/applications/${id}/rounds/${rid}/ics`;
+}
+
+/** Trigger a browser download of a round's .ics. The route streams a
+ * Content-Disposition: attachment file; a 400 (no scheduled_at) or 404 returns a
+ * JSON error, which we surface as a thrown ApiError so the caller can toast it.
+ * We fetch → blob → object-URL → click a hidden <a> so the filename the server
+ * set is honored and nothing shells out to the OS (repo rule: HTTP downloads
+ * only). */
+export async function downloadIcs(id: number, rid: number): Promise<void> {
+  let resp: Response;
+  try {
+    resp = await fetch(roundIcsUrl(id, rid), {
+      headers: { Accept: "text/calendar" },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "network error";
+    throw new ApiError(msg, 0, null);
+  }
+  const ctype = resp.headers.get("content-type") ?? "";
+  if (!resp.ok || ctype.includes("application/json")) {
+    let message = `Request failed (${resp.status})`;
+    if (ctype.includes("application/json")) {
+      const body = (await resp.json().catch(() => null)) as ApiEnvelope | null;
+      if (body?.error) message = body.error;
+    }
+    throw new ApiError(message, resp.status, null);
+  }
+  const blob = await resp.blob();
+  // Prefer the server's filename from Content-Disposition; fall back to a slug.
+  const disp = resp.headers.get("content-disposition") ?? "";
+  const match = /filename="?([^"]+)"?/i.exec(disp);
+  const filename = match?.[1] ?? `interview-r${rid}.ics`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
