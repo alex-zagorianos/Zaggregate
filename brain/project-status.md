@@ -4,6 +4,30 @@
 
 ---
 
+## Session 36c (2026-07-04 afternoon, same conversation) — search optimization + full UX/perf review + DESKTOP APP ✅
+
+Alex (away, full autonomy): maximize jobs found across all his roles + dad,
+full frontend UI/UX + backend efficiency review, "will this run as a desktop
+app? that is what we want." All delivered — read
+`docs/handoffs/handoff_20260704_session36c.md` first. Highlights: **live
+6-project test → Alex's five role inboxes 2,964→6,603 rows**; fetch-side
+widening (metro satellites CSV + curated eng query synonyms — measured +19%
+raw pull, 17 query keywords vs 10 on mechdesign re-run); **`--desktop` native
+window (pywebview/WebView2) shipped + frozen-exe smoke PASSED**; frontend
+dedup/polish batch (row-actions/kbd/status/relative-time/friendly-error +
+Toaster dark-mode); backend perf batch (list payloads -description, board N+1
+batched, ghost cache + day-bucket, JobRunner eviction, asset cache headers);
+onboarding legacy-config inference (dad no longer re-gated every load) +
+mid-wizard sentinel; **adversarial review wave confirmed 5 findings — all
+fixed same-session** (worst: bare hyphen-split city variants cross-matching
+other metros; ghost cache freezing staleness). **Suite 2,968/0, vitest 176,
+exe rebuilt + production/ mirrored. PUSH HELD (~60 commits). NEEDS ALEX: free
+API keys (CareerOneStop/Brave/Jooble/Careerjet/SerpApi — biggest untapped
+recall lever), push decision, tk-vs-desktop default.** Full data:
+`brain/findings-2026-07-04-search-optimization.md`.
+
+---
+
 ## Session 36b (2026-07-04, same conversation) — scenario minors + P1 knobs FIXED ✅
 
 Morning continuation: Alex said "start working on the changes that surfaced

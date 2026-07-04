@@ -53,7 +53,20 @@ mechanism, not the fetch pipeline.
   - Filter state not URL-synced (back/refresh resets the Inbox view).
   - **Pending Alex decisions**: tk-tab retirement (GO/NO-GO read in the
     findings report §6), deletion of the deprecated `tracker/app.py` (:5001
-    retired; file kept), Tauri wrap (still optional/later).
+    retired; file kept), and whether the exe DEFAULT becomes `--desktop`
+    (native window shipped in S36c; tk remains the no-flag default).
+- **Recall (S36c, 2026-07-04)** — full program in
+  `brain/findings-2026-07-04-search-optimization.md`:
+  - **Free keys unclaimed** (CareerOneStop, Brave Search, Jooble, Careerjet,
+    SerpApi): all fully wired and auto-on once keyed; the single biggest
+    untapped jobs-found lever (~15 min of signups, needs Alex).
+  - No sector source for mech/industrial/manufacturing (IEEE/ASME/SAE-style
+    boards) — research + build queued, following the self-gating
+    `_higheredjobs` pattern.
+  - `get_conn()` opens a fresh SQLite connection per call — reuse redesign
+    deferred (highest perf win, biggest blast radius; S27 pin interactions).
+  - "Minneapolis, MN"-style inputs never match their own hyphenated
+    multi-city CBSA title (pre-existing metro_variants gap; bare city works).
 
 ## Fixed since first written (kept for history)
 
