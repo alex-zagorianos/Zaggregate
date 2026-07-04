@@ -43,11 +43,22 @@ def test_project_list_shape_and_active(client, tmp_projects):
 def test_project_switch(client, tmp_projects):
     a, b = tmp_projects
     resp = client.post("/api/project", json={"slug": b},
-                       headers={"Origin": _EXT_ORIGIN})
+                       headers={"Origin": "http://127.0.0.1:5002"})
     assert resp.status_code == 200
     body = resp.get_json()
     assert body == {"ok": True, "active": b}
     assert workspace.active_slug() == b
+
+
+def test_project_switch_headerless_403(client, tmp_projects):
+    """A mutating POST with NO Origin AND NO Referer is denied (strict decorator
+    policy — parity with the receiver's _origin_allowed('') deny)."""
+    a, b = tmp_projects
+    resp = client.post("/api/project", json={"slug": b})
+    assert resp.status_code == 403
+    assert resp.get_json() == {"ok": False, "error": "forbidden origin"}
+    # The switch was rejected before touching the registry.
+    assert workspace.active_slug() == a
 
 
 def test_project_switch_unknown_slug_400(client, tmp_projects):

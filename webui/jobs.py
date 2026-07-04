@@ -218,6 +218,27 @@ class JobRunner:
             job = self._jobs.get(job_id)
         return job.subscribe() if job is not None else None
 
+    def replay_lines(self, job_id: str) -> list[str]:
+        """Public snapshot of a job's buffered log lines for SSE replay. Returns
+        an empty list for an unknown job. Replaces the SSE route reaching into
+        ``_get().lines`` internals.
+
+        KNOWN benign boundary duplication: the SSE route replays this snapshot and
+        THEN drains the live subscriber queue. Because it subscribes and snapshots
+        without an atomic barrier between them, a single line landing in that gap
+        can appear BOTH in the replay and in the live drain. SSE consumers must
+        therefore render lines idempotently — the frontend console should de-dupe
+        consecutive identical frames (or otherwise tolerate a repeated boundary
+        line). This is intentional: the alternative (a lock spanning subscribe +
+        snapshot + first drain) would couple loggers to the slow HTTP generator.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return []
+            with job._lock:
+                return list(job.lines)
+
     def unsubscribe(self, job_id: str, q: queue.Queue) -> None:
         with self._lock:
             job = self._jobs.get(job_id)

@@ -19,7 +19,8 @@ blueprints (Flask raises on a duplicate blueprint name otherwise).
 """
 from __future__ import annotations
 
-from flask import jsonify, send_from_directory, abort
+from flask import jsonify, send_from_directory
+from werkzeug.exceptions import NotFound
 
 from . import paths
 from .api import build_api_blueprint
@@ -27,18 +28,36 @@ from .api import build_api_blueprint
 _REGISTERED_FLAG = "_webui_registered"
 
 
+def _looks_like_spa_route(subpath: str) -> bool:
+    """True when ``subpath`` is a client-side SPA route rather than an asset
+    request: an asset's final path segment has a file extension (``app.js``,
+    ``assets/main.css``); a SPA route does not (``inbox/some/deep/route``)."""
+    last = subpath.rsplit("/", 1)[-1]
+    return "." not in last
+
+
 def _serve_static(subpath: str = ""):
     """Serve a built frontend file, falling back to index.html for SPA client
-    routes. 503 when the frontend isn't built (Phase 0b)."""
+    routes. 503 when the frontend isn't built (Phase 0b).
+
+    ``send_from_directory`` is the SINGLE path-safety authority: it resolves the
+    request against the static root and rejects traversal (``..``, absolute paths,
+    encoded separators) by raising werkzeug ``NotFound``. We do NOT pre-check
+    ``is_file`` ourselves — that would be a second, divergent traversal gate. On a
+    miss we serve index.html for a SPA route (no extension in the final segment) or
+    404 for a genuine missing asset.
+    """
     if not paths.static_available():
         return jsonify({"ok": False, "error": "web UI not built"}), 503
-    root = paths.static_dir()
-    # An explicit asset request (has an extension / a real file) is served
-    # directly; anything else is an SPA route -> index.html. send_from_directory
-    # rejects path traversal (".." / absolute) safely.
-    if subpath and (root / subpath).is_file():
-        return send_from_directory(str(root), subpath)
-    return send_from_directory(str(root), "index.html")
+    root = str(paths.static_dir())
+    if not subpath:
+        return send_from_directory(root, "index.html")
+    try:
+        return send_from_directory(root, subpath)
+    except NotFound:
+        if _looks_like_spa_route(subpath):
+            return send_from_directory(root, "index.html")
+        raise
 
 
 def register_webui(app) -> None:

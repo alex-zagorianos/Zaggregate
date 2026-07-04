@@ -16,6 +16,7 @@ up), then drains the live subscriber queue until the terminal sentinel arrives.
 from __future__ import annotations
 
 import json
+import sys
 
 from flask import Blueprint, jsonify, Response, current_app
 
@@ -40,22 +41,19 @@ def job_status(job_id: str):
 
 @runs_bp.get("/jobs/<job_id>/events")
 def job_events(job_id: str):
-    job = runner._get(job_id)
-    if job is None:
+    if runner.status(job_id) is None:
         return jsonify({"ok": False, "error": "unknown job"}), 404
 
     def _stream():
         # Reconnect backoff, sent once at stream open.
         yield "retry: 2000\n\n"
-        # Snapshot the already-buffered lines and subscribe. Subscribing BEFORE
-        # reading the buffer would risk double-emitting a line that lands in the
-        # gap; reading first then subscribing risks missing one. We snapshot the
-        # buffer length, replay it, then drain live — the runner's per-line
-        # fan-out means at worst a boundary line repeats, which an SSE consumer
-        # tolerates (idempotent append). Simpler + safe: replay buffer, then live.
+        # Replay the already-buffered lines (public accessor) then subscribe and
+        # drain live. At worst a boundary line lands in the gap and repeats across
+        # replay + live drain — a benign duplication SSE consumers tolerate
+        # (idempotent append); see JobRunner.replay_lines for the full contract.
         q = runner.subscribe(job_id)
         try:
-            for line in list(job.lines):
+            for line in runner.replay_lines(job_id):
                 yield _sse("line", line)
             if q is not None:
                 while True:
@@ -92,12 +90,26 @@ import threading as _threading
 _HOLD_EVENTS: dict[str, _threading.Event] = {}
 
 
+def _test_hooks_enabled() -> bool:
+    """Belt-and-suspenders per-request gate for the ``/_test/*`` hooks: BOTH the
+    app must be in TESTING mode AND pytest must be imported in this process. Either
+    alone is insufficient — a stray ``TESTING=True`` in a real launch (or a future
+    caller reusing the receiver app) can't reach these routes unless pytest is also
+    resident, which it never is in a shipped ``--web`` process.
+
+    Phase 5 TODO: before the ``--web`` launcher ships, consider registration-time
+    exclusion (don't register these routes at all outside a test run) rather than
+    relying solely on this per-request gate.
+    """
+    return bool(current_app.config.get("TESTING")) and "pytest" in sys.modules
+
+
 def _register_test_hook(bp: Blueprint) -> None:
     from flask import request
 
     @bp.post("/_test/job")
     def _start_test_job():  # pragma: no cover - registered only under TESTING
-        if not current_app.config.get("TESTING"):
+        if not _test_hooks_enabled():
             return jsonify({"ok": False, "error": "not found"}), 404
         from ..jobs import JobConflict
         data = request.get_json(force=True, silent=True) or {}
@@ -127,7 +139,7 @@ def _register_test_hook(bp: Blueprint) -> None:
 
     @bp.post("/_test/release/<token>")
     def _release_test_job(token):  # pragma: no cover - registered only under TESTING
-        if not current_app.config.get("TESTING"):
+        if not _test_hooks_enabled():
             return jsonify({"ok": False, "error": "not found"}), 404
         ev = _HOLD_EVENTS.get(str(token))
         if ev is not None:

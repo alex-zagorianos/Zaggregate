@@ -90,3 +90,40 @@ def test_origin_wins_over_referer():
     assert security.origin_allowed(
         _FakeReq(origin="https://evil.example.com",
                  referer="http://127.0.0.1/app")) is False
+
+
+# ── strict mutating-origin verdict (decorator policy, divergence #2) ───────────
+# require_local_origin uses _mutating_origin_allowed, which — unlike the lenient
+# read-context origin_allowed — DENIES the header-less case, matching the
+# receiver's _origin_allowed('') deny.
+
+def test_mutating_both_absent_denied():
+    assert security._mutating_origin_allowed(_FakeReq()) is False
+
+
+def test_mutating_loopback_origin_allowed():
+    assert security._mutating_origin_allowed(
+        _FakeReq(origin="http://127.0.0.1:5002")) is True
+
+
+def test_mutating_extension_origin_allowed():
+    assert security._mutating_origin_allowed(
+        _FakeReq(origin="chrome-extension://x")) is True
+
+
+def test_mutating_foreign_origin_denied():
+    assert security._mutating_origin_allowed(
+        _FakeReq(origin="https://evil.example.com")) is False
+
+
+def test_mutating_referer_fallback_when_no_origin():
+    assert security._mutating_origin_allowed(
+        _FakeReq(referer="http://127.0.0.1:5002/app")) is True
+
+
+def test_mutating_diverges_from_lenient_origin_allowed():
+    # The two verdicts intentionally differ ONLY on the header-less case: lenient
+    # allows (read context), strict denies (mutating context).
+    req = _FakeReq()
+    assert security.origin_allowed(req) is True
+    assert security._mutating_origin_allowed(req) is False

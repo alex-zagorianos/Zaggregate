@@ -44,7 +44,11 @@ def _parse_extras(raw):
         loaded = json.loads(raw)
     except (ValueError, TypeError):
         return {}
-    return loaded if isinstance(loaded, dict) else {}
+    if not isinstance(loaded, dict):
+        return {}
+    # Same JSON-safety treatment as the already-dict branch above: a parsed blob
+    # can still carry values a future column shape makes non-JSON-safe.
+    return {str(k): _json_safe(v) for k, v in loaded.items()}
 
 
 def inbox_row(row: dict) -> dict:
