@@ -91,8 +91,11 @@ def _run_dispatch(monkeypatch, tmp_path, attr, ats_type, slug, extra=None):
 
 
 def test_dispatch_paylocity(tmp_path, monkeypatch):
+    # paylocity is a memoizable ats_type (S35 #24): _scrape_one dispatches it
+    # ONCE per company with keyword="" (fetch everything) and re-filters in
+    # Python, so the underlying scraper always sees keyword="" here.
     got = _run_dispatch(monkeypatch, tmp_path, "scrape_paylocity", "paylocity", "guid1")
-    assert got["slug"] == "guid1" and got["keyword"] == "engineer"
+    assert got["slug"] == "guid1" and got["keyword"] == ""
 
 
 def test_dispatch_eightfold(tmp_path, monkeypatch):

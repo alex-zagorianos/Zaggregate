@@ -22,7 +22,9 @@ from discover.registry import merge_discovered
 
 # ATS apex hosts CDX-harvested by default — the same boards the live scrapers
 # understand (Brave discovery already covers these per-keyword; CDX is the
-# generic, keyword-blind denominator pass).
+# generic, keyword-blind denominator pass). These are all PATH-based tenants
+# (boards.greenhouse.io/acme, jobs.lever.co/acme, ...), so the per-URL prefix
+# harvest (cc_harvest.harvest_slugs, `url=host/*`) reaches every tenant fine.
 _DEFAULT_ATS_HOSTS = [
     "boards.greenhouse.io",
     "jobs.lever.co",
@@ -31,11 +33,41 @@ _DEFAULT_ATS_HOSTS = [
     "apply.workable.com",
 ]
 
+# S35 #15: icims/taleo/successfactors are JSON-LD-scrapeable (ats_detect.py
+# fingerprints them; careers_client.py routes them to scrape_jsonld exactly
+# like the generic "jsonld" type) but were previously ONLY reachable via the
+# opt-in --discover-enterprise flag (_ENTERPRISE_ATS_HOSTS below), which per a
+# prior review finding isn't even wired into daily_run -- so these three
+# scrapeable platforms were never discovered by DEFAULT. Added here, but they
+# are SUBDOMAIN-based tenants (careers-kroger.icims.com, not icims.com/<path>),
+# so unlike _DEFAULT_ATS_HOSTS above they need the registered-domain
+# (matchType=domain) host-level harvest to reach `*.<host>` at all -- a
+# per-URL `icims.com/*` prefix query would never see a tenant subdomain. See
+# run_funnel()'s default path below, which host-level-harvests JUST this list
+# even when the caller didn't pass host_level=True/enterprise=True.
+_DEFAULT_SUBDOMAIN_ATS_HOSTS = [
+    "icims.com",
+    "taleo.net",
+    "successfactors.com",
+]
+
+# UKG (Kronos/UltiPro), Paycom, Cornerstone OnDemand, Ceridian/Dayforce are
+# deliberately NOT added anywhere in this file: ats_detect.py has no
+# fingerprint branch for them and careers_client.py has no scraper for them,
+# so a discovered "board" on one of these hosts would fall back to
+# ats_type='direct' (the raw URL, unprobeable, unscrapeable) -- pure junk
+# registry entries with no path to ever return a job. Add them here only
+# alongside a real ats_detect.py branch + scrape_jsonld (or a dedicated
+# scraper) for that platform, matching the icims/taleo/successfactors pattern.
+
 # Enterprise ATS registered-domains — one host-level (matchType=domain) query
 # reaches every tenant under them. This is where the big health systems /
 # industrials live (Workday/iCIMS/Taleo/SuccessFactors); detect_ats already tags
 # them (slug = the URL) and probe_count counts their JSON-LD. Only used on the
 # host-level path (plan P6) — a per-URL CDX prefix can't span subdomains.
+# NOTE: icims/taleo/successfactors are ALSO in _DEFAULT_SUBDOMAIN_ATS_HOSTS now
+# (S35 #15) — kept here too since --discover-enterprise's host_level pagination
+# (max_pages) is a deeper harvest than the default's single-page pass.
 _ENTERPRISE_ATS_HOSTS = [
     "myworkdayjobs.com",
     "icims.com",
@@ -108,7 +140,8 @@ def run_funnel(*, ats_hosts=None, domains=None, companies_json_path=None,
     Returns {"harvested": {ats_type: count}, "added": n_added}.
     """
     boards: dict[str, set] = {}
-    hosts = list(_DEFAULT_ATS_HOSTS if ats_hosts is None else ats_hosts)
+    using_default_hosts = ats_hosts is None
+    hosts = list(_DEFAULT_ATS_HOSTS if using_default_hosts else ats_hosts)
     if enterprise:
         host_level = True
         hosts += [h for h in _ENTERPRISE_ATS_HOSTS if h not in hosts]
@@ -119,6 +152,19 @@ def run_funnel(*, ats_hosts=None, domains=None, companies_json_path=None,
         else:
             _merge_boards(boards, cc_harvest.harvest_slugs(
                 hosts, crawl_id=crawl_id, limit=limit))
+    # S35 #15: icims/taleo/successfactors are JSON-LD-scrapeable and now part of
+    # the DEFAULT (no-flags) discovery surface, but they're subdomain-tenant
+    # hosts that need the registered-domain (matchType=domain) harvest, not the
+    # per-URL-prefix one _DEFAULT_ATS_HOSTS uses above. Only added when the
+    # caller is using the true default host list (ats_hosts=None) -- an
+    # explicit ats_hosts=[] ("skip the CDX leg entirely") or a custom list must
+    # stay exactly what the caller asked for. Skipped when --discover-enterprise
+    # already host-level-harvested them (with deeper max_pages pagination) above.
+    if using_default_hosts and not enterprise:
+        subdomain_hosts = [h for h in _DEFAULT_SUBDOMAIN_ATS_HOSTS if h not in hosts]
+        if subdomain_hosts:
+            _merge_boards(boards, cc_harvest.harvest_host_index(
+                subdomain_hosts, crawl_id=crawl_id, limit=limit))
     if domains:
         _merge_boards(boards, harvest_from_domains(domains))
     boards = _apply_classify(boards, classify)

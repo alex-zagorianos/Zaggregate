@@ -234,6 +234,11 @@ def main():
     # pass (S32/L7) — presentation only, no scraping change.
     import applog
     applog.reset_run_warnings()
+    # Reset discovery's in-run query memo (S35 #25) so a stale result from a
+    # previous in-process run (tests, an embedding host, a prior GUI search)
+    # isn't reused for a DIFFERENT run's (ats_site, keyword) pair.
+    from scrape.discoverer import reset_run_memo
+    reset_run_memo()
 
     from search.cli import build_clients, load_user_config
     from search.search_engine import SearchEngine
@@ -614,17 +619,21 @@ def main():
     except Exception as e:
         log(f"WARN: auto-backup skipped: {type(e).__name__}: {e}")
 
-    # Cache GC: the cache/ tree (ATS payload blobs + per-source FileCaches) was
-    # write-mostly and never evicted -> hundreds of MB. Evict entries older than
-    # the GC window at the end of a run; anything still needed is re-fetched
-    # cheaply (and conditional-GET makes that a 304). Best-effort, never fatal.
+
+def _gc_cache() -> None:
+    """Cache GC: the cache/ tree (ATS payload blobs + per-source FileCaches) was
+    write-mostly and never evicted -> hundreds of MB. Evict entries older than
+    the GC window; anything still needed is re-fetched cheaply (and
+    conditional-GET makes that a 304). Best-effort, never fatal -- called from
+    run_main()'s finally: so an ABORTED run (any exception raised inside
+    main()) still gets GC'd, not just a clean/successful one (S35 #36)."""
     try:
         from config import CACHE_DIR
         from scrape.cache_helpers import gc_cache_dir
         n_gc = gc_cache_dir(CACHE_DIR)
         if n_gc:
             log(f"cache GC | removed {n_gc} stale cache file(s)")
-    except Exception as e:  # GC must never kill a run
+    except Exception as e:  # GC must never mask the run's real outcome
         log(f"WARN: cache GC skipped: {type(e).__name__}: {e}")
 
 
@@ -652,6 +661,20 @@ def run_main() -> int:
                 pass  # beacon bookkeeping must never mask the original failure
         return 1
     finally:
+        # Cache GC runs here (not at the tail of main()) so an ABORTED run --
+        # main() raising anywhere before reaching its own end -- still trims
+        # cache/ instead of skipping GC entirely (S35 #36). Ordering is
+        # preserved: this still runs strictly AFTER everything main() did (or
+        # attempted). _gc_cache() already has its own try/except, but this
+        # finally: is unwinding from EITHER a return or an in-flight exception,
+        # and an unguarded call here would let ANY escape from _gc_cache (a bug
+        # in it, not just the GC operation itself) silently replace the
+        # original outcome -- so this outer try/except is a hard guarantee,
+        # not just defense in depth.
+        try:
+            _gc_cache()
+        except Exception:
+            pass  # a GC failure must never mask the run's real outcome
         # Always release the process-local project pin set in main(), so an
         # in-process caller (tests, an embedding host) isn't left pinned.
         workspace.unpin_active()

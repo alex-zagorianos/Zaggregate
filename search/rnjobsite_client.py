@@ -69,25 +69,23 @@ def _text(el, tag: str) -> str:
 
 def _parse_feed(raw) -> list[dict]:
     """Parse the RSS 2.0 XML into plain dicts (JSON-cacheable). Reads RNJobSite's
-    custom <hiringOrganization>/<jobLocation> tags. Malformed/unparseable ->
-    empty list rather than raising."""
-    try:
-        root = _safe_fromstring(raw)  # XXE/billion-laughs-safe
-    except Exception:
-        return []
+    custom <hiringOrganization>/<jobLocation> tags.
+
+    RAISES on a malformed/unparseable document instead of swallowing to [] --
+    see search.higheredjobs_client._parse_feed's docstring for why: a parse
+    failure must propagate so SingleFeedClient._cached() skips the cache write
+    (S35 finding #5), rather than caching a false "empty feed" for the full TTL."""
+    root = _safe_fromstring(raw)  # XXE/billion-laughs-safe; raises on bad XML
     items = []
-    try:
-        for item in root.iter("item"):
-            items.append({
-                "title": _text(item, "title"),
-                "link": _text(item, "link"),
-                "company": _text(item, "hiringOrganization"),
-                "location": _text(item, "jobLocation"),
-                "description": _text(item, "description"),
-                "pubDate": _text(item, "pubDate"),
-            })
-    except Exception:
-        return []
+    for item in root.iter("item"):
+        items.append({
+            "title": _text(item, "title"),
+            "link": _text(item, "link"),
+            "company": _text(item, "hiringOrganization"),
+            "location": _text(item, "jobLocation"),
+            "description": _text(item, "description"),
+            "pubDate": _text(item, "pubDate"),
+        })
     return items
 
 
