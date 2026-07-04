@@ -489,9 +489,33 @@ function InboxTable({
   const [focused, setFocused] = React.useState(0);
   const rowRefs = React.useRef<(HTMLTableRowElement | null)[]>([]);
   const lastClicked = React.useRef<number | null>(null);
+  const prevLen = React.useRef(rows.length);
+  // Whether a table row currently owns keyboard focus — the gate for re-homing
+  // focus after a triage removal (below). Kept in a ref so reading it in the layout
+  // effect sees the value as of the last focus/blur, not a stale render closure.
+  const rowHadFocus = React.useRef(false);
 
   React.useEffect(() => {
     if (focused > rows.length - 1) setFocused(Math.max(0, rows.length - 1));
+  }, [rows.length, focused]);
+
+  // Keyboard-first triage: after a t/d action optimistically removes the focused
+  // row, its <tr> unmounts and DOM focus falls back to <body>, dead-ending the
+  // rapid-fire d,d,d flow. When the row count SHRINKS and a row HAD keyboard focus
+  // (so this is a triage removal, not filtering/windowing or a mouse action), re-home
+  // focus to the row now at the same index (clamped to the new last row) so the next
+  // ArrowDown/t/d lands. useLayoutEffect so the refocus happens before paint (no
+  // visible focus-ring flicker). Only acts when nothing in the table already holds
+  // focus, so it never yanks focus off a control the user just tabbed to.
+  React.useLayoutEffect(() => {
+    const shrank = rows.length < prevLen.current;
+    prevLen.current = rows.length;
+    if (!shrank || rows.length === 0 || !rowHadFocus.current) return;
+    const active = document.activeElement;
+    const focusInTable = rowRefs.current.some((el) => el && el === active);
+    if (focusInTable) return; // a row already has focus — don't yank it
+    const idx = Math.max(0, Math.min(rows.length - 1, focused));
+    rowRefs.current[idx]?.focus();
   }, [rows.length, focused]);
 
   const focusRow = (i: number) => {
@@ -574,7 +598,19 @@ function InboxTable({
                     rowRefs.current[i] = el;
                   }}
                   tabIndex={i === focused ? 0 : -1}
-                  onFocus={() => setFocused(i)}
+                  onFocus={() => {
+                    setFocused(i);
+                    rowHadFocus.current = true;
+                  }}
+                  onBlur={(e) => {
+                    // Focus left this row; only mark the table as unfocused if it
+                    // didn't move to another row (a removal unmounts the row with no
+                    // relatedTarget, which we WANT to treat as still-in-triage).
+                    const next = e.relatedTarget as Node | null;
+                    if (next && rowRefs.current.some((el) => el === next))
+                      return;
+                    if (next) rowHadFocus.current = false;
+                  }}
                   onKeyDown={(e) => onRowKeyDown(e, row, i)}
                   onClick={(e) => onRowClick(e, i, row)}
                   aria-selected={isSelected}

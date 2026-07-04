@@ -118,6 +118,35 @@ def _resolve_home() -> dict:
             "remote_ok": remote_ok, "pay_floor": pay_floor}
 
 
+# ── sample inbox (tk parity: InboxTab.refresh L459-473) ───────────────────────
+def _inbox_snapshot() -> list[dict]:
+    """The Inbox row snapshot the read routes work over: the real inbox, OR — for a
+    brand-new user whose real inbox is genuinely empty and who hasn't retired the
+    demo yet — the bundled sample rows (``demo_data.demo_inbox_rows``).
+
+    Faithful port of ``InboxTab.refresh``: a first-run empty inbox shows ~20
+    pre-scored DEMO rows so the aha (a scored, location-clean, Score-vs-Fit inbox)
+    lands before any source is connected. Read-only by construction — demo rows carry
+    ``is_demo`` + negative ids and never touch the DB, so the mutating routes
+    (dismiss/track/export) already no-op/404/skip them (dismiss & dismiss-bulk gate on
+    ``db.inbox_all`` membership, track 404s on a missing DB row, export drops
+    ``is_demo``). Retirement (the marker write) is owned by the tk app / daily run, not
+    this GET route; ``should_show_demo`` already suppresses the demo the instant a real
+    inbox exists (``inbox_count > 0``), so a read route never needs to write state.
+    Best-effort: any failure falls back to the (empty) real inbox."""
+    rows = list(db.inbox_all())
+    if rows:
+        return rows
+    try:
+        import config
+        import demo_data
+        if demo_data.should_show_demo(config.USER_DATA_DIR, len(rows)):
+            return demo_data.demo_inbox_rows()
+    except Exception:
+        pass
+    return rows
+
+
 # ── query-param coercion ──────────────────────────────────────────────────────
 def _int_arg(name: str):
     raw = (request.args.get(name) or "").strip()
@@ -213,6 +242,12 @@ def list_inbox():
     if order not in ("roundrobin", "score"):
         order = "roundrobin"
     all_rows = list(db.inbox_all(order=order))
+    # First-run onboarding parity with the tk InboxTab: an empty real inbox falls
+    # back to the bundled sample rows (kept in their curated file order; the ``order``
+    # sort only governs the real DB query). filter_rows() bypasses all view filters
+    # while the whole set is demo, so the sample is never whittled down.
+    if not all_rows:
+        all_rows = _inbox_snapshot()
     total = len(all_rows)
 
     home = _resolve_home()
@@ -259,13 +294,22 @@ def list_inbox():
 
 
 # ── GET /api/inbox/<id>/detail ────────────────────────────────────────────────
-@inbox_bp.get("/inbox/<int:inbox_id>/detail")
+# ``signed=True``: demo/sample rows carry NEGATIVE ids (see demo_data), and the
+# default int converter rejects a leading '-' (a 404 at the routing layer), which
+# would dead-end the detail pane during onboarding. Signed matching lets a demo id
+# reach the handler, where it's looked up in the demo snapshot.
+@inbox_bp.get("/inbox/<int(signed=True):inbox_id>/detail")
 def inbox_detail(inbox_id: int):
     """Server-computed detail for one row, mirroring the tk detail pane's pieces
     (all from data the pipeline already produced — no AI, no network):
     ``fit_why``, ``score_notes`` breakdown, ``ghost`` staleness verdict, ``ats``
-    hint, ``description_preview``. 404 for an unknown id."""
-    rows = {r["id"]: r for r in db.inbox_all()}
+    hint, ``description_preview``. 404 for an unknown id.
+
+    Serves demo rows too (negative ids, not in the DB) so the detail pane works while
+    the onboarding sample is on screen — they carry their own ``fit_why`` /
+    ``score_notes`` / ``description`` inline, so the same pipeline-derived readout
+    renders without any DB or network access."""
+    rows = {r["id"]: r for r in _inbox_snapshot()}
     row = rows.get(inbox_id)
     if row is None:
         return jsonify({"ok": False, "error": "unknown inbox row"}), 404

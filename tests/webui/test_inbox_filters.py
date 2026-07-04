@@ -274,3 +274,85 @@ def test_detail_shape(client, tmp_db):
 
 def test_detail_unknown_id_404(client, tmp_db):
     assert client.get("/api/inbox/999999/detail").status_code == 404
+
+
+# ── sample (demo) inbox — first-run onboarding parity with tk InboxTab ─────────
+
+def _force_demo(monkeypatch, on=True):
+    """Make should_show_demo deterministic regardless of the real user's retire
+    marker so these tests don't depend on the dev machine's onboarding state."""
+    import demo_data
+    monkeypatch.setattr(demo_data, "should_show_demo", lambda *a, **k: on)
+
+
+def test_empty_inbox_serves_demo_rows(client, tmp_db, monkeypatch):
+    """A brand-new user with a genuinely empty real inbox sees the bundled sample
+    rows via GET /api/inbox — parity with the tk InboxTab, which swaps the demo
+    sample into ``self._all`` when the real inbox is empty (finding: the web route
+    used to return 0 rows here, regressing onboarding)."""
+    _force_demo(monkeypatch, on=True)
+    body = client.get("/api/inbox").get_json()
+    assert body["ok"] is True
+    assert body["total"] == 20 and body["shown"] == 20
+    assert len(body["rows"]) == 20
+    assert all(r.get("is_demo") for r in body["rows"])
+    assert all(r["source"] == "Demo" for r in body["rows"])
+    assert all(r["id"] < 0 for r in body["rows"])          # negative demo ids
+    assert body["badges"]["demo"] is True
+
+
+def test_demo_rows_bypass_all_view_filters(client, tmp_db, monkeypatch):
+    """The sample set is shown UNFILTERED (tk _filtered L661-669): its varied
+    locations/scores ARE the demo, so a leftover Local-only mode or a min_score from
+    a previous project must not whittle it down before the first real search."""
+    _force_demo(monkeypatch, on=True)
+    # Filters that would normally slash the set to near-zero:
+    q = "min_score=100&location_mode=Local+only&size=XL&hide_stale=1&q=zzz-nomatch"
+    body = client.get(f"/api/inbox?{q}").get_json()
+    assert body["ok"] is True
+    assert body["shown"] == 20 and len(body["rows"]) == 20   # nothing dropped
+
+
+def test_demo_detail_pane_renders(client, tmp_db, monkeypatch):
+    """The detail endpoint serves demo rows (negative ids, not in the DB) from their
+    inline fit_why/score_notes/description so the pane works during onboarding."""
+    _force_demo(monkeypatch, on=True)
+    rows = client.get("/api/inbox").get_json()["rows"]
+    rid = rows[0]["id"]
+    assert rid < 0
+    body = client.get(f"/api/inbox/{rid}/detail").get_json()
+    assert body["ok"] is True
+    assert body["row"]["id"] == rid
+    assert set(body) >= {"ok", "row", "fit_why", "score_notes", "ghost",
+                         "ats", "description_preview"}
+
+
+def test_real_inbox_suppresses_demo(client, tmp_db, monkeypatch):
+    """The moment a real inbox exists, the demo is gone even if should_show_demo
+    were true — a non-empty real inbox short-circuits the fallback (tk parity: the
+    real rows win, demo is retired)."""
+    _force_demo(monkeypatch, on=True)
+    db.inbox_add_many([_job("https://x/1", company="Real Co")])
+    body = client.get("/api/inbox").get_json()
+    assert body["total"] == 1
+    assert all(not r.get("is_demo") for r in body["rows"])
+    assert body["rows"][0]["company"] == "Real Co"
+
+
+def test_filter_rows_bypasses_when_all_demo():
+    """Unit: filter_rows returns an all-demo set unfiltered regardless of params
+    (the bypass the finding asks for — latent until demo rows reach it, wired here)."""
+    demo = [{"id": -1, "is_demo": True, "score": 10, "source": "Demo",
+             "location": "Remote", "title": "A", "company": "X", "fit": -1},
+            {"id": -2, "is_demo": True, "score": 20, "source": "Demo",
+             "location": "London", "title": "B", "company": "Y", "fit": -1}]
+    out = inbox_filters.filter_rows(demo, min_score=100, hide_stale=True,
+                                    q="nomatch", size="XL")
+    assert out == demo   # completely unfiltered
+
+    # A set that MIXES a real row in must NOT bypass (guards against a real row
+    # being smuggled through unfiltered).
+    mixed = demo + [{"id": 5, "score": 5, "source": "adzuna", "title": "C",
+                     "company": "Z", "fit": -1, "location": ""}]
+    out2 = inbox_filters.filter_rows(mixed, min_score=100)
+    assert out2 == []    # min_score=100 drops all (no bypass)

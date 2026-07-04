@@ -142,7 +142,18 @@ def filter_rows(
     to ``rows`` when not supplied.
 
     Every param defaults to a no-op: omit it and no rows are dropped for it.
+
+    Sample-inbox bypass (tk parity, ``InboxTab._filtered`` L661-669): when the WHOLE
+    row set is the bundled demo sample, return it completely unfiltered. Its varied
+    locations/scores ARE the demo (they teach the location-clean, Score-vs-Fit split),
+    so a first-run user's default filter-bar state (a leftover Local-only mode or a
+    nonzero min_score from a previous project) must never whittle it down before they
+    have run a real search. Gate on the rows ACTUALLY being demo rows (``is_demo``),
+    not a flag, so a caller that mixes in real rows is never left unfiltered.
     """
+    if rows and all(r.get("is_demo") for r in rows):
+        return list(rows)
+
     out = rows
     snapshot = all_rows if all_rows is not None else rows
 
