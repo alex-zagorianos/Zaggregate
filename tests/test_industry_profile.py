@@ -283,6 +283,39 @@ def test_soc_major_groups_only_emit_valid_muse_categories():
             assert cat in ip.MUSE_CATEGORIES_ALL, f"group {code} -> invalid Muse category {cat!r}"
 
 
+# ── #31: Protective Service (33) / Production (51) get real Muse routing ─────
+def test_protective_service_soc_routes_to_cleaning_and_facilities():
+    # SOC 33 (security guards, correctional officers, ...) previously routed to
+    # nothing ([]); now shares the nearest on-site/physical-presence category
+    # already used by SOC 37 (Building/Grounds Cleaning & Maintenance).
+    knobs = ip.SOC_MAJOR_GROUPS["33"]
+    assert knobs["muse"] == ["Cleaning and Facilities"]
+    assert knobs["jobicy"] is None
+
+
+def test_production_soc_routes_to_installation_maintenance_repairs():
+    # SOC 51 (assembly-line/factory/machine operators) previously routed to
+    # nothing ([]); now shares the hands-on manufacturing-tier category already
+    # used by SOC 49 (Installation, Maintenance, and Repair Occupations).
+    knobs = ip.SOC_MAJOR_GROUPS["51"]
+    assert knobs["muse"] == ["Installation, Maintenance, and Repairs"]
+    assert knobs["jobicy"] is None
+
+
+def test_farming_fishing_forestry_soc_stays_unrouted():
+    # SOC 45 has no analog anywhere in the Muse taxonomy -- stays [] (full-reach
+    # fallback), not force-mapped to an unrelated category.
+    knobs = ip.SOC_MAJOR_GROUPS["45"]
+    assert knobs["muse"] == []
+    assert knobs["jobicy"] is None
+
+
+def test_engineering_soc_groups_unaffected_by_31_fix():
+    # Parity: the #31 routing additions must not touch engineering's own groups.
+    assert ip.SOC_MAJOR_GROUPS["15"]["muse"] == ["Software Engineering", "Data and Analytics"]
+    assert ip.SOC_MAJOR_GROUPS["17"]["muse"] == ["Science and Engineering"]
+
+
 # ── O*NET-SOC exact-match tier (item 22) ────────────────────────────────────
 # NOTE: this tier deliberately does a DETERMINISTIC lookup against
 # coverage.entity._onet()'s table (+ title_core normalization), NOT
