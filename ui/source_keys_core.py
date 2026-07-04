@@ -233,4 +233,14 @@ def test_source(source_key: str) -> tuple[bool, str]:
         n = len(client.parse_results(raw, query))
         return (True, f"OK - {n} sample result(s)")
     except Exception as e:  # offline / bad key / API change -> clean failure
-        return (False, f"{type(e).__name__}: {e}")
+        # A bad/revoked/typo'd credential makes the underlying client raise an
+        # HTTPError whose str() embeds the full request URL -- and Adzuna/Careerjet
+        # carry the secret as a query param, Jooble carries it in the URL PATH. That
+        # message would otherwise round-trip verbatim into this route's JSON
+        # (result.detail) and render in the SourcesTab DOM / devtools network log.
+        # Scrub it through the same central redactor every persisted error string
+        # already uses (query app_key/app_id/affid, Jooble path, and the configured
+        # values as a backstop) so no source's secret ever reaches the HTTP client.
+        # Mirrors the URL-strip defense careeronestop_client already applies.
+        import applog
+        return (False, applog.redact(f"{type(e).__name__}: {e}"))

@@ -73,6 +73,43 @@ def test_test_source_unknown():
     assert ok is False
 
 
+def test_test_source_redacts_secret_in_error(monkeypatch):
+    """A bad/revoked credential makes the client raise an HTTPError whose str()
+    embeds the request URL -- Adzuna/Careerjet carry the secret as a query param,
+    Jooble in the URL PATH. That message flows verbatim into the web route's JSON
+    (result.detail) and renders in the DOM, so test_source MUST scrub it through
+    applog.redact before returning. We bypass the pytest self-skip (that only
+    covers the network guard, not this except clause) and force each client's
+    factory to raise an error carrying a fake secret in each leak shape."""
+    from ui import source_keys_core
+
+    # Bypass the network guard so the real except clause runs; no network is hit
+    # because the factory raises before any request.
+    monkeypatch.setattr(source_keys_core, "_in_pytest", lambda: False)
+    # Satisfy the required-keys gate so we reach the try/except (values unused).
+    monkeypatch.setattr(source_keys_core.settings, "get_api_key",
+                        lambda name: "SEEDED")
+
+    SECRET = "DEADBEEFCAFE1234567890AB"
+    cases = {
+        # Adzuna/Careerjet: secret rides a query param -> _URL_CRED_RE.
+        "adzuna": f"https://api.adzuna.com/v1/api/jobs/us/search/1?app_key={SECRET}&what=engineer",
+        "careerjet": f"http://public.api.careerjet.net/search?affid={SECRET}&keywords=engineer",
+        # Jooble: secret rides the URL PATH -> _JOOBLE_PATH_RE.
+        "jooble": f"https://jooble.org/api/{SECRET}",
+    }
+    for source, url in cases.items():
+        def _raising_factory(_u=url):
+            raise RuntimeError(
+                f"404 Client Error: Not Found for url: {_u}")
+        monkeypatch.setitem(
+            source_keys_core.PROBE_TABLE[source], "factory", _raising_factory)
+        ok, detail = source_keys_core.test_source(source)
+        assert ok is False
+        assert SECRET not in detail, (source, detail)
+        assert "[redacted]" in detail, (source, detail)
+
+
 def test_open_dialog_builds(secrets):
     try:
         root = tk.Tk()
@@ -150,17 +187,14 @@ def test_probe_table_covers_every_source():
 def test_core_is_tk_free():
     """Importing the core must not pull in tkinter (the whole point of the split —
     the web layer imports this server-side)."""
-    import sys
     import importlib
     # Force a clean import and assert the module object has no tkinter attr and
     # did not add tkinter to sys.modules on our behalf.
-    had_tk = "tkinter" in sys.modules
     mod = importlib.import_module("ui.source_keys_core")
     assert not hasattr(mod, "tk")
     # (We can't assert tkinter is absent from sys.modules globally — another test
     # may have imported it — but the module source references no tkinter symbol.)
     assert "import tkinter" not in open(mod.__file__, encoding="utf-8").read()
-    assert had_tk or True   # tolerate either state; the source check is the gate
 
 
 def test_open_dialog_seeds_from_secrets(secrets):
