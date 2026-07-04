@@ -66,6 +66,23 @@ def test_badge_reason_nudges_before_first_run(monkeypatch):
     assert reach.badge_reason(None) is not None
 
 
+def test_badge_reason_tech_copy_only_for_knowledge_work(monkeypatch):
+    """MINOR-4 (S36 scenario findings): a nurse must never read "mostly
+    remote/tech jobs" — non-knowledge-work fields get neutral copy; knowledge
+    work (and blank/unknown industry) keeps the historical clause."""
+    _patch_connected(monkeypatch, [])
+    unc = {"certifiable": False, "coverage_pct": None,
+           "n_distinct": 8, "n_families": 1}
+    nurse = reach.badge_reason(unc, industry="nursing")
+    assert nurse and "remote/tech" not in nurse
+    assert nurse.startswith("coverage is uncertain because")
+    assert "Adzuna" in nurse and "are not connected" in nurse
+    eng = reach.badge_reason(unc, industry="controls_engineering")
+    assert eng and eng.startswith("mostly remote/tech jobs because")
+    # Blank industry counts as knowledge work (historical default copy).
+    assert reach.badge_reason(unc, industry="").startswith("mostly remote/tech")
+
+
 def mk(title, company, source, loc="Cincinnati, OH", url=""):
     return JobResult(title=title, company=company, location=loc,
                      salary_min=None, salary_max=None, description="",

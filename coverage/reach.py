@@ -226,7 +226,21 @@ def _missing_headline_keys() -> list[str]:
     return [k for k in _HEADLINE_LOCAL_KEYS if k not in connected]
 
 
-def badge_reason(snap: dict | None) -> str | None:
+def _badge_industry(industry: str | None) -> str:
+    """Resolve the industry for badge copy: the caller's explicit value, else the
+    ACTIVE project's config (per-request/per-refresh — never cached at import, so
+    a project switch changes the copy). Best-effort '' on any error; '' counts as
+    knowledge work downstream, which keeps the historical copy."""
+    if industry is not None:
+        return industry
+    try:
+        import workspace
+        return (workspace.load_config() or {}).get("industry") or ""
+    except Exception:
+        return ""
+
+
+def badge_reason(snap: dict | None, industry: str | None = None) -> str | None:
     """The single actionable reason a reach badge is weak, or None when it's fine.
 
     Returns a short "…because <keys> aren't connected — Connect a free key" note
@@ -234,7 +248,12 @@ def badge_reason(snap: dict | None) -> str | None:
     is missing. This is what turns the honest-but-dead-end badge into an actionable
     one (§6.8 / Pattern 4a): the GUI shows it as a clickable "[Connect a free key]"
     that opens the keys dialog. None when the estimate is certifiable or nothing
-    actionable is missing."""
+    actionable is missing.
+
+    The "mostly remote/tech jobs" clause only applies to knowledge-work fields —
+    a nurse/teacher/trades project (where tech sources were already gated off)
+    gets neutral "coverage is uncertain" copy instead (S36 scenario MINOR-4).
+    `industry` defaults to the active project's config."""
     if snap is None:
         # No run yet — still worth nudging if the headline keys are missing.
         missing = _missing_headline_keys()
@@ -244,7 +263,13 @@ def badge_reason(snap: dict | None) -> str | None:
         missing = _missing_headline_keys()
     if not missing:
         return None
-    return (f"mostly remote/tech jobs because {' + '.join(missing)} "
+    try:
+        from search.keyword_strategy import is_knowledge_work
+        knowledge = is_knowledge_work(_badge_industry(industry))
+    except Exception:
+        knowledge = True  # copy nuance must never break the badge
+    lead = ("mostly remote/tech jobs" if knowledge else "coverage is uncertain")
+    return (f"{lead} because {' + '.join(missing)} "
             f"{'is' if len(missing) == 1 else 'are'} not connected")
 
 
