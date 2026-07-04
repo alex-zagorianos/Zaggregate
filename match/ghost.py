@@ -259,11 +259,25 @@ _GHOST_KEY_FIELDS = (
 )
 
 
+def _today_ordinal() -> int:
+    """Today's UTC day number — a seam so tests can roll the clock."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).date().toordinal()
+
+
 def _ghost_cache_key(job):
     """A hashable tuple of every ghost-relevant field on ``job`` (JobResult attr or
     inbox-row dict), or ``None`` when ``job`` can't be safely keyed (unhashable
     field value, e.g. a non-JSON-string ``extras`` dict) — the caller then skips
-    the cache entirely rather than risk a stale/incorrect hit."""
+    the cache entirely rather than risk a stale/incorrect hit.
+
+    The key includes TODAY'S UTC day ordinal: the age/expiry signals depend on
+    wall-clock time (``datetime.now() - created``), so an entry cached from
+    immutable row fields alone would freeze a row's staleness level for the
+    whole process lifetime (review-confirmed — a --desktop window left open for
+    weeks would never see a row cross the 30/45-day aging thresholds). Day
+    granularity matches the signals' own day-based thresholds; stale day-keyed
+    entries age out via the existing size bound."""
     try:
         values = tuple(_get(job, name) for name in _GHOST_KEY_FIELDS)
         extras = job.get("extras") if isinstance(job, dict) else None
@@ -275,7 +289,7 @@ def _ghost_cache_key(job):
             extras_key = ("valid_through", extras.get("valid_through"))
         else:
             extras_key = extras
-        key = (type(job).__name__,) + values + (extras_key,)
+        key = (type(job).__name__, _today_ordinal()) + values + (extras_key,)
         hash(key)
     except TypeError:
         return None

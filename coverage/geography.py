@@ -71,14 +71,24 @@ def metro_variants(area: str) -> set[str]:
             out.add(r["principal_city"].casefold())
             bare = title.split(",")[0].replace(" metro area", "").strip()
             out.add(bare)
-            # Multi-principal-city titles ("minneapolis-st. paul-bloomington")
-            # carry every principal city hyphen-joined — add each one so a
-            # posting naming any of them counts as metro. Additive only
-            # (inclusion over precision); single-city titles are unchanged.
-            for piece in bare.split("-"):
-                piece = piece.strip()
-                if len(piece) >= 3:
-                    out.add(piece)
+            # Multi-principal-city titles ("minneapolis-st. paul-bloomington,
+            # mn-wi") carry every principal city hyphen-joined — add each one
+            # so a posting naming any of them counts as metro. Emitted ONLY
+            # with a state suffix (same rule as the satellites below): a bare
+            # "aurora" from "denver-aurora-centennial" would substring-match
+            # jobs in Aurora IL/IN as Denver-local (review-confirmed false
+            # positive). The whole bare title stays bare (pre-existing).
+            states = [s.strip() for s in
+                      title.split(",")[-1].replace(" metro area", "")
+                           .replace(" micro area", "").strip().split("-") if s.strip()]
+            pieces = [p.strip() for p in bare.split("-") if len(p.strip()) >= 3]
+            if len(pieces) > 1:
+                for piece in pieces:
+                    for st in states:
+                        out.add(f"{piece}, {st}")
+                        full = _STATE_NAMES.get(st)
+                        if full:
+                            out.add(f"{piece}, {full}")
             # Satellite municipalities (metro_satellites.csv): postings name
             # the suburb, not the principal city ("Mason, OH" is a Cincinnati
             # job). Emitted WITH the state suffix in both abbrev and full-name

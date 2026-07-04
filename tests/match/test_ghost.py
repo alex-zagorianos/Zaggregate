@@ -282,3 +282,23 @@ def test_cache_key_ignores_irrelevant_fields():
     hits_before = _ghost_mod._ghost_cache_hits
     ghost_score(row_b)
     assert _ghost_mod._ghost_cache_hits == hits_before + 1
+
+
+def test_day_rollover_recomputes_staleness(monkeypatch):
+    """Review-confirmed defect: the cache key must include the UTC day so a
+    long-lived process (--desktop) re-evaluates age/expiry as real time passes
+    — an unchanged row is a cache HIT within a day and a MISS after rollover."""
+    from match import ghost as g
+    row = {"created": "2026-06-01", "title": "Engineer", "salary_text": "$100k"}
+
+    monkeypatch.setattr(g, "_today_ordinal", lambda: 739000)
+    first = g.ghost_score(dict(row))
+    hits_before = g._ghost_cache_hits
+    g.ghost_score(dict(row))
+    assert g._ghost_cache_hits == hits_before + 1   # same day: cache hit
+
+    monkeypatch.setattr(g, "_today_ordinal", lambda: 739001)
+    hits = g._ghost_cache_hits
+    g.ghost_score(dict(row))
+    assert g._ghost_cache_hits == hits              # new day: recomputed
+    assert isinstance(first, dict)

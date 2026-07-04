@@ -381,3 +381,28 @@ def test_unconfigured_project_still_gates(tmp_path, monkeypatch):
     monkeypatch.setattr(workspace, "load_config", lambda slug=None: {})
     assert core.is_onboarded() is False
     assert not (proj / ".onboarded").exists()
+
+
+def test_mid_wizard_sentinel_suppresses_inference_until_finish(tmp_path, monkeypatch):
+    """AI mid-wizard paste (apply_setup mark_onboarded=False) saves a keyword
+    config; the sentinel keeps the gate CLOSED until mark_onboarded, which
+    clears it (review-confirmed follow-up to the legacy-config inference)."""
+    import json
+    from ui import setup_wizard_core as core
+    import workspace
+
+    proj = tmp_path / "midwizard"
+    proj.mkdir()
+    (proj / "config.json").write_text(
+        json.dumps({"keywords": ["nurse"]}), encoding="utf-8")
+    monkeypatch.setattr(workspace, "project_dir", lambda slug=None: proj)
+    monkeypatch.setattr(workspace, "load_config",
+                        lambda slug=None: json.loads(
+                            (proj / "config.json").read_text(encoding="utf-8")))
+
+    assert core.is_onboarded() is True          # legacy inference
+    core.mark_wizard_in_progress()
+    assert core.is_onboarded() is False         # sentinel wins over inference
+    core.mark_onboarded()
+    assert core.is_onboarded() is True          # finished: marker set…
+    assert not (proj / ".wizard-in-progress").exists()   # …sentinel cleared

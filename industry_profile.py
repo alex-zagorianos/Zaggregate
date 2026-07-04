@@ -127,9 +127,10 @@ _RULES: list[tuple[set[str], dict]] = [
     # curated query_synonyms (S36b recall widening; the syn tier only ever ADDS
     # capped query terms, never displaces a user keyword — keyword_strategy
     # enforces _MAX_SYNONYMS). NOTE the AI tokens deliberately exclude bare
-    # "machine"/"learning" ("learning and development" is HR, "machine design"
-    # is mech) — ambiguous fields fall through to mech/generic instead.
-    ({"ai", "ml", "llm", "mlops", "genai", "deep"},
+    # "machine"/"learning"/"deep" ("learning and development" is HR, "machine
+    # design" is mech, "deep" is a common English word — review-confirmed
+    # collision) — ambiguous fields fall through to mech/generic instead.
+    ({"ai", "ml", "llm", "mlops", "genai"},
      {"muse": _ENG_MUSE, "jobicy": "engineering",
       "syn": ["machine learning engineer", "ai engineer", "mlops engineer",
               "applied scientist", "computer vision engineer", "llm engineer"],

@@ -354,6 +354,10 @@ def apply_setup(text: str, *, mark_onboarded: bool = True) -> dict:
 
     if mark_onboarded:
         setup_wizard.mark_onboarded()
+    else:
+        # Config saved mid-wizard: suppress is_onboarded's keyword inference
+        # until the wizard actually finishes (mark_onboarded clears this).
+        setup_wizard.mark_wizard_in_progress()
 
     return {
         "field": extras["field_token"],

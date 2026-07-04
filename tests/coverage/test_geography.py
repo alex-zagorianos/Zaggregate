@@ -41,14 +41,27 @@ def test_satellites_make_suburb_postings_local():
     assert classify("Loveland, CO", "Engineer", "Cincinnati, OH") == "elsewhere"
 
 
-def test_multi_principal_city_titles_split():
+def test_multi_principal_city_titles_split_state_qualified():
     # (Bare-city form: "Minneapolis, MN" itself never substring-matches the
     # hyphenated CBSA title — a pre-existing, separate matching gap.)
     v = metro_variants("Minneapolis")
-    # The CBSA title hyphen-joins principal cities — each becomes a variant.
-    assert "st. paul" in v
-    assert "bloomington" in v
-    assert "minneapolis" in v
+    # Each hyphen-joined principal city becomes a variant — WITH its state
+    # suffix only (review-confirmed: bare pieces cross-match other metros).
+    assert "st. paul, mn" in v
+    assert "bloomington, mn" in v
+    assert "st. paul" not in v
+    assert "bloomington" not in v
+    assert "minneapolis" in v          # whole bare title: pre-existing
+
+
+def test_split_pieces_never_cross_match_other_states():
+    # "Denver-Aurora-Centennial, CO" must NOT make an Aurora IL/IN job local.
+    from geo.filter import classify
+    v = metro_variants("Denver")
+    assert "aurora" not in v
+    assert "aurora, co" in v
+    assert classify("Aurora, IL", "Engineer", "Denver") == "elsewhere"
+    assert classify("Aurora, CO", "Engineer", "Denver") == "local"
 
 
 def test_metros_without_satellite_rows_unchanged():

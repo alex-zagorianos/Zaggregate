@@ -318,10 +318,19 @@ def is_onboarded(slug: str | None = None) -> bool:
     behind the wizard on every web load. A config that already carries the
     wizard's core output (non-empty ``keywords``) counts as onboarded. Pure
     READ — no marker is written here (GET /api/onboarding calls this; a read
-    route must not mutate state, and ``ai_setup.apply_setup(mark_onboarded=
-    False)`` relies on the marker staying absent until the wizard finishes)."""
+    route must not mutate state).
+
+    Mid-wizard exception (review-confirmed): ``ai_setup.apply_setup(
+    mark_onboarded=False)`` saves a keyword-carrying config BEFORE the wizard
+    finishes — without a guard, the inference would skip the remaining wizard
+    steps (resume, sources) on a reload. apply_setup stamps a
+    ``.wizard-in-progress`` sentinel in that case; while it exists the
+    inference is suppressed (the explicit completion marker still wins), and
+    ``mark_onboarded`` clears it."""
     if _marker_path(slug).exists():
         return True
+    if _in_progress_path(slug).exists():
+        return False
     try:
         cfg = workspace.load_config(slug)
     except Exception:
@@ -329,11 +338,39 @@ def is_onboarded(slug: str | None = None) -> bool:
     return bool(cfg.get("keywords"))
 
 
+_IN_PROGRESS_NAME = ".wizard-in-progress"
+
+
+def _in_progress_path(slug: str | None = None) -> Path:
+    try:
+        base = workspace.project_dir(slug)
+    except Exception:
+        base = Path(config.USER_DATA_DIR)
+    return Path(base) / _IN_PROGRESS_NAME
+
+
+def mark_wizard_in_progress(slug: str | None = None) -> None:
+    """Stamp the mid-wizard sentinel: a config has been saved but the wizard has
+    NOT finished, so ``is_onboarded``'s keyword inference must stay quiet until
+    ``mark_onboarded`` clears this."""
+    p = _in_progress_path(slug)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("ok\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
 def mark_onboarded(slug: str | None = None) -> None:
     p = _marker_path(slug)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("ok\n", encoding="utf-8")
+    except OSError:
+        pass
+    # Wizard finished — the mid-wizard sentinel (if any) is obsolete.
+    try:
+        _in_progress_path(slug).unlink(missing_ok=True)
     except OSError:
         pass
 
