@@ -28,8 +28,8 @@ routed-country fix (`config.location_country_tail`) → **Adzuna gb 295 rows = U
 lane's top source**; GUI compat 29/29; parity byte-identical through refactors;
 receiver live 200/403/**413**; **production exe rebuilt + clean launch** post-split.
 Language decision: engine stays Python; UI successor = local web UI over Flask
-(roadmap, KNOWN_ISSUES). Suite **2478 green** (S35 open = 2311). **+42 commits,
-PUSH HELD.** See [[handoff_20260704_session35b]].
+(roadmap, KNOWN_ISSUES). Suite **2478 green** (S35 open = 2311). **★PUSHED to
+origin/master 2026-07-04 (S35+S35b era, ~43 commits).** See [[handoff_20260704_session35b]].
 
 ---
 

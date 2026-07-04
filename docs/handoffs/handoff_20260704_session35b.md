@@ -77,7 +77,7 @@ pairs verified in the previously-failing order.
 
 ## State
 
-- master `+42` commits over pushed `6be40b9`. **PUSH HELD.**
+- **★PUSHED to origin/master 2026-07-04** (S35+S35b era, ~43 commits over `6be40b9`).
 - Final suite: **2478 passed / 0 failed** (S35 baseline was 2311).
 - Worktrees pruned; only pre-existing ZAG0005-wt-12b-qat-t2f remains.
 - 5 `val-*` validation projects kept in projects/ (disposable, like gu-_/gs-_).
@@ -87,8 +87,7 @@ pairs verified in the previously-failing order.
 
 ## Needs Alex
 
-1. Say "push" (42 commits held).
-2. Next session (his words): **seeded-company-list buildout**.
-3. Carried: reload extension, re-clip edisonsmart, junk tracker rows,
+1. Next session (his words): **seeded-company-list buildout**.
+2. Carried: reload extension, re-clip edisonsmart, junk tracker rows,
    CareerOneStop key, experience.md PII-history decision; delete val-_/gu-_/gs-*
    test projects when ready.
