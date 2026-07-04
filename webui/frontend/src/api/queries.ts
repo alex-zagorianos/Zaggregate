@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   endpoints,
@@ -34,6 +35,7 @@ export const queryKeys = {
   inbox: (params: Record<string, unknown>) => ["inbox", params] as const,
   inboxAll: ["inbox"] as const,
   inboxDetail: (id: number) => ["inbox-detail", id] as const,
+  queue: ["queue"] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -49,6 +51,9 @@ function invalidateApplicationViews(
   qc.invalidateQueries({ queryKey: queryKeys.applicationsAll });
   qc.invalidateQueries({ queryKey: queryKeys.board });
   qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });
+  // The Apply Queue is "interested"-only, so any status move / archive can add or
+  // remove a queue row — keep it coherent with the rest of the application views.
+  qc.invalidateQueries({ queryKey: queryKeys.queue });
   if (id !== undefined) {
     qc.invalidateQueries({ queryKey: queryKeys.application(id) });
   }
@@ -520,4 +525,28 @@ export function useScoreReply() {
     mutationFn: (text: string) => endpoints.scoreReply(text),
     onSuccess: () => invalidateInboxViews(qc),
   });
+}
+
+// ── Apply Queue (Phase 4) ─────────────────────────────────────────────────────
+
+/** The ranked apply queue (interested applications, fit-else-score desc). The
+ * server returns rows already in order; the tab renders them as-is. */
+export function useQueue() {
+  return useQuery({
+    queryKey: queryKeys.queue,
+    queryFn: () => endpoints.queue(),
+    staleTime: 10_000,
+  });
+}
+
+/** Refresh the queue + the other application views after a queue mutation (docs
+ * saved, generated, fit-scores applied). The queue's own rows change (docs/fit) and
+ * a fit re-rank reshuffles Top Picks, so the shared application invalidation covers
+ * it. Returned as a callback the imperative queue flows call in their onSuccess. */
+export function useInvalidateQueueViews() {
+  const qc = useQueryClient();
+  return React.useCallback(() => {
+    qc.invalidateQueries({ queryKey: queryKeys.queue });
+    invalidateApplicationViews(qc);
+  }, [qc]);
 }

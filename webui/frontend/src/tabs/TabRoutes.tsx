@@ -8,6 +8,9 @@ import { TopPicksTab } from "./toppicks/TopPicksTab";
 import { SourcesTab } from "./sources/SourcesTab";
 import { TrackerTab } from "./tracker/TrackerTab";
 import { BoardTab } from "./board/BoardTab";
+import { SearchTab } from "./search/SearchTab";
+import { ApplyQueueTab } from "./queue/ApplyQueueTab";
+import { ResumeTab } from "./resume/ResumeTab";
 
 /* Router: one route per registry tab. `ready` tabs render their real component;
  * `ready:false` tabs render the ComingSoon placeholder. Index + unknown paths
@@ -21,6 +24,9 @@ const READY_ELEMENTS: Record<string, ReactNode> = {
   sources: <SourcesTab />,
   tracker: <TrackerTab />,
   board: <BoardTab />,
+  search: <SearchTab />,
+  "apply-queue": <ApplyQueueTab />,
+  resume: <ResumeTab />,
 };
 
 export function TabRoutes() {

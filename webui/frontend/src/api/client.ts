@@ -418,6 +418,62 @@ export const endpoints = {
       .then((r) => r as unknown as JobStatusResponse),
   cancelJob: (jobId: string) =>
     api.post<CancelJobResponse>(`/jobs/${jobId}/cancel`),
+
+  // ── Search (Phase 4) ────────────────────────────────────────────────────────
+  startSearch: (args: SearchArgs) =>
+    api.post<StartRunResponse>("/search", { json: args }),
+  // The search result rides on the generic job snapshot (GET /api/jobs/<id>); the
+  // {rows, health} live under `.result`. We fetch the base envelope and cast, same
+  // as jobStatus, then read result off it.
+  searchResult: (jobId: string) =>
+    api
+      .get<ApiEnvelope & { [k: string]: unknown }>(`/jobs/${jobId}`)
+      .then((r) => r as unknown as SearchJobSnapshot),
+  trackSearchRow: (row: SearchRow) =>
+    api.post<TrackSearchResponse>("/search/track", { json: { row } }),
+  dismissSearchUrl: (url: string) =>
+    api.post<ApiEnvelope>("/search/dismiss", { json: { url } }),
+  addAllToInbox: (rows: SearchRow[]) =>
+    api.post<AddAllResponse>("/search/add-all", { json: { rows } }),
+
+  // ── Apply Queue (Phase 4) ───────────────────────────────────────────────────
+  queue: () => api.get<QueueListResponse>("/queue"),
+  queueResumePrompt: (id: number) =>
+    api.get<QueuePromptResponse>(`/queue/${id}/resume-prompt`),
+  queueResumeFromPaste: (id: number, text: string) =>
+    api.post<QueueFilesResponse>(`/queue/${id}/resume-from-paste`, {
+      json: { text },
+    }),
+  queueBatchPrompt: (ids?: number[]) =>
+    api.post<QueueBatchPromptResponse>("/queue/batch-prompt", {
+      json: ids && ids.length ? { ids } : {},
+    }),
+  queueBatchFromPaste: (text: string, ids: number[]) =>
+    api.post<QueueBatchResultsResponse>("/queue/batch-from-paste", {
+      json: { text, ids },
+    }),
+  queueGenerate: (id: number) =>
+    api.post<QueueFilesResponse>(`/queue/${id}/generate`),
+  queueRankPrompt: () =>
+    api.post<QueueRankPromptResponse>("/queue/rank", {
+      json: { mode: "prompt" },
+    }),
+  queueRankReply: (text: string) =>
+    api.post<QueueRankReplyResponse>("/queue/rank", {
+      json: { mode: "reply", text },
+    }),
+
+  // ── Resume (Phase 4) ────────────────────────────────────────────────────────
+  resumePrompt: (postingText: string) =>
+    api.post<QueuePromptResponse>("/resume/prompt", {
+      json: { posting_text: postingText },
+    }),
+  resumeFromPaste: (replyText: string, postingText?: string) =>
+    api.post<QueueFilesResponse>("/resume/from-paste", {
+      json: postingText
+        ? { reply_text: replyText, posting_text: postingText }
+        : { reply_text: replyText },
+    }),
 };
 
 /** Import AI scores — multipart (file) OR JSON (pasted text). We build the
@@ -673,10 +729,179 @@ export interface ExportArgs {
   filters?: ExportViewFilters;
 }
 
+// ── Search (Phase 4) ──────────────────────────────────────────────────────────
+/** The POST /api/search body. All optional — missing fields fall back to the
+ * project config server-side (keywords accepts a comma string or a list). */
+export interface SearchArgs {
+  keywords?: string[] | string;
+  location?: string;
+  min_salary?: number | null;
+  save?: boolean;
+  hide_tracked?: boolean;
+}
+
+/** A scored search result row (serializers.job_result) — every JobResult field
+ * plus the display conveniences `salary` (formatted string) and `seen` (already
+ * tracked/dismissed). The Track / Add-all routes take this row back verbatim (the
+ * serializer's inverse reconstructs the JobResult), so the FULL row must round-trip
+ * unchanged — hence the index signature carrying the fields the UI doesn't read. */
+export interface SearchRow {
+  title: string;
+  company: string;
+  location: string;
+  url: string;
+  /** Base match score (0–100); -1 = unscored (rendered blank). */
+  score?: number | null;
+  /** The source client's API tag (e.g. "adzuna") — shown in the Source column. */
+  source_api?: string | null;
+  /** Formatted salary display string (may be ""). */
+  salary?: string | null;
+  /** This URL is already tracked/dismissed — badge/mute it. */
+  seen?: boolean;
+  [key: string]: unknown;
+}
+
+/** A per-source health row from the finished search (search_job.run_search). */
+export interface SearchHealthRow {
+  source: string;
+  count: number;
+  ok: boolean;
+  error: string;
+  skipped_keyless: boolean;
+  status: "ok" | "keyless" | "throttled" | "failed";
+}
+
+/** The search job's terminal result payload ({rows, health}). */
+export interface SearchResult {
+  rows: SearchRow[];
+  health: SearchHealthRow[];
+}
+
+/** The generic job snapshot with the search `result` typed. `result` is null while
+ * running, the {rows, health} object on done. */
+export interface SearchJobSnapshot {
+  ok: boolean;
+  status: JobStatus;
+  lines_tail: string[];
+  result: SearchResult | null;
+  error: string | null;
+}
+
+export interface TrackSearchResponse extends ApiEnvelope {
+  added: number;
+  skipped: number;
+}
+
+export interface AddAllResponse extends ApiEnvelope {
+  added: number;
+}
+
+// ── Apply Queue (Phase 4) ─────────────────────────────────────────────────────
+/** A queue row = an app row + the queue augmentation the /queue route adds. */
+export interface QueueRow extends AppRow {
+  /** URL-derived ATS label (e.g. "Greenhouse") or "". */
+  ats_label: string;
+  /** Referral nudge line (known contacts at the company) or "". */
+  referral: string;
+  /** Saved resume bundle path when docs exist for this job. */
+  docs_path?: string | null;
+  /** The AI fit rationale (engine column) when present — shown in the detail rail. */
+  fit_rationale?: string | null;
+  /** AI re-rank fit (0–100) or -1/absent; leads the queue ordering. */
+  fit_score?: number | null;
+  /** Base match score (0–100) or -1/absent; the queue-order tiebreak. */
+  score?: number | null;
+}
+
+export interface QueueListResponse extends ApiEnvelope {
+  rows: QueueRow[];
+}
+
+/** A saved DOCX file, downloadable via the gated /queue|/resume/download route. */
+export interface BundleFile {
+  name: string;
+  download_url: string;
+}
+
+export interface QueuePromptResponse extends ApiEnvelope {
+  prompt: string;
+}
+
+export interface QueueFilesResponse extends ApiEnvelope {
+  files: BundleFile[];
+}
+
+export interface QueueBatchPromptResponse extends ApiEnvelope {
+  prompt: string;
+  ids: number[];
+}
+
+/** One entry per attempted job in a batch paste — files (saved) or error (failed). */
+export type QueueBatchResultEntry =
+  { id: number; files: BundleFile[] } | { id: number; error: string };
+
+export interface QueueBatchResultsResponse extends ApiEnvelope {
+  results: QueueBatchResultEntry[];
+}
+
+/** A job auto-filtered out of the fit-ranking prompt, with the reasons. */
+export interface RankDropped {
+  id: number | null;
+  title: string | null;
+  company: string | null;
+  reasons: string[];
+}
+
+export interface QueueRankPromptResponse extends ApiEnvelope {
+  prompt: string;
+  ids: number[];
+  dropped: RankDropped[];
+}
+
+export interface QueueRankReplyResponse extends ApiEnvelope {
+  applied: number;
+}
+
 /** SSE endpoint (relative to /api) for a job's live event stream. Consumed via a
  * native EventSource in the Inbox run console, NOT the JSON client. */
 export function jobEventsUrl(jobId: string): string {
   return `/api/jobs/${encodeURIComponent(jobId)}/events`;
+}
+
+/** Trigger a browser download of a generated resume/cover DOCX (or any gated
+ * bundle file) via the locked download route. fetch → blob → object-URL → click a
+ * hidden <a>, honoring the server-set filename; nothing shells to the OS (repo rule:
+ * HTTP downloads only). A JSON error body (404 traversal / missing) surfaces as a
+ * thrown ApiError so the caller can toast it. */
+export async function downloadBundleFile(
+  downloadUrl: string,
+  filename: string,
+): Promise<void> {
+  let resp: Response;
+  try {
+    resp = await fetch(downloadUrl);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "network error";
+    throw new ApiError(msg, 0, null);
+  }
+  const ctype = resp.headers.get("content-type") ?? "";
+  if (!resp.ok || ctype.includes("application/json")) {
+    let message = `Download failed (${resp.status})`;
+    if (ctype.includes("application/json")) {
+      const b = (await resp.json().catch(() => null)) as ApiEnvelope | null;
+      if (b?.error) message = b.error;
+    }
+    throw new ApiError(message, resp.status, null);
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /** Path (relative to /api) for a round's .ics — used by downloadIcs, NOT fetched
