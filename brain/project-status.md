@@ -4,6 +4,31 @@
 
 ---
 
+## Session 36 (2026-07-04 overnight) — WEB-UI MIGRATION: all phases + deep + scenario testing ✅
+
+Alex approved the tkinter→web roadmap item and slept; fleet executed the whole
+program overnight. _*Stack: Vite+React19+TS+Tailwind4+shadcn served by the
+receiver at 127.0.0.1:5002/app; /api/* mirrors the MCP seam; SSE job console;
+Aegean tokens generated from ui/theme.py._* All 8 tabs + wizard + dialogs +
+Guide have web twins; tk GUI untouched and green; launcher `py -m webui` /
+exe `--web`; :5001 legacy tracker retired; frozen exe proven serving /app.
+Every phase gated builder→reviewers→fix→verify. ★Catches worth remembering:
+key-test probe leaked raw secrets via HTTPError str() (fixed via applog.redact
+chokepoint); fresh-install inbox-table 500; resume bare-"Experience" heading
+dropped all work history; **get_conn() leaks open WAL connections (context
+manager = transaction-scoped) → tracker.db.release_for_restore() for backup
+restore**; industry auto-derivation was tk-only until parity-fixed; remote-only
+home treated as metro. Deep testing (D1–D7, results in
+`brain/test-plan-2026-07-04-webui-deep.md`): scoring parity PROVEN
+(d25247d..HEAD zero diff on match/ranker/preferences), route-audit meta-test
+(every mutating route origin-gated), frozen functional pass. Scenario testing
+(5 live journeys → `brain/findings-2026-07-04-webui-scenarios.md` + addendum):
+21 defects, ALL 2 criticals + 7 majors fixed; minors + parity gaps (no web
+create-project flow = biggest) queued. **Suite 2478 → 2903 / 0 failed; vitest
+151; PUSH HELD (~40 commits).** Read-first: `docs/handoffs/handoff_20260704_session36.md`.
+
+---
+
 ## Session 35b (2026-07-04) — FIX-ALL + modularize + full-scale validation ✅
 
 Same conversation as S35. Alex: "fix all other findings that need it", "multiple
