@@ -8,6 +8,9 @@ import {
   ExternalLink,
   Inbox,
   Save,
+  Building2,
+  ListPlus,
+  MapPin,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -35,6 +38,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
+import { useCompaniesFlows } from "@/tabs/companies/CompaniesFlows";
 import { SearchRunConsole } from "./SearchRunConsole";
 import { SourceHealthStrip } from "./SourceHealthStrip";
 
@@ -53,6 +57,7 @@ import { SourceHealthStrip } from "./SourceHealthStrip";
 
 export function SearchTab() {
   const qc = useQueryClient();
+  const companies = useCompaniesFlows();
 
   // ── form state ────────────────────────────────────────────────────────────
   const [keywords, setKeywords] = React.useState("");
@@ -259,6 +264,35 @@ export function SearchTab() {
             <Kbd>t</Kbd> track, <Kbd>d</Kbd> dismiss, <Kbd>o</Kbd> open on the
             focused row.
           </p>
+        </div>
+
+        {/* Company-list tools — the tk Search-tab entry points for growing the
+            employer registry the daily run scrapes. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => companies.open("add")}
+          >
+            <Building2 className="size-3.5" />
+            Add companies
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => companies.open("build")}
+          >
+            <ListPlus className="size-3.5" />
+            Build my list
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => companies.open("seed")}
+          >
+            <MapPin className="size-3.5" />
+            Seed my area
+          </Button>
         </div>
       </div>
 

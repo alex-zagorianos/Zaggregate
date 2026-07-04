@@ -474,6 +474,53 @@ export const endpoints = {
         ? { reply_text: replyText, posting_text: postingText }
         : { reply_text: replyText },
     }),
+
+  // ── Onboarding wizard + AI express lane (Phase 5) ───────────────────────────
+  onboarding: () => api.get<OnboardingStateResponse>("/onboarding"),
+  applyOnboarding: (answers: OnboardingAnswers) =>
+    api.post<OnboardingApplyResponse>("/onboarding", { json: answers }),
+  structureResume: (text: string) =>
+    api.post<ResumeStructureResponse>("/onboarding/resume-structure", {
+      json: { text },
+    }),
+  parseSalary: (text: string) =>
+    api.post<SalaryParseResponse>("/onboarding/salary-parse", {
+      json: { text },
+    }),
+  aiSetupPrompt: () => api.get<AiSetupPromptResponse>("/ai-setup/prompt"),
+  applyAiSetup: (text: string) =>
+    api.post<AiSetupApplyResponse>("/ai-setup/apply", { json: { text } }),
+
+  // ── Companies: Add / validate / build / seed (Phase 5) ──────────────────────
+  detectCompanies: (lines: string) =>
+    api.post<CompaniesDetectResponse>("/companies/detect", {
+      json: { lines },
+    }),
+  validateCompanies: (
+    candidates: { name: string; ats: string; slug: string }[],
+  ) =>
+    api.post<StartRunResponse>("/companies/validate", {
+      json: { candidates },
+    }),
+  addCompanies: (entries: CompanyAddEntry[], keepUnreachable: boolean) =>
+    api.post<CompaniesAddResponse>("/companies/add", {
+      json: { entries, keep_unreachable: keepUnreachable },
+    }),
+  buildCompanyList: (opts: BuildListOpts) =>
+    api.post<StartRunResponse>("/companies/build-list", { json: { opts } }),
+  seedMetro: (args: SeedMetroArgs) =>
+    api.post<StartRunResponse>("/companies/seed-metro", { json: args }),
+  seedPrompt: (args: { field?: string; metro?: string; limit?: number }) =>
+    api.get<SeedPromptResponse>("/companies/seed-prompt", {
+      params: { field: args.field, metro: args.metro, limit: args.limit },
+    }),
+  seedApply: (text: string, industry?: string) =>
+    api.post<SeedApplyResponse>("/companies/seed-apply", {
+      json: industry ? { text, industry } : { text },
+    }),
+
+  // ── Guide (Phase 5) ─────────────────────────────────────────────────────────
+  guide: () => api.get<GuideResponse>("/guide"),
 };
 
 /** Import AI scores — multipart (file) OR JSON (pasted text). We build the
@@ -902,6 +949,288 @@ export async function downloadBundleFile(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+// ── Onboarding wizard + AI express lane (Phase 5) ─────────────────────────────
+/** The prefill dict the wizard pre-populates from (setup_wizard_core.prefill_from_existing).
+ * Every field is a string except the two booleans; `salary_min` is a string (the tk
+ * salary box is free-text) — parsed server-side. */
+export interface OnboardingPrefill {
+  roles: string;
+  location: string;
+  remote_ok: boolean;
+  salary_min: string;
+  about: string;
+  industry: string;
+  level: string;
+}
+
+export interface OnboardingStateResponse extends ApiEnvelope {
+  onboarded: boolean;
+  prefill: OnboardingPrefill;
+}
+
+/** The wizard answers POSTed on Finish. `roles` may be a list or a comma string
+ * (the server accepts either); `salary_min` a free-text string or int. */
+export interface OnboardingAnswers {
+  roles: string[] | string;
+  location: string;
+  remote_ok: boolean;
+  salary_min: string | number | null;
+  industry: string;
+  level: string;
+  about: string;
+  resume_text?: string;
+}
+
+export interface OnboardingApplyResponse extends ApiEnvelope {
+  onboarded: boolean;
+  resume_restructured: boolean;
+}
+
+export interface ResumeStructureResponse extends ApiEnvelope {
+  markdown: string;
+  restructured: boolean;
+}
+
+export type SalaryKind = "annual" | "hourly" | "none";
+
+export interface SalaryParseResponse extends ApiEnvelope {
+  annual: number | null;
+  kind: SalaryKind;
+}
+
+export interface AiSetupPromptResponse extends ApiEnvelope {
+  prompt: string;
+}
+
+/** The applied-setup summary the AI express lane echoes back (ai_setup.apply_setup). */
+export interface AiSetupApplied {
+  field: string;
+  target_titles: string[];
+  location: string;
+  remote_only: boolean;
+  salary_min: number | null;
+  seniority: string;
+  radius?: number | null;
+  profile_chars: number;
+}
+
+export interface AiSetupApplyResponse extends ApiEnvelope {
+  applied: AiSetupApplied;
+}
+
+// ── Companies (Phase 5) ───────────────────────────────────────────────────────
+export type DetectStatus = "detected" | "direct" | "dropped";
+
+/** One row of the Detect table (companies_detect). */
+export interface CompanyCandidate {
+  line: string;
+  name: string;
+  ats: string;
+  slug: string;
+  status: DetectStatus;
+}
+
+export interface CompaniesDetectResponse extends ApiEnvelope {
+  candidates: CompanyCandidate[];
+}
+
+export type CompanyVerdict = "live" | "direct" | "unreachable";
+
+/** A per-board verdict from the validate job's result. */
+export interface CompanyVerdictRow {
+  name: string;
+  ats: string;
+  slug: string;
+  verdict: CompanyVerdict;
+  detail: string;
+  count?: number;
+}
+
+/** The validate job's terminal result payload. */
+export interface CompaniesValidateResult {
+  results: CompanyVerdictRow[];
+}
+
+/** The generic job snapshot with the validate `result` typed. */
+export interface ValidateJobSnapshot {
+  ok: boolean;
+  status: JobStatus;
+  lines_tail: string[];
+  result: CompaniesValidateResult | null;
+  error: string | null;
+}
+
+/** An entry the Add route saves (post-validate). `verdict` decides verified vs
+ * unverified vs dropped; `industry` optionally tags the board. */
+export interface CompanyAddEntry {
+  name: string;
+  ats: string;
+  slug: string;
+  verdict: CompanyVerdict | string;
+  industry?: string;
+}
+
+export interface CompaniesAddResponse extends ApiEnvelope {
+  added: number;
+  verified: number;
+  unverified: number;
+  rejected: number;
+  dropped: number;
+}
+
+/** The Build-My-List options (all optional; server allowlists + falls back to
+ * the active project config). */
+export interface BuildListOpts {
+  metro?: string;
+  industry?: string;
+  national?: boolean;
+  dataset?: string;
+  use_inbox?: boolean;
+  jobhive?: boolean;
+  seed_metro?: boolean;
+  seed_limit?: number | null;
+  classify?: boolean;
+  dry_run?: boolean;
+}
+
+export interface SeedMetroArgs {
+  industry?: string;
+  metro?: string;
+  keyword?: string;
+  limit?: number | null;
+}
+
+/** 409 body when Seed My Area has no CareerOneStop key configured. */
+export interface SeedKeyConflictBody {
+  ok: false;
+  error: string;
+  need_key: true;
+}
+
+export interface SeedPromptResponse extends ApiEnvelope {
+  prompt: string;
+}
+
+/** The synchronous seed-apply result (ai_setup.apply_seed_lines). */
+export interface SeedApplyResult {
+  parsed: number;
+  added: number;
+  verified: number;
+  unverified: number;
+  skipped: number;
+  rejected: number;
+  verdicts: {
+    name: string;
+    ats_type: string;
+    slug: string;
+    verdict: string;
+    detail: string;
+    count?: number;
+  }[];
+}
+
+export interface SeedApplyResponse extends ApiEnvelope {
+  result: SeedApplyResult;
+}
+
+// ── Guide (Phase 5) ───────────────────────────────────────────────────────────
+export interface GuideSection {
+  heading: string;
+  /** 1 = h1 (major), 2 = h2 (sub). */
+  level: number;
+  body: string;
+}
+
+export interface GuideResponse extends ApiEnvelope {
+  sections: GuideSection[];
+}
+
+// ── Backup / restore (Phase 5) ────────────────────────────────────────────────
+export interface BackupRestoreResponse extends ApiEnvelope {
+  members: number;
+  rollback: string | null;
+}
+
+/** Trigger a download of the data-folder backup zip (GET /api/backup/download).
+ * fetch → blob → object-URL → hidden <a> click (repo rule: HTTP downloads only,
+ * never shell out). A JSON error body surfaces as a thrown ApiError. */
+export async function downloadBackup(): Promise<void> {
+  let resp: Response;
+  try {
+    resp = await fetch("/api/backup/download");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "network error";
+    throw new ApiError(msg, 0, null);
+  }
+  const ctype = resp.headers.get("content-type") ?? "";
+  if (!resp.ok || ctype.includes("application/json")) {
+    let message = `Backup failed (${resp.status})`;
+    if (ctype.includes("application/json")) {
+      const b = (await resp.json().catch(() => null)) as ApiEnvelope | null;
+      if (b?.error) message = b.error;
+    }
+    throw new ApiError(message, resp.status, null);
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "jobscout-backup.zip";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Restore the data folder from an uploaded backup zip (multipart). The JSON
+ * client can't send multipart, so we build the request by hand but still unwrap
+ * the {ok,...} envelope into ApiError on failure. `confirm` is required by the
+ * server (destructive) — we always send true (the UI gates it behind a scary
+ * ConfirmDialog first). */
+export async function restoreBackup(
+  file: File,
+): Promise<BackupRestoreResponse> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "X-Requested-With": "zaggregate-webui",
+  };
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("confirm", "true");
+  let resp: Response;
+  try {
+    resp = await fetch("/api/backup/restore", {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "network error";
+    throw new ApiError(msg, 0, null);
+  }
+  let body: unknown = null;
+  const ctype = resp.headers.get("content-type") ?? "";
+  if (ctype.includes("application/json")) {
+    body = await resp.json().catch(() => null);
+  }
+  const envelope = (body ?? {}) as ApiEnvelope;
+  if (!resp.ok || envelope.ok === false) {
+    const message =
+      envelope.error || `Restore failed (${resp.status} ${resp.statusText})`;
+    throw new ApiError(message, resp.status, body);
+  }
+  return body as BackupRestoreResponse;
+}
+
+/** Fetch a validate-job snapshot and read the typed {results} off `.result`
+ * (same cast pattern as searchResult — the job snapshot's `error` is a nullable
+ * string that doesn't fit ApiEnvelope). */
+export function validateResult(jobId: string): Promise<ValidateJobSnapshot> {
+  return api
+    .get<ApiEnvelope & { [k: string]: unknown }>(`/jobs/${jobId}`)
+    .then((r) => r as unknown as ValidateJobSnapshot);
 }
 
 /** Path (relative to /api) for a round's .ics — used by downloadIcs, NOT fetched

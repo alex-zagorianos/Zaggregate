@@ -15,6 +15,7 @@ import {
   type InboxRow,
   type ExportArgs,
   type ImportPolicy,
+  type OnboardingAnswers,
 } from "./client";
 
 /* TanStack Query hooks for the shell's read/write endpoints. Phase 1+ builders:
@@ -36,6 +37,8 @@ export const queryKeys = {
   inboxAll: ["inbox"] as const,
   inboxDetail: (id: number) => ["inbox-detail", id] as const,
   queue: ["queue"] as const,
+  onboarding: ["onboarding"] as const,
+  guide: ["guide"] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -549,4 +552,56 @@ export function useInvalidateQueueViews() {
     qc.invalidateQueries({ queryKey: queryKeys.queue });
     invalidateApplicationViews(qc);
   }, [qc]);
+}
+
+// ── Onboarding (Phase 5) ──────────────────────────────────────────────────────
+
+/** The onboarding gate + prefill. Read once at app start to decide whether to
+ * show the welcome takeover; `staleTime: Infinity` so it doesn't refetch (the
+ * flag only flips on a Finish, which invalidates it explicitly). */
+export function useOnboarding() {
+  return useQuery({
+    queryKey: queryKeys.onboarding,
+    queryFn: () => endpoints.onboarding(),
+    staleTime: Infinity,
+  });
+}
+
+/** Apply the wizard answers (or the AI express lane). Onboarding rewrites the
+ * project config + preferences, which changes essentially every engine read, so
+ * a success invalidates everything (like a project switch) plus the onboarding
+ * flag itself so the gate closes. */
+export function useApplyOnboarding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (answers: OnboardingAnswers) =>
+      endpoints.applyOnboarding(answers),
+    onSuccess: () => {
+      qc.invalidateQueries();
+    },
+  });
+}
+
+/** Apply the AI express-lane config block. Same broad invalidation as the wizard
+ * apply (it writes the same on-disk contract). */
+export function useApplyAiSetup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => endpoints.applyAiSetup(text),
+    onSuccess: () => {
+      qc.invalidateQueries();
+    },
+  });
+}
+
+// ── Guide (Phase 5) ───────────────────────────────────────────────────────────
+
+/** The static in-app Guide sections. Content is effectively constant, so a long
+ * stale time avoids refetching as the user flips tabs. */
+export function useGuide() {
+  return useQuery({
+    queryKey: queryKeys.guide,
+    queryFn: () => endpoints.guide(),
+    staleTime: Infinity,
+  });
 }

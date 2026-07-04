@@ -1,14 +1,13 @@
-import { useNavigate } from "react-router-dom";
 import {
   Sun,
   Moon,
   FolderOpen,
   ChevronDown,
-  Settings,
   Command as CommandIcon,
 } from "lucide-react";
 
 import { ZagMark } from "./zag-mark";
+import { SettingsMenu } from "./settings-menu";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -104,7 +103,6 @@ function ProjectSwitcher() {
 
 export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
   const { mode, toggle } = useTheme();
-  const navigate = useNavigate();
   const mac = isMac();
   return (
     <header className="border-border bg-card/80 sticky top-0 z-40 border-b backdrop-blur-md">
@@ -138,19 +136,7 @@ export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
 
           <ProjectSwitcher />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/sources")}
-                aria-label="Connect job sources"
-              >
-                <Settings className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Connect job sources</TooltipContent>
-          </Tooltip>
+          <SettingsMenu />
 
           <Tooltip>
             <TooltipTrigger asChild>

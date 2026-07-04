@@ -40,9 +40,6 @@ import { cn } from "@/lib/utils";
  * auto-test — which is calmer on the web and avoids surprise network calls. */
 
 export function SourcesTab() {
-  const query = useSourceKeys();
-  const sources = query.data?.sources ?? [];
-
   return (
     <section aria-labelledby="sources-heading">
       <div className="space-y-1">
@@ -60,38 +57,48 @@ export function SourcesTab() {
         </p>
       </div>
 
-      {query.isLoading ? (
-        <div className="mt-8">
-          <LoadingState />
-        </div>
-      ) : query.isError ? (
-        <div className="mt-8">
-          <ErrorState
-            title="Couldn't load your sources"
-            message={
-              query.error instanceof ApiError
-                ? query.error.message
-                : "The settings service didn't respond."
-            }
-            onRetry={() => query.refetch()}
-          />
-        </div>
-      ) : sources.length === 0 ? (
-        <div className="mt-8">
-          <EmptyState
-            icon={PlugZap}
-            title="No sources configured"
-            message="No keyed sources are available yet."
-          />
-        </div>
-      ) : (
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {sources.map((src) => (
-            <SourceCard key={src.id} source={src} />
-          ))}
-        </div>
-      )}
+      <div className="mt-8">
+        <SourceCardGrid />
+      </div>
     </section>
+  );
+}
+
+/* The data-driven card grid on its own — reused by both the Sources tab and the
+ * onboarding wizard's "Connect sources" step (so the wizard shows the exact same
+ * cards, save/test/paste behavior, and masking without duplication). Handles its
+ * own loading/error/empty states. */
+export function SourceCardGrid() {
+  const query = useSourceKeys();
+  const sources = query.data?.sources ?? [];
+
+  if (query.isLoading) return <LoadingState />;
+  if (query.isError)
+    return (
+      <ErrorState
+        title="Couldn't load your sources"
+        message={
+          query.error instanceof ApiError
+            ? query.error.message
+            : "The settings service didn't respond."
+        }
+        onRetry={() => query.refetch()}
+      />
+    );
+  if (sources.length === 0)
+    return (
+      <EmptyState
+        icon={PlugZap}
+        title="No sources configured"
+        message="No keyed sources are available yet."
+      />
+    );
+  return (
+    <div className="grid gap-5 md:grid-cols-2">
+      {sources.map((src) => (
+        <SourceCard key={src.id} source={src} />
+      ))}
+    </div>
   );
 }
 
