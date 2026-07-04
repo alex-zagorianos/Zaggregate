@@ -67,6 +67,16 @@ def _add_cors(response):
 
 app.after_request(_add_cors)
 
+# Mount the web-UI blueprint (JSON /api/* + built frontend at /app) onto THIS
+# app, so the single receiver process also serves the modern web UI. Guarded so
+# the receiver stays fully functional standalone if the webui package is absent
+# (a source checkout that hasn't landed the migration, or a stripped build).
+try:
+    from webui import register_webui
+    register_webui(app)
+except ImportError:
+    pass
+
 
 def _safe_http_url(url: str) -> bool:
     """Reject javascript:/data: and other non-web schemes before a URL is ever
