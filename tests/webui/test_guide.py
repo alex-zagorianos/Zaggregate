@@ -285,3 +285,100 @@ def test_restore_refuses_symlink_member(client, tmp_data, tmp_path):
     assert resp.status_code == 400
     assert "unsafe backup" in resp.get_json()["error"]
     assert not (tmp_data / "evil_link").exists()
+
+
+# ── WAL-sidecar restore (Windows-locked-file critical, S36) ───────────────────
+# On Windows a restore can't overwrite tracker.db / its -shm/-wal sidecars while
+# the server that services the restore holds an open WAL-mode connection to the
+# SAME db. Fix (defense in depth): backup checkpoints + drops the sidecars so the
+# zipped .db is self-contained; restore checkpoints/releases the live connection,
+# ignores any -shm/-wal members inside the upload, and deletes stale on-disk
+# sidecars post-extract so the next get_conn() rebuilds them from the restored db.
+@pytest.fixture
+def live_wal_db(tmp_data, monkeypatch):
+    """A live WAL-mode tracker.db INSIDE the tmp data folder, with an open prior
+    read so -wal/-shm sidecars exist on disk — the Windows repro. Points
+    ``db.DB_PATH`` at it so make_backup/restore's checkpoint targets THIS db."""
+    from tracker import db
+    db_path = tmp_data / "tracker.db"
+    monkeypatch.setattr(db, "DB_PATH", db_path)
+    db.init_db()
+    db.add_job("Original Role", "OrigCo", url="https://ex.com/orig")
+    # Do a read via get_conn() (WAL pragmas applied) and leave the -wal sidecar on
+    # disk — simulates the server holding open WAL state at restore time.
+    got = db.get_all()
+    assert any(r["title"] == "Original Role" for r in got)
+    return db_path
+
+
+def test_backup_excludes_wal_sidecars(client, live_wal_db, tmp_data):
+    # live_wal_db already left REAL -wal/-shm sidecars on disk (via its get_conn()
+    # read) — on Windows those are locked, which is the whole point.
+    assert (tmp_data / "tracker.db-wal").exists()
+    assert (tmp_data / "tracker.db-shm").exists()
+    resp = client.get("/api/backup/download")
+    assert resp.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(resp.get_data()))
+    names = zf.namelist()
+    # The .db itself is captured (checkpointed, so it's self-contained), but NO
+    # -shm/-wal members ride along.
+    assert "tracker.db" in names
+    assert not any(n.endswith("-wal") or n.endswith("-shm") for n in names), names
+
+
+def test_restore_zip_with_sidecars_succeeds_and_leaves_none(client, live_wal_db, tmp_data):
+    # An OLDER backup zip that DOES contain -shm/-wal members must restore cleanly
+    # and leave no stale sidecars on disk.
+    zbytes = _make_zip({
+        "tracker.db": b"SQLite format 3\x00restored-db-bytes",
+        "tracker.db-wal": b"OLD STALE WAL - must be ignored",
+        "tracker.db-shm": b"OLD STALE SHM - must be ignored",
+        "preferences.md": b"restored profile",
+    })
+    resp = client.post(
+        "/api/backup/restore",
+        data={"file": (io.BytesIO(zbytes), "old-backup.zip"), "confirm": "true"},
+        headers={"Origin": _LOOPBACK},
+        content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.get_json()
+    body = resp.get_json()
+    assert body["ok"] is True
+    # The .db + non-sidecar members restored; the sidecar members were skipped.
+    assert (tmp_data / "tracker.db").read_bytes().startswith(b"SQLite format 3")
+    assert (tmp_data / "preferences.md").read_text() == "restored profile"
+    # members count excludes the two skipped sidecars (tracker.db + preferences.md).
+    assert body["members"] == 2
+    # No stale sidecars left behind — not from the zip, not from the pre-restore db.
+    assert not (tmp_data / "tracker.db-wal").exists()
+    assert not (tmp_data / "tracker.db-shm").exists()
+
+
+def test_restore_roundtrip_with_open_wal_connection(client, live_wal_db, tmp_data):
+    # THE Windows repro: a prior get_conn()-based read (in live_wal_db) left WAL
+    # state open on the SAME db; a real backup of that db then restored over it
+    # must succeed AND post-restore reads must see the restored data.
+    from tracker import db
+    # Build a genuine backup zip of the CURRENT (WAL-mode, open-connection) db via
+    # the download route, mutate the live db, then restore the snapshot back.
+    dl = client.get("/api/backup/download")
+    assert dl.status_code == 200
+    backup_bytes = dl.get_data()
+    # Mutate the live db AFTER the snapshot — the restore must roll this back.
+    db.add_job("Post-Snapshot Role", "LaterCo", url="https://ex.com/later")
+    assert any(r["title"] == "Post-Snapshot Role" for r in db.get_all())
+    # Restore the earlier snapshot over the live (still-open-WAL) data folder.
+    resp = client.post(
+        "/api/backup/restore",
+        data={"file": (io.BytesIO(backup_bytes), "snap.zip"), "confirm": "true"},
+        headers={"Origin": _LOOPBACK},
+        content_type="multipart/form-data")
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["ok"] is True
+    # No stale sidecars survive the restore.
+    assert not (tmp_data / "tracker.db-wal").exists()
+    assert not (tmp_data / "tracker.db-shm").exists()
+    # Post-restore reads (fresh get_conn() handle) see the restored data: the
+    # original row is back and the post-snapshot mutation is gone.
+    titles = {r["title"] for r in db.get_all()}
+    assert "Original Role" in titles
+    assert "Post-Snapshot Role" not in titles

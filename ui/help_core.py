@@ -371,17 +371,37 @@ def guide_sections() -> list[dict]:
 def make_backup(dest_base: str) -> str:
     """Zip the whole data folder to dest_base (+'.zip' if absent). Returns the zip
     path. The single local root means one archive captures preferences, resume,
-    tracker DB, and settings."""
+    tracker DB, and settings.
+
+    WAL-safe (critical): before mirroring, run ``tracker.db.checkpoint()`` (a
+    TRUNCATE-mode WAL checkpoint) so the on-disk ``tracker.db`` is complete on its
+    own, and EXCLUDE the ``*-shm``/``*-wal`` SQLite runtime sidecars from the
+    archive. Those sidecars are regenerable state, not durable data; shipping them
+    is worse than useless — restoring a stale ``-wal`` over a fresh ``tracker.db``
+    corrupts WAL state, and on Windows the live server (which services the backup
+    through an open WAL connection) can't reliably snapshot them anyway. The
+    checkpoint folds every committed page into the .db file, so dropping the
+    sidecars loses nothing."""
     import shutil
     base = dest_base[:-4] if dest_base.lower().endswith(".zip") else dest_base
+    # Fold the WAL into the main tracker.db so the zipped .db is self-contained.
+    # Best-effort (checkpoint() never raises): a checkpoint hiccup must not fail a
+    # backup, and the sidecar exclusion below is the belt to this suspenders.
+    try:
+        from tracker import db as _tracker_db
+        _tracker_db.checkpoint()
+    except Exception:  # noqa: BLE001 — backup must never fail on a checkpoint hiccup
+        pass
     # Exclude the backups/ and logs/ trees so a backup never nests prior backups
-    # (a self-including archive balloons on every run) or churns on the live log.
+    # (a self-including archive balloons on every run) or churns on the live log,
+    # AND the SQLite -shm/-wal sidecars (regenerable runtime state — see above).
     src = Path(config.USER_DATA_DIR)
 
     def _ignore(dir_path, names):
+        drop = [n for n in names if _is_sqlite_sidecar(n)]
         if Path(dir_path).resolve() == src.resolve():
-            return [n for n in names if n in ("backups", "logs")]
-        return []
+            drop += [n for n in names if n in ("backups", "logs")]
+        return drop
 
     import tempfile
     with tempfile.TemporaryDirectory() as staging:
@@ -389,6 +409,14 @@ def make_backup(dest_base: str) -> str:
         shutil.copytree(src, mirror, ignore=_ignore)
         shutil.make_archive(base, "zip", root_dir=str(mirror))
     return base + ".zip"
+
+
+def _is_sqlite_sidecar(name: str) -> bool:
+    """True for a SQLite WAL-mode runtime sidecar (``*-shm`` / ``*-wal``). These
+    are regenerable — never durable data — so backups exclude them and restore
+    ignores them inside uploaded zips + deletes any stale ones in the target."""
+    n = str(name).lower()
+    return n.endswith("-shm") or n.endswith("-wal")
 
 
 BACKUP_DIR_NAME = "backups"
@@ -486,11 +514,58 @@ def safe_extract_zip(zip_path: str, dest: Path) -> list[str]:
             if not _is_within(dest, target) and target != dest:
                 raise UnsafeZipEntry(f"path escapes backup root: {name!r}")
         # Phase 2 — all members are safe; extract each explicitly (never
-        # extractall, so the validation above is the single gate).
+        # extractall, so the validation above is the single gate). SKIP any
+        # SQLite -shm/-wal sidecar members: older backups may still contain them,
+        # but restoring a stale -wal over a fresh tracker.db corrupts WAL state,
+        # and on Windows overwriting the live sidecars while the server holds an
+        # open WAL connection is a sharing violation. The .db file is complete on
+        # its own (make_backup checkpoints before zipping); the caller deletes any
+        # stale on-disk sidecars after extraction so the next connection rebuilds
+        # them from the restored .db.
         dest.mkdir(parents=True, exist_ok=True)
+        extracted = []
         for info in infos:
+            if _is_sqlite_sidecar(info.filename):
+                continue
             z.extract(info, str(dest))
-    return [i.filename for i in infos]
+            extracted.append(info.filename)
+    return extracted
+
+
+def _release_db_before_restore() -> None:
+    """Flush + FULLY RELEASE the live tracker.db lock before a restore overwrites
+    the data folder. On Windows an open WAL connection (get_conn()'s ``with`` block
+    manages the transaction but leaks the connection until GC) keeps tracker.db +
+    its -shm/-wal sidecars LOCKED, so extracting a fresh tracker.db over them fails
+    with [WinError 32]/[Errno 22]. ``release_for_restore()`` GC-closes the leaked
+    connections and switches the db out of WAL (deleting + unlocking the sidecars).
+    Best-effort; never raises (matches checkpoint())."""
+    try:
+        from tracker import db as _tracker_db
+        _tracker_db.release_for_restore()
+    except Exception:  # noqa: BLE001 — a restore must not fail on a release hiccup
+        pass
+
+
+def _purge_sqlite_sidecars(folder: Path) -> list[str]:
+    """Delete any ``*-shm``/``*-wal`` sidecars directly under ``folder`` (and its
+    project subfolders' tracker.db sidecars). Called AFTER a restore extracts but
+    BEFORE any new connection opens, so a stale sidecar left over from the pre-
+    restore db can't corrupt the freshly-restored tracker.db — the next
+    get_conn() rebuilds them from the .db. Returns the removed relative names;
+    best-effort per file."""
+    removed: list[str] = []
+    try:
+        for p in folder.rglob("*"):
+            if p.is_file() and _is_sqlite_sidecar(p.name):
+                try:
+                    p.unlink()
+                    removed.append(p.name)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return removed
 
 
 def restore_backup(zip_path: str) -> list[str]:
@@ -498,7 +573,16 @@ def restore_backup(zip_path: str) -> list[str]:
     SAFE. Returns the extracted member names. Raises :class:`UnsafeZipEntry` for a
     hostile archive (nothing written). NOTE: this OVERWRITES current data — the
     web caller requires an explicit confirm and (like the tk flow) may snapshot
-    the current data first."""
+    the current data first.
+
+    WAL-safe (critical): checkpoints + releases the live tracker.db connection
+    state first (so the open WAL connection doesn't block overwriting the .db on
+    Windows), skips any -shm/-wal members inside the uploaded zip, and deletes any
+    stale on-disk sidecars after extraction — the next get_conn() rebuilds them
+    from the restored .db."""
     dest = Path(config.USER_DATA_DIR)
     dest.mkdir(parents=True, exist_ok=True)
-    return safe_extract_zip(zip_path, dest)
+    _release_db_before_restore()
+    members = safe_extract_zip(zip_path, dest)
+    _purge_sqlite_sidecars(dest)
+    return members

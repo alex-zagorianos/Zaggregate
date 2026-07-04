@@ -115,7 +115,9 @@ def backup_restore():
     refused with a 409 ``{ok:false, error:"another run is in progress", job_id}``
     (nothing extracted) rather than clobbering the running job's files. Returns
     ``{ok, members:int, rollback:str}`` on success."""
-    from ui.help_core import safe_extract_zip, make_backup, UnsafeZipEntry, backups_dir
+    from ui.help_core import (safe_extract_zip, make_backup, UnsafeZipEntry,
+                              backups_dir, _release_db_before_restore,
+                              _purge_sqlite_sidecars)
 
     # Lift the app-wide 8 MB body cap for THIS request only, before any body
     # access (request.form below parses the multipart body and would 413 under the
@@ -172,12 +174,20 @@ def backup_restore():
         except Exception:  # noqa: BLE001 — a snapshot hiccup never blocks restore
             rollback = None
 
+        # WAL-safe restore (critical): flush + release the live tracker.db
+        # connection state so overwriting the .db doesn't hit a Windows sharing
+        # violation against the server's open WAL connection; safe_extract_zip
+        # skips -shm/-wal members inside the upload; then delete any stale on-disk
+        # sidecars so the next get_conn() rebuilds them from the RESTORED .db (a
+        # stale -wal left behind would otherwise corrupt the fresh tracker.db).
+        _release_db_before_restore()
         try:
             members = safe_extract_zip(str(staged), dest)
         except UnsafeZipEntry as e:
             return jsonify({"ok": False, "error": f"unsafe backup: {e}"}), 400
         except Exception as e:  # noqa: BLE001 — a corrupt zip is a clean 400
             return jsonify({"ok": False, "error": f"could not read backup: {e}"}), 400
+        _purge_sqlite_sidecars(dest)
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)

@@ -167,6 +167,45 @@ def close_db() -> None:
     checkpoint()
 
 
+def release_for_restore() -> None:
+    """Fully release this process's lock on the tracker.db files so a backup
+    restore can OVERWRITE them (the Windows-locked-file critical, S36).
+
+    get_conn() opens a fresh sqlite3 connection per call but ``with get_conn()``
+    only manages a TRANSACTION — it does NOT close the connection, so every call
+    leaks an open handle that GC closes eventually. On Windows an open WAL
+    connection keeps ``tracker.db`` + its ``-shm``/``-wal`` sidecars LOCKED
+    ([WinError 32] / [Errno 22]), so a restore extracting over them fails. A bare
+    checkpoint() can't fix this — it opens its OWN connection and the leaked ones
+    stay open.
+
+    So this: (1) forces a GC pass to close any leaked get_conn() connections, then
+    (2) opens one connection, TRUNCATE-checkpoints the WAL, and switches the db out
+    of WAL (``journal_mode=DELETE``) which DELETES the ``-shm``/``-wal`` sidecars
+    and drops their locks, then closes and GCs again. After this the .db file can
+    be overwritten; the next get_conn() re-enables WAL cleanly on the restored db.
+    Fully guarded — never raises (a restore must not fail on a release hiccup)."""
+    import gc
+    try:
+        gc.collect()  # close connections leaked by `with get_conn()` (txn-only)
+        path = current_db_path()
+        if not Path(path).exists():
+            return
+        conn = sqlite3.connect(str(path), timeout=5)
+        try:
+            conn.execute("PRAGMA busy_timeout=5000")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            # Switching OUT of WAL deletes the -wal/-shm sidecars and releases
+            # their Windows locks; the next get_conn() flips journal_mode back to
+            # WAL on the (by then restored) db, so this is a transient state only.
+            conn.execute("PRAGMA journal_mode=DELETE")
+        finally:
+            conn.close()
+        gc.collect()
+    except Exception:
+        pass
+
+
 # Run on clean process exit so a normal quit doesn't leave a growing -wal
 # sidecar behind. checkpoint() is fully guarded (never raises), so this can't
 # turn a clean exit into a crash.
