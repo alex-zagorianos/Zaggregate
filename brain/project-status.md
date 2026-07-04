@@ -21,7 +21,7 @@ onboarding legacy-config inference (dad no longer re-gated every load) +
 mid-wizard sentinel; **adversarial review wave confirmed 5 findings — all
 fixed same-session** (worst: bare hyphen-split city variants cross-matching
 other metros; ghost cache freezing staleness). **Suite 2,968/0, vitest 176,
-exe rebuilt + production/ mirrored. PUSH HELD (~60 commits). NEEDS ALEX: free
+exe rebuilt + production/ mirrored. ★PUSHED origin/master `b0cff80..22b4b61` (63 commits, 2026-07-04; pre-push scan clean). NEEDS ALEX: free
 API keys (CareerOneStop/Brave/Jooble/Careerjet/SerpApi — biggest untapped
 recall lever), push decision, tk-vs-desktop default.** Full data:
 `brain/findings-2026-07-04-search-optimization.md`.

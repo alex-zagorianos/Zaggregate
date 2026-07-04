@@ -9,7 +9,7 @@ desktop app? that is what we want — if it won't, make it able to do that."
 
 Everything delivered. **Suite 2,968 passed / 0 failed; vitest 176/176; tsc +
 vite build clean; frozen exe rebuilt + desktop-window smoke PASSED;
-production/ mirrored. PUSH STILL HELD.**
+production/ mirrored. ★PUSHED origin/master `b0cff80..22b4b61` (Alex's go, 2026-07-04; pre-push scan clean).**
 
 ## 1. Multi-role live search test (Phase A) — all six real projects
 
@@ -81,11 +81,10 @@ re-verified green afterwards.
 
 ## Needs Alex
 
-1. **Push decision** — big local stack held (this session ~60 commits total).
-2. **Free API keys** (§2) — 15 minutes, biggest recall unlock.
-3. tk-tab retirement + tk-vs-desktop default; `tracker/app.py` deletion.
-4. get_conn() connection-reuse redesign (deferred by design).
-5. Eyeball the desktop window: `production/JobProgram/JobProgram.exe --desktop`.
+1. **Free API keys** (§2) — 15 minutes, biggest recall unlock.
+2. tk-tab retirement + tk-vs-desktop default; `tracker/app.py` deletion.
+3. get_conn() connection-reuse redesign (deferred by design).
+4. Eyeball the desktop window: `production/JobProgram/JobProgram.exe --desktop`.
 
 ## Next-session queue
 
