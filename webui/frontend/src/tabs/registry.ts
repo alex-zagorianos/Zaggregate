@@ -32,7 +32,13 @@ export interface TabDef {
 }
 
 export const TABS: readonly TabDef[] = [
-  { path: "inbox", label: "Inbox", icon: Inbox, ready: false },
+  {
+    path: "inbox",
+    label: "Inbox",
+    command: "Go to Inbox",
+    icon: Inbox,
+    ready: true,
+  },
   { path: "top-picks", label: "Top Picks", icon: Star, ready: true },
   { path: "search", label: "Search", icon: Search, ready: false },
   {

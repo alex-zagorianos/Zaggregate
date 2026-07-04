@@ -13,6 +13,7 @@ import {
 import { TABS, tabCommand } from "@/tabs/registry";
 import { useTheme } from "@/lib/theme";
 import { filterCommands } from "@/lib/filter-commands";
+import { useAppCommands } from "@/lib/app-commands";
 
 /* Ctrl+K command palette. Commands = navigate-to-tab (one per registry entry) +
  * toggle-theme. Ranking uses filterCommands (the faithful ui/palette.py port);
@@ -35,6 +36,7 @@ export function CommandPalette({
 }) {
   const navigate = useNavigate();
   const { mode, toggle } = useTheme();
+  const appCommands = useAppCommands();
   const [query, setQuery] = React.useState("");
 
   React.useEffect(() => {
@@ -44,6 +46,13 @@ export function CommandPalette({
   const { setMode } = useTheme();
 
   const commands = React.useMemo<Cmd[]>(() => {
+    // Tab-contributed action commands (e.g. Inbox's "Update my Inbox now") lead the
+    // list so context actions are one keystroke away, then the nav + theme commands.
+    const actionCmds: Cmd[] = appCommands.map((c) => ({
+      label: c.label,
+      icon: c.icon,
+      run: c.run,
+    }));
     const navCmds: Cmd[] = TABS.map((tab) => ({
       label: tabCommand(tab),
       icon: tab.icon,
@@ -74,8 +83,8 @@ export function CommandPalette({
       icon: mode === "dark" ? Sun : Moon,
       run: toggle,
     });
-    return navCmds;
-  }, [navigate, mode, toggle, setMode]);
+    return [...actionCmds, ...navCmds];
+  }, [appCommands, navigate, mode, toggle, setMode]);
 
   const ordered = React.useMemo(() => {
     const byLabel = new Map(commands.map((c) => [c.label, c]));

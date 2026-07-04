@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 
 import { TABS, DEFAULT_TAB } from "./registry";
 import { ComingSoon } from "./ComingSoon";
+import { InboxTab } from "./inbox/InboxTab";
 import { TopPicksTab } from "./toppicks/TopPicksTab";
 import { SourcesTab } from "./sources/SourcesTab";
 import { TrackerTab } from "./tracker/TrackerTab";
@@ -15,6 +16,7 @@ import { BoardTab } from "./board/BoardTab";
 
 // Real components for the tabs whose web twin has shipped, keyed by path.
 const READY_ELEMENTS: Record<string, ReactNode> = {
+  inbox: <InboxTab />,
   "top-picks": <TopPicksTab />,
   sources: <SourcesTab />,
   tracker: <TrackerTab />,

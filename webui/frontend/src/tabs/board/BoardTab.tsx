@@ -24,6 +24,7 @@ import {
 import { useBoard, useMoveCard } from "@/api/queries";
 import { ApiError, type BoardColumn, type BoardCardRow } from "@/api/client";
 import { statusLabel, isTerminal } from "@/lib/status";
+import { daysInStageLabel } from "@/lib/board-labels";
 import { canDrop, isRealMove, rejectReason } from "./board-logic";
 import { JobDialog } from "@/components/job-dialog";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
@@ -408,7 +409,7 @@ function CardBody({
           </p>
           {card.days_label && (
             <p className="text-muted-foreground/70 zg-num mt-1.5 text-[0.7rem]">
-              {card.days_label} here
+              {daysInStageLabel(card.days_label)}
             </p>
           )}
         </div>

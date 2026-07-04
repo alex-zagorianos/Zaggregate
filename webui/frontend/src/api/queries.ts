@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   endpoints,
+  importInbox,
   type TopPicksLimit,
   type TopPicksResponse,
   type TopPickRow,
@@ -9,6 +10,10 @@ import {
   type BoardCardRow,
   type AppFields,
   type RoundFields,
+  type InboxListResponse,
+  type InboxRow,
+  type ExportArgs,
+  type ImportPolicy,
 } from "./client";
 
 /* TanStack Query hooks for the shell's read/write endpoints. Phase 1+ builders:
@@ -26,6 +31,9 @@ export const queryKeys = {
   applicationsAll: ["applications"] as const,
   application: (id: number) => ["application", id] as const,
   board: ["board"] as const,
+  inbox: (params: Record<string, unknown>) => ["inbox", params] as const,
+  inboxAll: ["inbox"] as const,
+  inboxDetail: (id: number) => ["inbox-detail", id] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -339,5 +347,177 @@ export function useMoveCard() {
       if (ctx?.prev) qc.setQueryData(queryKeys.board, ctx.prev);
     },
     onSettled: (_res, _e, vars) => invalidateApplicationViews(qc, vars.id),
+  });
+}
+
+// ── Inbox (flagship — Phase 3) ────────────────────────────────────────────────
+
+/** Every inbox mutation (dismiss, undo, import, re-rank) can change the list, the
+ * detail, the Top Picks shortlist (a re-rank reshuffles it), and the badges. This
+ * one helper refreshes them all so the flagship stays coherent by construction. */
+function invalidateInboxViews(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: queryKeys.inboxAll });
+  qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });
+}
+
+/** The filtered inbox list. `params` is the mapped query-param object
+ * (lib/inbox-filter-state.toParams); the key includes it so each distinct view
+ * caches independently. `keepPreviousData` keeps the old rows on screen while a
+ * filter change refetches (no flash to empty), which the roving-focus table
+ * needs. */
+export function useInbox(
+  params: Record<string, string | number | boolean | undefined>,
+) {
+  return useQuery<InboxListResponse>({
+    queryKey: queryKeys.inbox(params),
+    queryFn: () => endpoints.inbox(params),
+    staleTime: 10_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** Detail for the selected row (fit-why, score breakdown, ghost, ATS, preview).
+ * Only fetched when a row is selected. */
+export function useInboxDetail(id: number | null) {
+  return useQuery({
+    queryKey: queryKeys.inboxDetail(id ?? -1),
+    queryFn: () => endpoints.inboxDetail(id as number),
+    enabled: id !== null,
+    staleTime: 30_000,
+  });
+}
+
+/** Optimistically drop rows from EVERY cached inbox page + Top Picks (they're
+ * moving out of the inbox). Returns snapshots so onError can roll back. Shared by
+ * single + bulk dismiss and by track. */
+function optimisticRemoveInboxRows(
+  qc: ReturnType<typeof useQueryClient>,
+  ids: number[],
+) {
+  const idSet = new Set(ids);
+  const inboxSnaps = qc.getQueriesData<InboxListResponse>({
+    queryKey: queryKeys.inboxAll,
+  });
+  for (const [key, data] of inboxSnaps) {
+    if (!data) continue;
+    const kept = data.rows.filter((r: InboxRow) => !idSet.has(r.id));
+    const removed = data.rows.length - kept.length;
+    qc.setQueryData<InboxListResponse>(key, {
+      ...data,
+      rows: kept,
+      // Keep the "N of M" honest as rows leave optimistically.
+      shown: Math.max(0, data.shown - removed),
+      total: Math.max(0, data.total - removed),
+    });
+  }
+  const picksSnaps = qc.getQueriesData<TopPicksResponse>({
+    queryKey: queryKeys.topPicksAll,
+  });
+  for (const [key, data] of picksSnaps) {
+    if (!data) continue;
+    qc.setQueryData<TopPicksResponse>(key, {
+      ...data,
+      rows: data.rows.filter((r: TopPickRow) => !idSet.has(r.id)),
+    });
+  }
+  return { inboxSnaps, picksSnaps };
+}
+
+function rollbackInboxRows(
+  qc: ReturnType<typeof useQueryClient>,
+  ctx:
+    | {
+        inboxSnaps: [readonly unknown[], unknown][];
+        picksSnaps: [readonly unknown[], unknown][];
+      }
+    | undefined,
+) {
+  ctx?.inboxSnaps.forEach(([key, data]) => qc.setQueryData(key, data));
+  ctx?.picksSnaps.forEach(([key, data]) => qc.setQueryData(key, data));
+}
+
+/** Track an inbox row (promote to tracker). Optimistic removal + coherent
+ * invalidation across inbox, Top Picks, and the application views. */
+export function useTrackInboxRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => endpoints.trackInbox(id),
+    onMutate: (id) => optimisticRemoveInboxRows(qc, [id]),
+    onError: (_e, _v, ctx) => rollbackInboxRows(qc, ctx),
+    onSettled: () => {
+      invalidateInboxViews(qc);
+      invalidateApplicationViews(qc);
+    },
+  });
+}
+
+/** Dismiss a single inbox row (optimistic). */
+export function useDismissInboxRow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => endpoints.dismissInbox(id),
+    onMutate: (id) => optimisticRemoveInboxRows(qc, [id]),
+    onError: (_e, _v, ctx) => rollbackInboxRows(qc, ctx),
+    onSettled: () => invalidateInboxViews(qc),
+  });
+}
+
+/** Bulk-dismiss many rows (optimistic). Resolves to the response so the caller
+ * can surface the undo_token in its Undo toast. */
+export function useDismissBulk() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) => endpoints.dismissBulk(ids),
+    onMutate: (ids) => optimisticRemoveInboxRows(qc, ids),
+    onError: (_e, _v, ctx) => rollbackInboxRows(qc, ctx),
+    onSettled: () => invalidateInboxViews(qc),
+  });
+}
+
+/** Restore a dismissed batch (undo). No token = the most recent batch. */
+export function useUndoDismiss() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (undoToken?: string) => endpoints.undoDismiss(undoToken),
+    onSuccess: () => invalidateInboxViews(qc),
+  });
+}
+
+/** Revert the last AI re-rank (any route). */
+export function useUndoRerank() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => endpoints.undoRerank(),
+    onSuccess: () => invalidateInboxViews(qc),
+  });
+}
+
+/** Export the inbox (or the current view) for AI ranking → file list. Pure action
+ * (no cache change); the caller reads the returned files for download buttons. */
+export function useExportInbox() {
+  return useMutation({
+    mutationFn: (args: ExportArgs) => endpoints.exportInbox(args),
+  });
+}
+
+/** Import an AI-returned re-rank (file or pasted text). Refreshes the inbox +
+ * Top Picks on success (scores landed on rows). */
+export function useImportInbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      input: { file: File } | { text: string };
+      policy: ImportPolicy;
+    }) => importInbox(vars.input, vars.policy),
+    onSuccess: () => invalidateInboxViews(qc),
+  });
+}
+
+/** Paste an AI fit reply → score the currently-unscored rows. */
+export function useScoreReply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => endpoints.scoreReply(text),
+    onSuccess: () => invalidateInboxViews(qc),
   });
 }
