@@ -204,3 +204,81 @@ def test_none_safe_does_not_crash():
     # Wildly defensive: a row missing every field, including title.
     out = ghost_score({"title": None, "created": None, "salary_text": None})
     assert out["level"] == "unknown"
+
+
+# ── module-level cache (bounded, keyed on ghost-relevant fields only) ──────────
+import match.ghost as _ghost_mod  # noqa: E402 — appended block, avoid reordering above
+
+
+def _reset_ghost_cache():
+    _ghost_mod._GHOST_CACHE.clear()
+    _ghost_mod._ghost_cache_hits = 0
+
+
+def setup_function(_fn):
+    # Every test in this module starts with a clean, empty cache so a prior
+    # test's rows can't produce a spurious hit/miss here.
+    _reset_ghost_cache()
+
+
+def test_repeat_call_on_identical_row_is_a_cache_hit():
+    row = {"title": "Controls Engineer", "created": _iso_days_ago(60),
+           "salary_min": None, "salary_max": None}
+    first = ghost_score(row)
+    hits_after_first = _ghost_mod._ghost_cache_hits
+    second = ghost_score(row)
+    assert second == first
+    # The second identical call must have hit the cache (counter advanced).
+    assert _ghost_mod._ghost_cache_hits == hits_after_first + 1
+
+
+def test_changed_field_is_a_cache_miss_not_a_stale_hit():
+    row_a = {"title": "Controls Engineer", "created": _iso_days_ago(60)}
+    row_b = {"title": "Controls Engineer", "created": _iso_days_ago(3)}
+    out_a = ghost_score(row_a)
+    out_b = ghost_score(row_b)
+    # Genuinely different inputs -> genuinely different (and correct) outputs —
+    # a stale-hit bug would return row_a's stale result for row_b's fresh dict.
+    assert out_a["level"] == "stale"
+    assert out_b["level"] == "fresh"
+    assert out_a != out_b
+
+
+def test_mutating_returned_dict_does_not_poison_next_call():
+    row = {"title": "Controls Engineer", "created": _iso_days_ago(60)}
+    first = ghost_score(row)
+    first["reasons"].append("INJECTED-BY-CALLER")
+    first["score"] = -999
+    second = ghost_score(row)
+    assert "INJECTED-BY-CALLER" not in second["reasons"]
+    assert second["score"] != -999
+    assert second["score"] == first["score"] or True  # sanity: no crash either way
+    # Precisely: second must equal a fresh, uncorrupted computation.
+    third = _ghost_mod._ghost_score_uncached(row)
+    assert second == third
+
+
+def test_repost_info_bypasses_cache_every_call():
+    """A repost_info-bearing call must never be served from (or land in) the
+    module cache -- it's an external, non-hashable-by-design map."""
+    row = {"title": "Controls Engineer", "created": _iso_days_ago(60),
+           "job_key": "acme:controls-engineer"}
+    repost_info = {"acme:controls-engineer": {"repost": True}}
+    before = len(_ghost_mod._GHOST_CACHE)
+    out = ghost_score(row, repost_info=repost_info)
+    assert any("reposted" in r for r in out["reasons"])
+    # Cache size unchanged -- the repost_info path never touches _GHOST_CACHE.
+    assert len(_ghost_mod._GHOST_CACHE) == before
+
+
+def test_cache_key_ignores_irrelevant_fields():
+    """Two rows differing ONLY in a field ghost_score never reads (e.g. `url`)
+    must be treated as the same cache entry -- a hit, not a miss."""
+    row_a = {"title": "Controls Engineer", "created": _iso_days_ago(60),
+             "url": "http://x/1"}
+    row_b = {"title": "Controls Engineer", "created": _iso_days_ago(60),
+             "url": "http://x/2-totally-different"}
+    ghost_score(row_a)
+    hits_before = _ghost_mod._ghost_cache_hits
+    ghost_score(row_b)
+    assert _ghost_mod._ghost_cache_hits == hits_before + 1

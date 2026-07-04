@@ -67,6 +67,17 @@ def inbox_row(row: dict) -> dict:
     return out
 
 
+def inbox_row_list(row: dict) -> dict:
+    """List-context variant of :func:`inbox_row`: identical shape minus
+    ``description`` — the inbox/board/queue/top-picks LIST views never render a
+    description preview (only the per-row detail route does), so list responses
+    drop the column to cut payload size. DETAIL routes must keep using
+    :func:`inbox_row`."""
+    out = inbox_row(row)
+    out.pop("description", None)
+    return out
+
+
 def app_row(row: dict) -> dict:
     """Serialize a tracked-application row (``tracker.db.get_all`` / ``get_job``)
     to a JSON-safe dict. Applications have no ``extras`` column, so this is a pure
@@ -74,6 +85,17 @@ def app_row(row: dict) -> dict:
     if not isinstance(row, dict):
         return {}
     return {str(key): _json_safe(value) for key, value in row.items()}
+
+
+def app_row_list(row: dict) -> dict:
+    """List-context variant of :func:`app_row`: identical shape minus
+    ``description`` — the Applications/Board/Queue LIST views never render a
+    description preview, so list responses drop the column to cut payload size.
+    The single-application detail route (``GET /api/applications/<id>``) must keep
+    using :func:`app_row`."""
+    out = app_row(row)
+    out.pop("description", None)
+    return out
 
 
 # ── search JobResult round-trip ───────────────────────────────────────────────

@@ -9,7 +9,7 @@ from __future__ import annotations
 from flask import Blueprint, request, jsonify
 
 from tracker import service
-from ..serializers import inbox_row
+from ..serializers import inbox_row_list
 
 toppicks_bp = Blueprint("webui_toppicks", __name__)
 
@@ -35,4 +35,4 @@ def _parse_limit(raw: str | None) -> int:
 def toppicks():
     limit = _parse_limit(request.args.get("limit"))
     rows = service.top_picks(limit)
-    return jsonify({"ok": True, "rows": [inbox_row(r) for r in rows]})
+    return jsonify({"ok": True, "rows": [inbox_row_list(r) for r in rows]})

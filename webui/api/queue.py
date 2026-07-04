@@ -38,7 +38,7 @@ from match import ats_hint as atshintmod
 from tracker import service
 from tracker.db import get_all
 from ..security import require_local_origin
-from ..serializers import app_row as _ser_app
+from ..serializers import app_row_list as _ser_app
 from .. import downloads
 
 queue_bp = Blueprint("webui_queue", __name__)

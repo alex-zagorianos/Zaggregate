@@ -247,3 +247,70 @@ def test_sse_error_frame_on_failure(client):
 def test_sse_unknown_job_404(client):
     resp = client.get("/api/jobs/nope/events")
     assert resp.status_code == 404
+
+
+# ── finished-job eviction (memory-leak guard) ─────────────────────────────────
+import webui.jobs as _jobs_mod
+
+
+def test_old_finished_job_evicted_on_next_start():
+    runner = JobRunner()
+    jid = runner.start("k", "old", lambda h: "r")
+    _wait_status(runner, jid, "done")
+    # Backdate finished_at past the TTL so it becomes eviction-eligible.
+    runner._jobs[jid].finished_at -= (_jobs_mod._FINISHED_TTL_SECS + 1)
+    # Starting a new job triggers the eviction sweep.
+    runner.start("k", "new-gate", lambda h: "r2")
+    assert runner.status(jid) is None  # evicted -> unknown-id contract (404)
+
+
+def test_running_job_is_never_evicted():
+    runner = JobRunner()
+    gate = threading.Event()
+    jid = runner.start("k", "running", lambda h: gate.wait(2.0))
+    # Force the age check to (falsely) look ancient if it were terminal — but
+    # the job is still running (finished_at is None), so eviction must skip it
+    # regardless of how many other jobs get started afterward.
+    for i in range(5):
+        runner.start("k", f"filler-{i}", lambda h: "r")
+    assert runner.status(jid)["status"] == "running"
+    gate.set()
+    _wait_status(runner, jid, "done")
+
+
+def test_subscribed_finished_job_never_evicted():
+    runner = JobRunner()
+    jid = runner.start("k", "subbed", lambda h: "r")
+    _wait_status(runner, jid, "done")
+    q = runner.subscribe(jid)  # live subscriber still attached
+    try:
+        runner._jobs[jid].finished_at -= (_jobs_mod._FINISHED_TTL_SECS + 1)
+        runner.start("k", "trigger", lambda h: "r2")
+        # Still present -- a subscriber is attached, so eviction must skip it.
+        assert runner.status(jid) is not None
+    finally:
+        runner.unsubscribe(jid, q)
+
+
+def test_cap_enforcement_evicts_oldest_finished_first():
+    """The cap is enforced AT start()-time (inside the existing lock, per the
+    task's design), not continuously: each start() sweeps *existing* finished
+    jobs down to the cap BEFORE registering the new (initially running) job.
+    So the steady-state invariant is <= cap+1 total finished (the cap itself,
+    plus whichever just-registered job has since completed) — never allowed to
+    grow further from there, and the OLDEST finished jobs are always the ones
+    evicted first.
+    """
+    runner = JobRunner()
+    cap = _jobs_mod._FINISHED_CAP
+    ids = []
+    for i in range(cap + 10):
+        jid = runner.start("k", f"cap-{i}", lambda h: "r")
+        _wait_status(runner, jid, "done")
+        ids.append(jid)
+        finished_count = sum(1 for j in runner._jobs.values()
+                             if j.finished_at is not None)
+        assert finished_count <= cap + 1
+    # The OLDEST finished jobs (earliest in `ids`) must be the ones gone.
+    assert runner.status(ids[0]) is None
+    assert runner.status(ids[-1]) is not None

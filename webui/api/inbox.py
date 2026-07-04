@@ -44,6 +44,7 @@ from rerank.import_ import import_scores
 
 from ..security import require_local_origin
 from ..serializers import inbox_row as _ser_inbox_row
+from ..serializers import inbox_row_list as _ser_inbox_row_list
 from .. import inbox_filters
 
 inbox_bp = Blueprint("webui_inbox", __name__)
@@ -301,7 +302,10 @@ def list_inbox():
     latest_batch = inbox_filters._latest_new_batch(all_rows)
     rows_out = []
     for r in page:
-        ser = _ser_inbox_row(r)
+        # List context: no description preview is rendered here (the detail route
+        # below carries the full field + its own preview), so drop it to cut
+        # payload size.
+        ser = _ser_inbox_row_list(r)
         ser["computed"] = _computed(r, latest_batch=latest_batch, home=home, mode=mode)
         rows_out.append(ser)
 

@@ -222,18 +222,8 @@ def _level_for(score, any_signal):
     return "fresh"
 
 
-def ghost_score(job, repost_info=None):
-    """Offline stale/ghost likelihood for a JobResult OR an inbox-row dict.
-
-    ``repost_info`` (optional; default None = abstain, today's behavior exactly)
-    is search.freshness.repost_info()'s {job_key: {'first_seen','repost',
-    'evergreen'}} map. When passed, a job whose job_key is flagged bumps the score
-    with reasons 'reposted' / 'evergreen listing'. A job absent from the map (or a
-    None map) contributes nothing - the signal abstains, never penalizes.
-
-    Returns ``{"score": int 0..100, "level": "fresh"|"aging"|"stale"|"unknown",
-    "reasons": list[str]}``. Pure, deterministic, never raises on missing fields.
-    """
+def _ghost_score_uncached(job, repost_info=None):
+    """The real computation, unwrapped from the cache. See :func:`ghost_score`."""
     reasons: list[str] = []
 
     age_pts, age_fired = _age_signal(job, reasons)
@@ -253,3 +243,110 @@ def ghost_score(job, repost_info=None):
     score = int(max(0, min(100, round(raw))))
     level = _level_for(score, any_signal=True)
     return {"score": score, "level": level, "reasons": reasons}
+
+
+# The exact set of job fields ``_ghost_score_uncached`` reads (via ``_get`` /
+# ``_extras_get``), enumerated so the cache key can't silently miss a signal a
+# future edit adds to the scoring functions above: created (age), title
+# (missing-salary gate + evergreen pattern), salary_min/salary_max/salary_text
+# (missing-salary), valid_through/validThrough + the same key inside the
+# ``extras`` JSON blob (expired). ``job_key`` is deliberately EXCLUDED — it only
+# matters when ``repost_info`` is passed, and that path always bypasses the cache
+# (see ``ghost_score`` below).
+_GHOST_KEY_FIELDS = (
+    "created", "title", "salary_min", "salary_max", "salary_text",
+    "valid_through", "validThrough",
+)
+
+
+def _ghost_cache_key(job):
+    """A hashable tuple of every ghost-relevant field on ``job`` (JobResult attr or
+    inbox-row dict), or ``None`` when ``job`` can't be safely keyed (unhashable
+    field value, e.g. a non-JSON-string ``extras`` dict) — the caller then skips
+    the cache entirely rather than risk a stale/incorrect hit."""
+    try:
+        values = tuple(_get(job, name) for name in _GHOST_KEY_FIELDS)
+        extras = job.get("extras") if isinstance(job, dict) else None
+        # extras is normally a JSON string (hashable) on a real inbox row; only
+        # hash it directly when it's already a plain hashable scalar/string, else
+        # fall back to the parsed valid_through field alone (still exact for the
+        # signal that reads extras) so a dict-shaped extras never blows up hash().
+        if isinstance(extras, dict):
+            extras_key = ("valid_through", extras.get("valid_through"))
+        else:
+            extras_key = extras
+        key = (type(job).__name__,) + values + (extras_key,)
+        hash(key)
+    except TypeError:
+        return None
+    return key
+
+
+# key -> result cache. A plain dict (not `functools.lru_cache`) because the
+# VALUE we need to return alongside a hit is the freshly-recomputed dict itself
+# — lru_cache would require re-deriving `job` from the hashable `key` to call the
+# real computation on a miss, which is exactly the coupling this avoids. Bounded
+# manually (see `_ghost_cached`) to the same maxsize contract an lru_cache gives.
+_GHOST_CACHE: dict[tuple, dict] = {}
+_GHOST_CACHE_MAXSIZE = 4096
+_ghost_cache_hits = 0  # test-observable counter, not part of the public API
+
+
+def _ghost_cached(key, job):
+    """Cache slot keyed on :func:`_ghost_cache_key`'s tuple. Only ever called on
+    the ``repost_info=None`` path (see ``ghost_score``), so the key need not
+    encode it. Returns the cached (or freshly-computed + stored) dict; the caller
+    is responsible for copying it before handing it to anyone."""
+    global _ghost_cache_hits
+    hit = _GHOST_CACHE.get(key)
+    if hit is not None:
+        _ghost_cache_hits += 1
+        return hit
+    result = _ghost_score_uncached(job)
+    if len(_GHOST_CACHE) >= _GHOST_CACHE_MAXSIZE:
+        # Bounded, not LRU-precise: drop one arbitrary entry (dict insertion
+        # order -> oldest) rather than let a long-lived process grow unbounded.
+        _GHOST_CACHE.pop(next(iter(_GHOST_CACHE)))
+    _GHOST_CACHE[key] = result
+    return result
+
+
+def ghost_score(job, repost_info=None):
+    """Offline stale/ghost likelihood for a JobResult OR an inbox-row dict.
+
+    ``repost_info`` (optional; default None = abstain, today's behavior exactly)
+    is search.freshness.repost_info()'s {job_key: {'first_seen','repost',
+    'evergreen'}} map. When passed, a job whose job_key is flagged bumps the score
+    with reasons 'reposted' / 'evergreen listing'. A job absent from the map (or a
+    None map) contributes nothing - the signal abstains, never penalizes.
+
+    Returns ``{"score": int 0..100, "level": "fresh"|"aging"|"stale"|"unknown",
+    "reasons": list[str]}``. Pure, deterministic, never raises on missing fields.
+
+    Bounded module-level cache (:data:`_ghost_cached`, ``maxsize=4096``): the
+    computation is pure over a small set of fields, and the inbox list route can
+    recompute it for the same rows on every request when ``hide_stale`` view
+    filtering is on. Keyed on exactly the fields the signals read (enumerated in
+    :data:`_GHOST_KEY_FIELDS`), so a changed field is a cache MISS, not a stale
+    hit. ``repost_info`` bypasses the cache (it's an external mutable map, not
+    part of the row) — that call shape still recomputes every time, matching
+    pre-cache behavior exactly. A row that can't be safely keyed (unhashable
+    field) also bypasses the cache rather than risk a wrong hit. The cached path
+    always returns a COPY of the cached dict so a caller mutating its result
+    (e.g. ``ats["lines"] = ...``-style enrichment elsewhere) can never poison a
+    later call.
+    """
+    if repost_info is not None:
+        return _ghost_score_uncached(job, repost_info)
+    key = _ghost_cache_key(job)
+    if key is None:
+        return _ghost_score_uncached(job)
+    result = _ghost_cached(key, job)
+    # Always return a COPY: the cache stores one shared dict per key, and a
+    # caller mutating its returned result (adding a key, editing `reasons`, ...)
+    # must never leak that mutation into a later call for the same row. `reasons`
+    # is itself a mutable list, so a shallow `dict(result)` alone isn't enough —
+    # copy it too (one level deep is all `ghost_score`'s shape ever needs).
+    out = dict(result)
+    out["reasons"] = list(result["reasons"])
+    return out

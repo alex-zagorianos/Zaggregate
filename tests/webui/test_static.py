@@ -112,3 +112,32 @@ def test_static_available_reflects_index(monkeypatch, tmp_path):
     assert paths.static_available() is False  # dir but no index
     (d / "index.html").write_text("x", encoding="utf-8")
     assert paths.static_available() is True
+
+
+# ── cache headers (Vite content-hashed assets vs always-revalidate index) ──────
+
+def test_asset_gets_long_lived_immutable_cache_header(client, built_static):
+    resp = client.get("/app/app.js")
+    cc = resp.headers.get("Cache-Control", "")
+    assert "max-age=31536000" in cc
+    assert "immutable" in cc
+
+
+def test_nested_asset_gets_long_lived_immutable_cache_header(client, built_static):
+    resp = client.get("/app/assets/main.css")
+    cc = resp.headers.get("Cache-Control", "")
+    assert "max-age=31536000" in cc
+    assert "immutable" in cc
+
+
+def test_index_route_gets_no_cache_header(client, built_static):
+    resp = client.get("/app")
+    assert resp.headers.get("Cache-Control") == "no-cache"
+
+
+def test_spa_fallback_index_gets_no_cache_header(client, built_static):
+    """The SPA-fallback branch also serves index.html bytes -- it must carry the
+    same no-cache header as the direct /app route, not the long-lived asset one."""
+    resp = client.get("/app/inbox/some/deep/route")
+    assert resp.status_code == 200
+    assert resp.headers.get("Cache-Control") == "no-cache"

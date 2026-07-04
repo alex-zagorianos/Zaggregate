@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import threading
 import queue
+import time
 import uuid
 from collections import deque
 from typing import Any, Callable, Optional
@@ -38,6 +39,20 @@ _STATUS_TAIL = 50
 # Sentinel pushed onto every subscriber queue when a job reaches a terminal
 # state, so an SSE drain loop unblocks and emits its done/error frame.
 _DONE = object()
+
+# Finished-job retention (memory-leak guard for a long-lived desktop process):
+# a job.result can hold a full search row set, so ``_jobs`` must not grow
+# unbounded across a session. A terminal job becomes eviction-eligible once it
+# is older than ``_FINISHED_TTL_SECS`` AND has no live SSE subscriber still
+# attached (evicting out from under an attached client would break replay/​the
+# live drain). ``_FINISHED_CAP`` is a hard ceiling on how many finished jobs are
+# kept regardless of age, evicting the oldest-finished first (subscriber guard
+# still applies) — so a burst of many short-lived jobs can't outgrow memory
+# either. Both are enforced opportunistically inside ``start()``'s existing
+# lock, not on a timer, so a process that stops starting jobs simply stops
+# evicting (acceptable: no jobs -> no growth).
+_FINISHED_TTL_SECS = 3600
+_FINISHED_CAP = 100
 
 
 class JobConflict(Exception):
@@ -98,6 +113,9 @@ class _Job:
         self.cancel_event = threading.Event()
         self._subscribers: set[queue.Queue] = set()
         self._lock = threading.Lock()
+        # Set by finish() (monotonic seconds) -- None while still running. Read
+        # by JobRunner._evict_finished to age out old terminal jobs.
+        self.finished_at: Optional[float] = None
 
     # ── log fan-out ────────────────────────────────────────────────────────────
     def append_line(self, line: str) -> None:
@@ -129,11 +147,16 @@ class _Job:
         with self._lock:
             self._subscribers.discard(q)
 
+    def has_subscribers(self) -> bool:
+        with self._lock:
+            return bool(self._subscribers)
+
     def finish(self, status: str, result: Any, error: Optional[str]) -> None:
         with self._lock:
             self.status = status
             self.result = result
             self.error = error
+            self.finished_at = time.monotonic()
             subs = list(self._subscribers)
         for q in subs:
             try:
@@ -164,6 +187,54 @@ class JobRunner:
         self._exclusive_active: Optional[str] = None
         self._lock = threading.Lock()
 
+    def _evict_finished_locked(self) -> None:
+        """Prune ``_jobs`` of old/excess terminal jobs. MUST be called with
+        ``self._lock`` already held (it mutates ``_jobs``/``_active`` directly,
+        the same invariant every other method under this lock relies on).
+
+        Two independent eviction rules, both gated on "no live subscriber still
+        attached" (evicting a job an SSE client is actively draining would break
+        replay and the live drain — the client would 404 on its next poll):
+
+        1. AGE: any terminal job (done/failed/cancelled) finished more than
+           ``_FINISHED_TTL_SECS`` ago.
+        2. CAP: once there are more than ``_FINISHED_CAP`` terminal, unsubscribed
+           jobs, evict the oldest-finished first until the cap holds again — so a
+           long session that starts many short-lived jobs can't outgrow memory
+           even if each one individually ages out fast enough to dodge rule 1.
+
+        A running job is NEVER a candidate (``finished_at is None`` guards it out
+        of both rules). ``_active`` entries pointing at an evicted job id are
+        cleaned up too, so a stale id can't linger there (harmless either way —
+        the single-flight check already requires ``status == "running"`` — but
+        tidier and cheaper to check).
+        """
+        now = time.monotonic()
+        evictable = [
+            j for j in self._jobs.values()
+            if j.finished_at is not None and not j.has_subscribers()
+        ]
+
+        to_evict: set[str] = set()
+        for j in evictable:
+            if now - j.finished_at > _FINISHED_TTL_SECS:
+                to_evict.add(j.id)
+
+        remaining = [j for j in evictable if j.id not in to_evict]
+        overflow = len(remaining) - _FINISHED_CAP
+        if overflow > 0:
+            remaining.sort(key=lambda j: j.finished_at)
+            for j in remaining[:overflow]:
+                to_evict.add(j.id)
+
+        if not to_evict:
+            return
+        for jid in to_evict:
+            self._jobs.pop(jid, None)
+        stale_gates = [g for g, jid in self._active.items() if jid in to_evict]
+        for g in stale_gates:
+            self._active.pop(g, None)
+
     def start(self, kind: str, key: str, fn: Callable[[JobHandle], Any],
               *, exclusive: bool = False) -> str:
         """Launch ``fn(handle)`` on a daemon thread; return the new job id.
@@ -186,6 +257,7 @@ class JobRunner:
         gate = (str(kind), str(key))
         job_id = uuid.uuid4().hex
         with self._lock:
+            self._evict_finished_locked()
             # Same-(kind,key) single-flight (applies to every job).
             running = self._active.get(gate)
             if running is not None and running in self._jobs \

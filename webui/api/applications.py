@@ -35,7 +35,7 @@ from flask import Blueprint, request, jsonify, send_file
 from tracker import db
 from tracker import service
 from ..security import require_local_origin
-from ..serializers import app_row
+from ..serializers import app_row, app_row_list
 
 applications_bp = Blueprint("webui_applications", __name__)
 
@@ -72,7 +72,7 @@ def list_applications():
         rows = service.list_jobs(status)         # "archived" special-cased in db
     return jsonify({
         "ok": True,
-        "rows": [app_row(r) for r in rows],
+        "rows": [app_row_list(r) for r in rows],
         "counts": db.get_counts(),
         "followups_due": db.count_followups_due(),
     })
