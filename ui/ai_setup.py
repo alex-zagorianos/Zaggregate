@@ -334,7 +334,11 @@ def apply_setup(text: str, *, mark_onboarded: bool = True) -> dict:
     workspace.scaffold_preferences), so the AI path and the wizard produce an
     identical on-disk contract. Returns a small summary dict for the UI. Raises
     SetupBlockError (unapplied) on any validation problem."""
-    from ui import setup_wizard
+    # Use the Tk-free core (build_preferences/_search_config/mark_onboarded live
+    # there since the S36 split) so the web AI-setup express lane never imports
+    # tkinter. The tk setup_wizard re-exports these same objects, so behavior is
+    # byte-identical whether called from the GUI or the web API.
+    from ui import setup_wizard_core as setup_wizard
     parsed = parse_setup_block(text)                       # may raise (pre-apply)
     answers = parsed["answers"]
     extras = parsed["extras"]

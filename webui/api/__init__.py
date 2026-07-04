@@ -23,6 +23,9 @@ def build_api_blueprint() -> Blueprint:
     from .search import search_bp
     from .queue import queue_bp
     from .resume import resume_bp
+    from .onboarding import onboarding_bp
+    from .companies import companies_bp
+    from .guide import guide_bp
 
     # Nested blueprints inherit the /api prefix; each submodule declares its own
     # leaf paths (e.g. /status, /toppicks, /inbox/<id>/track, /settings/theme,
@@ -37,4 +40,7 @@ def build_api_blueprint() -> Blueprint:
     api.register_blueprint(search_bp)
     api.register_blueprint(queue_bp)
     api.register_blueprint(resume_bp)
+    api.register_blueprint(onboarding_bp)
+    api.register_blueprint(companies_bp)
+    api.register_blueprint(guide_bp)
     return api
