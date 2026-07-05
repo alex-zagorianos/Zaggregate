@@ -9,6 +9,7 @@ import {
   FileText,
   BookOpen,
   PlugZap,
+  Compass,
 } from "lucide-react";
 
 /* THE tab registry — single source of truth for nav order, routing, icons, and
@@ -56,6 +57,15 @@ export const TABS: readonly TabDef[] = [
   { path: "tracker", label: "Tracker", icon: ListChecks, ready: true },
   { path: "board", label: "Board", icon: KanbanSquare, ready: true },
   { path: "resume", label: "Resume", icon: FileText, ready: true },
+  // EXPERIMENTAL (S36c) — BYO-AI role recommendations; delete this entry (+
+  // the TabRoutes line) to remove the tab.
+  {
+    path: "discover",
+    label: "Discover",
+    command: "Discover new directions",
+    icon: Compass,
+    ready: true,
+  },
   { path: "guide", label: "Guide", icon: BookOpen, ready: true },
   {
     path: "sources",

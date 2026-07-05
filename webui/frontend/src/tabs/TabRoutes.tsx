@@ -12,6 +12,7 @@ import { SearchTab } from "./search/SearchTab";
 import { ApplyQueueTab } from "./queue/ApplyQueueTab";
 import { ResumeTab } from "./resume/ResumeTab";
 import { GuideTab } from "./guide/GuideTab";
+import { DiscoverTab } from "./discover/DiscoverTab"; // EXPERIMENTAL (S36c)
 
 /* Router: one route per registry tab. `ready` tabs render their real component;
  * `ready:false` tabs render the ComingSoon placeholder. Index + unknown paths
@@ -29,6 +30,7 @@ const READY_ELEMENTS: Record<string, ReactNode> = {
   "apply-queue": <ApplyQueueTab />,
   resume: <ResumeTab />,
   guide: <GuideTab />,
+  discover: <DiscoverTab />, // EXPERIMENTAL (S36c)
 };
 
 export function TabRoutes() {

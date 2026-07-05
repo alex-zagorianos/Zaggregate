@@ -26,6 +26,7 @@ def build_api_blueprint() -> Blueprint:
     from .onboarding import onboarding_bp
     from .companies import companies_bp
     from .guide import guide_bp
+    from .recommend import recommend_bp  # EXPERIMENTAL Discover — 1 line to remove
 
     # Nested blueprints inherit the /api prefix; each submodule declares its own
     # leaf paths (e.g. /status, /toppicks, /inbox/<id>/track, /settings/theme,
@@ -43,4 +44,5 @@ def build_api_blueprint() -> Blueprint:
     api.register_blueprint(onboarding_bp)
     api.register_blueprint(companies_bp)
     api.register_blueprint(guide_bp)
+    api.register_blueprint(recommend_bp)  # EXPERIMENTAL Discover
     return api

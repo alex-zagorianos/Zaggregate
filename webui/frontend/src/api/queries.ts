@@ -39,6 +39,7 @@ export const queryKeys = {
   queue: ["queue"] as const,
   onboarding: ["onboarding"] as const,
   guide: ["guide"] as const,
+  recommend: ["recommend"] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -603,5 +604,45 @@ export function useGuide() {
     queryKey: queryKeys.guide,
     queryFn: () => endpoints.guide(),
     staleTime: Infinity,
+  });
+}
+
+// ── Discover (EXPERIMENTAL, S36c) ─────────────────────────────────────────────
+
+export function useRecommend() {
+  return useQuery({
+    queryKey: queryKeys.recommend,
+    queryFn: () => endpoints.recommend(),
+    staleTime: 30_000,
+  });
+}
+
+export function useRecommendReply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => endpoints.recommendReply(text),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.recommend });
+    },
+  });
+}
+
+export function useRecommendApply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => endpoints.recommendApplyKeywords(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.recommend });
+    },
+  });
+}
+
+export function useRecommendDismiss() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => endpoints.recommendDismiss(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.recommend });
+    },
   });
 }

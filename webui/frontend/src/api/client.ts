@@ -528,6 +528,19 @@ export const endpoints = {
 
   // ── Guide (Phase 5) ─────────────────────────────────────────────────────────
   guide: () => api.get<GuideResponse>("/guide"),
+
+  // ── Discover (EXPERIMENTAL, S36c) — BYO-AI role recommendations ─────────────
+  recommend: () => api.get<RecommendState>("/recommend"),
+  recommendPrompt: (interests: string) =>
+    api.post<RecommendPromptResponse>("/recommend/prompt", {
+      json: { interests },
+    }),
+  recommendReply: (text: string) =>
+    api.post<RecommendState>("/recommend/reply", { json: { text } }),
+  recommendApplyKeywords: (id: string) =>
+    api.post<RecommendApplyResponse>(`/recommend/${id}/apply-keywords`),
+  recommendDismiss: (id: string) =>
+    api.post<ApiEnvelope>(`/recommend/${id}/dismiss`),
 };
 
 /** Import AI scores — multipart (file) OR JSON (pasted text). We build the
@@ -1160,6 +1173,36 @@ export interface GuideSection {
 
 export interface GuideResponse extends ApiEnvelope {
   sections: GuideSection[];
+}
+
+// ── Discover (EXPERIMENTAL, S36c) ─────────────────────────────────────────────
+export type RecommendLane = "core" | "adjacent" | "stretch";
+
+export interface Recommendation {
+  id: string;
+  role: string;
+  why: string;
+  fit: number | null;
+  lane: RecommendLane;
+  keywords: string[];
+  sample_titles: string[];
+  applied: boolean;
+  dismissed: boolean;
+}
+
+export interface RecommendState extends ApiEnvelope {
+  generated_at: string | null;
+  interests: string;
+  recommendations: Recommendation[];
+}
+
+export interface RecommendPromptResponse extends ApiEnvelope {
+  prompt: string;
+}
+
+export interface RecommendApplyResponse extends ApiEnvelope {
+  added: string[];
+  keywords: string[];
 }
 
 // ── Backup / restore (Phase 5) ────────────────────────────────────────────────

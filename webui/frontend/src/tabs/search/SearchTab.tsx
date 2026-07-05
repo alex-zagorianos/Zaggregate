@@ -68,6 +68,21 @@ export function SearchTab() {
   // a field is empty (server-side, in start_search) — behavior stays correct either
   // way; a future config-prefill can populate these fields.
 
+  // Discover handoff (EXPERIMENTAL, S36c): a recommendation card's "Search now"
+  // stashes its keywords in sessionStorage; consume-and-clear on mount so a
+  // refresh doesn't resurrect them.
+  React.useEffect(() => {
+    try {
+      const prefill = sessionStorage.getItem("zg-search-prefill");
+      if (prefill) {
+        sessionStorage.removeItem("zg-search-prefill");
+        setKeywords(prefill);
+      }
+    } catch {
+      /* sessionStorage unavailable — nothing to prefill */
+    }
+  }, []);
+
   // ── run + console ───────────────────────────────────────────────────────────
   const [jobId, setJobId] = React.useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = React.useState(false);
