@@ -110,9 +110,10 @@ GAPS (ranked by outcome impact):
    local Windows toast for high-fit new matches (daily runs exist; latency
    to user awareness is the gap).
 7. **ATS form autofill** — the one true table-stake gap (Simplify free tier
-   = the bar, 100+ ATSs, manual submit). Big build; extension-based;
-   review-before-submit only. Post-beta candidate, or start with a "copy
-   application pack" (formatted profile fields for fast manual fill).
+   = the bar, 100+ ATSs, manual submit; Teal ships one-click autofill too).
+   Big build; extension-based; review-before-submit only. Post-beta
+   candidate, or start with a "copy application pack" (formatted profile
+   fields for fast manual fill).
 8. Mobile — structural non-goal for a local-first desktop app; accept.
    (Email status detection: NOT table stakes — none of the six majors have
    it; a local-IMAP version would be uniquely on-brand but is post-beta.)
