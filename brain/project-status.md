@@ -4,6 +4,26 @@
 
 ---
 
+## Session 37 (2026-07-05) — beta-stage research program + Discover tab ✅
+
+Alex: "what's needed for beta… research what the data says… compare to our
+app… what are we missing." 9-thread research fleet (funnel evidence, market
+pains, 6 competitor deep-dives, privacy landscape, dark patterns, LinkedIn
+ToS enforcement, US legal, beta-ops) → **`brain/beta-roadmap-2026-07-05.md`**
+(synthesis + 3-wave build order) + **`brain/research-2026-07-05-beta-evidence.md`**
+(persisted evidence digest). Headline: "most jobs possible" is the wrong
+objective — the levers are discovery+freshness (we excel), referral-path
+surfacing (biggest gap, 40%-vs-2-3% interview rates), channel-conversion
+intelligence (nobody has it; our tracker data enables it), tailoring (1.6x),
+cadence; never-auto-apply now data-validated (bots: 0.4–6% response, bans).
+Beta blockers: first-run quick-run, MS Store (individual reg FREE since
+9/2025, no SmartScreen) or Trusted Signing $9.99/mo, update check, in-app
+feedback, web create-project, 5-line privacy page. Earlier same conversation:
+**EXPERIMENTAL Discover tab shipped** (`afbcf66`, BYO-AI role recommendations,
+1-commit removable — recipe in KNOWN_ISSUES). Commits held unpushed.
+
+---
+
 ## Session 36c (2026-07-04 afternoon, same conversation) — search optimization + full UX/perf review + DESKTOP APP ✅
 
 Alex (away, full autonomy): maximize jobs found across all his roles + dad,
