@@ -48,8 +48,8 @@ mechanism, not the fetch pipeline.
   launcher `py -m webui` / exe `--web`) now twins every tk surface. Accepted
   gaps carried as the next-session queue (full detail + evidence in
   `brain/findings-2026-07-04-webui-scenarios.md`):
-  - **No web create-project / new-person flow** (tk App chrome not migrated) —
-    the biggest gap; web is effectively single-project until built.
+  - ~~No web create-project / new-person flow~~ — **SHIPPED S37 (B2)**:
+    topbar "New project…" dialog + POST /api/project/create.
   - Filter state not URL-synced (back/refresh resets the Inbox view).
   - **Pending Alex decisions**: tk-tab retirement (GO/NO-GO read in the
     findings report §6), deletion of the deprecated `tracker/app.py` (:5001
