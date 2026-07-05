@@ -42,6 +42,7 @@ export const queryKeys = {
   guide: ["guide"] as const,
   recommend: ["recommend"] as const,
   networkSummary: ["network-summary"] as const,
+  insights: ["insights"] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -665,6 +666,19 @@ export function useRecommendDismiss() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.recommend });
     },
+  });
+}
+
+// ── Insights (B6) ─────────────────────────────────────────────────────────────
+
+/** The read-only Insights payload (funnel + by_source + cadence). Recomputed
+ * over the tracker DB on each visit; a short stale time keeps it fresh after a
+ * status change without hammering the route as the user flips tabs. */
+export function useInsights() {
+  return useQuery({
+    queryKey: queryKeys.insights,
+    queryFn: () => endpoints.insights(),
+    staleTime: 10_000,
   });
 }
 

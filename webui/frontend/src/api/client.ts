@@ -604,6 +604,9 @@ export const endpoints = {
   recommendDismiss: (id: string) =>
     api.post<ApiEnvelope>(`/recommend/${id}/dismiss`),
 
+  // ── Insights (B6) — funnel + channel conversion + cadence (read-only) ───────
+  insights: () => api.get<InsightsResponse>("/insights"),
+
   // ── Referral network (B4) — local LinkedIn/Google contact import ────────────
   networkSummary: () => api.get<NetworkSummaryResponse>("/network/summary"),
   // The file is read client-side (FileReader) and its raw text POSTed here.
@@ -781,6 +784,59 @@ export interface WarmPathPromptResponse extends ApiEnvelope {
 export interface FollowupPromptResponse extends ApiEnvelope {
   prompt: string;
   stage: "thank_you" | "followup";
+}
+
+// ── Insights (B6) ─────────────────────────────────────────────────────────────
+/** The funnel top-row: reached-at-least counts + stage conversion rates (0..1),
+ * plus the ghosted terminal count. `interview` folds in booked interview rounds. */
+export interface InsightsFunnel {
+  tracked: number;
+  applied: number;
+  interview: number;
+  offer: number;
+  accepted: number;
+  ghosted: number;
+  applied_rate: number;
+  interview_rate: number;
+  offer_rate: number;
+  accepted_rate: number;
+}
+
+/** One per applications.source with >=1 applied. `interview_rate` = interviews /
+ * applied; `low_n` flags <5 applied (thin sample). */
+export interface InsightsSourceRow {
+  source: string;
+  applied: number;
+  interviews: number;
+  interview_rate: number;
+  low_n: boolean;
+}
+
+/** One weekly cadence bucket (Monday-anchored). */
+export interface InsightsCadenceWeek {
+  /** ISO date of the week's Monday. */
+  week_start: string;
+  count: number;
+  /** True for the week containing today. */
+  current: boolean;
+}
+
+/** The cadence report: zero-filled weekly buckets + current week + streak + the
+ * 10..20 guidance band constants. */
+export interface InsightsCadence {
+  weeks: InsightsCadenceWeek[];
+  current_week: number;
+  streak: number;
+  per_week_avg: number;
+  target_min: number;
+  target_max: number;
+}
+
+/** GET /api/insights — all three views in one read-only payload. */
+export interface InsightsResponse extends ApiEnvelope {
+  funnel: InsightsFunnel;
+  by_source: InsightsSourceRow[];
+  cadence: InsightsCadence;
 }
 
 // ── Referral network (B4) ─────────────────────────────────────────────────────

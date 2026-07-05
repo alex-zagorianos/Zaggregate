@@ -8,6 +8,7 @@ import { TopPicksTab } from "./toppicks/TopPicksTab";
 import { SourcesTab } from "./sources/SourcesTab";
 import { TrackerTab } from "./tracker/TrackerTab";
 import { BoardTab } from "./board/BoardTab";
+import { InsightsTab } from "./insights/InsightsTab";
 import { SearchTab } from "./search/SearchTab";
 import { ApplyQueueTab } from "./queue/ApplyQueueTab";
 import { ResumeTab } from "./resume/ResumeTab";
@@ -26,6 +27,7 @@ const READY_ELEMENTS: Record<string, ReactNode> = {
   sources: <SourcesTab />,
   tracker: <TrackerTab />,
   board: <BoardTab />,
+  insights: <InsightsTab />,
   search: <SearchTab />,
   "apply-queue": <ApplyQueueTab />,
   resume: <ResumeTab />,

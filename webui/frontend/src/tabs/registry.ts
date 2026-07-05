@@ -6,6 +6,7 @@ import {
   ClipboardList,
   ListChecks,
   KanbanSquare,
+  BarChart3,
   FileText,
   BookOpen,
   PlugZap,
@@ -56,6 +57,13 @@ export const TABS: readonly TabDef[] = [
   },
   { path: "tracker", label: "Tracker", icon: ListChecks, ready: true },
   { path: "board", label: "Board", icon: KanbanSquare, ready: true },
+  {
+    path: "insights",
+    label: "Insights",
+    command: "See your Insights",
+    icon: BarChart3,
+    ready: true,
+  },
   { path: "resume", label: "Resume", icon: FileText, ready: true },
   // EXPERIMENTAL (S36c) — BYO-AI role recommendations; delete this entry (+
   // the TabRoutes line) to remove the tab.
