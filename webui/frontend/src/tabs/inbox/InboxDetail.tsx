@@ -281,20 +281,22 @@ function formatNoteValue(value: unknown): string {
   return String(value);
 }
 
-/** The ghost/staleness warning banner — shown only when the ghost checker flagged
- * a concern (level 'stale' or 'warn'). Amber for stale, subtle for a softer warn. */
+/** The ghost/staleness warning banner — shown when the ghost checker flagged a
+ * concern (level 'stale' or 'aging' — the same levels the Inbox list badge
+ * shows, so the two surfaces never disagree; S37 P3 review). Amber for stale,
+ * subtle for aging. */
 function GhostBanner({
   ghost,
 }: {
   ghost: Record<string, unknown> | undefined;
 }) {
   const level = String(ghost?.level ?? "").toLowerCase();
-  if (level !== "stale" && level !== "warn") return null;
+  if (level !== "stale" && level !== "aging") return null;
   const reason =
     (typeof ghost?.reason === "string" && ghost.reason) ||
     (level === "stale"
       ? "This posting looks stale — it may no longer be open."
-      : "This posting may be older than it appears.");
+      : "This posting has been up a while — it may be older than it appears.");
   const isStale = level === "stale";
   return (
     <div
