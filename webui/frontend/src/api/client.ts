@@ -143,6 +143,25 @@ export interface ProjectListResponse extends ApiEnvelope {
   projects: ProjectSummary[];
 }
 
+/** POST /api/project/create. Echoes the new slug + the full project list, and
+ * (when switch:true) the now-active slug. `pending_pinned` is set only when an
+ * in-flight run holds a DIFFERENT project — the switch is persisted but goes live
+ * once the run releases the pin. */
+export interface CreateProjectResponse extends ApiEnvelope {
+  slug: string;
+  active: string;
+  projects: ProjectSummary[];
+  pending_pinned?: string;
+}
+
+/** Body for POST /api/project/create. `person` optional (unassigned when blank);
+ * `switch` makes the new project active (the dialog default). */
+export interface CreateProjectArgs {
+  name: string;
+  person?: string;
+  switch?: boolean;
+}
+
 export type ThemeMode = "light" | "dark";
 
 export interface ThemeResponse extends ApiEnvelope {
@@ -332,6 +351,11 @@ export const endpoints = {
   projects: () => api.get<ProjectListResponse>("/project"),
   switchProject: (slug: string) =>
     api.post<ProjectListResponse>("/project", { json: { slug } }),
+  // Create a new campaign (web twin of the tk New Project / New Person flow).
+  // Distinct path from the switch POST (same /project rule can only bind one POST
+  // view); duplicate slug -> 409, empty name -> 400, both thrown as ApiError.
+  createProject: (args: CreateProjectArgs) =>
+    api.post<CreateProjectResponse>("/project/create", { json: args }),
   getTheme: () => api.get<ThemeResponse>("/settings/theme"),
   setTheme: (mode: ThemeMode) =>
     api.put<ThemeResponse>("/settings/theme", { json: { mode } }),

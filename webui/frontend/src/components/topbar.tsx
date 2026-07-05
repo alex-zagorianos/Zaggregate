@@ -1,13 +1,16 @@
+import * as React from "react";
 import {
   Sun,
   Moon,
   FolderOpen,
   ChevronDown,
   Command as CommandIcon,
+  Plus,
 } from "lucide-react";
 
 import { ZagMark } from "./zag-mark";
 import { SettingsMenu } from "./settings-menu";
+import { NewProjectDialog } from "./new-project-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -52,52 +55,68 @@ function Wordmark() {
 function ProjectSwitcher() {
   const { data } = useProjects();
   const switchProject = useSwitchProject();
+  const [newOpen, setNewOpen] = React.useState(false);
   const active = data?.active ?? "";
   const projects = data?.projects ?? [];
   const activeName =
     projects.find((p) => p.slug === active)?.name || active || "No project";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="max-w-[13rem] gap-1.5"
-          disabled={switchProject.isPending}
-        >
-          <FolderOpen className="size-3.5 opacity-70" />
-          <span className="truncate">{activeName}</span>
-          <ChevronDown className="size-3.5 opacity-60" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-[14rem]">
-        <DropdownMenuLabel>Project</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {projects.length === 0 && (
-          <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
-        )}
-        {projects.map((p) => (
-          <DropdownMenuItem
-            key={p.slug}
-            onSelect={() => {
-              if (p.slug !== active) switchProject.mutate(p.slug);
-            }}
-            className="flex flex-col items-start gap-0.5"
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="max-w-[13rem] gap-1.5"
+            disabled={switchProject.isPending}
           >
-            <span className="flex w-full items-center gap-2">
-              <span className="truncate">{p.name}</span>
-              {p.slug === active && (
-                <span className="text-primary ml-auto text-xs">active</span>
+            <FolderOpen className="size-3.5 opacity-70" />
+            <span className="truncate">{activeName}</span>
+            <ChevronDown className="size-3.5 opacity-60" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[14rem]">
+          <DropdownMenuLabel>Project</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {projects.length === 0 && (
+            <DropdownMenuItem disabled>No projects yet</DropdownMenuItem>
+          )}
+          {projects.map((p) => (
+            <DropdownMenuItem
+              key={p.slug}
+              onSelect={() => {
+                if (p.slug !== active) switchProject.mutate(p.slug);
+              }}
+              className="flex flex-col items-start gap-0.5"
+            >
+              <span className="flex w-full items-center gap-2">
+                <span className="truncate">{p.name}</span>
+                {p.slug === active && (
+                  <span className="text-primary ml-auto text-xs">active</span>
+                )}
+              </span>
+              {p.person && (
+                <span className="text-muted-foreground text-xs">
+                  {p.person}
+                </span>
               )}
-            </span>
-            {p.person && (
-              <span className="text-muted-foreground text-xs">{p.person}</span>
-            )}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setNewOpen(true)} className="gap-2">
+            <Plus className="size-3.5 opacity-70" />
+            New project…
           </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <NewProjectDialog
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        existingSlugs={projects.map((p) => p.slug)}
+      />
+    </>
   );
 }
 

@@ -16,6 +16,7 @@ import {
   type ExportArgs,
   type ImportPolicy,
   type OnboardingAnswers,
+  type CreateProjectArgs,
 } from "./client";
 
 /* TanStack Query hooks for the shell's read/write endpoints. Phase 1+ builders:
@@ -86,6 +87,25 @@ export function useSwitchProject() {
     onSuccess: () => {
       // A project switch changes basically everything the engine reads.
       qc.invalidateQueries();
+    },
+  });
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: CreateProjectArgs) => endpoints.createProject(args),
+    onSuccess: (res) => {
+      // Always refresh the project list so the new campaign shows in the switcher.
+      // When the create ALSO switched (args.switch), the new project became active
+      // and the engine now reads a fresh, un-onboarded workspace — invalidate
+      // everything so the onboarding gate re-reads and the wizard appears
+      // naturally (that IS the new-project flow).
+      if (res.active && res.active === res.slug) {
+        qc.invalidateQueries();
+      } else {
+        qc.invalidateQueries({ queryKey: queryKeys.projects });
+      }
     },
   });
 }

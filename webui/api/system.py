@@ -84,3 +84,64 @@ def project_switch():
         # Surface it so the UI can explain the delay instead of looking broken.
         body["pending_pinned"] = pin
     return jsonify(body)
+
+
+@system_bp.post("/project/create")
+@require_local_origin
+def project_create():
+    """Create a new campaign (web twin of gui.App._new_project / _new_person).
+
+    Body: ``{name, person?, switch?}``. ``name`` is required and non-empty; the
+    slug is derived exactly as ``workspace.create_project`` does (``slugify``), so
+    a name that maps to an EXISTING slug is a 409 rather than a silent re-activate
+    of the other project (the tk chrome's ``_slug_taken`` guard — without it a
+    "New Person" would re-open and overwrite someone else's profile).
+
+    ``person`` tags the campaign's owner (GOAL 2); omitted/blank = unassigned.
+    No resume is ever copied here: a new person's identity/PII must not inherit
+    the active project's experience.md (the dad-data bug — tk defaults resume
+    copy to No and only prompts for it; the web flow simply never copies).
+
+    ``switch:true`` (the dialog default) makes the new project active via the same
+    registry write the switch route uses, echoing ``pending_pinned`` when an
+    in-flight run holds a different project (the switch is persisted but goes live
+    only once the run releases the pin — scenario finding #6). Absent/false leaves
+    the active project unchanged. Returns ``{ok, slug, active, projects:[...]}``.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "a project name is required"}), 400
+    person_raw = data.get("person")
+    person = person_raw.strip() if isinstance(person_raw, str) else None
+    person = person or None  # blank/whitespace -> unassigned
+    want_switch = bool(data.get("switch"))
+
+    slug = workspace.slugify(name)
+    known = {p.get("slug") for p in workspace.list_projects()}
+    if slug in known:
+        # Duplicate slug: a distinct 409 so the UI can steer the user to the
+        # existing project instead of clobbering it (mirrors tk's _slug_taken).
+        return jsonify(
+            {"ok": False, "error": "a project with that name already exists"}
+        ), 409
+
+    # No auto-switch inside create_project: switching is handled below so the
+    # response can carry the same pin-aware ``pending_pinned`` note as the switch
+    # route (create_project(make_active=...) would write ``active`` but couldn't
+    # surface a pending pin). No resume copy (identity/PII isolation).
+    workspace.create_project(name, person=person, make_active=False)
+
+    body = {
+        "ok": True,
+        "slug": slug,
+        "active": workspace.registry_active_slug(),
+        "projects": [_project_summary(p) for p in workspace.list_projects()],
+    }
+    if want_switch:
+        workspace.set_active(slug)
+        body["active"] = slug
+        pin = workspace.pinned()
+        if pin is not None and pin != slug:
+            body["pending_pinned"] = pin
+    return jsonify(body)
