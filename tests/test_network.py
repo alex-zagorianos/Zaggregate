@@ -161,3 +161,20 @@ def test_store_isolation_across_user_data_dirs(tmp_path, monkeypatch):
     assert network.summary()["total"] == 0        # separate store, no leak
     assert (a / "network.json").exists()
     assert not (b / "network.json").exists()
+
+
+def test_distinct_no_company_contacts_sharing_a_name_are_both_kept():
+    """S37 Phase-2 review: two different people with the same name and NO
+    company must not collapse (position widens the merge key); the same
+    person re-imported (same name + position) still merges."""
+    import network
+    csv1 = ("First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+            "Sarah,Chen,,,,Independent Recruiter,01 Jan 2025\n"
+            "Sarah,Chen,,,,Talent Partner,02 Jan 2025\n")
+    out = network.import_text(csv1, "linkedin")
+    assert out["total"] == 2                      # both kept
+    # Re-import one of them: merges, no growth.
+    csv2 = ("First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+            "Sarah,Chen,,,,Talent Partner,02 Jan 2025\n")
+    out2 = network.import_text(csv2, "linkedin")
+    assert out2["added"] == 0 and out2["total"] == 2

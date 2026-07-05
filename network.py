@@ -218,11 +218,20 @@ def clear() -> int:
     return n
 
 
-def _dedup_key(contact: dict) -> tuple[str, str]:
+def _dedup_key(contact: dict) -> tuple[str, str, str]:
     """Merge identity for a contact: (lowercased name, canonical company). Two
-    imports of the same person at the same company collapse to one row."""
-    return ((contact.get("name") or "").strip().lower(),
-            contact.get("company_key") or company_key(contact.get("company") or ""))
+    imports of the same person at the same company collapse to one row.
+
+    NO-COMPANY contacts fold the position into the key instead (S37 Phase-2
+    review): with company_key == '' the old key collapsed two distinct people
+    who merely share a name (two blank-company "Sarah Chen" rows) — silent
+    data loss. Same person re-imported (same name + position, no company)
+    still merges; distinct positions stay distinct."""
+    name = (contact.get("name") or "").strip().lower()
+    ckey = contact.get("company_key") or company_key(contact.get("company") or "")
+    if ckey:
+        return (name, ckey, "")
+    return (name, "", (contact.get("position") or "").strip().lower())
 
 
 def import_text(text: str, source: str = "linkedin") -> dict:
