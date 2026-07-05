@@ -4,6 +4,28 @@
 
 ---
 
+## Session 37b (2026-07-05 OVERNIGHT) — BETA BUILDOUT: all 3 waves shipped ✅
+
+Alex slept; 7 Opus builders + 3 Sonnet review fleets executed
+`brain/plan-2026-07-05-beta-buildout.md` end-to-end. **Read-first:
+`docs/handoffs/handoff_20260705_session37.md`.** Shipped: first-run quick pass
++ update check + feedback (B1) · **web create-project/new-person flow** (B2 —
+the last parity gap) · PRIVACY/EULA/README-wedge/Guide/SHA256SUMS/winget
+template (B3) · **referral engine** (LinkedIn/Google contacts import → local
+matching → "your network at this company" + find-my-path-in prompts, B4) ·
+follow-up/thank-you + interview-prep prompts (B5) · **Insights tab** (funnel,
+per-source interview rates, cadence chart, B6) · **ghost badges on rows +
+company ghost memory + new-since-visit + copy pack** (B7). Review fleets
+confirmed 5 findings (1 CRITICAL: fresh-registry create silently overrode
+switch:false — `017c0d9`; 1 major ghost-banner level mismatch — `8f3f84c`;
+plus README positioning pins restored `cc4ae26`) — ALL fixed same night.
+**Suite 2,968 → 3,104 / 0 failed; vitest 199; exe rebuilt + production/
+mirrored + frozen web smoke; verified live on dad's project (Insights funnel,
+real Aging/Stale badges). ~14 commits PUSH HELD.** Morning list in the
+handoff: eyeball app, push call, LICENSE choice, beta-cohort go.
+
+---
+
 ## Session 37 (2026-07-05) — beta-stage research program + Discover tab ✅
 
 Alex: "what's needed for beta… research what the data says… compare to our
