@@ -149,6 +149,14 @@ export function RunConsole({
           </div>
         </div>
 
+        {/* Expectation line — sets the wait expectation warmly while it runs. */}
+        {status === "running" && (
+          <p className="text-muted-foreground border-border/60 border-b px-4 py-2 text-xs">
+            First results land when the run finishes — usually a few minutes on
+            a quick pass. You can keep working while it runs.
+          </p>
+        )}
+
         {/* Log body */}
         <div
           ref={logRef}

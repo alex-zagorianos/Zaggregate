@@ -20,6 +20,7 @@ import sys
 
 from flask import Blueprint, jsonify, Response, current_app, request
 
+import applog
 import workspace
 from ..jobs import runner, DONE, JobConflict
 from ..security import require_local_origin
@@ -132,6 +133,14 @@ def start_daily_run():
     ``{"max_pages": 1..10, "min_score": 0..100}``. Both optional; absent keeps
     daily_run's own defaults exactly. Malformed/out-of-range values are a 400
     ``{ok:false,error}`` — never silently clamped or ignored.
+
+    First-run quick pass (B1 beta buildout): the VERY FIRST daily run for a
+    project (no ``last_run.json`` yet — the same signal ``applog.last_run_info``
+    reads) defaults ``max_pages=1`` so a new user sees results fast instead of
+    waiting on a full-depth pass. A body-explicit ``max_pages`` ALWAYS wins, and
+    once a run has completed (``last_run.json`` present) later runs keep the
+    engine defaults. The quick-pass decision emits one job-log line so the console
+    explains itself.
     """
     data = request.get_json(silent=True) or {}
     max_pages, err = _opt_int(data, "max_pages", 1, 10)
@@ -148,6 +157,14 @@ def start_daily_run():
     # shape is accurate. (scenario finding #7)
     slug = workspace.registry_active_slug()
 
+    # First-run detection: no last_run.json for the target project means this
+    # project has never completed a daily run. Only defaults the quick pass when
+    # the body didn't set max_pages — a body-explicit value always wins.
+    first_run_quick = False
+    if max_pages is None and applog.last_run_info(slug) is None:
+        max_pages = 1
+        first_run_quick = True
+
     # Knobs are forwarded only when SET so the default web run keeps the exact
     # legacy call shape (and argv) — parity with pre-knob behavior by construction.
     knobs = {}
@@ -157,6 +174,11 @@ def start_daily_run():
         knobs["min_score"] = min_score
 
     def _fn(handle):
+        # A first run gets a quick 1-page pass; announce it in the console so the
+        # shorter run is understood as intentional (later runs go deeper).
+        if first_run_quick:
+            handle.log("First run: quick pass (1 page per source). "
+                       "Later runs go deeper automatically.")
         # Stream every pipeline stdout line into the job's SSE log; respect a
         # pre-start cancel via handle.cancelled (daily_run has no in-flight cancel
         # seam — cancel is best-effort-before-start; documented in run_ingest).

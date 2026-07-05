@@ -9,12 +9,22 @@ import types
 
 import pytest
 
+import applog
 import workspace
 from webui.api import runs as runs_mod
 from webui.jobs import runner
 
 
 _H = {"Origin": "http://127.0.0.1:5002"}
+
+
+@pytest.fixture(autouse=True)
+def _no_last_run(monkeypatch):
+    """Default every knobs test to the FIRST-run state (no last_run.json). The
+    first-run default only fires when max_pages is unset, so the existing
+    explicit-knob tests are unaffected; the subsequent-run tests below opt back
+    into a present last_run.json."""
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
 
 
 @pytest.fixture(autouse=True)
@@ -65,9 +75,13 @@ def test_knobs_forwarded_to_ingest(client, monkeypatch):
 
 
 def test_absent_knobs_keep_legacy_call_shape(client, monkeypatch):
-    # A knob-less POST must call the ingest WITHOUT the knob kwargs at all —
-    # the pre-P1 call shape (existing fakes/wrappers with the old signature
-    # keep working, and the argv stays byte-identical).
+    # A knob-less POST on a SUBSEQUENT run (last_run.json present) must call the
+    # ingest WITHOUT the knob kwargs at all — the pre-P1 call shape (existing
+    # fakes/wrappers with the old signature keep working, and the argv stays
+    # byte-identical). (First-run quick-pass is covered separately below.)
+    monkeypatch.setattr(applog, "last_run_info",
+                        lambda slug=None: {"added": 5})
+
     def fake_ingest(slug, *, on_line=None, cancel=None):
         return 0
 
@@ -113,6 +127,80 @@ def test_numeric_string_knob_accepted(client, monkeypatch):
     assert resp.status_code == 200
     _wait_done(client, resp.get_json()["job_id"])
     assert seen == {"max_pages": 3}
+
+
+# ── first-run quick pass (B1) ─────────────────────────────────────────────────
+
+def test_first_run_defaults_max_pages_1(client, monkeypatch):
+    # No last_run.json => first run: a knob-less POST defaults max_pages=1 and
+    # forwards it to the ingest (so a new user gets a fast first pass).
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
+    seen = {}
+
+    def fake_ingest(slug, *, on_line=None, cancel=None, max_pages=None,
+                    min_score=None):
+        seen.update(slug=slug, max_pages=max_pages, min_score=min_score)
+        return 0
+
+    monkeypatch.setattr(runs_mod, "_daily_ingest", fake_ingest)
+    resp = client.post("/api/runs/daily", headers=_H)
+    assert resp.status_code == 200
+    _wait_done(client, resp.get_json()["job_id"])
+    assert seen == {"slug": "projA", "max_pages": 1, "min_score": None}
+
+
+def test_first_run_emits_quick_pass_log_line(client, monkeypatch):
+    # The first-run quick pass announces itself in the job console.
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
+
+    def fake_ingest(slug, *, on_line=None, cancel=None, max_pages=None,
+                    min_score=None):
+        return 0
+
+    monkeypatch.setattr(runs_mod, "_daily_ingest", fake_ingest)
+    resp = client.post("/api/runs/daily", headers=_H)
+    assert resp.status_code == 200
+    snap = _wait_done(client, resp.get_json()["job_id"])
+    lines = " ".join(snap.get("lines_tail") or [])
+    assert "First run: quick pass" in lines
+
+
+def test_body_max_pages_overrides_first_run_default(client, monkeypatch):
+    # A body-explicit max_pages ALWAYS wins, even on a first run.
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
+    seen = {}
+
+    def fake_ingest(slug, *, on_line=None, cancel=None, max_pages=None,
+                    min_score=None):
+        seen.update(max_pages=max_pages)
+        return 0
+
+    monkeypatch.setattr(runs_mod, "_daily_ingest", fake_ingest)
+    resp = client.post("/api/runs/daily", headers=_H, json={"max_pages": 5})
+    assert resp.status_code == 200
+    snap = _wait_done(client, resp.get_json()["job_id"])
+    assert seen == {"max_pages": 5}
+    # No quick-pass line when the user set the depth themselves.
+    lines = " ".join(snap.get("lines_tail") or [])
+    assert "First run: quick pass" not in lines
+
+
+def test_subsequent_run_keeps_engine_defaults(client, monkeypatch):
+    # last_run.json present => NOT a first run: a knob-less POST forwards NO knobs
+    # (engine defaults), and emits no quick-pass line.
+    monkeypatch.setattr(applog, "last_run_info",
+                        lambda slug=None: {"added": 3})
+
+    def fake_ingest(slug, *, on_line=None, cancel=None):
+        return 0
+
+    monkeypatch.setattr(runs_mod, "_daily_ingest", fake_ingest)
+    resp = client.post("/api/runs/daily", headers=_H)
+    assert resp.status_code == 200
+    snap = _wait_done(client, resp.get_json()["job_id"])
+    assert snap["status"] == "done"
+    lines = " ".join(snap.get("lines_tail") or [])
+    assert "First run: quick pass" not in lines
 
 
 # ── daily_run_core argv threading (real run_ingest, stubbed daily_run) ────────

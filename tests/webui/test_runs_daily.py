@@ -12,6 +12,7 @@ import types
 
 import pytest
 
+import applog
 import workspace
 from webui.api import runs as runs_mod
 from webui.jobs import runner
@@ -19,6 +20,17 @@ from webui.jobs import runner
 
 _LOOPBACK = "http://127.0.0.1:5002"
 _H = {"Origin": _LOOPBACK}
+
+
+@pytest.fixture(autouse=True)
+def _subsequent_run(monkeypatch):
+    """These lifecycle/conflict/cancel tests assert the LEGACY no-knob call shape
+    (their fake ingests use the old ``(slug, *, on_line, cancel)`` signature). The
+    B1 first-run quick pass injects ``max_pages=1`` only when there is no
+    ``last_run.json``; stub it as PRESENT here so every test runs as a subsequent
+    run and the legacy shape holds. First-run behavior is covered in
+    test_runs_daily_knobs.py."""
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: {"added": 1})
 
 
 @pytest.fixture(autouse=True)

@@ -12,6 +12,15 @@ load_dotenv()
 # brain/review-2026-07-01-deep-product-review.md (P7 product lifecycle).
 APP_VERSION = "1.0.0"
 
+# ── Update check + feedback (webui/api/meta.py) ───────────────────────────────
+# The GitHub repo the optional in-app "Check for updates" queries via the public
+# releases API (no auth, no telemetry — a single GET the user triggers). Compared
+# against APP_VERSION. Overridable via env for a fork/testing.
+UPDATE_REPO = os.getenv("UPDATE_REPO", "alex-zagorianos/Job-Program")
+# Where "Send feedback" mails to (a client-side mailto: opens the user's own mail
+# app — nothing is sent from the app itself).
+FEEDBACK_EMAIL = os.getenv("FEEDBACK_EMAIL", "alexzagorianos@gmail.com")
+
 # ── Logging framework (applog.py) ─────────────────────────────────────────────
 # A rotating file log lives under the user data folder so source failures,
 # 429-erosion, and daily-run errors finally persist somewhere a friend can zip

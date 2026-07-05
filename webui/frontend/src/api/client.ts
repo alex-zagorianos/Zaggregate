@@ -529,6 +529,14 @@ export const endpoints = {
   // ── Guide (Phase 5) ─────────────────────────────────────────────────────────
   guide: () => api.get<GuideResponse>("/guide"),
 
+  // ── Meta: version / update check / feedback (B1 beta buildout) ──────────────
+  metaVersion: () => api.get<MetaVersionResponse>("/meta/version"),
+  // Origin-gated POST (it may write the 24h cache file). `latest` is null when the
+  // check couldn't complete — the UI treats that as "couldn't check", not an error.
+  checkForUpdates: () => api.post<UpdateCheckResponse>("/meta/update-check"),
+  feedbackTarget: () =>
+    api.get<FeedbackTargetResponse>("/meta/feedback-target"),
+
   // ── Discover (EXPERIMENTAL, S36c) — BYO-AI role recommendations ─────────────
   recommend: () => api.get<RecommendState>("/recommend"),
   recommendPrompt: (interests: string) =>
@@ -1173,6 +1181,27 @@ export interface GuideSection {
 
 export interface GuideResponse extends ApiEnvelope {
   sections: GuideSection[];
+}
+
+// ── Meta: version / update check / feedback (B1 beta buildout) ─────────────────
+export interface MetaVersionResponse extends ApiEnvelope {
+  version: string;
+}
+
+/** POST /api/meta/update-check. `latest` is null when the check couldn't complete
+ * (offline, private repo, no releases) — the server never returns an error
+ * envelope for a network failure, so the UI shows a soft "couldn't check". */
+export interface UpdateCheckResponse extends ApiEnvelope {
+  current: string;
+  latest: string | null;
+  /** The GitHub releases page to open when an update is available. */
+  url: string;
+  newer: boolean;
+}
+
+export interface FeedbackTargetResponse extends ApiEnvelope {
+  email: string;
+  subject: string;
 }
 
 // ── Discover (EXPERIMENTAL, S36c) ─────────────────────────────────────────────

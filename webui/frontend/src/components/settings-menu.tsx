@@ -9,9 +9,16 @@ import {
   BookOpen,
   Loader2,
   AlertTriangle,
+  RefreshCw,
+  MessageSquare,
 } from "lucide-react";
 
-import { downloadBackup, restoreBackup, ApiError } from "@/api/client";
+import {
+  downloadBackup,
+  restoreBackup,
+  endpoints,
+  ApiError,
+} from "@/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -47,6 +54,7 @@ export function SettingsMenu() {
   const [pendingFile, setPendingFile] = React.useState<File | null>(null);
   const [confirmRestore, setConfirmRestore] = React.useState(false);
   const [restoring, setRestoring] = React.useState(false);
+  const [checkingUpdate, setCheckingUpdate] = React.useState(false);
 
   const onDownload = () => {
     setDownloading(true);
@@ -63,6 +71,61 @@ export function SettingsMenu() {
         }),
       )
       .finally(() => setDownloading(false));
+  };
+
+  const onCheckUpdates = () => {
+    setCheckingUpdate(true);
+    endpoints
+      .checkForUpdates()
+      .then((r) => {
+        if (r.latest && r.newer) {
+          toast.success(`Version ${r.latest} is available`, {
+            description: "Open the releases page to download the update.",
+            action: {
+              label: "Open releases",
+              onClick: () =>
+                window.open(r.url, "_blank", "noopener,noreferrer"),
+            },
+          });
+        } else if (r.latest) {
+          toast.success("You're up to date", {
+            description: `You're running the latest version (${r.current}).`,
+          });
+        } else {
+          // latest=null: the check couldn't complete (offline / no releases yet).
+          toast("Couldn't check for updates", {
+            description: "No connection, or there are no releases yet.",
+          });
+        }
+      })
+      .catch((e) =>
+        toast.error("Couldn't check for updates", {
+          description: e instanceof ApiError ? e.message : "Please try again.",
+        }),
+      )
+      .finally(() => setCheckingUpdate(false));
+  };
+
+  const onSendFeedback = () => {
+    endpoints
+      .feedbackTarget()
+      .then((r) => {
+        const body =
+          "What happened (or what would help):\n\n\n" +
+          "Steps to reproduce (if it's a bug):\n\n\n" +
+          "—\nSent from Zaggregate.";
+        const href =
+          `mailto:${r.email}` +
+          `?subject=${encodeURIComponent(r.subject)}` +
+          `&body=${encodeURIComponent(body)}`;
+        // Opens the user's own mail app — nothing is sent from the app itself.
+        window.location.href = href;
+      })
+      .catch((e) =>
+        toast.error("Couldn't open your mail app", {
+          description: e instanceof ApiError ? e.message : "Please try again.",
+        }),
+      );
   };
 
   const onPickFile = () => fileRef.current?.click();
@@ -160,6 +223,31 @@ export function SettingsMenu() {
           >
             <Upload className="size-4 opacity-70" />
             Restore from backup…
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Help &amp; feedback</DropdownMenuLabel>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              onCheckUpdates();
+            }}
+            disabled={checkingUpdate}
+          >
+            {checkingUpdate ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4 opacity-70" />
+            )}
+            Check for updates
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              onSendFeedback();
+            }}
+          >
+            <MessageSquare className="size-4 opacity-70" />
+            Send feedback
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

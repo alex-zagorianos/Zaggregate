@@ -26,6 +26,7 @@ def build_api_blueprint() -> Blueprint:
     from .onboarding import onboarding_bp
     from .companies import companies_bp
     from .guide import guide_bp
+    from .meta import meta_bp  # B1: version / update-check / feedback-target
     from .recommend import recommend_bp  # EXPERIMENTAL Discover — 1 line to remove
 
     # Nested blueprints inherit the /api prefix; each submodule declares its own
@@ -44,5 +45,6 @@ def build_api_blueprint() -> Blueprint:
     api.register_blueprint(onboarding_bp)
     api.register_blueprint(companies_bp)
     api.register_blueprint(guide_bp)
+    api.register_blueprint(meta_bp)  # B1: version / update-check / feedback-target
     api.register_blueprint(recommend_bp)  # EXPERIMENTAL Discover
     return api

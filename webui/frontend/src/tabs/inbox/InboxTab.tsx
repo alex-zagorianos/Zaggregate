@@ -476,6 +476,7 @@ export function InboxTab() {
           ) : rows.length === 0 ? (
             <InboxEmpty
               filtered={total > 0}
+              running={running}
               onClearFilters={() => setFilters(makeDefaultFilters())}
               onUpdate={startRun}
             />
@@ -829,10 +830,12 @@ function RowActions({
 
 function InboxEmpty({
   filtered,
+  running,
   onClearFilters,
   onUpdate,
 }: {
   filtered: boolean;
+  running: boolean;
   onClearFilters: () => void;
   onUpdate: () => void;
 }) {
@@ -846,6 +849,17 @@ function InboxEmpty({
         title="No jobs match these filters"
         message="Your filters are hiding every job in the inbox. Loosen them to see more — nothing was deleted."
         action={{ label: "Clear filters", onClick: onClearFilters }}
+      />
+    );
+  }
+  // A run is in flight but nothing's landed yet — set the wait expectation warmly
+  // instead of offering another "Update" (which would just conflict).
+  if (running) {
+    return (
+      <EmptyState
+        icon={Loader2}
+        title="Finding your first matches…"
+        message="Your first results land when the run finishes — usually a few minutes on a quick pass. You can keep working while it runs."
       />
     );
   }
