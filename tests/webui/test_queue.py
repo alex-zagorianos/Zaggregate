@@ -93,6 +93,64 @@ def test_resume_prompt_unknown_404(client, tmp_db):
     assert client.get("/api/queue/99999/resume-prompt").status_code == 404
 
 
+# ── copy pack (B7 item 5) ──────────────────────────────────────────────────────
+
+def _write_experience(tmp_path, monkeypatch, body):
+    exp = tmp_path / "experience.md"
+    exp.write_text(body, encoding="utf-8")
+    monkeypatch.setattr(workspace, "experience_file", lambda slug=None: exp)
+    return exp
+
+
+def test_copy_pack_ok_with_contact_and_resume(client, tmp_db, monkeypatch, tmp_path):
+    _write_experience(tmp_path, monkeypatch,
+                      "## CONTACT\n\n- Name: Jane Doe\n- Email: jane@example.com\n"
+                      "- Phone: 555-0100\n- Location: Cincinnati, OH\n\n"
+                      "## WORK EXPERIENCE\n\n### Engineer, Acme\n\n"
+                      "## EDUCATION\n\n- B.S. ME, State U\n")
+    monkeypatch.setattr(workspace, "load_config", lambda slug=None: {})
+    jid = _add(title="Sr Eng", company="Acme", resume_path="C:/out/jane_acme.docx")
+    resp = client.get(f"/api/queue/{jid}/copy-pack")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    text = body["text"]
+    assert "Name: Jane Doe" in text
+    assert "jane@example.com" in text
+    assert "Engineer, Acme" in text
+    assert "B.S. ME, State U" in text
+    assert "jane_acme.docx" in text
+
+
+def test_copy_pack_missing_fields_grace(client, tmp_db, monkeypatch, tmp_path):
+    """A sparse experience + no resume path yields a clean pack — no placeholder junk."""
+    _write_experience(tmp_path, monkeypatch,
+                      "## CONTACT\n\n- Name:\n- Email:\n")
+    monkeypatch.setattr(workspace, "load_config", lambda slug=None: {})
+    jid = _add(title="Sr Eng", company="Acme")  # no resume_path
+    text = client.get(f"/api/queue/{jid}/copy-pack").get_json()["text"]
+    assert "(unknown)" not in text
+    assert "-- Tailored resume --" not in text
+    assert "APPLICATION COPY PACK" in text
+
+
+def test_copy_pack_missing_experience_file_still_builds(client, tmp_db, monkeypatch,
+                                                        tmp_path):
+    """No experience.md on disk -> the route degrades to an empty-section pack, not
+    a 500 (best-effort, like the B4 enrichment pattern)."""
+    monkeypatch.setattr(workspace, "experience_file",
+                        lambda slug=None: tmp_path / "does_not_exist.md")
+    monkeypatch.setattr(workspace, "load_config", lambda slug=None: {})
+    jid = _add(title="Sr Eng", company="Acme")
+    resp = client.get(f"/api/queue/{jid}/copy-pack")
+    assert resp.status_code == 200
+    assert "APPLICATION COPY PACK" in resp.get_json()["text"]
+
+
+def test_copy_pack_unknown_404(client, tmp_db):
+    assert client.get("/api/queue/99999/copy-pack").status_code == 404
+
+
 def test_resume_from_paste_saves_and_returns_downloads(client, tmp_db, monkeypatch,
                                                        tmp_path):
     jid = _add(title="Sr Eng", company="Acme", description="desc")

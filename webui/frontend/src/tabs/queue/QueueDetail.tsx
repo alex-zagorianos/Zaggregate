@@ -9,6 +9,7 @@ import {
   XCircle,
   Copy,
   ClipboardPaste,
+  ClipboardCopy,
   Sparkles,
   Users,
   FileSearch,
@@ -22,6 +23,7 @@ import {
   type BundleFile,
 } from "@/api/client";
 import { friendlyError } from "@/lib/friendly-error";
+import { copyText } from "@/lib/clipboard";
 import { ScoreChip } from "@/components/score-chip";
 import { PromptDialog } from "@/components/prompt-dialog";
 import { PasteDialog } from "@/components/paste-dialog";
@@ -70,6 +72,7 @@ export function QueueDetail({
   const [pasteOpen, setPasteOpen] = React.useState(false);
   const [pastePending, setPastePending] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
+  const [copyingPack, setCopyingPack] = React.useState(false);
   const [savedFiles, setSavedFiles] = React.useState<BundleFile[]>([]);
 
   // Reset the transient doc state when the selected job changes.
@@ -128,6 +131,31 @@ export function QueueDetail({
         }),
       )
       .finally(() => setPastePending(false));
+  };
+
+  const onCopyPack = () => {
+    setCopyingPack(true);
+    endpoints
+      .queueCopyPack(jobId)
+      .then(async (r) => {
+        const ok = await copyText(r.text);
+        if (ok) {
+          toast.success("Application pack copied", {
+            description:
+              "Your contact details, work history, and resume path are on the clipboard.",
+          });
+        } else {
+          toast("Couldn't copy automatically", {
+            description: "Select and copy the pack manually if needed.",
+          });
+        }
+      })
+      .catch((e) =>
+        toast.error("Couldn't build the pack", {
+          description: friendlyError(e),
+        }),
+      )
+      .finally(() => setCopyingPack(false));
   };
 
   const onGenerate = () => {
@@ -208,6 +236,19 @@ export function QueueDetail({
           >
             <ExternalLink className="size-4" />
             Open
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onCopyPack}
+            disabled={copyingPack}
+          >
+            {copyingPack ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ClipboardCopy className="size-4" />
+            )}
+            Copy application pack
           </Button>
           <Button
             size="sm"

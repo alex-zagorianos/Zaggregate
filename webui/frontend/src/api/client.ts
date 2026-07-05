@@ -309,6 +309,20 @@ export interface NetworkBlock {
   contacts: NetworkContact[];
 }
 
+/** Company ghost memory a detail response carries (B7): how many prior applications
+ * to this company the user marked "ghosted". `count:0` when there's no such history. */
+export interface GhostedBefore {
+  count: number;
+}
+
+/** The ghost/staleness badge every inbox LIST row carries (B7, serializers.
+ * inbox_row_list). `level` "aging"/"stale" draws a visible badge; "fresh"/"unknown"
+ * render as nothing. `reasons` (already capped) feed the badge tooltip. */
+export interface GhostBadge {
+  level: "fresh" | "aging" | "stale" | "unknown";
+  reasons: string[];
+}
+
 /** The one-call JobDialog payload (GET /api/applications/<id>). */
 export interface AppDetailResponse extends ApiEnvelope {
   job: AppRow;
@@ -318,6 +332,8 @@ export interface AppDetailResponse extends ApiEnvelope {
   referral: string;
   /** Imported-network matches at the company (B4). */
   network: NetworkBlock;
+  /** Prior applications to this company the user marked "ghosted" (B7). */
+  ghosted_before: GhostedBefore;
   statuses: string[];
   status_labels: Record<string, string>;
 }
@@ -501,6 +517,9 @@ export const endpoints = {
   queue: () => api.get<QueueListResponse>("/queue"),
   queueResumePrompt: (id: number) =>
     api.get<QueuePromptResponse>(`/queue/${id}/resume-prompt`),
+  // B7: the plaintext application copy pack for a queue job (read-only).
+  queueCopyPack: (id: number) =>
+    api.get<QueueCopyPackResponse>(`/queue/${id}/copy-pack`),
   queueResumeFromPaste: (id: number, text: string) =>
     api.post<QueueFilesResponse>(`/queue/${id}/resume-from-paste`, {
       json: { text },
@@ -728,6 +747,8 @@ export interface InboxRow {
   date_added?: string | null;
   board_count?: number | null;
   extras?: Record<string, unknown>;
+  /** Ghost/staleness badge (B7) — present on LIST rows (inbox_row_list). */
+  ghost?: GhostBadge;
   computed: InboxComputed;
   [key: string]: unknown;
 }
@@ -770,6 +791,8 @@ export interface InboxDetailResponse extends ApiEnvelope {
   description_preview: string;
   /** Imported-network matches at the row's company (B4). */
   network: NetworkBlock;
+  /** Prior applications to this company the user marked "ghosted" (B7). */
+  ghosted_before: GhostedBefore;
 }
 
 /** GET /api/{inbox|applications}/<id>/warm-path-prompt — a copy-into-your-AI
@@ -1062,6 +1085,12 @@ export interface BundleFile {
 
 export interface QueuePromptResponse extends ApiEnvelope {
   prompt: string;
+}
+
+/** GET /api/queue/<id>/copy-pack (B7) — a ready-to-paste plaintext application
+ * pack (contact fields, work/education one-liners, tailored-resume path). */
+export interface QueueCopyPackResponse extends ApiEnvelope {
+  text: string;
 }
 
 export interface QueueFilesResponse extends ApiEnvelope {

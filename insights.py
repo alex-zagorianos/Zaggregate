@@ -260,6 +260,79 @@ def cadence(conn: sqlite3.Connection, weeks: int = 8, today: date | None = None)
     }
 
 
+# ── company ghost memory (B7 item 3) ──────────────────────────────────────────
+# "This company left you on read before." A warm, read-only reminder: when a job
+# from a company the user has ALREADY marked "ghosted" in their tracker resurfaces,
+# the detail pane / JobDialog surfaces how many times it happened. Company identity
+# uses the SAME conservative canonicalization as the referral network (network.
+# company_key -> coverage.entity.canonicalize_company) so "Acme, Inc." and "Acme LLC"
+# collapse to one. Read-only; never raises.
+
+def _company_key(name: str) -> str:
+    """Canonical company key, reusing the network layer's normalizer (which itself
+    reuses coverage.entity.canonicalize_company) so a job row and a ghosted
+    application match on the same notion of company identity. '' for a blank name;
+    a last-resort lowercase fallback if the module can't import."""
+    if not name or not str(name).strip():
+        return ""
+    try:
+        import network
+        return network.company_key(name)
+    except Exception:
+        return " ".join(str(name).lower().split())
+
+
+def ghosted_company_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    """{company_key: count} of applications whose CURRENT status is 'ghosted',
+    keyed by canonical company. Read-only; empty dict on an absent/empty table.
+    A blank company (shouldn't happen — the column is NOT NULL) is skipped."""
+    if not analytics._has_table(conn, "applications"):
+        return {}
+    cols = analytics._columns(conn, "applications")
+    if not {"company", "status"} <= cols:
+        return {}
+    counts: dict[str, int] = {}
+    for company, status in conn.execute(
+        "SELECT company, status FROM applications WHERE status = 'ghosted'"
+    ).fetchall():
+        key = _company_key(company or "")
+        if not key:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def ghosted_before(company: str, db_path=None) -> dict:
+    """How many times the user's applications to ``company`` were marked 'ghosted'.
+
+    Returns ``{"count": n}`` (n>=1) when there's a prior ghosting at the same
+    canonical company, else ``{"count": 0}``. Opens the active project DB (or
+    ``db_path``) read-only via the same seam as :func:`compute`. Best-effort:
+    any failure -> ``{"count": 0}`` so a detail response never breaks over it
+    (the B4 enrichment contract — never break the response)."""
+    key = _company_key(company)
+    if not key:
+        return {"count": 0}
+    try:
+        from tracker import db as _db
+        if db_path is not None:
+            prev = _db.DB_PATH
+            _db.DB_PATH = str(db_path)
+            try:
+                conn = _db.get_conn()
+            finally:
+                _db.DB_PATH = prev
+        else:
+            conn = _db.get_conn()
+        try:
+            counts = ghosted_company_counts(conn)
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — read-only enrichment must never raise
+        return {"count": 0}
+    return {"count": counts.get(key, 0)}
+
+
 def compute(db_path=None, weeks: int = 8) -> dict:
     """Open the active project DB (or ``db_path``) and return all three Insights
     views in one call: ``{"funnel":..., "by_source":..., "cadence":...}``. The

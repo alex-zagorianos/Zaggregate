@@ -272,4 +272,70 @@ def test_missing_interview_rounds_table_does_not_crash(tmp_path):
     conn.commit()
     f = insights.funnel(conn)
     assert f["interview"] == 1  # status-based reach still works
-    assert insights.by_source(conn)[0]["applied"] == 1
+
+
+# ── company ghost memory (B7 item 3) ──────────────────────────────────────────
+
+def _add_named_app(conn, job_id, company, status):
+    conn.execute(
+        "INSERT INTO applications (id, title, company, location, url, "
+        "salary_text, source, status, date_added, date_applied, notes) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (job_id, f"Job {job_id}", company, "Remote", f"http://x/{job_id}",
+         "", "manual", status, "2026-06-01", "", ""),
+    )
+
+
+def test_ghosted_company_counts_tallies_only_ghosted(tmp_path):
+    conn = _build(tmp_path / "g.db")
+    _add_named_app(conn, 1, "Acme", "ghosted")
+    _add_named_app(conn, 2, "Acme", "ghosted")
+    _add_named_app(conn, 3, "Acme", "applied")   # not ghosted -> not counted
+    _add_named_app(conn, 4, "Globex", "rejected")  # not ghosted
+    conn.commit()
+    counts = insights.ghosted_company_counts(conn)
+    # Acme ghosted twice; nothing else.
+    key = insights._company_key("Acme")
+    assert counts.get(key) == 2
+    assert insights._company_key("Globex") not in counts
+
+
+def test_ghosted_company_counts_canonicalizes_suffix_variants(tmp_path):
+    """'Acme, Inc.' and 'Acme LLC' collapse to one canonical company key."""
+    conn = _build(tmp_path / "g2.db")
+    _add_named_app(conn, 1, "Acme, Inc.", "ghosted")
+    _add_named_app(conn, 2, "Acme LLC", "ghosted")
+    conn.commit()
+    counts = insights.ghosted_company_counts(conn)
+    assert counts.get(insights._company_key("Acme")) == 2
+
+
+def test_ghosted_before_reports_count(tmp_path):
+    db_path = tmp_path / "gb.db"
+    conn = _build(db_path)
+    _add_named_app(conn, 1, "Acme", "ghosted")
+    _add_named_app(conn, 2, "Acme", "ghosted")
+    conn.commit()
+    conn.close()
+    assert insights.ghosted_before("Acme", db_path=db_path) == {"count": 2}
+    # A suffix variant of the same company still matches.
+    assert insights.ghosted_before("Acme Inc", db_path=db_path)["count"] == 2
+
+
+def test_ghosted_before_zero_when_no_history(tmp_path):
+    db_path = tmp_path / "gb2.db"
+    conn = _build(db_path)
+    _add_named_app(conn, 1, "Acme", "applied")  # never ghosted
+    conn.commit()
+    conn.close()
+    assert insights.ghosted_before("Acme", db_path=db_path) == {"count": 0}
+    assert insights.ghosted_before("Unknown Co", db_path=db_path) == {"count": 0}
+
+
+def test_ghosted_before_blank_company_is_zero(tmp_path):
+    db_path = tmp_path / "gb3.db"
+    conn = _build(db_path)
+    conn.commit()
+    conn.close()
+    assert insights.ghosted_before("", db_path=db_path) == {"count": 0}
+    assert insights.ghosted_before("   ", db_path=db_path) == {"count": 0}

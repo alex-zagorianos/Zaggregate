@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dialog";
 import { LoadingState, ErrorState } from "@/components/states";
 import { NetworkBlockView } from "@/components/network-block";
+import { GhostedBeforeNote } from "@/components/ghosted-before-note";
 import { OutreachActions } from "@/components/outreach-actions";
 import { cn } from "@/lib/utils";
 
@@ -254,6 +255,10 @@ export function JobDialog({ open, onOpenChange, appId }: JobDialogProps) {
               />
 
               {showOffer(form.status) && <OfferSection form={form} set={set} />}
+
+              {isEdit && (
+                <GhostedBeforeNote before={detail.data?.ghosted_before} />
+              )}
 
               {isEdit && detail.data?.referral ? (
                 <ReferralHint hint={detail.data.referral} />

@@ -361,7 +361,22 @@ def inbox_detail(inbox_id: int):
     return jsonify({"ok": True, "row": _ser_inbox_row(row),
                     "fit_why": fit_why, "score_notes": score_notes,
                     "ghost": ghost, "ats": ats, "description_preview": desc,
-                    "network": _network_block(row.get("company") or "")})
+                    "network": _network_block(row.get("company") or ""),
+                    "ghosted_before": _ghosted_before(row.get("company") or "")})
+
+
+# ── company ghost memory (B7) ─────────────────────────────────────────────────
+def _ghosted_before(company: str) -> dict:
+    """``{count}`` of prior applications to ``company`` the user marked 'ghosted'.
+    ``{count:0}`` when there's no history or the insights layer is unavailable — a
+    best-effort enrichment that must never break the detail response (B4 pattern)."""
+    if not (company or "").strip():
+        return {"count": 0}
+    try:
+        import insights
+        return insights.ghosted_before(company)
+    except Exception:
+        return {"count": 0}
 
 
 # ── referral network (B4) ─────────────────────────────────────────────────────

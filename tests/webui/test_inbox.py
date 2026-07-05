@@ -91,3 +91,24 @@ def test_inbox_exists_helper(tmp_db):
     inbox_id = _seed_one()
     assert service.inbox_exists(inbox_id) is True
     assert service.inbox_exists(inbox_id + 12345) is False
+
+
+# ── company ghost memory in the detail response (B7 item 3) ──────────────────────
+
+def test_inbox_detail_carries_ghosted_before(client, tmp_db):
+    """A row whose company the user previously marked 'ghosted' surfaces the count
+    in the detail response; a clean company reports zero."""
+    inbox_id = _seed_one()  # company "Acme"
+    # Two prior Acme applications the user marked ghosted.
+    a1 = service.add_manual_job(title="Old", company="Acme", status="ghosted")
+    a2 = service.add_manual_job(title="Older", company="Acme, Inc.", status="ghosted")
+    assert a1 and a2
+    body = client.get(f"/api/inbox/{inbox_id}/detail").get_json()
+    assert body["ok"] is True
+    assert body["ghosted_before"] == {"count": 2}
+
+
+def test_inbox_detail_ghosted_before_zero_for_clean_company(client, tmp_db):
+    inbox_id = _seed_one()  # Acme, never ghosted
+    body = client.get(f"/api/inbox/{inbox_id}/detail").get_json()
+    assert body["ghosted_before"] == {"count": 0}

@@ -15,6 +15,7 @@ import { ApiError, type InboxRow } from "@/api/client";
 import { ScoreChip } from "@/components/score-chip";
 import { Button } from "@/components/ui/button";
 import { NetworkBlockView } from "@/components/network-block";
+import { GhostedBeforeNote } from "@/components/ghosted-before-note";
 import { ErrorState, SelectPrompt } from "@/components/states";
 import { scoreNoteLabel } from "@/lib/score";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,8 @@ export function InboxDetail({
         ) : (
           <>
             <GhostBanner ghost={detail.data?.ghost} />
+
+            <GhostedBeforeNote before={detail.data?.ghosted_before} />
 
             <FitWhy fit={fit} why={detail.data?.fit_why} />
 

@@ -119,6 +119,21 @@ def test_get_one_referral_hint(client, tmp_db):
     assert "Jane Doe" in body["referral"]
 
 
+def test_get_one_carries_ghosted_before(client, tmp_db):
+    """The JobDialog payload surfaces prior ghostings at the same company (B7)."""
+    from tracker import service
+    a = _add(company="Acme")
+    service.add_manual_job(title="Old", company="Acme", status="ghosted")
+    body = client.get(f"/api/applications/{a}").get_json()
+    assert body["ghosted_before"] == {"count": 1}
+
+
+def test_get_one_ghosted_before_zero_for_clean_company(client, tmp_db):
+    a = _add(company="Acme")
+    body = client.get(f"/api/applications/{a}").get_json()
+    assert body["ghosted_before"] == {"count": 0}
+
+
 def test_get_one_404(client, tmp_db):
     resp = client.get("/api/applications/999999")
     assert resp.status_code == 404

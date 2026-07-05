@@ -140,6 +140,34 @@ def resume_prompt(job_id: int):
     return jsonify({"ok": True, "prompt": prompt})
 
 
+@queue_bp.get("/queue/<int:job_id>/copy-pack")
+def copy_pack(job_id: int):
+    """A ready-to-paste plaintext application pack for one queue job (B7): contact
+    fields (name/email/phone/location/links) parsed from experience.md's CONTACT
+    section + the project config, condensed work-history + education one-liners, and
+    the tailored-resume file path when one was generated for this job. ``{ok, text}``;
+    404 for an unknown job. A read (no side effect) — not origin-gated. Missing
+    fields are omitted gracefully; the pack never contains placeholder junk."""
+    job = service.get_job(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "unknown job"}), 404
+    import copy_pack as _copy_pack
+    # Parse experience.md leniently (a plain-text paste never raises) + load config;
+    # every input is best-effort so the pack still builds from whatever exists.
+    try:
+        from resume.experience_parser import load_experience
+        experience = load_experience(workspace.experience_file(), lenient=True)
+    except Exception:  # noqa: BLE001 — missing/garbled file -> empty sections
+        experience = {}
+    try:
+        cfg = workspace.load_config()
+    except Exception:  # noqa: BLE001
+        cfg = {}
+    text = _copy_pack.build_copy_pack(
+        experience, cfg, resume_path=job.get("resume_path") or None)
+    return jsonify({"ok": True, "text": text})
+
+
 @queue_bp.post("/queue/<int:job_id>/resume-from-paste")
 @require_local_origin
 def resume_from_paste(job_id: int):

@@ -42,6 +42,7 @@ import {
 import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
 import { postedLabel as postedLabelFromDate } from "@/lib/relative-time";
 import { ScoreChip } from "@/components/score-chip";
+import { GhostRowBadge } from "@/components/ghost-row-badge";
 import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
 import { ShortcutHint } from "@/components/kbd";
 import { TriageActions } from "@/components/row-actions";
@@ -58,6 +59,7 @@ import { cn } from "@/lib/utils";
 
 import { InboxFilterBar } from "./InboxFilterBar";
 import { InboxBadges } from "./InboxBadges";
+import { NewSinceVisitBanner } from "./NewSinceVisitBanner";
 import { InboxDetail } from "./InboxDetail";
 import { AiMenu } from "./AiMenu";
 import { RunConsole } from "./RunConsole";
@@ -389,6 +391,8 @@ export function InboxTab() {
 
       <InboxBadges badges={badges} />
 
+      <NewSinceVisitBanner rows={rows} />
+
       <InboxFilterBar
         state={filters}
         onChange={setFilters}
@@ -711,8 +715,11 @@ function InboxTable({
                         />
                       )}
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="text-foreground truncate leading-snug font-medium">
-                          {row.title || "Untitled role"}
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-foreground truncate leading-snug font-medium">
+                            {row.title || "Untitled role"}
+                          </span>
+                          <GhostRowBadge ghost={row.ghost} />
                         </span>
                         <span className="text-muted-foreground truncate text-xs">
                           {row.company || "Unknown company"}

@@ -67,14 +67,42 @@ def inbox_row(row: dict) -> dict:
     return out
 
 
+def _ghost_badge(row: dict) -> dict:
+    """The list-view ghost/staleness badge: ``{level, reasons}`` off
+    :func:`match.ghost.ghost_score` (day-bucketed + cached, so recomputing it for
+    every row on every list request is cheap). ``reasons`` is capped to the few
+    the tooltip shows. Best-effort — any failure yields a neutral abstain badge so
+    the list never breaks over a bad row. NEVER hides a row: this only annotates;
+    the opt-in ``hide_stale`` view filter remains the sole hiding mechanism.
+
+    The reasons already carried by ghost_score cover longevity/repost history
+    (age from ``created``, evergreen/pipeline titles, publisher-declared expiry,
+    and — when a repost_info map is threaded in upstream — S29 repost/evergreen
+    coalescing); we surface exactly what fired, we do not compute new signals."""
+    try:
+        from match import ghost as _ghost
+        g = _ghost.ghost_score(row)
+    except Exception:  # noqa: BLE001 — a bad row must never break the list payload
+        return {"level": "unknown", "reasons": []}
+    reasons = g.get("reasons") or []
+    return {"level": str(g.get("level") or "unknown"),
+            "reasons": [str(r) for r in reasons[:4]]}
+
+
 def inbox_row_list(row: dict) -> dict:
     """List-context variant of :func:`inbox_row`: identical shape minus
     ``description`` — the inbox/board/queue/top-picks LIST views never render a
     description preview (only the per-row detail route does), so list responses
     drop the column to cut payload size. DETAIL routes must keep using
-    :func:`inbox_row`."""
+    :func:`inbox_row`.
+
+    Adds a ``ghost`` badge (``{level, reasons}``) so the Inbox table can flag
+    aged / reposted / evergreen postings inline (B7). Only ``level`` in
+    {"aging","stale"} draws a visible badge client-side; "fresh"/"unknown" are
+    carried but rendered as nothing."""
     out = inbox_row(row)
     out.pop("description", None)
+    out["ghost"] = _ghost_badge(row)
     return out
 
 

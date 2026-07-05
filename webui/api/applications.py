@@ -121,9 +121,24 @@ def get_application(app_id: int):
         "rounds": service.list_interview_rounds(app_id),
         "referral": service.referral_hint(job.get("company", "") or ""),
         "network": _network_block(job.get("company", "") or ""),
+        "ghosted_before": _ghosted_before(job.get("company", "") or ""),
         "statuses": db.STATUSES,
         "status_labels": db.STATUS_LABELS,
     })
+
+
+# ── company ghost memory (B7) ─────────────────────────────────────────────────
+def _ghosted_before(company: str) -> dict:
+    """``{count}`` of prior applications to ``company`` the user marked 'ghosted'
+    (canonical-company match). ``{count:0}`` on no history or an unavailable
+    insights layer — best-effort; never breaks the JobDialog payload (B4 pattern)."""
+    if not (company or "").strip():
+        return {"count": 0}
+    try:
+        import insights
+        return insights.ghosted_before(company)
+    except Exception:
+        return {"count": 0}
 
 
 # ── referral network (B4) ─────────────────────────────────────────────────────

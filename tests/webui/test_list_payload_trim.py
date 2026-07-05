@@ -111,3 +111,57 @@ def test_toppicks_drops_description(client, tmp_db):
     body = client.get("/api/toppicks").get_json()
     assert len(body["rows"]) == 1
     assert "description" not in body["rows"][0]
+
+
+# ── ghost badge on inbox list rows (B7 item 1/2) ─────────────────────────────────
+
+def _old_job(url, days_ago):
+    """An inbox row whose ``created`` is ``days_ago`` days back, so the ghost age
+    signal fires deterministically (>45 stale, 30-45 aging)."""
+    from datetime import datetime, timedelta, timezone
+    created = (datetime.now(timezone.utc) - timedelta(days=days_ago)).date().isoformat()
+    return JobResult(title="Software Developer", company="Acme",
+                     location="Cincinnati, OH", salary_min=90000, salary_max=None,
+                     description=_DESC, url=url, source_keyword="",
+                     created=created, source_api="adzuna", score=70)
+
+
+def test_inbox_list_row_carries_ghost_badge(client, tmp_db):
+    """Every list row gains a ``ghost`` badge {level, reasons} from ghost_score."""
+    db.inbox_add_many([_job("https://x/g1")])
+    row = client.get("/api/inbox").get_json()["rows"][0]
+    assert "ghost" in row
+    assert set(row["ghost"]) == {"level", "reasons"}
+    assert row["ghost"]["level"] in ("fresh", "aging", "stale", "unknown")
+    assert isinstance(row["ghost"]["reasons"], list)
+
+
+def test_inbox_list_flags_a_stale_row_with_reasons(client, tmp_db):
+    """A 60-day-old posting comes back level 'stale' with an age reason surfaced
+    (longevity — from the existing ghost_score signals, no new mechanism)."""
+    db.inbox_add_many([_old_job("https://x/stale", days_ago=60)])
+    row = client.get("/api/inbox").get_json()["rows"][0]
+    assert row["ghost"]["level"] == "stale"
+    assert any("60d" in r or "stale" in r for r in row["ghost"]["reasons"])
+
+
+def test_inbox_list_flags_aging_row(client, tmp_db):
+    """A ~35-day-old posting reads 'aging' (30-45 day band)."""
+    db.inbox_add_many([_old_job("https://x/aging", days_ago=35)])
+    row = client.get("/api/inbox").get_json()["rows"][0]
+    assert row["ghost"]["level"] == "aging"
+
+
+def test_ghost_badge_never_hides_rows(client, tmp_db):
+    """The badge only ANNOTATES — a stale row is still returned in the list (the
+    opt-in hide_stale filter stays the only hiding mechanism)."""
+    db.inbox_add_many([_old_job("https://x/keep", days_ago=90)])
+    rows = client.get("/api/inbox").get_json()["rows"]
+    assert len(rows) == 1  # present despite being stale
+
+
+def test_ghost_badge_reasons_capped(client, tmp_db):
+    """Reasons are capped so the tooltip stays short (<=4)."""
+    db.inbox_add_many([_old_job("https://x/cap", days_ago=90)])
+    row = client.get("/api/inbox").get_json()["rows"][0]
+    assert len(row["ghost"]["reasons"]) <= 4
