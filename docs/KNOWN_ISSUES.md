@@ -55,6 +55,12 @@ mechanism, not the fetch pipeline.
     findings report §6), deletion of the deprecated `tracker/app.py` (:5001
     retired; file kept), and whether the exe DEFAULT becomes `--desktop`
     (native window shipped in S36c; tk remains the no-flag default).
+- **Discover tab (S36c, EXPERIMENTAL — may be removed)**: BYO-AI role
+  recommendations (prompt from experience/preferences/tracked signal ->
+  paste reply -> lane-grouped cards -> additive keyword apply). Web-only, no
+  tk twin, no DB schema. Removal = delete `recommend.py`,
+  `webui/api/recommend.py`, `src/tabs/discover/` + the three marked one-line
+  registrations (api/__init__.py, registry.ts, TabRoutes.tsx).
 - **Recall (S36c, 2026-07-04)** — full program in
   `brain/findings-2026-07-04-search-optimization.md`:
   - **Free keys unclaimed** (CareerOneStop, Brave Search, Jooble, Careerjet,
