@@ -295,6 +295,20 @@ export interface InterviewRound {
   [key: string]: unknown;
 }
 
+/** One matched network contact (name + position), as surfaced in a detail pane. */
+export interface NetworkContact {
+  name: string;
+  position: string;
+}
+
+/** The referral-network block a detail response carries (B4): the count of people
+ * the user knows at the company + the top few names/positions. `count:0` +
+ * `contacts:[]` when there's no match. */
+export interface NetworkBlock {
+  count: number;
+  contacts: NetworkContact[];
+}
+
 /** The one-call JobDialog payload (GET /api/applications/<id>). */
 export interface AppDetailResponse extends ApiEnvelope {
   job: AppRow;
@@ -302,6 +316,8 @@ export interface AppDetailResponse extends ApiEnvelope {
   rounds: InterviewRound[];
   /** "" when no known contact at the company. */
   referral: string;
+  /** Imported-network matches at the company (B4). */
+  network: NetworkBlock;
   statuses: string[];
   status_labels: Record<string, string>;
 }
@@ -386,6 +402,9 @@ export const endpoints = {
     }),
   getApplication: (id: number) =>
     api.get<AppDetailResponse>(`/applications/${id}`),
+  // B4: warm-path prompt for a tracked application (prompt-only).
+  appWarmPathPrompt: (id: number) =>
+    api.get<WarmPathPromptResponse>(`/applications/${id}/warm-path-prompt`),
   addApplication: (fields: AppFields) =>
     api.post<AddAppResponse>("/applications", { json: fields }),
   updateApplication: (id: number, fields: AppFields) =>
@@ -419,6 +438,9 @@ export const endpoints = {
     api.get<InboxListResponse>("/inbox", { params }),
   inboxDetail: (id: number) =>
     api.get<InboxDetailResponse>(`/inbox/${id}/detail`),
+  // B4: warm-path prompt for an inbox row (prompt-only).
+  inboxWarmPathPrompt: (id: number) =>
+    api.get<WarmPathPromptResponse>(`/inbox/${id}/warm-path-prompt`),
   dismissBulk: (ids: number[]) =>
     api.post<DismissBulkResponse>("/inbox/dismiss-bulk", { json: { ids } }),
   undoDismiss: (undoToken?: string) =>
@@ -573,6 +595,15 @@ export const endpoints = {
     api.post<RecommendApplyResponse>(`/recommend/${id}/apply-keywords`),
   recommendDismiss: (id: string) =>
     api.post<ApiEnvelope>(`/recommend/${id}/dismiss`),
+
+  // ── Referral network (B4) — local LinkedIn/Google contact import ────────────
+  networkSummary: () => api.get<NetworkSummaryResponse>("/network/summary"),
+  // The file is read client-side (FileReader) and its raw text POSTed here.
+  networkImport: (text: string, source: "linkedin" | "google") =>
+    api.post<NetworkImportResponse>("/network/import", {
+      json: { text, source },
+    }),
+  networkClear: () => api.post<NetworkClearResponse>("/network/clear"),
 };
 
 /** Import AI scores — multipart (file) OR JSON (pasted text). We build the
@@ -726,6 +757,33 @@ export interface InboxDetailResponse extends ApiEnvelope {
     lines: string[];
   };
   description_preview: string;
+  /** Imported-network matches at the row's company (B4). */
+  network: NetworkBlock;
+}
+
+/** GET /api/{inbox|applications}/<id>/warm-path-prompt — a copy-into-your-AI
+ * warm-path plan (prompt-only, no paste-back). */
+export interface WarmPathPromptResponse extends ApiEnvelope {
+  prompt: string;
+}
+
+// ── Referral network (B4) ─────────────────────────────────────────────────────
+/** GET /api/network/summary — overview for the Sources import card. */
+export interface NetworkSummaryResponse extends ApiEnvelope {
+  total: number;
+  companies: number;
+  last_import: { source: string; at: string; added: number } | null;
+}
+
+/** POST /api/network/import — {added, total} after a merge. */
+export interface NetworkImportResponse extends ApiEnvelope {
+  added: number;
+  total: number;
+}
+
+/** POST /api/network/clear — {removed}. */
+export interface NetworkClearResponse extends ApiEnvelope {
+  removed: number;
 }
 
 export interface DismissBulkResponse extends ApiEnvelope {

@@ -41,6 +41,7 @@ export const queryKeys = {
   onboarding: ["onboarding"] as const,
   guide: ["guide"] as const,
   recommend: ["recommend"] as const,
+  networkSummary: ["network-summary"] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -663,6 +664,45 @@ export function useRecommendDismiss() {
     mutationFn: (id: string) => endpoints.recommendDismiss(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.recommend });
+    },
+  });
+}
+
+// ── Referral network (B4) ─────────────────────────────────────────────────────
+
+/** The imported-network overview for the Sources card. */
+export function useNetworkSummary() {
+  return useQuery({
+    queryKey: queryKeys.networkSummary,
+    queryFn: () => endpoints.networkSummary(),
+    staleTime: 30_000,
+  });
+}
+
+/** Import a connections CSV (raw text, read client-side). Refreshes the summary
+ * AND every open inbox/application detail (a new match can now appear). */
+export function useNetworkImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { text: string; source: "linkedin" | "google" }) =>
+      endpoints.networkImport(vars.text, vars.source),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.networkSummary });
+      qc.invalidateQueries({ queryKey: ["inbox-detail"] });
+      qc.invalidateQueries({ queryKey: ["application"] });
+    },
+  });
+}
+
+/** Forget the whole imported network. Same coherent refresh as import. */
+export function useNetworkClear() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => endpoints.networkClear(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.networkSummary });
+      qc.invalidateQueries({ queryKey: ["inbox-detail"] });
+      qc.invalidateQueries({ queryKey: ["application"] });
     },
   });
 }

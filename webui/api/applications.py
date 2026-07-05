@@ -120,9 +120,40 @@ def get_application(app_id: int):
         "timeline": _timeline(app_id),
         "rounds": service.list_interview_rounds(app_id),
         "referral": service.referral_hint(job.get("company", "") or ""),
+        "network": _network_block(job.get("company", "") or ""),
         "statuses": db.STATUSES,
         "status_labels": db.STATUS_LABELS,
     })
+
+
+# ── referral network (B4) ─────────────────────────────────────────────────────
+def _network_block(company: str) -> dict:
+    """``{count, contacts:[{name, position}]}`` for the imported-network people the
+    user knows at ``company`` (top 5). Distinct from the tracker's manual-``contacts``
+    referral hint above (that's the hand-entered CRM; this is the bulk LinkedIn/
+    Google import). Best-effort — never breaks the detail response."""
+    try:
+        import network as networkmod
+        people = networkmod.matches_for(company)
+    except Exception:
+        return {"count": 0, "contacts": []}
+    return {
+        "count": len(people),
+        "contacts": [{"name": p.get("name", ""), "position": p.get("position", "")}
+                     for p in people[:5]],
+    }
+
+
+@applications_bp.get("/applications/<int:app_id>/warm-path-prompt")
+def warm_path_prompt(app_id: int):
+    """The BYO-AI warm-path prompt for a tracked application (prompt-only, no
+    paste-back). 404 for an unknown id. Reuses the inbox blueprint's builder so the
+    inbox + application prompts are byte-identical for the same job context."""
+    job = service.get_job(app_id)
+    if job is None:
+        return jsonify({"ok": False, "error": "unknown application"}), 404
+    from .inbox import _build_warm_path
+    return jsonify({"ok": True, "prompt": _build_warm_path(job)})
 
 
 @applications_bp.patch("/applications/<int:app_id>")

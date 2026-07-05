@@ -360,7 +360,62 @@ def inbox_detail(inbox_id: int):
 
     return jsonify({"ok": True, "row": _ser_inbox_row(row),
                     "fit_why": fit_why, "score_notes": score_notes,
-                    "ghost": ghost, "ats": ats, "description_preview": desc})
+                    "ghost": ghost, "ats": ats, "description_preview": desc,
+                    "network": _network_block(row.get("company") or "")})
+
+
+# ── referral network (B4) ─────────────────────────────────────────────────────
+def _network_block(company: str) -> dict:
+    """``{count, contacts:[{name, position}]}`` for the people the user knows at
+    ``company`` (top 5). Empty ``{count:0, contacts:[]}`` when there's no match or
+    the network layer is unavailable — a best-effort enrichment that must never
+    break the detail response."""
+    try:
+        import network as networkmod
+        people = networkmod.matches_for(company)
+    except Exception:
+        return {"count": 0, "contacts": []}
+    return {
+        "count": len(people),
+        "contacts": [{"name": p.get("name", ""), "position": p.get("position", "")}
+                     for p in people[:5]],
+    }
+
+
+def _build_warm_path(job: dict) -> str:
+    """Assemble the warm-path prompt for a job dict (inbox row or application row).
+    Pulls the user's matched network contacts, the raw experience.md, and the
+    project config, then hands off to ``outreach.build_warm_path_prompt``.
+    Best-effort on every optional input — a missing experience file or empty
+    network still yields a usable prompt (the contract asks for indirect paths)."""
+    import outreach
+    company = job.get("company") or ""
+    try:
+        import network as networkmod
+        contacts = networkmod.matches_for(company)
+    except Exception:
+        contacts = []
+    try:
+        experience_text = Path(workspace.experience_file()).read_text(encoding="utf-8")
+    except OSError:
+        experience_text = ""
+    try:
+        cfg = workspace.load_config()
+    except Exception:
+        cfg = {}
+    return outreach.build_warm_path_prompt(job, contacts, experience_text, cfg)
+
+
+@inbox_bp.get("/inbox/<int(signed=True):inbox_id>/warm-path-prompt")
+def inbox_warm_path_prompt(inbox_id: int):
+    """Build the BYO-AI warm-path prompt for one inbox row (prompt-only, no
+    paste-back). 404 for an unknown id. Reuses the row's company/title/description,
+    the user's matched network contacts, and their experience.md."""
+    rows = {r["id"]: r for r in _inbox_snapshot()}
+    row = rows.get(inbox_id)
+    if row is None:
+        return jsonify({"ok": False, "error": "unknown inbox row"}), 404
+    return jsonify({"ok": True, "prompt": _build_warm_path(row)})
 
 
 # ── single-row triage (Phase 1, kept) ─────────────────────────────────────────

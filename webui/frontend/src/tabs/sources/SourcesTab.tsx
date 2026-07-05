@@ -23,6 +23,7 @@ import {
   type SourceField,
 } from "@/api/client";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { NetworkImportCard } from "@/tabs/sources/NetworkImportCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,21 @@ export function SourcesTab() {
 
       <div className="mt-8">
         <SourceCardGrid />
+      </div>
+
+      {/* Referral network (B4) — local LinkedIn/Google contact import. */}
+      <div className="mt-8">
+        <h2 className="zg-serif text-foreground text-lg font-semibold tracking-tight">
+          Referrals
+        </h2>
+        <p className="text-muted-foreground mt-1 mb-4 max-w-2xl text-sm leading-relaxed">
+          Referred candidates reach interviews far more often than cold
+          applicants. Import your contacts once and Zaggregate flags every job
+          at a company where you already know someone.
+        </p>
+        <div className="grid gap-5 md:grid-cols-2">
+          <NetworkImportCard />
+        </div>
       </div>
     </section>
   );
