@@ -124,19 +124,26 @@ GAPS (ranked by outcome impact):
    post-first-value upgrades. Time-to-first-value target <15 min.
 2. **Distribution trust.** Closed cohort: unsigned + winget manifest (free;
    no SmartScreen in CLI flow; PR to microsoft/winget-pkgs) + SHA-256 hashes
-   - FIRST-RUN.txt. Strangers-with-a-link: **Azure Trusted Signing $9.99/mo**
-   (US individuals eligible; needs paid Azure sub; no instant reputation) or
-   **Microsoft Store MSIX** (~$19 once; Store re-signs → NO SmartScreen ever;
-     packaging work). EV certs no longer buy instant reputation (post-2024) —
-     don't bother. PyInstaller notes: --noupx, prefer one-dir (AV heuristics).
+   - FIRST-RUN.txt (publish checksums with every release — future updater
+     integrity + trust). Strangers-with-a-link: **Azure Trusted Signing
+     $9.99/mo** (US-individual signup pause LIFTED per the 2026-06-22 FAQ;
+     needs paid Azure sub; no instant reputation — same organic download-volume
+     curve as any cert) or **Microsoft Store MSIX** (individual dev
+     registration FREE since Sept 2025; Store re-signs → NO SmartScreen ever;
+     MSIX packaging work). EV certs no longer buy instant reputation
+     (post-2024) — don't bother. PyInstaller: --noupx, prefer one-dir (AV
+     heuristics).
 3. **Update check.** GitHub Releases API compare + "new version" toast =
    hours of work, matches beta expectations. tufup later if it sticks.
    (PyUpdater is dead.)
-4. **Feedback loop.** GitHub Issues + Discussions as system of record
-   (Discord only if the cohort asks — silo risk). In-app "Report a problem"
-   already builds a scrubbed local zip → add prefilled GitHub-issue link.
-   Crash = local scrubbed crash_report.txt + dialog, NO telemetry (privacy
-   identity; measure via interviews, not tracking).
+4. **Feedback loop.** Primary = in-app "Send feedback" (mailto / hosted
+   form — job seekers are often non-technical; a GitHub account is a real
+   barrier). GitHub Issues stays the INTERNAL tracker; Discord only if the
+   cohort asks (silo risk). In-app "Report a problem" already builds a
+   scrubbed local zip → wire it to the feedback path. Crash = Pachli
+   pattern: local scrubbed crash_report.txt + a dialog where the user SEES
+   the report before anything is sent. NO telemetry (privacy identity;
+   measure via interviews, not tracking).
 5. **Web create-project flow** (queued) — betas onboard on web/desktop.
 6. **Legal/trust page** (~1 day): 5-line privacy policy ("nothing leaves
    your machine"; covers opt-in report path; REQUIRED for the extension's
