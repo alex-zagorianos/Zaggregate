@@ -405,6 +405,14 @@ export const endpoints = {
   // B4: warm-path prompt for a tracked application (prompt-only).
   appWarmPathPrompt: (id: number) =>
     api.get<WarmPathPromptResponse>(`/applications/${id}/warm-path-prompt`),
+  // B5: follow-up / thank-you prompt (auto-selected) for an application.
+  appFollowupPrompt: (id: number) =>
+    api.get<FollowupPromptResponse>(`/applications/${id}/followup-prompt`),
+  // B5: interview-prep prompt for an application (prompt-only).
+  appInterviewPrepPrompt: (id: number) =>
+    api.get<WarmPathPromptResponse>(
+      `/applications/${id}/interview-prep-prompt`,
+    ),
   addApplication: (fields: AppFields) =>
     api.post<AddAppResponse>("/applications", { json: fields }),
   updateApplication: (id: number, fields: AppFields) =>
@@ -762,9 +770,17 @@ export interface InboxDetailResponse extends ApiEnvelope {
 }
 
 /** GET /api/{inbox|applications}/<id>/warm-path-prompt — a copy-into-your-AI
- * warm-path plan (prompt-only, no paste-back). */
+ * warm-path plan (prompt-only, no paste-back). Also the shape returned by the B5
+ * interview-prep prompt endpoint. */
 export interface WarmPathPromptResponse extends ApiEnvelope {
   prompt: string;
+}
+
+/** GET /api/applications/<id>/followup-prompt (B5) — a follow-up or thank-you
+ * note prompt. `stage` says which note was drafted so the UI can label it. */
+export interface FollowupPromptResponse extends ApiEnvelope {
+  prompt: string;
+  stage: "thank_you" | "followup";
 }
 
 // ── Referral network (B4) ─────────────────────────────────────────────────────

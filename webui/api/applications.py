@@ -156,6 +156,50 @@ def warm_path_prompt(app_id: int):
     return jsonify({"ok": True, "prompt": _build_warm_path(job)})
 
 
+# ── outreach: follow-up / thank-you + interview prep (B5) ─────────────────────
+
+def _experience_text() -> str:
+    """The raw experience.md for the active project, best-effort. Empty string when
+    the file is missing/unreadable — the prompt builders degrade gracefully."""
+    import workspace
+    from pathlib import Path
+    try:
+        return Path(workspace.experience_file()).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+@applications_bp.get("/applications/<int:app_id>/followup-prompt")
+def followup_prompt(app_id: int):
+    """The BYO-AI follow-up / thank-you prompt for a tracked application
+    (prompt-only, no paste-back). Auto-selects a post-interview THANK-YOU vs a
+    post-apply FOLLOW-UP from the application's status + interview rounds. 404 for
+    an unknown id. Returns ``{ok, prompt, stage}`` so the client can label the
+    surface consistently with the note that was actually drafted."""
+    job = service.get_job(app_id)
+    if job is None:
+        return jsonify({"ok": False, "error": "unknown application"}), 404
+    import outreach
+    job["_rounds"] = service.list_interview_rounds(app_id)
+    stage = outreach.followup_stage(job)
+    return jsonify({"ok": True, "stage": stage,
+                    "prompt": outreach.build_followup_prompt(job, stage)})
+
+
+@applications_bp.get("/applications/<int:app_id>/interview-prep-prompt")
+def interview_prep_prompt(app_id: int):
+    """The BYO-AI interview-prep prompt for a tracked application (prompt-only, no
+    paste-back). Grounds the practice answers in the user's experience.md. 404 for
+    an unknown id."""
+    job = service.get_job(app_id)
+    if job is None:
+        return jsonify({"ok": False, "error": "unknown application"}), 404
+    import outreach
+    return jsonify({"ok": True,
+                    "prompt": outreach.build_interview_prep_prompt(
+                        job, _experience_text())})
+
+
 @applications_bp.patch("/applications/<int:app_id>")
 @require_local_origin
 def update_application(app_id: int):

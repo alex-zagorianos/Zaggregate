@@ -63,3 +63,97 @@ def test_missing_title_company_have_safe_fallbacks():
     prompt = outreach.build_warm_path_prompt({}, [], "", {})
     assert "this role" in prompt
     assert "the company" in prompt
+
+
+# ── follow-up / thank-you stage selection (B5) ─────────────────────────────────
+
+def test_followup_stage_is_followup_before_any_interview():
+    assert outreach.followup_stage({"status": "interested"}) == "followup"
+    assert outreach.followup_stage({"status": "applied"}) == "followup"
+    # Terminal non-interview statuses are still plain follow-ups.
+    assert outreach.followup_stage({"status": "rejected"}) == "followup"
+    assert outreach.followup_stage({"status": "ghosted"}) == "followup"
+
+
+def test_followup_stage_is_thank_you_at_interview_statuses():
+    for st in ("phone_screen", "interview", "offer", "accepted"):
+        assert outreach.followup_stage({"status": st}) == "thank_you"
+
+
+def test_followup_stage_is_thank_you_when_a_round_exists():
+    # A logged round wins even at a pre-interview status.
+    row = {"status": "applied", "_rounds": [{"kind": "phone"}]}
+    assert outreach.followup_stage(row) == "thank_you"
+    # `rounds` (the un-prefixed key) is also honored.
+    assert outreach.followup_stage(
+        {"status": "applied", "rounds": [{"kind": "tech"}]}) == "thank_you"
+
+
+def test_followup_prompt_followup_wording_and_rules():
+    row = {"title": "Backend Engineer", "company": "Globex", "status": "applied"}
+    prompt = outreach.build_followup_prompt(row)
+    assert "post-application follow-up" in prompt
+    assert "Globex" in prompt and "Backend Engineer" in prompt
+    # Etiquette rules are embedded verbatim.
+    assert "exactly ONE follow-up" in prompt
+    assert "No groveling" in prompt
+    assert "120 words" in prompt
+
+
+def test_followup_prompt_thank_you_wording_and_rules():
+    row = {"title": "Backend Engineer", "company": "Globex",
+           "status": "interview",
+           "_rounds": [{"kind": "onsite", "interviewer": "Dana",
+                        "scheduled_at": "2026-07-01"}]}
+    prompt = outreach.build_followup_prompt(row)
+    assert "THANK-YOU" in prompt
+    assert "within 24 hours" in prompt
+    assert "120 words" in prompt
+    assert "No groveling" in prompt
+    # The most-recent-round context grounds the note.
+    assert "onsite" in prompt and "Dana" in prompt
+
+
+def test_followup_prompt_explicit_stage_overrides_selection():
+    # Force a follow-up even though the status would auto-select thank-you.
+    row = {"title": "PM", "company": "Acme", "status": "interview"}
+    prompt = outreach.build_followup_prompt(row, "followup")
+    assert "post-application follow-up" in prompt
+
+
+def test_followup_prompt_safe_fallbacks():
+    prompt = outreach.build_followup_prompt({})
+    assert "the role" in prompt and "the company" in prompt
+
+
+# ── interview prep (B5) ────────────────────────────────────────────────────────
+
+def test_interview_prep_folds_in_experience():
+    row = {"title": "Senior Controls Engineer", "company": "Acme Robotics",
+           "location": "Cincinnati, OH", "description": "Commission PLC cells."}
+    prompt = outreach.build_interview_prep_prompt(row, _EXPERIENCE)
+    assert "Senior Controls Engineer" in prompt and "Acme Robotics" in prompt
+    # The five required asks.
+    assert "Likely interview areas" in prompt
+    assert "Ten practice questions" in prompt
+    assert "BEHAVIORAL" in prompt and "ROLE-SPECIFIC" in prompt
+    assert "Strong-answer sketches from MY experience" in prompt
+    assert "Questions I should ask them" in prompt
+    assert "Red flags to listen for" in prompt
+    # The user's real background flowed in (grounds the answers).
+    assert "Globex Corporation" in prompt
+    assert "State Polytechnic University" in prompt
+    # The JD excerpt is present.
+    assert "Commission PLC cells" in prompt
+
+
+def test_interview_prep_survives_no_experience():
+    prompt = outreach.build_interview_prep_prompt(
+        {"title": "PM", "company": "Globex"}, "")
+    assert "Ten practice questions" in prompt
+    assert "Globex" in prompt
+
+
+def test_interview_prep_safe_fallbacks():
+    prompt = outreach.build_interview_prep_prompt({})
+    assert "this role" in prompt and "the company" in prompt

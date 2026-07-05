@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dialog";
 import { LoadingState, ErrorState } from "@/components/states";
 import { NetworkBlockView } from "@/components/network-block";
+import { OutreachActions } from "@/components/outreach-actions";
 import { cn } from "@/lib/utils";
 
 /* JobDialog — the create/edit application editor, rendered as a RIGHT-SIDE SHEET.
@@ -264,6 +265,14 @@ export function JobDialog({ open, onOpenChange, appId }: JobDialogProps) {
                   network={detail.data?.network}
                   id={appId as number}
                   source="application"
+                />
+              )}
+
+              {isEdit && (
+                <OutreachActions
+                  appId={appId as number}
+                  status={detail.data?.job?.status ?? form.status}
+                  roundCount={detail.data?.rounds?.length ?? 0}
                 />
               )}
 

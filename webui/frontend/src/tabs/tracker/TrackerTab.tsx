@@ -450,16 +450,28 @@ function TrackerTable({
           if (!f) return <span className="text-muted-foreground/50">—</span>;
           const due = isFollowupDue(row, today);
           return (
-            <span
-              className={cn(
-                "zg-num text-xs",
-                due
-                  ? "font-medium text-[var(--zg-warn)]"
-                  : "text-muted-foreground",
+            <div className="flex flex-col gap-0.5">
+              <span
+                className={cn(
+                  "zg-num text-xs",
+                  due
+                    ? "font-medium text-[var(--zg-warn)]"
+                    : "text-muted-foreground",
+                )}
+              >
+                {f}
+              </span>
+              {due && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(row.id)}
+                  className="text-primary hover:underline text-left text-xs"
+                  title="Open this application and draft a follow-up"
+                >
+                  Draft it
+                </button>
               )}
-            >
-              {f}
-            </span>
+            </div>
           );
         },
       }),
