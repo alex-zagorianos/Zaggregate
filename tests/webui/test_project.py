@@ -135,3 +135,29 @@ def test_create_project_switch_under_pin_is_pending(client, tmp_projects):
     finally:
         workspace.unpin_active()
     assert workspace.active_slug() == "nights-only"
+
+
+
+def test_create_no_switch_on_fresh_registry_keeps_active_off_new_project(
+        client, tmp_path, monkeypatch):
+    """S37 Phase-1 review CRITICAL regression (end-to-end, mirrors the
+    verifier's repro): on a truly FRESH registry (no projects.json), POST
+    /project/create with switch:false must not silently activate the new
+    project when any other project (the default root) is registered."""
+    monkeypatch.setattr(workspace, "BASE_DIR", tmp_path)
+    workspace.unpin_active()
+
+    resp = _post(client, {"name": "My First Search", "switch": False})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True and body["slug"] == "my-first-search"
+
+    others = [p["slug"] for p in body["projects"] if p["slug"] != "my-first-search"]
+    if others:
+        # The repair must prefer an existing project (default root), never the
+        # explicitly-not-switched new one.
+        assert body["active"] != "my-first-search"
+        assert workspace.registry_active_slug() != "my-first-search"
+    else:
+        # Sole-project fallback is the one allowed case.
+        assert body["active"] == "my-first-search"

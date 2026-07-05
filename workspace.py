@@ -528,7 +528,18 @@ def create_project(name: str, *, slug: str | None = None, config: dict | None = 
             if person is not None:
                 entry["person"] = person       # omit when unassigned (back-compat)
             reg.setdefault("projects", []).append(entry)
-        if make_active or reg.get("active") is None:
+        if make_active:
             reg["active"] = slug
+        elif reg.get("active") is None:
+            # Registry missing an 'active' key (fresh install / legacy file):
+            # repair it, but NEVER by overriding an explicit make_active=False
+            # with the just-created project (S37 review CRITICAL: the web
+            # create-project route's switch:false was silently ignored on a
+            # fresh registry). Prefer any OTHER registered project (the default
+            # root that _ensure_default_root_registered adds comes first); only
+            # fall back to the new slug when it is genuinely the only project.
+            others = [p.get("slug") for p in reg.get("projects", [])
+                      if p.get("slug") and p.get("slug") != slug]
+            reg["active"] = others[0] if others else slug
         _write_registry(reg)
     return slug
