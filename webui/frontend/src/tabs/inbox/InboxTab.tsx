@@ -858,6 +858,7 @@ function InboxEmpty({
     return (
       <EmptyState
         icon={Loader2}
+        iconClassName="animate-spin"
         title="Finding your first matches…"
         message="Your first results land when the run finishes — usually a few minutes on a quick pass. You can keep working while it runs."
       />

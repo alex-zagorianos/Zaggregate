@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface EmptyStateProps {
   icon?: LucideIcon;
+  /** Extra classes for the icon glyph (e.g. "animate-spin" for Loader2). */
+  iconClassName?: string;
   title: string;
   message?: string;
   action?: { label: string; onClick: () => void };
@@ -23,6 +25,7 @@ interface EmptyStateProps {
 
 export function EmptyState({
   icon: Icon = Inbox,
+  iconClassName,
   title,
   message,
   action,
@@ -37,7 +40,7 @@ export function EmptyState({
       )}
     >
       <div className="text-muted-foreground/40 mb-5">
-        <Icon className="size-12" strokeWidth={1.25} />
+        <Icon className={cn("size-12", iconClassName)} strokeWidth={1.25} />
       </div>
       <h3 className="zg-serif text-foreground text-xl font-medium tracking-tight">
         {title}
