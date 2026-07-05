@@ -1,0 +1,53 @@
+ZAGGREGATE — END-USER LICENSE AGREEMENT (BETA)
+
+Last updated: 2026-07-05
+
+Please read this before using Zaggregate ("the Software"). By installing or
+using the Software, you agree to the terms below. If you do not agree, do not
+use the Software.
+
+1. BETA SOFTWARE, PROVIDED "AS IS"
+   The Software is pre-release beta software provided to you free of charge and
+   "AS IS", without warranty of any kind, express or implied, including but not
+   limited to warranties of merchantability, fitness for a particular purpose,
+   accuracy, or non-infringement. You use the Software at your own risk. The
+   author is not liable for any damages, data loss, missed opportunities, or
+   other harm arising from its use, to the fullest extent permitted by law.
+
+2. YOU QUERY JOB SOURCES ON YOUR OWN BEHALF
+   The Software runs on your computer and fetches job postings from public
+   sources and company career pages that YOU configure, using YOUR own access
+   keys, from YOUR own machine. Each request is made by you, on your own behalf,
+   as if you had visited those sites in your own browser. You — not the author —
+   are responsible for reviewing and complying with the terms of service, usage
+   policies, and applicable laws of every job source, board, or website you
+   choose to query through the Software. Use each source responsibly and within
+   its stated limits.
+
+3. NO AUTOMATED APPLICATIONS
+   The Software helps you find, score, and tailor applications, but it never
+   submits an application for you — you always click submit yourself. You are
+   responsible for everything you send to an employer, including any content an
+   AI assistant helped you draft. Always review it first.
+
+4. NO AFFILIATION
+   Zaggregate is an independent tool. It is not affiliated with, endorsed by, or
+   sponsored by any job board, applicant tracking system, employer, AI provider,
+   or other company whose services it can query or work alongside. All product
+   and company names are the property of their respective owners.
+
+5. YOUR DATA STAYS WITH YOU
+   The Software stores your data locally on your computer and does not transmit
+   it to the author. How the Software handles your data is described in
+   PRIVACY.md.
+
+6. LICENSE STATUS
+   The open-source license for the Software's source code has not yet been
+   chosen and is a pending decision by the author. Until a license is published,
+   all rights are reserved. This EULA governs your use of the distributed beta
+   build; it is not itself an open-source license grant.
+
+7. NOT LEGAL ADVICE
+   Nothing in the Software or its documentation is legal advice.
+
+Questions: alexzagorianos@gmail.com

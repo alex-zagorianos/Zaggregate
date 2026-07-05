@@ -157,7 +157,7 @@ QUICKSTART_MD = f"""\
 
 Zaggregate is a personal job search that ranks roles to YOUR preferences using
 your own AI (Claude, ChatGPT, Gemini, Copilot — a free tier is fine). Everything
-stays on this computer.
+stays on this computer — no account, no cloud, no telemetry (see `PRIVACY.md`).
 
 ## 1. Run the app
 
@@ -170,6 +170,16 @@ ways past it — or just double-click `JobProgram/launch.bat`.
 A short **Setup wizard** opens the first time and asks what jobs you want, where,
 your salary, and your resume. No files to edit. (Change your mind later from
 **Help ▸ Run Setup Wizard**.)
+
+### Prefer the modern look? (optional)
+
+The same exe runs three ways — pick whichever you like:
+
+- `JobProgram.exe` — the classic desktop app (this is the default).
+- `JobProgram.exe --desktop` — the modern web UI in a native desktop window (no
+  browser needed).
+- `JobProgram.exe --web` — the modern web UI in your default browser (loopback
+  only — nothing is exposed off your machine).
 
 ## 2. Get a ranked inbox
 
@@ -197,6 +207,9 @@ Your saved jobs, preferences, and resume live in `JobProgram/data` (or, on a
 protected install, under `%LOCALAPPDATA%\\JobProgram`). App and data are kept
 separate, so upgrading to a newer version never loses your data — see
 `README.txt` in this folder for the upgrade steps.
+
+`PRIVACY.md` (how your data is handled — short version: it never leaves this
+computer) and `EULA.txt` (the beta terms of use) are in this folder too.
 
 ## Advanced: API keys and BYO-AI
 
@@ -299,6 +312,29 @@ def _print_app_manifest(m: dict) -> None:
           f"requirements-mcp: {m['req_bundled']}")
 
 
+# The trust docs live at the repo root and ship at the top of every distributed
+# folder (next to README.txt), so a user sees the privacy policy and beta terms
+# without digging into the app folder. Copied verbatim from the source tree — the
+# repo copies (PRIVACY.md / EULA.txt) are the single source of truth.
+TRUST_DOCS = ("PRIVACY.md", "EULA.txt")
+
+
+def _copy_trust_docs(dest_dir) -> list[str]:
+    """Copy the repo-root trust docs (PRIVACY.md, EULA.txt) into *dest_dir*.
+
+    Ships the privacy policy + beta EULA at the top of the distributed folder so
+    they're visible next to README.txt. Returns the names actually copied (a
+    missing source is skipped, not fatal — the build still produces a folder)."""
+    dest_dir = Path(dest_dir)
+    copied = []
+    for name in TRUST_DOCS:
+        src = ROOT / name
+        if src.exists():
+            shutil.copyfile(src, dest_dir / name)
+            copied.append(name)
+    return copied
+
+
 def assemble() -> None:
     print("[2/3] Assembling package...")
     if not APP_BUILD.exists():
@@ -312,7 +348,9 @@ def assemble() -> None:
 
     (PKG / "README.txt").write_text(README, encoding="utf-8")
     (PKG / "CHANGES.txt").write_text(CHANGES, encoding="utf-8")
+    trust = _copy_trust_docs(PKG)
     _print_app_manifest(manifest)
+    print(f"      trust docs: {', '.join(trust) or '(none found)'}")
 
 
 def production_contents() -> list[str]:
@@ -326,6 +364,8 @@ def production_contents() -> list[str]:
         "QUICKSTART.md",    # start-here walkthrough
         "README.txt",       # full readme (upgrade path, data location)
         "CHANGES.txt",      # per-release changelog
+        "PRIVACY.md",       # privacy policy (data stays local)
+        "EULA.txt",         # beta terms of use
         ".env.example",     # optional API keys (BYO-AI / job sources)
     ]
 
@@ -367,6 +407,7 @@ def assemble_production() -> None:
     (PROD / "QUICKSTART.md").write_text(QUICKSTART_MD, encoding="utf-8")
     (PROD / "README.txt").write_text(README, encoding="utf-8")
     (PROD / "CHANGES.txt").write_text(CHANGES, encoding="utf-8")
+    trust = _copy_trust_docs(PROD)
 
     # Optional keys, for power users. The app starts with none (keyless + copy/paste),
     # so this is reference material, not a required step.
@@ -377,6 +418,7 @@ def assemble_production() -> None:
         env_bundled = True
 
     _print_app_manifest(manifest)
+    print(f"      trust docs: {', '.join(trust) or '(none found)'}")
     print(f"      .env.example bundled: {env_bundled}")
     print(f"      production/ -> {PROD}")
 
@@ -387,11 +429,43 @@ def zip_name() -> str:
     return f"Zaggregate-v{APP_VERSION}"
 
 
+SHA256SUMS_NAME = "SHA256SUMS.txt"
+
+
+def _sha256_of(path) -> str:
+    """The SHA-256 hex digest of a file, streamed so a large zip isn't slurped
+    into memory."""
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def write_sha256sums(zip_paths, dest_dir) -> str:
+    """Write a ``SHA256SUMS.txt`` next to the produced zip(s) so a downloader can
+    verify the archive is intact and unmodified (the beta ships unsigned, so a
+    checksum is the trust anchor). Standard ``sha256sum`` format — ``<hex>  <name>``
+    (two spaces, bare basename) — so ``sha256sum -c SHA256SUMS.txt`` and Windows
+    ``certutil -hashfile <zip> SHA256`` both line up. Returns the manifest path."""
+    dest_dir = Path(dest_dir)
+    lines = []
+    for zp in zip_paths:
+        zp = Path(zp)
+        lines.append(f"{_sha256_of(zp)}  {zp.name}")
+    manifest = dest_dir / SHA256SUMS_NAME
+    manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(manifest)
+
+
 def zip_package() -> None:
     print("[3/3] Zipping...")
     out = shutil.make_archive(str(DIST / zip_name()), "zip",
                               root_dir=str(DIST), base_dir="Zaggregate")
     print(f"Done -> {out}")
+    sums = write_sha256sums([out], DIST)
+    print(f"Checksums -> {sums}")
 
 
 def _sign_exe(exe_path) -> None:

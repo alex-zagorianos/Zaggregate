@@ -52,3 +52,60 @@ def test_quickstart_md_is_actionable_and_versioned():
     assert "wizard" in md.lower()              # the first-run wizard opens
     assert "Load unpacked" in md               # how to load the extension
     assert "browser_ext" in md
+
+
+def test_quickstart_md_has_desktop_mode_note_and_privacy_line():
+    # B3: QUICKSTART must call out the modern app modes (--desktop / --web) and
+    # carry a one-line privacy assurance.
+    md = build_package.QUICKSTART_MD
+    assert "--desktop" in md                   # the native-window mode
+    assert "--web" in md                       # the browser mode
+    # A privacy one-liner points at PRIVACY.md.
+    assert "PRIVACY.md" in md
+    assert "stays on this computer" in md.lower()
+
+
+# ── trust docs in the distributed layout (B3) ─────────────────────────────────
+
+def test_production_contents_includes_trust_docs():
+    entries = build_package.production_contents()
+    for required in ("PRIVACY.md", "EULA.txt"):
+        assert required in entries, required
+
+
+def test_copy_trust_docs_copies_repo_root_docs(tmp_path):
+    # The repo-root PRIVACY.md / EULA.txt are the source of truth; the helper
+    # ships them into the distributed folder.
+    copied = build_package._copy_trust_docs(tmp_path)
+    for name in ("PRIVACY.md", "EULA.txt"):
+        assert name in copied
+        assert (tmp_path / name).exists()
+        # Content is copied verbatim from the repo root.
+        assert (tmp_path / name).read_text(encoding="utf-8") == \
+            (build_package.ROOT / name).read_text(encoding="utf-8")
+
+
+# ── SHA256SUMS for produced zips (B3) ─────────────────────────────────────────
+
+def test_write_sha256sums_matches_hashlib(tmp_path):
+    import hashlib
+    z1 = tmp_path / "Zaggregate-v1.0.0.zip"
+    z1.write_bytes(b"fake zip bytes for hashing")
+    manifest = build_package.write_sha256sums([z1], tmp_path)
+    text = (tmp_path / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    expected = hashlib.sha256(z1.read_bytes()).hexdigest()
+    # Standard sha256sum layout: "<hex>  <basename>" (two spaces, bare name).
+    assert f"{expected}  Zaggregate-v1.0.0.zip" in text
+    assert manifest.endswith("SHA256SUMS.txt")
+
+
+def test_write_sha256sums_lists_every_zip(tmp_path):
+    z1 = tmp_path / "a.zip"
+    z2 = tmp_path / "b.zip"
+    z1.write_bytes(b"aaa")
+    z2.write_bytes(b"bbb")
+    build_package.write_sha256sums([z1, z2], tmp_path)
+    lines = (tmp_path / "SHA256SUMS.txt").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    assert any(line.endswith("  a.zip") for line in lines)
+    assert any(line.endswith("  b.zip") for line in lines)

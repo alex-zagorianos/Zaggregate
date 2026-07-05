@@ -322,6 +322,72 @@ GUIDE = [
              "site provides it and falls back to a best-effort page read when it "
              "doesn't, so the job lands in your Inbox scored like everything else."),
 
+    ("h1", "Get referred — the numbers"),
+    ("body", "The single biggest lever in a job search isn't a better resume — "
+             "it's a warm introduction. The evidence is lopsided: a referred "
+             "candidate reaches the interview stage about 40% of the time, while "
+             "a cold application lands an interview only about 2–3% of the time. "
+             "Referrals are a small slice of all applications but a large slice "
+             "of actual hires. You don't need many warm paths — you need a few, "
+             "used well."),
+    ("h2", "How to find your warm path"),
+    ("body", "For a job you like, look for a connection before you apply cold. "
+             "In rough order of strength: someone you already know at the "
+             "company; an alumnus from your school; a former colleague who "
+             "landed there; then people in the same field through associations "
+             "or meetups. Zaggregate is adding a “find my path in” helper that "
+             "reads your own network export and past employers and drafts the "
+             "outreach for you — but the play works today: check who you know, "
+             "and ask."),
+    ("h2", "Outreach etiquette — the two rules that matter"),
+    ("bullet", "•  Send exactly ONE follow-up. If you don't hear back after "
+               "your first message, wait about a week and send a single, short, "
+               "friendly nudge — then stop. Most people never follow up at all, "
+               "so one gentle reminder actually helps; a second or third does "
+               "the opposite and reads as pushy."),
+    ("bullet", "•  Always send a thank-you. After any conversation, call, or "
+               "interview, send a brief thank-you (ideally within a day). It's "
+               "welcomed almost universally and half of candidates skip it — an "
+               "easy way to stand out for the right reason."),
+    ("body", "Keep every message short and specific: who you are, why this role, "
+             "one concrete thing you'd bring, and a small, easy ask (a quick "
+             "chat, or whether they'd be comfortable referring you). Warm, "
+             "honest, and human beats polished and generic. Ask your own AI to "
+             "draft it in your voice, then edit it so it sounds like you."),
+
+    ("h1", "Ghost jobs & how Zaggregate shields you"),
+    ("body", "A “ghost job” is a posting that isn't really being filled — it's "
+             "left up to build a resume pipeline, gauge the market, or was never "
+             "taken down after the role closed. They're common: solid studies "
+             "put roughly one in seven public listings in this bucket, and it "
+             "runs higher in some industries and for senior roles. Ghost jobs "
+             "waste your time and are a top reason job searches feel like "
+             "shouting into a void."),
+    ("h2", "What Zaggregate does about it"),
+    ("bullet", "•  Freshness flags. Zaggregate watches how long a posting has "
+               "been up and whether the same role keeps getting reposted, and "
+               "marks the ones that look aged or repeatedly reposted so you can "
+               "spend your energy on the live ones first."),
+    ("bullet", "•  It flags, it never hides. A flagged job stays in your list — "
+               "Zaggregate sorts and labels, it doesn't silently drop postings, "
+               "because a “stale-looking” job is sometimes still real. You decide "
+               "what to skip; the app just makes the signal visible."),
+    ("bullet", "•  Company memory. If a company left you on read before (an "
+               "application you marked “ghosted” in your tracker), Zaggregate "
+               "reminds you the next time one of their jobs shows up — so a "
+               "pattern of silence informs where you spend effort."),
+    ("bullet", "•  Honest reach. Instead of pretending it sees everything, the "
+               "Inbox shows a reach estimate of how much of your local market "
+               "the app is actually pulling, so you know when to add a source or "
+               "a company rather than assuming the well is dry."),
+    ("body", "The point isn't to declare any single posting fake — nobody can do "
+             "that reliably from the outside. It's to hand you the freshness and "
+             "history signals boards hide, so you can trust your shortlist and "
+             "aim your limited time at the jobs most likely to be real."),
+    ("muted", "See also “Get referred — the numbers” above: the best shield "
+              "against a ghost job is a warm path that gets you a real answer "
+              "from a real person."),
+
     ("h1", "Tips & FAQ"),
     ("h2", "Where is my information stored?"),
     ("body", "Everything stays on your computer in your data folder. Open it any "

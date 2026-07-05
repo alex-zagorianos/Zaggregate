@@ -1,0 +1,24 @@
+# winget INSTALLER manifest — TEMPLATE (placeholders only; not a live submission).
+#
+# Fill in every {{PLACEHOLDER}} for a real release, then submit the three-file
+# manifest set (version + installer + locale) to microsoft/winget-pkgs. See
+# README-winget.md in this folder for the step-by-step. Zaggregate ships as a
+# portable zip (no installer/MSI), so this uses InstallerType: zip with a nested
+# portable exe — winget unpacks the zip and registers JobProgram.exe on PATH via
+# an alias so `zaggregate` launches it.
+#
+# Schema: https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: Zaggregate.Zaggregate
+PackageVersion: "{{VERSION}}" # e.g. 1.0.0 — must match config.APP_VERSION
+InstallerLocale: en-US
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: Zaggregate\JobProgram\JobProgram.exe # path INSIDE the zip
+    PortableCommandAlias: zaggregate # `winget` adds this to PATH
+Installers:
+  - Architecture: x64
+    InstallerUrl: "{{INSTALLER_URL}}" # the GitHub release asset URL for the zip
+    InstallerSha256: "{{SHA256}}" # from SHA256SUMS.txt (uppercase hex, no spaces)
+ManifestType: installer
+ManifestVersion: 1.6.0

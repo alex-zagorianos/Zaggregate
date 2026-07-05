@@ -47,6 +47,36 @@ def test_guide_shape(client):
     assert any(s["level"] == 2 and "Search" == s["heading"] for s in sections)
 
 
+def test_guide_has_referral_section_with_the_numbers(client):
+    # B3: the "Get referred — the numbers" section carries the warm-path evidence
+    # (referred ~40% reach interview vs ~2–3% cold) and the outreach etiquette
+    # (exactly one follow-up + a thank-you).
+    sections = client.get("/api/guide").get_json()["sections"]
+    ref = next((s for s in sections if s["heading"].startswith("Get referred")), None)
+    assert ref is not None, "referral section missing"
+    assert ref["level"] == 1
+    assert "40%" in ref["body"]
+    assert "2–3%" in ref["body"]
+    # Etiquette rules live in h2 subsections that fold their bullets into a body.
+    joined = "\n".join(s["body"] for s in sections)
+    assert "ONE follow-up" in joined
+    assert "thank-you" in joined.lower()
+
+
+def test_guide_has_ghost_job_section(client):
+    # B3: the "Ghost jobs & how Zaggregate shields you" section explains ghost
+    # jobs and the flag-never-hide stance.
+    sections = client.get("/api/guide").get_json()["sections"]
+    ghost = next((s for s in sections if "Ghost jobs" in s["heading"]), None)
+    assert ghost is not None, "ghost-job section missing"
+    assert ghost["level"] == 1
+    assert "ghost job" in ghost["body"].lower()
+    # The flag-never-hide promise is spelled out in the section's subsections.
+    joined = "\n".join(s["body"] for s in sections)
+    assert "flags" in joined.lower() and "never hides" in joined.lower()
+    assert "reach" in joined.lower()
+
+
 # ── backup download ───────────────────────────────────────────────────────────
 def test_backup_download_returns_zip(client, tmp_data):
     resp = client.get("/api/backup/download")

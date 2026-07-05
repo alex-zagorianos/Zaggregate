@@ -1,0 +1,11 @@
+# winget VERSION manifest — TEMPLATE (placeholders only; not a live submission).
+#
+# The top-level manifest that ties the installer + locale files together. Fill in
+# {{VERSION}} for a real release. See README-winget.md.
+#
+# Schema: https://aka.ms/winget-manifest.version.1.6.0.schema.json
+PackageIdentifier: Zaggregate.Zaggregate
+PackageVersion: "{{VERSION}}"
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0

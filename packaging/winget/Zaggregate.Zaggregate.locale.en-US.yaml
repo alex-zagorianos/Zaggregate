@@ -1,0 +1,30 @@
+# winget DEFAULT-LOCALE manifest — TEMPLATE (placeholders only; not a live submission).
+#
+# Fill in every {{PLACEHOLDER}} for a real release. See README-winget.md.
+#
+# Schema: https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: Zaggregate.Zaggregate
+PackageVersion: "{{VERSION}}"
+PackageLocale: en-US
+Publisher: "{{PUBLISHER}}" # e.g. Alex Zagorianos
+PublisherUrl: "{{PUBLISHER_URL}}" # e.g. https://github.com/{{OWNER}}
+PublisherSupportUrl: "{{SUPPORT_URL}}" # e.g. https://github.com/{{OWNER}}/{{REPO}}/issues
+PackageName: Zaggregate
+PackageUrl: "{{PACKAGE_URL}}" # e.g. https://github.com/{{OWNER}}/{{REPO}}
+License: Proprietary # license not yet chosen — see EULA.txt (all rights reserved)
+LicenseUrl: "{{LICENSE_URL}}" # e.g. link to EULA.txt in the repo
+ShortDescription: A private, local-first job search that finds and ranks jobs across ~20 sources using your own AI.
+Description: |-
+  Zaggregate finds jobs across roughly 20 sources at once, scores how well each
+  one fits your preferences, and helps you apply — 100% on your computer. No
+  account, no cloud, no telemetry, no data sale. Free, bring-your-own-AI, and
+  assisted-never-auto: you always click submit yourself.
+Moniker: zaggregate
+Tags:
+  - job-search
+  - jobs
+  - privacy
+  - local-first
+  - career
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
