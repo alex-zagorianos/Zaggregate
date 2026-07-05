@@ -78,7 +78,9 @@ DELIVERS TODAY (at or above the bar):
   quality complaint: hallucinated skills, fabricated employers — our
   human-in-loop flow avoids the trap).
 - Channel emphasis on career pages (validated: ~4x conversion).
-- **Privacy wedge, documented**: Incogni — 8 of 9 job platforms sell user
+- **Privacy wedge, documented**: Teal's own policy (Jan 2026) confirms resume
+  content is sent to OpenAI and used (aggregated) to improve their models, plus
+  GA/marketing cookies and recurring spam-email complaints; Incogni — 8 of 9 job platforms sell user
   data; Career.io/resume.io policies permit selling resume data; LinkedIn
   "BrowserGate" scans visitors for 6,236 extensions; Huntr's extension
   requests PII/financial/web-history permissions. We: local-only, zero
