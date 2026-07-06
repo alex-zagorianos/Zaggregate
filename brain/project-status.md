@@ -8,7 +8,11 @@
 
 Alex approved the design then slept; Opus builders implemented everything.
 Suite **3,247 / 0** (2 headless-tk skips), vitest **237**, bundle current.
-Commits `868bb33`→`23c7efd` (+docs), PUSH HELD. Canonical:
+**S40b (morning): ★PUSHED `e298bd2..aeed3fe` + production exe REBUILT +
+frozen-smoked (serves `index-mlVew1_R.js`; production now carries S39+S40).**
+GOTCHA: Claude desktop's chrome-native-host.exe had the production
+VCRUNTIME140.dll mapped → rmtree Access-denied; kill the native host (respawns)
+to release. Canonical:
 `docs/handoffs/handoff_20260706_session40.md` + `brain/plan-2026-07-06-ai-first-setup.md`.
 
 1. **"Paste one reply, start searching"** = THE setup path now: combined

@@ -92,6 +92,23 @@ geo-mislabeled LA posts duplicated 8×; dad's supply is thin at VP/Director leve
   (archive-not-delete; hard-delete when comfortable). `JobApplications`
   untouched (real application material).
 
+## S40b morning addendum (Alex's go)
+
+- **★PUSHED origin/master `e298bd2..aeed3fe`** (8 commits, S39+S40) + this docs
+  follow-up.
+- **Production exe REBUILT** (`build_package.py --production`, exit 0) and
+  frozen-smoked: server up, serves the final bundle `index-mlVew1_R.js`,
+  browser_ext/claude-code/trust docs bundled. Production now carries S39+S40.
+- GOTCHA (new): first two rebuild attempts failed rmtree'ing
+  `production\JobProgram\_internal\VCRUNTIME140.dll` — the **Claude desktop
+  app's chrome-native-host.exe had the DLL mapped** (DLL search-path pollution
+  from the killed S38 exe session). Find holders with a Get-Process Modules
+  scan; killing the native host (respawns on demand) releases it. Also: piping
+  a build to `tail` eats the exit code — the first "exit 0" was false (S34
+  lesson re-learned).
+- Top-5 per-lane + dad summaries delivered in chat; canonical picks file stays
+  `output/job-picks-2026-07-06.md`.
+
 ## State at close
 
 - Suite **3,247 passed / 0 failed** (2 pre-existing headless tk skips),
