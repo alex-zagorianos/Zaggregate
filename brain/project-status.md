@@ -4,6 +4,41 @@
 
 ---
 
+## Session 43 (2026-07-06 evening, same conversation) — src/ LAYOUT RESTRUCTURE ★LIVE on the public repo ✅
+
+Alex approved the full restructure (root = README/LICENSE/docs + src/; exes
+stay in Releases). **`3abf007` (489 files: 480 pure git-mv renames + 244
+content lines), private pushed, public fast-forwarded `22c2dc6..d56ca51`.**
+
+1. **Keystone:** config.py dev anchors DIVERGED — `_get_data_dir()` stays
+   `.parent` (= src/, bundle assets moved with code); `_get_user_data_dir()`
+   → `.parent.parent` (= repo root; projects//output//.env/preferences/dbs
+   did NOT move); dotenv anchored to repo-root .env. Consequence: tracked
+   `src/companies.json` = SEED; user copy auto-seeds at root (now gitignored
+   `/companies.json`) — ship registry changes via the src seed.
+2. **Re-pointed:** build_package ROOT/SRC split (PyInstaller runs src/app.spec
+   cwd=repo → dist//production/ unchanged; app.spec needed ZERO datas edits —
+   spec-relative); **4 daily lanes re-registered `py src\daily_run.py`**
+   (Task-Scheduler-verified + real-project db-path proof); receiver runs from
+   src (live real-data check); run_servers/setup_schedule bats; claude-code
+   .mcp.json → src/mcp_server.py + packaged-install clone note; conftest
+   inserts src/; 6 path-reading tests re-anchored; docs sweep (README w/
+   Download link, ARCHITECTURE map, BUILD, USER-GUIDE, CLAUDE.md).
+3. **Review-fleet catches fixed pre-push:** ★.gitignore root-anchored patterns
+   were silently stale after the move (legacy PII scratch incl. dad's config
+   would have staged on `git add -A`; frontend node_modules; the *.pem +
+   app.spec negation exceptions) — all re-pointed + `git check-ignore`
+   verified. ★Packaged claude-code channel had no mcp_server.py source —
+   README now routes packaged users to clone the repo (JOBPROGRAM_DATA points
+   at their data).
+4. **Verified:** pytest 3,248/2-skip · vitest 237 · exe rebuilt from
+   src/app.spec + frozen-smoked · zip byte-identical (1,430 entries, PII
+   clean) · graphify rebuilt. Recon = 3-lens census fleet (82 items) before
+   touching anything; plan doc purged from public history (runbook list
+   updated; public HEAD = private HEAD − 5 files).
+
+Canonical: [[handoff_20260706_session43]] + [[plan-2026-07-06-src-layout]].
+
 ## Session 42 (2026-07-06 PM, same conversation) — ★PUBLISHED to github.com/alex-zagorianos/Zaggregate ✅
 
 Alex: "change what is needed to turn the repo public" → executed the runbook
