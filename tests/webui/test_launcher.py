@@ -160,14 +160,33 @@ def test_gui_no_web_flag_does_not_delegate(monkeypatch):
 
 # ── desktop mode (--desktop -> pywebview native window; S36b) ─────────────────
 
+class _FakeEvent:
+    """pywebview's event objects support ``+=`` handler registration."""
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, fn):
+        self.handlers.append(fn)
+        return self
+
+
+class _FakeWindow:
+    def __init__(self):
+        class _Events:
+            shown = _FakeEvent()
+        self.events = _Events()
+
+
 class _FakeWebview:
     """Stands in for the pywebview module: records create_window/start args."""
     def __init__(self):
         self.created = None
         self.started = None
+        self.window = _FakeWindow()
 
     def create_window(self, title, url, **kw):
         self.created = {"title": title, "url": url, **kw}
+        return self.window
 
     def start(self, **kw):
         self.started = kw
@@ -204,6 +223,34 @@ def test_main_desktop_opens_native_window(monkeypatch):
     assert fake.started == {"private_mode": False}
     # The server runs on a daemon thread (the window owns the main thread).
     assert "web-server" in threads
+    # Native chrome (S38): the theme bridge rides js_api and the icon+caption
+    # pass is registered on the window's `shown` event.
+    from webui import native_win
+    assert isinstance(fake.created["js_api"], native_win.ThemeBridge)
+    assert len(fake.window.events.shown.handlers) == 1
+
+
+def test_desktop_chrome_failure_never_blocks_window(monkeypatch):
+    """A broken native_win (or an older pywebview without window events) must
+    degrade to a stock frame — webview.start still runs."""
+    import sys as _sys
+    import userdata, workspace
+    monkeypatch.setattr(userdata, "bootstrap", lambda: None)
+    monkeypatch.setattr(workspace, "active_slug", lambda: None)
+    monkeypatch.setattr(workspace, "pin_active", lambda slug: None)
+
+    class _NoWindowWebview(_FakeWebview):
+        def create_window(self, title, url, **kw):
+            super().create_window(title, url, **kw)
+            return None   # older pywebview: no window object -> no .events
+
+    fake = _NoWindowWebview()
+    monkeypatch.setitem(_sys.modules, "webview", fake)
+    monkeypatch.setattr(wm.threading, "Thread", lambda *a, **k: _NoopThread())
+    monkeypatch.setattr(wm, "_serve", lambda app, host, port: None)
+
+    assert wm.main(["--desktop"]) == 0
+    assert fake.started == {"private_mode": False}   # window still opened
 
 
 def test_main_desktop_without_pywebview_falls_back_to_browser(monkeypatch):

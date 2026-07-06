@@ -73,6 +73,30 @@ _DESKTOP_SIZE = (1360, 900)
 _DESKTOP_MIN = (980, 640)
 
 
+def _saved_theme_is_dark() -> bool:
+    """The persisted theme choice (ui.settings — zero-Tk), defaulting light."""
+    try:
+        from ui import settings as ui_settings
+        return ui_settings.get_theme() == "dark"
+    except Exception:  # noqa: BLE001 — chrome must never block the window
+        return False
+
+
+def _wire_chrome(window) -> None:
+    """Attach the native-chrome pass (Z icon + theme-colored caption) to the
+    window's ``shown`` event. Entirely best-effort: any pywebview API mismatch
+    or Win32 failure degrades to the stock frame, never to a missing window."""
+    try:
+        from webui import native_win
+
+        def _apply():
+            native_win.apply_chrome(dark=_saved_theme_is_dark())
+
+        window.events.shown += _apply
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _run_desktop(app, host: str, port: int, *, serve=None) -> int:
     """Desktop mode: serve on a daemon thread, host ``/app`` in a native pywebview
     window on the main thread (pywebview requires it). Returns the exit code.
@@ -99,13 +123,26 @@ def _run_desktop(app, host: str, port: int, *, serve=None) -> int:
                               name="web-server", daemon=True)
     server.start()
 
+    # Native chrome (best-effort, Windows): own taskbar identity + Z icon +
+    # caption colored to the app theme, live-synced via the js_api bridge
+    # (window.pywebview.api.set_theme — called from theme.tsx on toggle).
+    js_api = None
+    try:
+        from webui import native_win
+        native_win.set_app_user_model_id()
+        js_api = native_win.ThemeBridge()
+    except Exception:  # noqa: BLE001
+        pass
+
     print(f"Zaggregate desktop window on http://{host}:{port}/app "
           f"(close the window to quit)")
-    webview.create_window(
+    window = webview.create_window(
         "Zaggregate", f"http://{host}:{port}/app",
         width=_DESKTOP_SIZE[0], height=_DESKTOP_SIZE[1],
         min_size=_DESKTOP_MIN,
+        js_api=js_api,
     )
+    _wire_chrome(window)
     webview.start(private_mode=False)  # blocks until the window is closed
     return 0
 

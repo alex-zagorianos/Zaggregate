@@ -171,6 +171,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version=_version_file,   # Windows version resource from config.APP_VERSION
+    icon='data_static/zaggregate.ico',   # Z mark (scripts/make_icon.py)
 )
 
 coll = COLLECT(

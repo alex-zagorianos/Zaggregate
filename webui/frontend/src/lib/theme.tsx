@@ -11,6 +11,21 @@ import { endpoints, type ThemeMode } from "@/api/client";
 
 const STORAGE_KEY = "zg-theme";
 
+/** Desktop mode only: pywebview injects `window.pywebview.api`; asking it to
+ * recolor the native title bar keeps the frame matched to the app theme. In a
+ * plain browser (or before the bridge is injected) this is a silent no-op —
+ * the Python side applies the saved theme once at window start. */
+function syncNativeCaption(mode: ThemeMode) {
+  try {
+    const api = (
+      window as { pywebview?: { api?: { set_theme?: (m: string) => unknown } } }
+    ).pywebview?.api;
+    api?.set_theme?.(mode);
+  } catch {
+    /* bridge unavailable — browser mode */
+  }
+}
+
 function applyDom(mode: ThemeMode) {
   const el = document.documentElement;
   if (mode === "dark") el.setAttribute("data-theme", "dark");
@@ -20,6 +35,7 @@ function applyDom(mode: ThemeMode) {
   } catch {
     /* private-mode / storage-disabled: DOM state still applied */
   }
+  syncNativeCaption(mode);
 }
 
 function cachedMode(): ThemeMode {
