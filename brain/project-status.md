@@ -4,6 +4,48 @@
 
 ---
 
+## Session 42 (2026-07-06 PM, same conversation) — ★PUBLISHED to github.com/alex-zagorianos/Zaggregate ✅
+
+Alex: "change what is needed to turn the repo public" → executed the runbook
+end-to-end; he created the repo (public) and the verified mirror is LIVE
+(master `707581d`, 628 commits). Old `Job-Program` stays private forever.
+
+1. **History rewrite (3 passes on fresh mirrors):** git-filter-repo, master
+   only (delegate/* + remote refs dropped), 8 purged paths (résumé, 2 user
+   configs, session-24 handoff root AND docs/handoffs copies, both dad
+   evaluation notes, the runbook itself) + replacements.txt redactions
+   (address/phone all formats + bare fragments, family first name all case
+   variants, personal resume filename). Public HEAD tree = private HEAD minus
+   4 files, verified by diff.
+2. **Verification:** direct greps (every pattern → 0 across all 628 commits,
+   messages/authors/refs/notes clean) + TWO 4-lens sonnet scan fleets w/
+   completeness critic. Fleet 1 was invalidated by my own broken grep recipe
+   (see gotcha) — fleet 2 (fixed recipe + mandatory sanity-check) returned
+   NO-GO with 3 upheld blockers, all fixed: session-24 docs/ copy survived the
+   root-path purge (S31 reorg had moved it); the redacted resume filename
+   variant survived case-sensitively in ~424 historical blobs; dad evaluation
+   notes = career dossier beyond the accepted "Dad" framing (employer, resume
+   metrics, fit-scored real postings) → purged both.
+3. **Repo-ref fixes `f0f37fb`:** config.py UPDATE_REPO default + EULA URL →
+   `alex-zagorianos/zaggregate`; scrape health-probe UAs → zaggregate.
+   **`6124cb2`:** runbook de-fragmented (never quote redaction patterns in
+   tracked files — v1 of the runbook was itself a carrier) + expanded purge
+   list; brain/README private-notes note; coverage-research links → relative.
+   Suite 3,247/2-skipped. Both pushed to private origin.
+4. **★GOTCHAS (verification-critical):** (a) `git rev-list --all | xargs git
+grep -l <pat> -- ` — the trailing `--` shifts SHAs into pathspec position;
+   in a bare repo that errors, and with stderr suppressed it reads as "0
+   hits". Always sanity-check history greps against a known-hit pattern
+   first. (b) filter-repo --replace-text literals are case-sensitive — carry
+   all case variants. (c) GitHub CLI installed via winget but unauthenticated
+   (`gh auth login` = Alex); repo was created by Alex in the web UI instead.
+
+Accepted residuals (Alex's S41 framing): "Dad" label + aggregate search-story
+mentions in the journal; author email; local E:\ folder-path prose in old
+notes. Staging record: `%USERPROFILE%\job-program-public-release\PUBLISH.md`.
+Open: repo About/topics (needs gh auth or web), auto-update pipeline build,
+re-publish flow = runbook + `push --mirror`.
+
 ## Session 41 (2026-07-06 early AM, same conversation) — AGPL + PUBLIC-PREP DEEP CLEAN ✅
 
 Alex: license adopted → deep-clean audit before going public. **★PUSHED
