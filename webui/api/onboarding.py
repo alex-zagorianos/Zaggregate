@@ -197,3 +197,109 @@ def ai_setup_apply():
     finally:
         workspace.unpin_active()
     return jsonify({"ok": True, "applied": applied})
+
+
+@onboarding_bp.post("/ai-setup/apply-full")
+@require_local_origin
+def ai_setup_apply_full():
+    """S40 AI-first setup: ONE paste onboards AND starts searching. The pasted
+    reply carries BOTH the search config (```json block) and a starter company
+    list (```seeds block) — this splits them (``ai_setup.split_full_reply``),
+    applies the config synchronously (the SAME 400-on-missing-config contract as
+    ``/ai-setup/apply`` — seeds ALONE never onboard), counts the seed lines, then
+    (``autorun`` default true) chains ONE exclusive ``("first_run", slug)`` job:
+
+      phase 1 (only when seeds were present): ``apply_seed_lines(..., probe=True)``
+              — detect/probe/save each careers URL, logging start + per-outcome
+              counts + done into the job console;
+      phase 2: the daily ingest, invoked through the SAME shared helpers the
+              ``/runs/daily`` route uses (``resolve_daily_knobs`` / ``run_daily_ingest``
+              in ``webui.api.runs``) so the first-run quick pass is identical.
+
+    The config apply is synchronous (fast, and its result must reach the response);
+    the probe + ingest are the slow work, so they run on the background job whose
+    progress streams over SSE (job_id in the response, attach with /jobs/<id>/events).
+
+    Body ``{text, autorun?: true}``. Returns
+    ``{ok, applied:{…same shape as /ai-setup/apply…}, seed_count, job_id, job_error?}``.
+
+    * No config block -> 400 ``{ok:false, error:<human message>}`` (nothing applied,
+      no job) — identical to ``/ai-setup/apply``.
+    * ``autorun:false`` -> config applied, seeds counted, but NO job (``job_id:null``).
+    * Another engine run already in flight (JobConflict) -> still ``ok`` with
+      ``job_id:null`` and ``job_error:"another run is in progress"`` (the config IS
+      applied; the search just couldn't start right now — the user can retry it).
+    """
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "")
+    autorun = bool(data.get("autorun", True))
+
+    from ui.ai_setup import (apply_setup, apply_seed_lines, split_full_reply,
+                             SetupBlockError)
+
+    config_text, seed_text = split_full_reply(text)
+
+    # Apply the config synchronously. A missing/invalid config block is a 400 with
+    # the SAME human message contract as /ai-setup/apply — seeds alone do NOT
+    # onboard (per the plan). We pass the ORIGINAL pasted text to apply_setup (not
+    # config_text) so its own tolerant parser + error messages are unchanged; the
+    # split's config_text only confirms whether a config object is present at all.
+    slug = workspace.active_slug()
+    workspace.pin_active(slug)
+    try:
+        applied = apply_setup(text)
+    except SetupBlockError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    finally:
+        workspace.unpin_active()
+
+    # Count seed lines WITHOUT probing (probing is phase 1 of the job — doing it
+    # here would block the response on live network). One line per careers URL.
+    seed_lines = [ln for ln in seed_text.splitlines() if ln.strip()]
+    seed_count = len(seed_lines)
+    # The applied field routes the seeded companies' industry tag (parity with the
+    # standalone seed flow, which tags by the user's field).
+    industry = applied.get("field") or ""
+
+    if not autorun:
+        return jsonify({"ok": True, "applied": applied,
+                        "seed_count": seed_count, "job_id": None})
+
+    from ..jobs import runner, JobConflict
+    from . import runs as runs_mod
+
+    knobs, first_run_quick = runs_mod.resolve_daily_knobs(slug)
+
+    def _fn(handle):
+        # Phase 1 — seed the starter company registry (probe live, save with the
+        # P0-6 verified-by-default gate). Only when the reply carried seeds.
+        seed_summary = None
+        if seed_text.strip():
+            handle.log(f"Seeding {seed_count} starter companies…")
+            seed_summary = apply_seed_lines(seed_text, industry=industry,
+                                            probe=True)
+            handle.log(
+                f"Companies: {seed_summary['verified']} verified, "
+                f"{seed_summary['unverified']} unverified, "
+                f"{seed_summary['skipped']} already known, "
+                f"{seed_summary['rejected']} rejected "
+                f"({seed_summary['added']} added).")
+            handle.log("Company seeding done.")
+        # Phase 2 — the first daily search, through the SAME shared helpers the
+        # /runs/daily route uses (quick-pass decision + ingest), so behavior is
+        # identical whether the run starts here or from the Inbox button.
+        rc = runs_mod.run_daily_ingest(handle, slug, knobs=knobs,
+                                       first_run_quick=first_run_quick)
+        return {"rc": rc, "slug": slug, "seed_count": seed_count,
+                "seeds": seed_summary}
+
+    try:
+        job_id = runner.start("first_run", str(slug or ""), _fn, exclusive=True)
+    except JobConflict as jc:
+        # The config is already applied; the search just can't start while another
+        # engine run holds the exclusive slot. Report it, don't fail the onboard.
+        return jsonify({"ok": True, "applied": applied,
+                        "seed_count": seed_count, "job_id": None,
+                        "job_error": "another run is in progress"})
+    return jsonify({"ok": True, "applied": applied,
+                    "seed_count": seed_count, "job_id": job_id})

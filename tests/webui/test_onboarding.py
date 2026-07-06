@@ -302,6 +302,202 @@ def test_ai_setup_apply_headerless_403(client, isolated):
     assert wizard.is_onboarded() is False
 
 
+# ── AI-first setup: POST /api/ai-setup/apply-full (S40 B1) ────────────────────
+# The combined reply = the config block + a ```seeds block. One paste applies the
+# config synchronously AND (autorun default) chains an exclusive first_run job:
+# phase 1 seeds companies, phase 2 runs the daily ingest via the SHARED helper.
+import pytest as _pytest        # local alias so the fixtures below read cleanly
+
+from webui.api import runs as runs_mod
+from webui.jobs import runner
+
+
+_SEEDS = ("```seeds\n"
+          "Acme | https://boards.greenhouse.io/acme\n"
+          "Beta Corp | https://jobs.lever.co/beta\n"
+          "```")
+_FULL_REPLY = "```json\n" + json.dumps(_GOOD_BLOCK) + "\n```\n\n" + _SEEDS
+
+
+@_pytest.fixture
+def _reset_runner():
+    """Clear the shared runner singleton around each apply-full test so a held or
+    leaked first_run job can't carry the exclusive mutex into the next test
+    (mirrors tests/webui/test_runs_daily.py's fixture)."""
+    with runner._lock:
+        runner._jobs.clear()
+        runner._active.clear()
+        runner._exclusive_active = None
+    yield
+    with runner._lock:
+        runner._jobs.clear()
+        runner._active.clear()
+        runner._exclusive_active = None
+
+
+@_pytest.fixture
+def _first_run_slug(monkeypatch):
+    """Pin a known active slug and force the FIRST-run state (no last_run.json) so
+    the chained job takes the quick-pass path deterministically."""
+    import applog
+    monkeypatch.setattr(workspace, "active_slug", lambda: "projA")
+    monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projA")
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
+
+
+def _wait_job(client, job_id, timeout=3.0):
+    from tests.webui.conftest import wait_until
+
+    def _check():
+        snap = client.get(f"/api/jobs/{job_id}").get_json()
+        return snap if snap.get("status") in ("done", "failed") else None
+    return wait_until(_check, timeout=timeout,
+                      message=f"first_run job {job_id} never finished")
+
+
+def test_apply_full_applies_config_and_starts_job(client, isolated,
+                                                  _reset_runner, _first_run_slug,
+                                                  monkeypatch):
+    # Fake the ingest seam (both routes share it) and the live probe so no network
+    # is touched; assert the config applied synchronously AND the job ran both
+    # phases (seed line logged, then the ingest).
+    seen = {}
+
+    def fake_ingest(slug, *, on_line=None, cancel=None, max_pages=None,
+                    min_score=None):
+        seen.update(slug=slug, max_pages=max_pages)
+        on_line("[Adzuna] 5 results")
+        return 0
+    monkeypatch.setattr(runs_mod, "_daily_ingest", fake_ingest)
+    # Offline probe: greenhouse/lever boards land unverified (no network needed).
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": _FULL_REPLY},
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    # applied has the SAME shape as /ai-setup/apply.
+    assert body["applied"]["field"] == "data analytics"
+    assert body["applied"]["radius"] == 40
+    assert body["seed_count"] == 2
+    assert body["job_id"]                       # a job was started
+    assert "job_error" not in body
+    # Config was written synchronously (same contract as the manual wizard).
+    cfg = workspace.load_config()
+    assert cfg["keywords"] == ["Data Analyst", "BI Analyst"]
+    assert wizard.is_onboarded() is True
+    # The chained job ran: first-run quick pass forwarded max_pages=1 to the ingest.
+    snap = _wait_job(client, body["job_id"])
+    assert snap["status"] == "done"
+    assert seen == {"slug": "projA", "max_pages": 1}
+    log = " ".join(snap.get("lines_tail") or [])
+    assert "Seeding 2 starter companies" in log      # phase 1
+    assert "First run: quick pass" in log            # phase 2 quick pass
+    assert "[Adzuna] 5 results" in log               # phase 2 ingest
+
+
+def test_apply_full_no_config_400_no_job(client, isolated, _reset_runner,
+                                         _first_run_slug, monkeypatch):
+    # Seeds ALONE do not onboard: a reply with only a seeds block is a 400 with the
+    # same human-message contract as /ai-setup/apply — and NO job starts.
+    def boom(*a, **k):
+        raise AssertionError("ingest started despite missing config")
+    monkeypatch.setattr(runs_mod, "_daily_ingest", boom)
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": _SEEDS},            # seeds only, no json
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+    assert wizard.is_onboarded() is False
+    assert not config.PREFERENCES_JSON.exists()
+    # No job leaked into the runner.
+    with runner._lock:
+        assert runner._exclusive_active is None
+
+
+def test_apply_full_autorun_false_applies_but_no_job(client, isolated,
+                                                     _reset_runner,
+                                                     _first_run_slug, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("ingest started despite autorun=false")
+    monkeypatch.setattr(runs_mod, "_daily_ingest", boom)
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": _FULL_REPLY, "autorun": False},
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["applied"]["field"] == "data analytics"
+    assert body["seed_count"] == 2
+    assert body["job_id"] is None
+    # Config still applied.
+    assert wizard.is_onboarded() is True
+    with runner._lock:
+        assert runner._exclusive_active is None
+
+
+def test_apply_full_conflict_shape_still_ok(client, isolated, _reset_runner,
+                                            _first_run_slug, monkeypatch):
+    # An engine job already holding the exclusive slot -> the config still applies
+    # but the search can't start: ok:true, job_id:null, job_error set.
+    from webui.jobs import JobConflict
+
+    def raise_conflict(*a, **k):
+        raise JobConflict("existing-job-123", same_gate=False)
+    monkeypatch.setattr(runner, "start", raise_conflict)
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": _FULL_REPLY},
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["applied"]["field"] == "data analytics"
+    assert body["seed_count"] == 2
+    assert body["job_id"] is None
+    assert body["job_error"] == "another run is in progress"
+    # The config WAS applied despite the conflict.
+    assert wizard.is_onboarded() is True
+
+
+def test_apply_full_config_only_reply_starts_job_with_zero_seeds(
+        client, isolated, _reset_runner, _first_run_slug, monkeypatch):
+    # A reply with a config block but NO seeds still onboards + runs (config-only
+    # degrade, inclusion over precision). Phase 1 is skipped; phase 2 runs.
+    def fake_ingest(slug, *, on_line=None, cancel=None, max_pages=None,
+                    min_score=None):
+        on_line("ingest ran")
+        return 0
+    monkeypatch.setattr(runs_mod, "_daily_ingest", fake_ingest)
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": "```json\n" + json.dumps(_GOOD_BLOCK) + "\n```"},
+                       headers={"Origin": _LOOPBACK})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["seed_count"] == 0
+    assert body["job_id"]
+    snap = _wait_job(client, body["job_id"])
+    assert snap["status"] == "done"
+    log = " ".join(snap.get("lines_tail") or [])
+    assert "Seeding" not in log            # phase 1 skipped (no seeds)
+    assert "ingest ran" in log             # phase 2 ran
+
+
+def test_apply_full_headerless_403(client, isolated):
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": _FULL_REPLY})       # no Origin
+    assert resp.status_code == 403
+    assert resp.get_json() == {"ok": False, "error": "forbidden origin"}
+    assert wizard.is_onboarded() is False
+
+
+def test_apply_full_foreign_origin_403(client, isolated):
+    resp = client.post("/api/ai-setup/apply-full",
+                       json={"text": _FULL_REPLY},
+                       headers={"Origin": "https://evil.example.com"})
+    assert resp.status_code == 403
+    assert wizard.is_onboarded() is False
+
+
 # ── per-project onboarding marker (scenario finding #5) ───────────────────────
 def test_onboarded_marker_is_per_project(tmp_path, monkeypatch):
     """The wizard-completion marker is scoped to the PROJECT's data dir, not one

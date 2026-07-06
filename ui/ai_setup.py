@@ -62,14 +62,15 @@ class SetupBlockError(ValueError):
 
 
 # ── prompt generation (profile setup) ─────────────────────────────────────────
-def build_setup_prompt() -> str:
-    """The copyable prompt the user pastes into THEIR AI, above their résumé +
-    one sentence of intent. Instructs the AI to emit a single fenced JSON config
-    block in the documented vocabulary. Static (no secrets, no I/O)."""
+def _config_block_body() -> str:
+    """The CONFIG-block half of the setup prompt: the fenced ```json contract +
+    its per-key rules. Extracted so ``build_setup_prompt`` (config only) and
+    ``build_full_setup_prompt`` (config + seeds) share ONE vocabulary — the field
+    list, key schema, and rules can never drift between the two prompts (the whole
+    point of the S40 refactor). Ends WITHOUT a trailing paste-line so the caller
+    decides what follows (the résumé line, or a second seeds block)."""
     fields = ", ".join(CANONICAL_FIELDS)
     return (
-        "You are setting up a job-search app for me. Below this prompt I will "
-        "paste my RÉSUMÉ and ONE SENTENCE describing the job I want.\n\n"
         "Read them and return ONLY a single fenced code block (```json ... ```) "
         "with EXACTLY these keys — no prose before or after:\n\n"
         "```json\n"
@@ -99,8 +100,19 @@ def build_setup_prompt() -> str:
         "- \"radius_miles\": how far from my location I'll commute, as a whole "
         "number (e.g. 50).\n"
         "- Return the block ONLY. Do not invent facts not supported by my résumé "
-        "or sentence.\n\n"
-        "--- paste your résumé and one sentence of intent below this line ---\n"
+        "or sentence.\n"
+    )
+
+
+def build_setup_prompt() -> str:
+    """The copyable prompt the user pastes into THEIR AI, above their résumé +
+    one sentence of intent. Instructs the AI to emit a single fenced JSON config
+    block in the documented vocabulary. Static (no secrets, no I/O)."""
+    return (
+        "You are setting up a job-search app for me. Below this prompt I will "
+        "paste my RÉSUMÉ and ONE SENTENCE describing the job I want.\n\n"
+        + _config_block_body()
+        + "\n--- paste your résumé and one sentence of intent below this line ---\n"
     )
 
 
@@ -372,15 +384,26 @@ def apply_setup(text: str, *, mark_onboarded: bool = True) -> dict:
 
 
 # ── company seeding prompt (§6.7 / SB-2a) — careers-page URLs ONLY ─────────────
-def build_seed_prompt(field: str = "", metro: str = "", *, limit: int = 30) -> str:
-    """The copyable prompt for AI-assisted company seeding. Per the persona
-    evidence (AI slug-guessing ~50% wrong, careers-PAGE URLs reliably right), it
-    asks the AI for `Name | careers-page URL` lines ONLY — the app's own ATS
-    detector (scrape.ats_detect, now incl. workday_cxs) resolves the slug, and
-    the P0-6 verified-by-default gate drops anything that fails its live probe.
-    Static; safe to show with blank field/metro (generic wording)."""
+def _seed_block_body(field: str = "", metro: str = "", *, limit: int = 30,
+                     fenced: bool = False) -> str:
+    """The careers-page seeding wording (§6.7 / SB-2a): asks for `Name | URL`
+    lines ONLY (persona evidence — AI slug-guessing ~50% wrong, careers-PAGE URLs
+    reliably right). Extracted so the standalone ``build_seed_prompt`` and the
+    combined ``build_full_setup_prompt`` share ONE careers-page vocabulary (no
+    fork). ``fenced=True`` wraps the requested lines in a ```seeds fence so the
+    combined reply's config and seeds are unambiguously separable by
+    ``split_full_reply`` even when a chatty AI adds prose around them."""
     who = (field or "").strip() or "my field"
     where = (metro or "").strip() or "my area"
+    if fenced:
+        fmt = ("Return ONLY a fenced code block labeled `seeds`, one employer per "
+               "line inside it, no prose:\n"
+               "```seeds\n"
+               "Company Name | https://careers-page-url\n"
+               "```\n\n")
+    else:
+        fmt = ("Return ONLY lines in this exact format, one per line, no prose:\n"
+               "  Company Name | https://careers-page-url\n\n")
     return (
         f"List up to {limit} of the largest employers of {who} workers in "
         f"{where} (include nearby suburbs; a mix of sizes).\n\n"
@@ -389,12 +412,135 @@ def build_seed_prompt(field: str = "", metro: str = "", *, limit: int = 30) -> s
         "Ashby, SmartRecruiters, or Workday careers page, or the company's own "
         "'/careers' page). I need the careers-page URL, NOT the homepage, and "
         "NOT an ATS tenant/slug string (I can't verify those).\n\n"
-        "Return ONLY lines in this exact format, one per line, no prose:\n"
-        "  Company Name | https://careers-page-url\n\n"
+        + fmt +
         "If you're unsure of a company's careers-page URL, give its main website "
         "instead of guessing — the app verifies every link and quietly drops any "
         "that aren't live, so a wrong guess can't break anything."
     )
+
+
+def build_seed_prompt(field: str = "", metro: str = "", *, limit: int = 30) -> str:
+    """The copyable prompt for AI-assisted company seeding. Per the persona
+    evidence (AI slug-guessing ~50% wrong, careers-PAGE URLs reliably right), it
+    asks the AI for `Name | careers-page URL` lines ONLY — the app's own ATS
+    detector (scrape.ats_detect, now incl. workday_cxs) resolves the slug, and
+    the P0-6 verified-by-default gate drops anything that fails its live probe.
+    Static; safe to show with blank field/metro (generic wording)."""
+    return _seed_block_body(field, metro, limit=limit, fenced=False)
+
+
+# ── combined config + seeds prompt (S40 AI-first setup) ────────────────────────
+def build_full_setup_prompt(field: str = "", metro: str = "", *,
+                            seed_limit: int = 25) -> str:
+    """The ONE copyable prompt for AI-first setup: it asks the user's own AI for
+    BOTH the search config (the exact ```json contract ``build_setup_prompt``
+    uses) AND a starter company registry (a ```seeds fence of `Name | careers-URL`
+    lines, wording lifted from ``build_seed_prompt``). One paste of the reply then
+    drives the whole first-run setup — config + seeded companies + first search.
+
+    Order is JSON block FIRST, seeds block SECOND (``split_full_reply`` relies on
+    the config living in the JSON, and treats pipe-shaped lines as seeds only
+    outside it). ``field``/``metro`` are optional context for the seeds ask; blank
+    is safe (generic wording, and the AI reads the résumé for the field anyway).
+    Static — no secrets, no I/O."""
+    return (
+        "You are setting up a job-search app for me. Below this prompt I will "
+        "paste my RÉSUMÉ and ONE SENTENCE describing the job I want.\n\n"
+        "Do TWO things and return BOTH blocks, the JSON block FIRST:\n\n"
+        "1) A search-config block:\n\n"
+        + _config_block_body()
+        + "\n2) A starter list of employers to search:\n\n"
+        + _seed_block_body(field, metro, limit=seed_limit, fenced=True)
+        + "\n\n--- paste your résumé and one sentence of intent below this line ---\n"
+    )
+
+
+# ── combined-reply splitter (S40 AI-first setup) ───────────────────────────────
+# A pasted careers line is `Name | http…`. Matched OUTSIDE the chosen JSON block
+# so a pipe character living INSIDE the JSON (e.g. a preferences_md sentence with
+# "sales | marketing") is never mistaken for a seed line.
+_SEED_LINE_RE = re.compile(r"^\s*[^|]+\|\s*https?://\S", re.IGNORECASE)
+# The ```seeds fence the combined prompt requests. The label is optional-tolerant
+# (a weak AI may drop it), but when present we take EXACTLY that fence's body so
+# stray pipe-lines elsewhere in the prose can't pollute the seed set.
+_SEEDS_FENCE_RE = re.compile(r"```seeds[^\n]*\n(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def split_full_reply(text: str) -> tuple[str, str]:
+    """Split a combined AI reply into ``(config_json_text, seed_lines_text)``.
+
+    * ``config_json_text`` — the best config OBJECT re-serialized as JSON (via the
+      same ``_best_config_object`` scorer ``parse_setup_block`` uses, so the config
+      half is parsed identically whether it arrived alone or combined). ``""`` when
+      no JSON object is present.
+    * ``seed_lines_text`` — the ```seeds fence body when present; otherwise every
+      ``Name | http…``-shaped line found OUTSIDE the chosen JSON block (so a pipe
+      inside the JSON is never treated as a seed). ``""`` when neither yields lines.
+
+    NEVER raises — a junk/empty/partial reply degrades to ``("", "")`` (or a
+    config-only / seeds-only pair). Applying is the caller's job; this only
+    separates the two halves so each can flow to its own validator.
+    """
+    src = _normalize_pasted(text or "")
+
+    # ── config half: reuse the scored object picker, re-serialize to text ──
+    config_text = ""
+    config_span = None
+    try:
+        obj = _best_config_object(src)
+    except Exception:  # noqa: BLE001 — splitter must never raise
+        obj = None
+    if isinstance(obj, dict):
+        config_text = json.dumps(obj)
+        # Locate the object's literal span in the source so seed-line scanning can
+        # EXCLUDE it (a pipe inside preferences_md must not read as a seed line).
+        config_span = _locate_object_span(src, obj)
+
+    # ── seeds half: prefer the labeled fence, else pipe-shaped lines outside JSON ──
+    seed_text = ""
+    fence = _SEEDS_FENCE_RE.search(src)
+    if fence is not None:
+        body = fence.group(1)
+        lines = [ln.rstrip() for ln in body.splitlines()
+                 if _SEED_LINE_RE.match(ln)]
+        seed_text = "\n".join(lines)
+    if not seed_text:
+        lo, hi = config_span if config_span is not None else (None, None)
+        lines = []
+        for m in re.finditer(r"^.*$", src, re.MULTILINE):
+            if not _SEED_LINE_RE.match(m.group(0)):
+                continue
+            # Skip a pipe-line that falls inside the JSON object's span.
+            if lo is not None and lo <= m.start() < hi:
+                continue
+            lines.append(m.group(0).rstrip())
+        seed_text = "\n".join(lines)
+
+    return config_text, seed_text
+
+
+def _locate_object_span(text: str, obj: dict) -> tuple[int, int] | None:
+    """Return the ``[start, end)`` char span of the brace-balanced JSON object in
+    ``text`` that parses to ``obj`` (the config block), or None if it can't be
+    pinned. Used by ``split_full_reply`` to exclude the config block's interior
+    (which may contain pipe characters) from seed-line scanning. Mirrors
+    ``_best_config_object``'s brace-walk so the SAME object is located."""
+    depth, start = 0, None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    if json.loads(text[start:i + 1]) == obj:
+                        return (start, i + 1)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                start = None
+    return None
 
 
 def apply_seed_lines(text: str, *, industry: str = "", probe: bool = True) -> dict:

@@ -231,6 +231,144 @@ def test_seed_prompt_is_safe_with_blank_field_and_metro():
     assert "my field" in p and "my area" in p
 
 
+# ── combined config + seeds prompt (S40 AI-first setup) ───────────────────────
+def test_full_setup_prompt_carries_both_contracts():
+    p = ai_setup.build_full_setup_prompt("nurse", "Boise, ID")
+    # The config half is the SAME json contract build_setup_prompt uses (shared
+    # body — no forked vocabulary): every documented key + the canonical fields.
+    assert "```json" in p
+    for key in ("field", "target_titles", "location", "salary_floor",
+                "seniority", "radius_miles", "preferences_md", "remote_ok"):
+        assert key in p
+    for tok in ("data analytics", "nursing", "warehouse", "consulting", "other"):
+        assert tok in p
+    # The seeds half is the careers-page ask (lifted from build_seed_prompt),
+    # wrapped in a ```seeds fence, careers-PAGE not slug.
+    low = p.lower()
+    assert "```seeds" in p
+    assert "careers" in low
+    assert "slug" in low or "tenant" in low
+    assert "nurse" in p and "Boise" in p
+
+
+def test_full_setup_prompt_json_block_precedes_seeds_block():
+    # Order is load-bearing for split_full_reply: JSON block FIRST, seeds SECOND.
+    p = ai_setup.build_full_setup_prompt()
+    assert p.index("```json") < p.index("```seeds")
+
+
+def test_full_setup_prompt_shares_config_vocabulary_with_setup_prompt():
+    # The shared _config_block_body means the exact fenced contract in the combined
+    # prompt is byte-present in the standalone one (no drift).
+    full = ai_setup.build_full_setup_prompt()
+    solo = ai_setup.build_setup_prompt()
+    body = ai_setup._config_block_body()
+    assert body in full and body in solo
+
+
+def test_full_setup_prompt_is_static_no_io(isolated):
+    assert ai_setup.build_full_setup_prompt() == ai_setup.build_full_setup_prompt()
+
+
+# ── split_full_reply: the config/seeds separator ──────────────────────────────
+_FULL_CONFIG = {
+    "field": "nursing",
+    "target_titles": ["Registered Nurse", "ICU Nurse"],
+    "location": "Boise, ID",
+    "remote_ok": False,
+    "radius_miles": 30,
+    "salary_floor": 70000,
+    "seniority": "mid",
+    "preferences_md": "I want ICU roles. Avoid travel nursing.",
+}
+
+
+def _reply(config_obj=None, seed_lines=None, *, fence=True):
+    parts = []
+    if config_obj is not None:
+        parts.append("```json\n" + json.dumps(config_obj) + "\n```")
+    if seed_lines:
+        body = "\n".join(seed_lines)
+        parts.append(("```seeds\n" + body + "\n```") if fence else body)
+    return "\n\n".join(parts)
+
+
+def test_split_full_reply_config_and_seeds():
+    reply = _reply(_FULL_CONFIG, [
+        "St Luke's | https://stlukes.wd5.myworkdayjobs.com/en-US/External",
+        "Saint Alphonsus | https://sarmc.org/careers",
+    ])
+    cfg_text, seed_text = ai_setup.split_full_reply(reply)
+    # Config round-trips through the SAME parser as the standalone block.
+    parsed = ai_setup.parse_setup_block(cfg_text)
+    assert parsed["answers"]["industry"] == "nursing"
+    assert parsed["answers"]["roles"] == ["Registered Nurse", "ICU Nurse"]
+    # Both seed lines survive.
+    assert "St Luke's | https://stlukes" in seed_text
+    assert "Saint Alphonsus | https://sarmc.org/careers" in seed_text
+    assert len(seed_text.splitlines()) == 2
+
+
+def test_split_full_reply_config_only():
+    cfg_text, seed_text = ai_setup.split_full_reply(_reply(_FULL_CONFIG, None))
+    assert ai_setup.parse_setup_block(cfg_text)["answers"]["industry"] == "nursing"
+    assert seed_text == ""
+
+
+def test_split_full_reply_seeds_only():
+    reply = _reply(None, ["Acme | https://boards.greenhouse.io/acme"])
+    cfg_text, seed_text = ai_setup.split_full_reply(reply)
+    assert cfg_text == ""
+    assert "Acme | https://boards.greenhouse.io/acme" in seed_text
+
+
+def test_split_full_reply_junk_is_empty_pair():
+    cfg_text, seed_text = ai_setup.split_full_reply("just some prose, no blocks")
+    assert cfg_text == "" and seed_text == ""
+
+
+def test_split_full_reply_empty_and_none_never_raise():
+    assert ai_setup.split_full_reply("") == ("", "")
+    assert ai_setup.split_full_reply(None) == ("", "")
+
+
+def test_split_full_reply_seeds_without_fence_falls_back_to_shaped_lines():
+    # A weak AI drops the ```seeds fence but still emits Name | http… lines: they
+    # are recovered from OUTSIDE the JSON block.
+    reply = ("```json\n" + json.dumps(_FULL_CONFIG) + "\n```\n"
+             "Here are some companies:\n"
+             "Acme | https://boards.greenhouse.io/acme\n"
+             "Beta Corp | https://jobs.lever.co/beta\n")
+    cfg_text, seed_text = ai_setup.split_full_reply(reply)
+    assert ai_setup.parse_setup_block(cfg_text)["answers"]["industry"] == "nursing"
+    lines = seed_text.splitlines()
+    assert "Acme | https://boards.greenhouse.io/acme" in lines
+    assert "Beta Corp | https://jobs.lever.co/beta" in lines
+
+
+def test_split_full_reply_pipe_inside_json_is_not_a_seed():
+    # A pipe character INSIDE the JSON (a preferences_md sentence) must NEVER be
+    # read as a seed line — the config block's span is excluded from scanning.
+    cfg = dict(_FULL_CONFIG,
+               preferences_md="I like sales | marketing crossover roles.")
+    cfg_text, seed_text = ai_setup.split_full_reply(_reply(cfg, None))
+    assert "marketing" in ai_setup.parse_setup_block(cfg_text)["answers"]["about"]
+    assert seed_text == ""          # the internal pipe is not a seed
+
+
+def test_split_full_reply_prefers_fence_over_stray_pipe_lines():
+    # When a ```seeds fence exists, ONLY its body becomes seeds — a stray pipe-line
+    # in the surrounding prose is ignored (the fence is authoritative).
+    reply = ("```json\n" + json.dumps(_FULL_CONFIG) + "\n```\n"
+             "aside | https://not-a-seed.example/ignore-me\n"
+             "```seeds\n"
+             "Acme | https://boards.greenhouse.io/acme\n"
+             "```\n")
+    _cfg, seed_text = ai_setup.split_full_reply(reply)
+    lines = seed_text.splitlines()
+    assert lines == ["Acme | https://boards.greenhouse.io/acme"]
+
+
 # ── apply_seed_lines: detect + P0-6 gate (offline, probe skipped) ─────────────
 def test_apply_seed_lines_gates_on_probe(isolated):
     lines = (

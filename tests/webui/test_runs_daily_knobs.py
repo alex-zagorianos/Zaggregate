@@ -201,6 +201,38 @@ def test_subsequent_run_keeps_engine_defaults(client, monkeypatch):
     assert "First run: quick pass" not in lines
 
 
+# ── resolve_daily_knobs unit (the shared quick-pass helper, B1 refactor) ──────
+
+def test_resolve_daily_knobs_first_run_defaults_quick(monkeypatch):
+    # No last_run.json + no explicit max_pages => quick pass (max_pages=1).
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
+    knobs, first = runs_mod.resolve_daily_knobs("projA")
+    assert first is True
+    assert knobs == {"max_pages": 1}
+
+
+def test_resolve_daily_knobs_explicit_max_pages_wins_on_first_run(monkeypatch):
+    # A caller-supplied max_pages ALWAYS wins, even on a first run (no quick flag).
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: None)
+    knobs, first = runs_mod.resolve_daily_knobs("projA", max_pages=5)
+    assert first is False
+    assert knobs == {"max_pages": 5}
+
+
+def test_resolve_daily_knobs_subsequent_run_keeps_engine_defaults(monkeypatch):
+    # last_run.json present => not a first run: no knobs (legacy call shape).
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: {"added": 3})
+    knobs, first = runs_mod.resolve_daily_knobs("projA")
+    assert first is False
+    assert knobs == {}
+
+
+def test_resolve_daily_knobs_min_score_forwarded(monkeypatch):
+    monkeypatch.setattr(applog, "last_run_info", lambda slug=None: {"added": 1})
+    knobs, first = runs_mod.resolve_daily_knobs("projA", min_score=60)
+    assert knobs == {"min_score": 60}
+
+
 # ── daily_run_core argv threading (real run_ingest, stubbed daily_run) ────────
 
 def _stub_daily_run(monkeypatch, captured):

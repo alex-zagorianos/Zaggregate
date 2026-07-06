@@ -94,6 +94,44 @@ def _daily_ingest(slug, *, on_line=None, cancel=None,
                                      max_pages=max_pages, min_score=min_score)
 
 
+def resolve_daily_knobs(slug, *, max_pages=None, min_score=None):
+    """The first-run quick-pass decision, shared by the ``/runs/daily`` route and
+    the S40 ``/ai-setup/apply-full`` chained job so the two can never diverge.
+
+    Returns ``(knobs, first_run_quick)`` where ``knobs`` is the kwargs dict to
+    splat into ``_daily_ingest`` (empty when no knob is set, preserving the legacy
+    call shape byte-for-byte) and ``first_run_quick`` is True when we defaulted the
+    quick pass. Rule (unchanged from the original inline logic): if ``max_pages``
+    is unset AND the project has never completed a run (no ``last_run.json`` — the
+    ``applog.last_run_info`` signal), default ``max_pages=1`` so a new user sees
+    results fast. A caller-supplied ``max_pages`` ALWAYS wins; once a run has
+    completed, later runs keep the engine defaults."""
+    first_run_quick = False
+    if max_pages is None and applog.last_run_info(slug) is None:
+        max_pages = 1
+        first_run_quick = True
+    knobs = {}
+    if max_pages is not None:
+        knobs["max_pages"] = max_pages
+    if min_score is not None:
+        knobs["min_score"] = min_score
+    return knobs, first_run_quick
+
+
+def run_daily_ingest(handle, slug, *, knobs, first_run_quick):
+    """The daily ingest BODY, shared by both start routes: announce the quick pass
+    (when defaulted) then stream the pipeline into the job log. Kept as one helper
+    so the ``/runs/daily`` route and the ``apply-full`` chained job invoke the
+    engine identically (the S40 no-duplication requirement). Returns the ingest's
+    return code. Calls ``_daily_ingest`` at module scope so tests monkeypatch a
+    single seam for BOTH routes."""
+    if first_run_quick:
+        handle.log("First run: quick pass (1 page per source). "
+                   "Later runs go deeper automatically.")
+    return _daily_ingest(slug, on_line=handle.log, cancel=handle.cancelled,
+                         **knobs)
+
+
 def _opt_int(data: dict, key: str, lo: int, hi: int):
     """Validate an optional integer body field. Returns ``(value, error)`` —
     ``(None, None)`` when absent, ``(None, "<message>")`` when malformed or out
@@ -157,33 +195,19 @@ def start_daily_run():
     # shape is accurate. (scenario finding #7)
     slug = workspace.registry_active_slug()
 
-    # First-run detection: no last_run.json for the target project means this
-    # project has never completed a daily run. Only defaults the quick pass when
-    # the body didn't set max_pages — a body-explicit value always wins.
-    first_run_quick = False
-    if max_pages is None and applog.last_run_info(slug) is None:
-        max_pages = 1
-        first_run_quick = True
-
-    # Knobs are forwarded only when SET so the default web run keeps the exact
-    # legacy call shape (and argv) — parity with pre-knob behavior by construction.
-    knobs = {}
-    if max_pages is not None:
-        knobs["max_pages"] = max_pages
-    if min_score is not None:
-        knobs["min_score"] = min_score
+    # First-run detection + knob shaping (shared with apply-full's chained job so
+    # the two paths can't diverge — see resolve_daily_knobs). A body-explicit
+    # max_pages always wins; knobs stay empty on the default subsequent run so the
+    # legacy call shape (and argv) is byte-identical.
+    knobs, first_run_quick = resolve_daily_knobs(
+        slug, max_pages=max_pages, min_score=min_score)
 
     def _fn(handle):
-        # A first run gets a quick 1-page pass; announce it in the console so the
-        # shorter run is understood as intentional (later runs go deeper).
-        if first_run_quick:
-            handle.log("First run: quick pass (1 page per source). "
-                       "Later runs go deeper automatically.")
         # Stream every pipeline stdout line into the job's SSE log; respect a
         # pre-start cancel via handle.cancelled (daily_run has no in-flight cancel
         # seam — cancel is best-effort-before-start; documented in run_ingest).
-        rc = _daily_ingest(slug, on_line=handle.log, cancel=handle.cancelled,
-                           **knobs)
+        rc = run_daily_ingest(handle, slug, knobs=knobs,
+                              first_run_quick=first_run_quick)
         return {"rc": rc, "slug": slug}
 
     try:
