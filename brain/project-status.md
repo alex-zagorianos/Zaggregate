@@ -4,6 +4,43 @@
 
 ---
 
+## Session 41 (2026-07-06 early AM, same conversation) — AGPL + PUBLIC-PREP DEEP CLEAN ✅
+
+Alex: license adopted → deep-clean audit before going public. **★PUSHED
+`969770b..6db3f8d`** (4 commits). Suite **3,249/0**, vitest 237.
+
+1. **AGPL-3.0 adopted** `0890217` (LICENSE + README section w/ DCO note + EULA
+   §6 grant reference) — reversible while sole-author, keeps institutional
+   dual-license door open. Repo still PRIVATE.
+2. **4-Opus-auditor fleet** (history PII / backend / frontend+docs /
+   structure): ★history verdict **NO-GO as-is** — résumé in ~280 commits,
+   dad-config + phone-in-prompt history; secrets/DBs clean across all 624
+   commits. Remediation = `brain/public-release-runbook.md` (filter-repo on a
+   fresh mirror → publish to a NEW repo; replacements.txt lives OUTSIDE the
+   repo at %USERPROFILE%\job-program-public-release\). Alex flips visibility
+   himself. Structure: nothing improper tracked; zero safe root moves (all 24
+   root modules imported/entry points — src-layout stays registered debt).
+3. **Fix wave (3 Opus builders):** `196e71b` product name unified to
+   **Zaggregate** everywhere user-visible (title bar was "Job Search Tools",
+   exe properties/claude-docs/backups were "JobScout") + ~48-site
+   depersonalization sweep + dead-code deletions (scorer `_parse_money`/
+   `_HOURLY_CTX`, schema `_LazyPromptTemplate`/`PROMPT_TEMPLATE`, wizard
+   scaffolding) + silent-failure surfacing (ranker profile-summary, gui
+   rolling_backup) + scorer/facts/network docstring truth-fixes + tracked-PII
+   scrub (family name → "Dad", salary figures dropped); `2bbb77a` 73 scraper
+   print()→applog via scrape/_log.py diag() (console byte-identical,
+   capsys-safe); `7e89961` docs set — README rewritten (pins intact, 2 real
+   screenshots) + **docs/ARCHITECTURE.md** (concepts+codebase lenses, 3
+   mermaid) + **docs/USER-GUIDE.md** + BETA-WALKTHROUGH de-personalized+tracked
+   - brain/README.md journal framing; `6db3f8d` screenshots + runbook.
+4. Dead-code sweep verdict across ui/webui/tracker/match/search/discover:
+   only the 4 deleted symbols — codebase unusually disciplined.
+
+Production exe rebuilt post-clean (Zaggregate file properties). Needs Alex:
+run the public-release runbook when ready to flip; auto-update pipeline calls.
+
+---
+
 ## Session 40 (2026-07-06 overnight, same night as S39) — AI-FIRST SETUP shipped + review fleet + searches + cleanup ✅
 
 Alex approved the design then slept; Opus builders implemented everything.
