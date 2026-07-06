@@ -4,25 +4,64 @@
 
 ---
 
+## Session 38 (2026-07-05 evening) — desktop chrome + full queue buildout + tech-debt sweep ✅
+
+Alex testing live. Three directives, all landed same night (**15 commits, PUSH
+HELD**; suite **3,218 / 0 failed**, vitest 217, exe **91.8MB** was ~141MB,
+frozen smoke green). Canonical: `docs/handoffs/handoff_20260705_session38.md`.
+
+1. **Title bar/icon**: `webui/native_win.py` (ctypes, tk-free) — Z mark
+   (`scripts/make_icon.py` → committed .ico + favicon.svg, app.spec icon=),
+   WM_SETICON + AppUserModelID, DWM caption painted Aegean Paper/Night, live
+   theme sync via pywebview js_api ThemeBridge. Verified on the real window.
+2. **Previous-session queue ALL BUILT**: get_conn() thread-cache redesign
+   (53x/call, deterministic close-all, S27-pin safe, nested-txn semantics
+   preserved) · URL-synced Inbox filters · metro CBSA multi-city fix ·
+   breadth-floor tests (18 keyless/558 companies) · jobs.ac.uk retired
+   (upstream deleted ALL feeds — verified) · opt-in Windows toast on high-fit
+   matches (ctypes; live-smoked, Win64 WNDPROC bug caught+fixed) · **NSPE
+   mech/mfg sector source** (keyless RSS, self-gating, 31 live items) ·
+   IMAP-status-detection + ATS-autofill **design briefs awaiting Alex GO**.
+3. **US-first** (Alex): non-US metro table + intl source work dropped from
+   backlog; existing intl support stays (self-gating); language guard now
+   arms from the ACTIVE project's country.
+4. **Tech-debt sweep**: 16-agent fleet → `brain/techdebt-register-2026-07-05.md`
+   (39 findings; orchestrator hand-verified — finder errors on
+   test_application_cycle + gitignored-personal legacy/ caught). Fixed waves
+   D1–D4: retired :5001 tracker DELETED + report links now deep-link the web
+   Inbox · frontend lazy per-tab chunks (821→495KB main) + useQueryGuard +
+   dead dep/directives · shared parity-proofed HTML stripper (13 files) +
+   dateparse dedup + salary-classification reuse + error guards + zero real
+   test sleeps · exe excludes unreachable numpy/HF chain (−49MB) + packaging
+   hygiene. Deferred (registered): pyproject root-fix, db.py split,
+   search→ui layering, tab_inbox split, gui.py lazy-tk, conftest tmp_db.
+
+Needs Alex: swap the running window to the final build · wave-3 GOs ·
+push (~38 commits) · LICENSE · free keys (Jooble = 500-request starter
+bucket, not load-bearing) · tk-retirement/exe-default/Discover decisions.
+
+---
+
 ## Session 37b (2026-07-05 OVERNIGHT) — BETA BUILDOUT: all 3 waves shipped ✅
 
 Alex slept; 7 Opus builders + 3 Sonnet review fleets executed
 `brain/plan-2026-07-05-beta-buildout.md` end-to-end. **Read-first:
 `docs/handoffs/handoff_20260705_session37.md`.** Shipped: first-run quick pass
-+ update check + feedback (B1) · **web create-project/new-person flow** (B2 —
-the last parity gap) · PRIVACY/EULA/README-wedge/Guide/SHA256SUMS/winget
-template (B3) · **referral engine** (LinkedIn/Google contacts import → local
-matching → "your network at this company" + find-my-path-in prompts, B4) ·
-follow-up/thank-you + interview-prep prompts (B5) · **Insights tab** (funnel,
-per-source interview rates, cadence chart, B6) · **ghost badges on rows +
-company ghost memory + new-since-visit + copy pack** (B7). Review fleets
-confirmed 5 findings (1 CRITICAL: fresh-registry create silently overrode
-switch:false — `017c0d9`; 1 major ghost-banner level mismatch — `8f3f84c`;
-plus README positioning pins restored `cc4ae26`) — ALL fixed same night.
-**Suite 2,968 → 3,104 / 0 failed; vitest 199; exe rebuilt + production/
-mirrored + frozen web smoke; verified live on dad's project (Insights funnel,
-real Aging/Stale badges). ~14 commits PUSH HELD.** Morning list in the
-handoff: eyeball app, push call, LICENSE choice, beta-cohort go.
+
+- update check + feedback (B1) · **web create-project/new-person flow** (B2 —
+  the last parity gap) · PRIVACY/EULA/README-wedge/Guide/SHA256SUMS/winget
+  template (B3) · **referral engine** (LinkedIn/Google contacts import → local
+  matching → "your network at this company" + find-my-path-in prompts, B4) ·
+  follow-up/thank-you + interview-prep prompts (B5) · **Insights tab** (funnel,
+  per-source interview rates, cadence chart, B6) · **ghost badges on rows +
+  company ghost memory + new-since-visit + copy pack** (B7). Review fleets
+  confirmed 5 findings (1 CRITICAL: fresh-registry create silently overrode
+  switch:false — `017c0d9`; 1 major ghost-banner level mismatch — `8f3f84c`;
+  plus README positioning pins restored `cc4ae26`) — ALL fixed same night.
+  **Suite 2,968 → 3,104 / 0 failed; vitest 199; exe rebuilt + production/
+  mirrored + frozen web smoke; verified live on dad's project (Insights funnel,
+  real Aging/Stale badges). ~14 commits PUSH HELD.** Morning list in the
+  handoff: eyeball app, push call, LICENSE choice, beta-cohort go.
 
 ---
 
