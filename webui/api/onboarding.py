@@ -166,11 +166,23 @@ def onboarding_salary_parse():
 # ── AI express-lane ───────────────────────────────────────────────────────────
 @onboarding_bp.get("/ai-setup/prompt")
 def ai_setup_prompt():
-    """The copyable BYO-AI setup prompt (``ai_setup.build_setup_prompt``) the user
-    pastes into their own AI above their résumé + one sentence of intent. Static,
-    no secrets, no I/O — READ-only. Returns ``{ok, prompt}``."""
-    from ui.ai_setup import build_setup_prompt
-    return jsonify({"ok": True, "prompt": build_setup_prompt()})
+    """The copyable BYO-AI setup prompt the user pastes into their own AI above
+    their résumé + one sentence of intent. Static, no secrets, no I/O — READ-only.
+
+    Two shapes, selected by the ``full`` query flag (S40 AI-first setup):
+      * default            -> ``build_setup_prompt()`` — the config-only ```json
+                              contract (the standalone express-lane / apply pairing).
+      * ``?full=1``        -> ``build_full_setup_prompt()`` — config ```json block
+                              PLUS a ```seeds starter-company fence, the ONE prompt
+                              whose reply drives apply-full (config + companies +
+                              first search). Read-only; it just returns a different
+                              static string, so no gate.
+
+    Returns ``{ok, prompt}``."""
+    from ui.ai_setup import build_setup_prompt, build_full_setup_prompt
+    full = str(request.args.get("full", "")).strip().lower() in ("1", "true", "yes")
+    prompt = build_full_setup_prompt() if full else build_setup_prompt()
+    return jsonify({"ok": True, "prompt": prompt})
 
 
 @onboarding_bp.post("/ai-setup/apply")

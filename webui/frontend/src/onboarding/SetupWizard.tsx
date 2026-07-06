@@ -21,31 +21,36 @@ import { ZagMark } from "@/components/zag-mark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { WelcomeStep } from "./steps/WelcomeStep";
-import { AiOfferStep } from "./steps/AiOfferStep";
+import type { AiSetupResult } from "@/components/ai-setup-dialog";
+
+import { StartStep } from "./steps/StartStep";
 import { RolesStep } from "./steps/RolesStep";
 import { WhereStep } from "./steps/WhereStep";
 import { ResumeStep } from "./steps/ResumeStep";
 import { SourcesStep } from "./steps/SourcesStep";
 import { FinishStep } from "./steps/FinishStep";
 
-/* The onboarding takeover — a full-screen, first-run guided setup. Seven steps
- * (see lib/wizard-steps): Welcome → AI express lane offer → Roles → Where →
- * Résumé → Connect sources → Finish. A left progress rail, Back/Next/Skip, per-
- * step validation, prefill from GET /api/onboarding, and a Finish that POSTs the
+/* The onboarding takeover — a full-screen, first-run guided setup. Six steps
+ * (see lib/wizard-steps): Set up (the AI-first landing) → Roles → Where → Résumé
+ * → Connect sources → Finish. A left progress rail, Back/Next/Skip, per-step
+ * validation, prefill from GET /api/onboarding, and a Finish that POSTs the
  * answers and hands control back to the app (lands on the Inbox with a welcome
  * toast).
  *
  * This is the app's first impression, so it's designed, not just functional:
  * generous whitespace, a serif hero, staggered step transitions, the brand mark
- * anchoring the rail. The AI express lane (step 2) can short-circuit the whole
- * flow — applying an AI block marks onboarding done and calls onComplete. */
+ * anchoring the rail. The AI-first landing (step 0) can short-circuit the whole
+ * flow — applying the combined AI reply marks onboarding done, seeds companies,
+ * starts the first search, and calls onComplete WITH the run's job id so the app
+ * lands the user on the Inbox with that run's console attached. */
 
 export interface SetupWizardProps {
   prefill: OnboardingPrefill;
-  /** Called when onboarding is complete (manual finish OR AI express apply) —
-   * the app closes the takeover and shows the Inbox. */
-  onComplete: (opts?: { viaAi?: boolean }) => void;
+  /** Called when onboarding is complete (manual finish OR AI express apply) — the
+   * app closes the takeover and shows the Inbox. `res` is present only for the AI
+   * path (carries the started first-run job id + any job_error), so the gate can
+   * attach the run console; a manual finish passes nothing. */
+  onComplete: (res?: AiSetupResult) => void;
   /** Called when the user chooses to skip onboarding entirely (explore first).
    * The takeover closes WITHOUT marking onboarded, so it reappears next launch. */
   onSkip: () => void;
@@ -146,15 +151,16 @@ export function SetupWizard({ prefill, onComplete, onSkip }: SetupWizardProps) {
                 step={step.id}
                 answers={answers}
                 patch={patch}
-                onUseAi={() => onComplete({ viaAi: true })}
-                onContinueManual={goNext}
+                onAiApplied={onComplete}
+                onManual={goNext}
                 onFinish={finish}
                 finishing={applyMut.isPending}
               />
             </div>
 
-            {/* Nav — hidden on Finish (Finish has its own primary button) */}
-            {!isFinish && (
+            {/* Nav — hidden on the Set-up landing (it has its own inline express
+                lane + manual link) and on Finish (its own primary button). */}
+            {!isFinish && step.id !== "start" && (
               <div className="border-border mt-8 flex items-center justify-between gap-3 border-t pt-5">
                 <Button
                   variant="ghost"
@@ -254,26 +260,25 @@ function StepBody({
   step,
   answers,
   patch,
-  onUseAi,
-  onContinueManual,
+  onAiApplied,
+  onManual,
   onFinish,
   finishing,
 }: {
   step: (typeof WIZARD_STEPS)[number]["id"];
   answers: WizardAnswers;
   patch: (p: Partial<WizardAnswers>) => void;
-  onUseAi: () => void;
-  onContinueManual: () => void;
+  /** The AI landing applied the combined reply — hand the result (job id) up so
+   * the app closes the takeover and lands on the Inbox with the run attached. */
+  onAiApplied: (res: AiSetupResult) => void;
+  /** The user chose the manual path from the landing — advance to Roles. */
+  onManual: () => void;
   onFinish: (buildListOptIn: boolean) => void;
   finishing: boolean;
 }) {
   switch (step) {
-    case "welcome":
-      return <WelcomeStep />;
-    case "ai-offer":
-      return (
-        <AiOfferStep onUseAi={onUseAi} onContinueManual={onContinueManual} />
-      );
+    case "start":
+      return <StartStep onApplied={onAiApplied} onManual={onManual} />;
     case "roles":
       return <RolesStep answers={answers} patch={patch} />;
     case "where":

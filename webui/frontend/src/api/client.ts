@@ -586,8 +586,21 @@ export const endpoints = {
       json: { text },
     }),
   aiSetupPrompt: () => api.get<AiSetupPromptResponse>("/ai-setup/prompt"),
+  // S40 AI-first setup: the COMBINED config+seeds prompt (backend `?full=1` on the
+  // same route — a read-only variant that returns build_full_setup_prompt()).
+  aiSetupFullPrompt: () =>
+    api.get<AiSetupPromptResponse>("/ai-setup/prompt", { params: { full: 1 } }),
   applyAiSetup: (text: string) =>
     api.post<AiSetupApplyResponse>("/ai-setup/apply", { json: { text } }),
+  // S40 AI-first setup: apply ONE pasted reply — splits config + seeds, applies the
+  // config synchronously, and (autorun, default true) chains the first-run job
+  // (seed the companies, then the first daily search). `job_id` is the chained
+  // job to attach the run console to; null when autorun:false or a run was already
+  // in flight (JobConflict) — then `job_error` carries the human reason.
+  applyAiSetupFull: (text: string, autorun: boolean) =>
+    api.post<ApplyAiSetupFullResponse>("/ai-setup/apply-full", {
+      json: { text, autorun },
+    }),
 
   // ── Companies: Add / validate / build / seed (Phase 5) ──────────────────────
   detectCompanies: (lines: string) =>
@@ -1255,6 +1268,21 @@ export interface AiSetupApplied {
 
 export interface AiSetupApplyResponse extends ApiEnvelope {
   applied: AiSetupApplied;
+}
+
+/** POST /api/ai-setup/apply-full (S40 AI-first setup). One pasted reply →
+ * config applied synchronously (`applied`, same summary shape as /ai-setup/apply)
+ * + `seed_count` starter companies counted + (autorun) a chained first-run job.
+ *
+ * `job_id` is the chained job id to attach the run console to. It's `null` when
+ * autorun was false OR a run was already in progress — in the latter case
+ * `job_error` carries the human-readable reason ("another run is in progress").
+ * A missing/invalid config block is a 400 (thrown as ApiError), never this shape. */
+export interface ApplyAiSetupFullResponse extends ApiEnvelope {
+  applied: AiSetupApplied;
+  seed_count: number;
+  job_id: string | null;
+  job_error?: string;
 }
 
 // ── Companies (Phase 5) ───────────────────────────────────────────────────────

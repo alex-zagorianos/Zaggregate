@@ -22,10 +22,25 @@ const withRoles = (roles: string): WizardAnswers => ({
 });
 
 describe("wizard step model", () => {
-  it("has 7 ordered steps ending at Finish", () => {
-    expect(WIZARD_STEP_COUNT).toBe(7);
-    expect(WIZARD_STEPS[0].id).toBe("welcome");
+  it("has 6 ordered steps: the AI-first landing → … → Finish (S40)", () => {
+    expect(WIZARD_STEP_COUNT).toBe(6);
+    // The AI-first landing replaced the old welcome + ai-offer pair with one step.
+    expect(WIZARD_STEPS[0].id).toBe("start");
+    expect(WIZARD_STEPS[0].label).toBe("Set up");
     expect(WIZARD_STEPS[FINISH_INDEX].id).toBe("finish");
+    // The old welcome/ai-offer ids are gone.
+    const ids = WIZARD_STEPS.map((s) => s.id);
+    expect(ids).not.toContain("welcome");
+    expect(ids).not.toContain("ai-offer");
+    // The manual steps are unchanged and still in order after the landing.
+    expect(ids).toEqual([
+      "start",
+      "roles",
+      "where",
+      "resume",
+      "sources",
+      "finish",
+    ]);
   });
 });
 
@@ -51,8 +66,7 @@ describe("isStepValid", () => {
   });
   it("treats every non-Roles step as always valid (inclusion over precision)", () => {
     for (const s of [
-      "welcome",
-      "ai-offer",
+      "start",
       "where",
       "resume",
       "sources",
@@ -86,15 +100,16 @@ describe("canAdvance / nextIndex / prevIndex", () => {
 describe("stepState (progress rail)", () => {
   it("marks the current step active, earlier valid steps done, later pending", () => {
     const a = withRoles("engineer");
-    // At the Where step (index 3): welcome/ai-offer/roles are done, resume pending.
-    expect(stepState(0, 3, a)).toBe("done");
-    expect(stepState(2, 3, a)).toBe("done"); // roles valid
+    // Step order (S40): 0 start, 1 roles, 2 where, 3 resume, …
+    // At the Résumé step (index 3): start/roles/where are done, sources pending.
+    expect(stepState(0, 3, a)).toBe("done"); // start
+    expect(stepState(1, 3, a)).toBe("done"); // roles valid
     expect(stepState(3, 3, a)).toBe("active");
     expect(stepState(4, 3, a)).toBe("pending");
   });
   it("does not mark an earlier INVALID step as done", () => {
-    // Roles empty but somehow past it: it shows pending, not done.
-    expect(stepState(2, 3, EMPTY_ANSWERS)).toBe("pending");
+    // Roles (index 1) empty but somehow past it: it shows pending, not done.
+    expect(stepState(1, 3, EMPTY_ANSWERS)).toBe("pending");
   });
 });
 

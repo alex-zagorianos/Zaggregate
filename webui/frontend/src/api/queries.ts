@@ -652,6 +652,24 @@ export function useApplyAiSetup() {
   });
 }
 
+/** Apply ONE combined AI reply (S40 AI-first setup): splits config + seeds, applies
+ * the config synchronously, and (autorun, default true) chains the first-run job
+ * (seed companies → first daily search). Same broad invalidation as the plain AI
+ * apply — it writes the same on-disk config contract, so essentially every engine
+ * read changes; the started job (job_id) streams over SSE and its console does the
+ * inbox/top-picks refresh on finish. `autorun` lets the caller choose whether to
+ * kick off the search (wizard: true; Search-tab dialog: false → a "Run now" button). */
+export function useApplyAiSetupFull() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { text: string; autorun: boolean }) =>
+      endpoints.applyAiSetupFull(vars.text, vars.autorun),
+    onSuccess: () => {
+      qc.invalidateQueries();
+    },
+  });
+}
+
 // ── Guide (Phase 5) ───────────────────────────────────────────────────────────
 
 /** The static in-app Guide sections. Content is effectively constant, so a long

@@ -269,6 +269,27 @@ def test_ai_setup_prompt_static(client):
     assert "target_titles" in body["prompt"]
 
 
+def test_ai_setup_prompt_full_flag_serves_combined(client):
+    """`?full=1` serves the combined config+seeds prompt (S40 AI-first setup) —
+    the SAME string build_full_setup_prompt() returns — so the wizard's inline
+    express lane and the Search-tab dialog get both contracts in one paste. The
+    default (no flag) stays the config-only prompt (compat)."""
+    from ui.ai_setup import build_setup_prompt, build_full_setup_prompt
+
+    full = client.get("/api/ai-setup/prompt?full=1").get_json()
+    assert full["ok"] is True
+    assert full["prompt"] == build_full_setup_prompt()
+    # Both contracts present: the config json block AND the seeds fence.
+    assert "```json" in full["prompt"]
+    assert "target_titles" in full["prompt"]
+    assert "```seeds" in full["prompt"]
+
+    # Default (no flag) is unchanged — the config-only prompt, no seeds fence.
+    default = client.get("/api/ai-setup/prompt").get_json()
+    assert default["prompt"] == build_setup_prompt()
+    assert "```seeds" not in default["prompt"]
+
+
 def test_ai_setup_apply_happy(client, isolated):
     resp = client.post("/api/ai-setup/apply",
                        json={"text": json.dumps(_GOOD_BLOCK)},

@@ -5,15 +5,16 @@
  * just presentation + endpoint calls: it holds an `answers` object + a `stepIndex`
  * and asks this module "can I advance?" / "which steps are done?".
  *
- * The steps mirror the tk wizard's screens (with the extra AI express-lane offer
- * as step 2):
- *   0 welcome          — intro, no input (always valid)
- *   1 ai-offer         — offer the AI express lane OR continue manually (valid)
- *   2 roles            — the roles/keywords + field preset (needs ≥1 role)
- *   3 where            — location + remote + salary floor (valid; all optional)
- *   4 resume           — paste résumé (optional; preview via structure endpoint)
- *   5 sources          — connect job sources (embeds SourcesTab; always valid)
- *   6 finish           — daily-updates note + Build-My-List opt-in (valid)
+ * The steps mirror the tk wizard's screens, but the AI-first landing is now the
+ * FIRST screen (S40): one `start` step whose hero offers the copy-one-prompt /
+ * paste-one-reply express lane inline, with a quiet "I'd rather fill it in myself"
+ * link that advances into the manual steps.
+ *   0 start            — the AI-first landing (inline express lane) OR go manual
+ *   1 roles            — the roles/keywords + field preset (needs ≥1 role)
+ *   2 where            — location + remote + salary floor (valid; all optional)
+ *   3 resume           — paste résumé (optional; preview via structure endpoint)
+ *   4 sources          — connect job sources (embeds SourcesTab; always valid)
+ *   5 finish           — daily-updates note + Build-My-List opt-in (valid)
  *
  * "Skip" jumps straight to Finish with whatever's entered; the field presets +
  * level vocabulary come from setup_wizard_core (kept in sync here as a typed
@@ -21,7 +22,7 @@
  */
 
 export type WizardStepId =
-  "welcome" | "ai-offer" | "roles" | "where" | "resume" | "sources" | "finish";
+  "start" | "roles" | "where" | "resume" | "sources" | "finish";
 
 export interface WizardStep {
   id: WizardStepId;
@@ -31,8 +32,7 @@ export interface WizardStep {
 
 /** The ordered step list — the single source of truth for the rail + navigation. */
 export const WIZARD_STEPS: readonly WizardStep[] = [
-  { id: "welcome", label: "Welcome" },
-  { id: "ai-offer", label: "Quick setup" },
+  { id: "start", label: "Set up" },
   { id: "roles", label: "Roles" },
   { id: "where", label: "Where" },
   { id: "resume", label: "Résumé" },

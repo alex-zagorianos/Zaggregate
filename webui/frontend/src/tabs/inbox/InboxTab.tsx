@@ -43,6 +43,7 @@ import {
   shownSummary,
 } from "@/lib/window-rows";
 import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
+import { takeInboxRunJob } from "@/lib/inbox-run-handoff";
 import { postedLabel as postedLabelFromDate } from "@/lib/relative-time";
 import { ScoreChip } from "@/components/score-chip";
 import { GhostRowBadge } from "@/components/ghost-row-badge";
@@ -153,6 +154,20 @@ export function InboxTab() {
   const [runJobId, setRunJobId] = React.useState<string | null>(null);
   const [consoleOpen, setConsoleOpen] = React.useState(false);
   const [running, setRunning] = React.useState(false);
+
+  // AI-first setup handoff (S40): the onboarding wizard may have started a
+  // first-run job and stashed its id for us (the same sessionStorage pattern
+  // Discover uses to hand keywords to Search). Consume-and-clear on mount and
+  // attach the run console to it, so the user lands here watching their first
+  // search stream in — zero extra clicks. Runs once.
+  React.useEffect(() => {
+    const jobId = takeInboxRunJob();
+    if (jobId) {
+      setRunJobId(jobId);
+      setConsoleOpen(true);
+      setRunning(true);
+    }
+  }, []);
 
   // `knobs` is the optional run-shaping body (S36 parity gap P1). The knobless
   // `startRun` wrapper below is what buttons/palette/empty-state bind to, so a

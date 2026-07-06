@@ -11,6 +11,7 @@ import {
   Building2,
   ListPlus,
   MapPin,
+  Sparkles,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -36,6 +37,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 import { useCompaniesFlows } from "@/tabs/companies/CompaniesFlows";
+import { AiSetupDialog } from "@/components/ai-setup-dialog";
 import { SearchRunConsole } from "./SearchRunConsole";
 import { SourceHealthStrip } from "./SourceHealthStrip";
 
@@ -89,6 +91,11 @@ export function SearchTab() {
   const [running, setRunning] = React.useState(false);
   const [result, setResult] = React.useState<SearchResult | null>(null);
   const [startError, setStartError] = React.useState<string | null>(null);
+
+  // "Set up with AI" dialog (S40): the combined config+seeds express lane, but
+  // autorun:false — applying lands the config, and its applied pane offers a
+  // "Run search now" button that fires the SAME start mutation as the form.
+  const [aiSetupOpen, setAiSetupOpen] = React.useState(false);
 
   const rows = result?.rows ?? [];
   const health = result?.health ?? [];
@@ -285,8 +292,13 @@ export function SearchTab() {
         </div>
 
         {/* Company-list tools — the tk Search-tab entry points for growing the
-            employer registry the daily run scrapes. */}
+            employer registry the daily run scrapes. Plus the AI express-lane setup
+            (S40): configure roles/location/salary + seed companies from one paste. */}
         <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={() => setAiSetupOpen(true)}>
+            <Sparkles className="size-3.5" />
+            Set up with AI
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -457,6 +469,29 @@ export function SearchTab() {
           <SearchEmpty />
         )}
       </div>
+
+      {/* Set-up-with-AI express lane (S40): combined config+seeds, autorun:false.
+          The applied pane offers "Run search now" which closes the dialog and fires
+          the SAME start mutation the form uses. */}
+      <AiSetupDialog
+        open={aiSetupOpen}
+        onOpenChange={setAiSetupOpen}
+        promptKind="full"
+        autorun={false}
+        appliedExtra={() => (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setAiSetupOpen(false);
+              if (!running) startSearch();
+            }}
+          >
+            <SearchIcon className="size-3.5" />
+            Run search now
+          </Button>
+        )}
+      />
 
       {/* Streaming console */}
       <SearchRunConsole

@@ -109,6 +109,24 @@ GUIDE = [
     ("body", "Paste any job posting and generate a resume + cover letter tailored "
              "to it, even for a job that didn't come from this app."),
 
+    ("h1", "The fastest setup — let your AI do it"),
+    ("body", "The quickest way to set up is one round-trip with any AI chat "
+             "(Claude, ChatGPT, Gemini, Copilot — a free tier is fine). One paste "
+             "of the reply configures your whole search AND starts your first one:"),
+    ("bullet", "1.  Click “Set up with AI” (in the Setup Wizard's first screen, "
+               "or the Search tab). It copies one ready-made prompt."),
+    ("bullet", "2.  Paste that prompt into your AI, and below it add your résumé "
+               "plus one sentence about the work you want (e.g. “I want mechanical "
+               "design roles near Cincinnati”). Send it and copy the whole reply."),
+    ("bullet", "3.  Paste the reply back. From that single paste the app fills in "
+               "your roles, location, salary, and seniority, adds a starter list of "
+               "local employers to watch, and kicks off your first search — no keys, "
+               "no accounts, nothing uploaded."),
+    ("body", "That's the whole setup. Everything below — connecting extra sources, "
+             "free keys, and filling the wizard out by hand — is optional and only "
+             "makes an already-working app reach wider. Prefer to do it yourself? "
+             "Every step is still available manually."),
+
     ("h1", "Set up your sources — the 10 minutes that matters most"),
     ("body", "Out of the box the app searches a set of free, no-signup job feeds "
              "plus a built-in list of company career pages. That's a real start, "

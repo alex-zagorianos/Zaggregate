@@ -1,8 +1,11 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { useOnboarding, queryKeys } from "@/api/queries";
+import type { AiSetupResult } from "@/components/ai-setup-dialog";
+import { stashInboxRunJob } from "@/lib/inbox-run-handoff";
 import { SetupWizard } from "./SetupWizard";
 
 /* The app-level onboarding gate. Wraps the whole app: it reads GET /api/onboarding
@@ -32,12 +35,31 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   // initial load — that would flash the takeover at returning users).
   const needsOnboarding = !isLoading && data?.onboarded === false && !skipped;
 
-  const onComplete = React.useCallback(() => {
-    // The apply mutation already invalidated the onboarding flag; make sure the
-    // gate re-reads it (now onboarded:true) and land on the Inbox.
-    qc.invalidateQueries({ queryKey: queryKeys.onboarding });
-    navigate("/inbox");
-  }, [navigate, qc]);
+  const onComplete = React.useCallback(
+    (res?: AiSetupResult) => {
+      // The apply mutation already invalidated the onboarding flag; make sure the
+      // gate re-reads it (now onboarded:true) and land on the Inbox.
+      qc.invalidateQueries({ queryKey: queryKeys.onboarding });
+
+      // AI-first path: the combined reply may have STARTED a first-run job. If so,
+      // hand its id to the Inbox (the established sessionStorage handoff — see
+      // lib/inbox-run-handoff) so the Inbox attaches its run console to it on mount.
+      // If the job couldn't start (another run in flight), surface that instead —
+      // the config still applied, so onboarding is done either way.
+      if (res?.kind === "full") {
+        if (res.job_id) {
+          stashInboxRunJob(res.job_id);
+        } else if (res.job_error) {
+          toast.info("Setup saved", {
+            description: `${res.job_error}. Your search will run when it's free — or start one from the Inbox.`,
+          });
+        }
+      }
+
+      navigate("/inbox");
+    },
+    [navigate, qc],
+  );
 
   const onSkip = React.useCallback(() => setSkipped(true), []);
 
