@@ -39,6 +39,20 @@ content lines), private pushed, public fast-forwarded `22c2dc6..d56ca51`.**
 
 Canonical: [[handoff_20260706_session43]] + [[plan-2026-07-06-src-layout]].
 
+**S43b — in-repo `Executables/` download folder ★LIVE (`2bc4af4` → public
+`2cba1ec`):** repo root gained `Executables/` = the single ready-to-run zip
+(46.5MB, under GitHub's 100MB blob limit) + SHA256SUMS + plain-English README
+(3 steps, launcher names, SmartScreen note). Rationale: a GitHub FOLDER can't
+be downloaded by itself, so the folder carries the one-click zip; also fixes
+that the README's Releases link 404s until the release exists.
+`build_package.zip_package()` now calls `refresh_executables()` — zip + sums +
+version-stamped README regenerate every build, stale-version zips dropped (a
+new kit test pins it). Root README download links point at the folder. Raw
+download URL live-verified (HTTP 206 stream). Trade-off on record: ~46MB per
+version lands in git history; when the Releases/Velopack pipeline is live,
+consider slimming the folder to a pointer README (drop the blob via the
+republish rewrite). Suite 3,250/1-skip.
+
 ## Session 42 (2026-07-06 PM, same conversation) — ★PUBLISHED to github.com/alex-zagorianos/Zaggregate ✅
 
 Alex: "change what is needed to turn the repo public" → executed the runbook
