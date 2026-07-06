@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import {
   Inbox,
@@ -157,9 +158,19 @@ export function InboxTab() {
 
   // AI-first setup handoff (S40): the onboarding wizard may have started a
   // first-run job and stashed its id for us (the same sessionStorage pattern
-  // Discover uses to hand keywords to Search). Consume-and-clear on mount and
-  // attach the run console to it, so the user lands here watching their first
-  // search stream in — zero extra clicks. Runs once.
+  // Discover uses to hand keywords to Search). Consume-and-clear and attach the
+  // run console to it, so the user lands here watching their first search stream
+  // in — zero extra clicks.
+  //
+  // Keyed on location.key, NOT run-once-on-mount (S40 live-test bug): the
+  // onboarding takeover overlays an ALREADY-MOUNTED Inbox (the new-project flow
+  // lands on the Inbox route before the takeover appears), so the wizard's
+  // navigate("/inbox") after stashing never remounts this tab and a mount-only
+  // effect would miss the stash — the first run would stream invisibly.
+  // react-router mints a fresh location.key on EVERY navigate() (even to the
+  // same path), so this re-fires exactly when a handoff could have landed; the
+  // take is consume-and-clear, so extra re-fires are harmless no-ops.
+  const location = useLocation();
   React.useEffect(() => {
     const jobId = takeInboxRunJob();
     if (jobId) {
@@ -167,7 +178,7 @@ export function InboxTab() {
       setConsoleOpen(true);
       setRunning(true);
     }
-  }, []);
+  }, [location.key]);
 
   // `knobs` is the optional run-shaping body (S36 parity gap P1). The knobless
   // `startRun` wrapper below is what buttons/palette/empty-state bind to, so a
