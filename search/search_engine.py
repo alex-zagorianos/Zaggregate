@@ -7,6 +7,7 @@ from typing import Optional
 
 import applog
 from config import SEARCH_MAX_WORKERS
+from dateparse import parse_flex_iso
 from models import JobResult, normalize_url
 from search.base_client import JobAPIClient
 
@@ -109,16 +110,7 @@ def _parse_created(value: str) -> datetime:
     """Parse heterogeneous source date strings (ISO with/without tz, ``Z`` suffix,
     or date-only) into an aware datetime so sorting is chronological, not
     lexicographic. Unparseable/empty sinks to the epoch."""
-    if not value:
-        return _EPOCH
-    s = value.strip().replace("Z", "+00:00")
-    for candidate in (s, s[:19], s[:10]):
-        try:
-            dt = datetime.fromisoformat(candidate)
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return _EPOCH
+    return parse_flex_iso(value) or _EPOCH
 
 
 class SearchEngine:

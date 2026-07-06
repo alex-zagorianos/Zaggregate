@@ -1,5 +1,3 @@
-import html
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -9,17 +7,15 @@ from scrape.cache_helpers import (
     STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
     read_cache, slug_safe,
 )
+from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://apply.workable.com/api/v1/widget/accounts/{slug}"
-_TAG_RE = re.compile(r"<[^>]+>")
 _HEADERS = {"Accept": "application/json", "User-Agent": "JobSearchTool/1.0 (personal use)"}
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html.unescape(raw))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _location(loc: dict) -> str:

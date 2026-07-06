@@ -6,23 +6,18 @@ JobResult. Best-effort; malformed/partial entries are skipped, not raised.
 Uses the stdlib html.parser via BeautifulSoup (no lxml dependency).
 """
 from __future__ import annotations
-import html as _html
 import json
-import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 from models import JobResult
+from scrape.html_text import strip_html_to_text
 from search.http_util import to_float
-
-_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", _html.unescape(str(raw)))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _org_name(org) -> str:

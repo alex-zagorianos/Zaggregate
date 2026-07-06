@@ -4,13 +4,13 @@
 shape (and argv) exactly; malformed values are a 400 envelope, never clamped.
 """
 import sys
-import time
 import types
 
 import pytest
 
 import applog
 import workspace
+from tests.webui.conftest import wait_until
 from webui.api import runs as runs_mod
 from webui.jobs import runner
 
@@ -47,13 +47,11 @@ def _active_slug(monkeypatch):
 
 
 def _wait_done(client, job_id, timeout=3.0):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    def _check():
         snap = client.get(f"/api/jobs/{job_id}").get_json()
-        if snap.get("status") in ("done", "failed"):
-            return snap
-        time.sleep(0.01)
-    raise AssertionError(f"job {job_id} never finished")
+        return snap if snap.get("status") in ("done", "failed") else None
+    return wait_until(_check, timeout=timeout,
+                      message=f"job {job_id} never finished")
 
 
 # ── route -> ingest pass-through ──────────────────────────────────────────────

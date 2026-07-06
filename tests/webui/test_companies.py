@@ -7,12 +7,11 @@ P0-6 gating are exercised with no network. The job fns import their seams lazily
 INSIDE the thread, so patches target the SOURCE module (scrape.ats_detect, etc.),
 not the route module.
 """
-import time
-
 import pytest
 
 import config
 import workspace
+from tests.webui.conftest import wait_until
 
 
 _LOOPBACK = "http://127.0.0.1:5002"
@@ -27,14 +26,13 @@ def isolated(tmp_path, monkeypatch):
 
 
 def _wait_status(client, job_id, target, timeout=3.0):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    def _check():
         snap = client.get(f"/api/jobs/{job_id}").get_json()
-        if snap.get("status") == target:
-            return snap
-        time.sleep(0.01)
-    raise AssertionError(f"job {job_id} never {target}: "
-                         f"{client.get(f'/api/jobs/{job_id}').get_json()}")
+        return snap if snap.get("status") == target else None
+    return wait_until(
+        _check, timeout=timeout,
+        message=f"job {job_id} never {target}: "
+                f"{client.get(f'/api/jobs/{job_id}').get_json()}")
 
 
 # ── detect ────────────────────────────────────────────────────────────────────

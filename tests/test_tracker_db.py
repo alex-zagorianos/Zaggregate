@@ -178,4 +178,75 @@ def test_count_followups_due(tmp_db):
     d = db.add_job("D", "Co", url="https://x/4", follow_up_date="2020-01-01")
     db.update_job(d, status="phone_screen")
     db.archive_job(d)
+
     assert db.count_followups_due(today="2026-06-16") == 1
+
+
+# ── shared _current_status helper (finding #11) ───────────────────────────────
+# add_status_note, entered_status_at, and add_interview_round each used to
+# re-execute the identical "SELECT status FROM applications WHERE id=?" inline;
+# they now all route through the module-private _current_status(conn, job_id).
+
+def test_current_status_returns_status_for_existing_row(tmp_db):
+    db.init_db()
+    jid = db.add_job("Eng", "Acme", url="https://x/1")
+    db.update_job(jid, status="applied")
+    with db.get_conn() as conn:
+        assert db._current_status(conn, jid) == "applied"
+
+
+def test_current_status_returns_none_for_missing_row(tmp_db):
+    db.init_db()
+    with db.get_conn() as conn:
+        assert db._current_status(conn, 999999) is None
+
+
+def test_add_status_note_uses_current_status_for_old_and_new(tmp_db):
+    db.init_db()
+    jid = db.add_job("Eng", "Acme", url="https://x/1")
+    db.update_job(jid, status="phone_screen")
+    hid = db.add_status_note(jid, "left a voicemail")
+    assert hid is not None
+    timeline = db.status_timeline(jid)
+    note_events = [e for e in timeline if e.get("note") == "left a voicemail"]
+    assert len(note_events) == 1
+    assert note_events[0]["old_status"] == "phone_screen"
+    assert note_events[0]["new_status"] == "phone_screen"
+
+
+def test_add_status_note_missing_job_returns_none(tmp_db):
+    db.init_db()
+    assert db.add_status_note(999999, "note") is None
+
+
+def test_entered_status_at_uses_current_status_when_none_given(tmp_db):
+    db.init_db()
+    jid = db.add_job("Eng", "Acme", url="https://x/1")
+    db.update_job(jid, status="applied")
+    ts = db.entered_status_at(jid)
+    assert ts is not None
+
+
+def test_entered_status_at_missing_job_returns_none(tmp_db):
+    db.init_db()
+    assert db.entered_status_at(999999) is None
+
+
+def test_add_interview_round_advances_pre_interview_status_via_current_status(tmp_db):
+    db.init_db()
+    jid = db.add_job("Eng", "Acme", url="https://x/1")
+    db.update_job(jid, status="applied")  # a _PRE_INTERVIEW_STATUSES member
+    db.add_interview_round(jid, kind="phone")  # -> _ROUND_KIND_STATUS["phone"]
+    assert db.get_job(jid)["status"] == "phone_screen"
+
+
+def test_add_interview_round_missing_job_status_lookup_returns_none_safely(tmp_db):
+    """add_interview_round's cur_status lookup for a nonexistent app_id must
+    degrade to None (not raise) and the pre-interview-status check must treat
+    None as 'not pre-interview' -- mirrors the original guard's short-circuit
+    on a missing row."""
+    db.init_db()
+    # No job row exists for this app_id; the FK is not enforced by sqlite here,
+    # so add_interview_round can still run its INSERT + status lookup.
+    new_id = db.add_interview_round(999999, kind="phone_screen")
+    assert new_id is not None

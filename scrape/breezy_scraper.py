@@ -10,9 +10,7 @@ breezy.breezy.hr): a top-level list; each job carries `id`, `friendly_id`,
 
 Routed through careers_session + per-host limiter + conditional_get; fail-soft -> [].
 """
-import html
 import json
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -22,17 +20,15 @@ from scrape.cache_helpers import (
     STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
     read_cache, slug_safe,
 )
+from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://{slug}.breezy.hr/json?verbose=true"
 _HEADERS = {"Accept": "application/json", "User-Agent": "JobSearchTool/1.0 (personal use)"}
-_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html.unescape(raw))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _field(v) -> str:

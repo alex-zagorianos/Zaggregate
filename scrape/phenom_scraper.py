@@ -28,7 +28,6 @@ scoring). If /widgets fails the board simply fails-soft to []; this is recorded
 as a known limitation. Routed through careers_session + per-host limiter;
 fail-soft -> []; a dead domain is negative-cached for the FAILED TTL window.
 """
-import html
 import json
 import re
 from pathlib import Path
@@ -37,11 +36,11 @@ from typing import Optional
 from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
+from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _PAGE = 50
 _MAX_PAGES = 20          # ceiling (1000 jobs) to bound a run
-_TAG_RE = re.compile(r"<[^>]+>")
 _REFNUM_RE = re.compile(r'"refNum"\s*:\s*"([A-Za-z0-9_-]+)"')
 
 try:
@@ -197,9 +196,7 @@ def _fetch_all(domain: str, ref_num: str, keyword: str):
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html.unescape(raw))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _map(data: dict, domain: str, keyword: str) -> list[JobResult]:

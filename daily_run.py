@@ -410,10 +410,17 @@ def main():
     # held out of scoring, so the keyword matcher can't confidently mis-rank a
     # foreign-language listing. OFF by default -> byte-identical for Alex's US run
     # (the branch is skipped entirely and `results` is scored intact).
+    #
+    # Thread the ACTIVE PROJECT's resolved country in (finding #33) -- every
+    # other country-routing path (adzuna/jooble/careerjet, build_clients) already
+    # derives this per-call via adzuna_country_for(location) instead of trusting
+    # the process-global ADZUNA_COUNTRY env var alone. A US project stays exactly
+    # as armed/unarmed as before (adzuna_country_for('') / a US location both
+    # resolve to 'us', a no-op for the guard's own env fallback).
     import config as _cfg
     _lang_scored = results
     _lang_skipped = []
-    if _cfg.language_guard_active():
+    if _cfg.language_guard_active(_cfg.adzuna_country_for(location)):
         from match.language import is_probably_english
         _lang_scored, _lang_skipped = [], []
         for r in results:

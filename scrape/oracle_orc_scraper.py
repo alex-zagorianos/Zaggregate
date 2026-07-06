@@ -30,7 +30,6 @@ Requisition shape (validated live): each requisition in requisitionList carries
 Routed through careers_session + per-host limiter; paged to a bounded ceiling;
 fail-soft -> []. A dead host is negative-cached for the FAILED TTL window.
 """
-import html
 import re
 from pathlib import Path
 from typing import Optional
@@ -39,13 +38,13 @@ from urllib.parse import quote
 from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
+from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _PATH = "/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
 _JOB_URL = "https://{host}/hcmUI/CandidateExperience/en/sites/{site}/job/{id}"
 _PAGE = 50               # ORC returns up to ~25-50 per page; request 50
 _MAX_PAGES = 40          # ceiling (2000 reqs) to bound a run
-_TAG_RE = re.compile(r"<[^>]+>")
 # A stable-but-anonymous browser id header the CX SPA sends. Any UUID works.
 _CX_USERID = "00000000-0000-0000-0000-000000000000"
 _SITE_RE = re.compile(r"CX_\d{1,6}")
@@ -206,9 +205,7 @@ def _fetch_all(host: str, site: str, keyword: str):
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html.unescape(raw))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _location(req: dict) -> str:

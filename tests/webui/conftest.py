@@ -8,13 +8,45 @@ but the test_client never touches a socket at all).
 ``tmp_db`` — points ``tracker.db`` at a fresh tmp DB (the established fixture
 pattern from tests/test_top_picks.py / tests/test_browser_receiver_track.py) so
 inbox/tracker writes never touch real user data.
+
+``wait_until`` — a deterministic poll-until-condition-with-timeout helper
+(finding #31). 6 test files each hand-rolled their own near-identical
+``_wait_status``/``_wait_done`` poll loop (each with its own real
+``time.sleep(0.01)`` poll interval); this is that loop, extracted once, with a
+tighter default interval so the suite burns less real wall-clock without
+changing what's asserted (still condition-driven with a hard timeout, never a
+fixed-duration sleep).
 """
+import time
+
 import pytest
 
 import webui  # noqa: F401 — ensure the package registers onto the app
 import workspace
 from scrape.browser_receiver import app as _app
 from tracker import db
+
+
+def wait_until(predicate, *, timeout=3.0, interval=0.005, message="condition never became true"):
+    """Poll ``predicate()`` (no args) until it returns truthy, or raise
+    AssertionError after ``timeout`` seconds. Returns predicate()'s truthy
+    return value. The poll ``interval`` (default 5ms, half the old 10ms) is a
+    real sleep -- unavoidable while waiting on a genuine background thread --
+    but keeping it short bounds the worst-case wall-clock cost per call."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = predicate()
+        if result:
+            return result
+        time.sleep(interval)
+    raise AssertionError(message)
+
+
+@pytest.fixture
+def wait_for():
+    """Fixture form of wait_until, for tests that prefer fixture injection over
+    a bare module-level import."""
+    return wait_until
 
 
 @pytest.fixture

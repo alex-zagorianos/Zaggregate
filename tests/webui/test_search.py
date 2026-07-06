@@ -11,11 +11,11 @@ Two levels of fake:
 """
 import json
 import threading
-import time
 
 import pytest
 
 import workspace
+from tests.webui.conftest import wait_until
 from webui.jobs import runner
 
 
@@ -53,14 +53,13 @@ def _stub_user_cfg(monkeypatch):
 
 
 def _wait_status(client, job_id, target, timeout=3.0):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    def _check():
         snap = client.get(f"/api/jobs/{job_id}").get_json()
-        if snap.get("status") == target:
-            return snap
-        time.sleep(0.01)
-    raise AssertionError(f"job {job_id} never {target}: "
-                         f"{client.get(f'/api/jobs/{job_id}').get_json()}")
+        return snap if snap.get("status") == target else None
+    return wait_until(
+        _check, timeout=timeout,
+        message=f"job {job_id} never {target}: "
+                f"{client.get(f'/api/jobs/{job_id}').get_json()}")
 
 
 def _make_job_result(**kw):
@@ -237,11 +236,10 @@ def test_search_cancel_sets_event(client, monkeypatch):
     def fake_run_search(keywords, location, salary_min, *, user_cfg,
                         hide_tracked=True, on_event=None, cancel=None):
         started.set()
-        for _ in range(200):
-            if cancel is not None and cancel.is_set():
-                saw_cancel["hit"] = True
-                break
-            time.sleep(0.01)
+        # cancel is a threading.Event -- .wait() blocks efficiently instead of
+        # busy-polling with a real sleep.
+        if cancel is not None and cancel.wait(2.0):
+            saw_cancel["hit"] = True
         return [], []
     monkeypatch.setattr("search.search_job.run_search", fake_run_search)
     monkeypatch.setattr("search.search_job.seen_for_urls", lambda urls: set())

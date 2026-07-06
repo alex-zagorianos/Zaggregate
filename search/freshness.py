@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import config
+from dateparse import parse_flex_iso
 
 FORMAT_VERSION = 2
 EVERGREEN_DAYS = 90  # cumulative presence longer than this = evergreen listing
@@ -49,14 +50,7 @@ def _parse_iso(value):
     """Parse an ISO datetime (aware) or return None. Tolerant of a bare date."""
     if not value or not isinstance(value, str):
         return None
-    s = value.strip().replace("Z", "+00:00")
-    for candidate in (s, s[:19], s[:10]):
-        try:
-            dt = datetime.fromisoformat(candidate)
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+    return parse_flex_iso(value)
 
 
 def _dir(base_dir=None) -> Path:

@@ -151,25 +151,38 @@ class AddCompaniesDialog(tk.Toplevel):
                          daemon=True).start()
 
     def _validate_worker(self, entries):
+        """Background thread body for Validate. Guarded per-iteration (a single
+        entry's probe failure is reported as "error" and the loop continues) AND
+        with an outer try/finally so _validate_done ALWAYS fires — otherwise an
+        unhandled exception here would kill the daemon thread silently, leaving
+        the Validate/Detect buttons stuck disabled with no diagnostic trail
+        (mirrors _run_orchestrator's guard in this same file)."""
         from scrape.ats_detect import probe_board
-        for i, e in enumerate(entries):
-            if e.ats_type == "direct":
-                # A 'direct' page is uncountable, not unreachable — the user
-                # supplied the exact careers URL, so treat it as verified-manual.
-                self.after(0, self._set_status_cell, i, "direct (manual)", "direct")
-                continue
-            # probe_board's `reachable` (not "count is not None") is the verdict:
-            # a genuinely-live board with 0 open jobs is reachable => "live (0)"
-            # (verified), but a CSRF/Cloudflare-walled workday_cxs tenant (HTTP 422)
-            # is unreachable => "unreachable" (flagged-unverified). A bare count
-            # can't tell those apart — both look like 0.
-            pr = probe_board(e)
-            if pr.reachable:
-                n = pr.count if pr.count is not None else 0
-                self.after(0, self._set_status_cell, i, f"live ({n})", "live")
-            else:
-                self.after(0, self._set_status_cell, i, "unreachable", "unreachable")
-        self.after(0, self._validate_done)
+        try:
+            for i, e in enumerate(entries):
+                if e.ats_type == "direct":
+                    # A 'direct' page is uncountable, not unreachable — the user
+                    # supplied the exact careers URL, so treat it as verified-manual.
+                    self.after(0, self._set_status_cell, i, "direct (manual)", "direct")
+                    continue
+                try:
+                    # probe_board's `reachable` (not "count is not None") is the
+                    # verdict: a genuinely-live board with 0 open jobs is reachable
+                    # => "live (0)" (verified), but a CSRF/Cloudflare-walled
+                    # workday_cxs tenant (HTTP 422) is unreachable => "unreachable"
+                    # (flagged-unverified). A bare count can't tell those apart —
+                    # both look like 0.
+                    pr = probe_board(e)
+                except Exception:  # noqa: BLE001 — one bad entry must not kill the thread
+                    self.after(0, self._set_status_cell, i, "error", "unreachable")
+                    continue
+                if pr.reachable:
+                    n = pr.count if pr.count is not None else 0
+                    self.after(0, self._set_status_cell, i, f"live ({n})", "live")
+                else:
+                    self.after(0, self._set_status_cell, i, "unreachable", "unreachable")
+        finally:
+            self.after(0, self._validate_done)
 
     def _validate_done(self):
         # The dialog may have been closed while the worker ran — don't touch

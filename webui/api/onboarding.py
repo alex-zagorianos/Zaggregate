@@ -149,27 +149,17 @@ def onboarding_resume_structure():
 
 @onboarding_bp.post("/onboarding/salary-parse")
 def onboarding_salary_parse():
-    """Parse a free-text salary floor into ANNUAL dollars via ``parse_salary_input``
-    (annual '90k'/'$90,000' or hourly '18/hr', annualized at 2080 h/yr). READ-only
-    (pure parse, no side effect, no gate — matches the tk wizard's live-preview
-    parse as the user types). Body ``{text}``. Returns ``{ok, annual:int|null,
-    kind:'annual'|'hourly'|'none'}`` — ``kind`` reports how the input was read so
-    the UI can echo "≈$37,440/yr from $18/hr"."""
-    import re as _re
+    """Parse a free-text salary floor into ANNUAL dollars via
+    ``parse_salary_input_detailed`` (annual '90k'/'$90,000' or hourly '18/hr',
+    annualized at 2080 h/yr). READ-only (pure parse, no side effect, no gate —
+    matches the tk wizard's live-preview parse as the user types). Body
+    ``{text}``. Returns ``{ok, annual:int|null, kind:'annual'|'hourly'|'none'}``
+    — ``kind`` reports how the input was read so the UI can echo "≈$37,440/yr
+    from $18/hr". ``kind`` is read directly off the parser's own classification
+    (not re-derived) so it can never disagree with ``annual``."""
     data = request.get_json(silent=True) or {}
     text = str(data.get("text") or "")
-    annual = wizard.parse_salary_input(text)
-    if annual is None:
-        kind = "none"
-    elif wizard._HOURLY_INPUT_RE.search(text.strip().lower()):
-        kind = "hourly"
-    else:
-        # A small bare number with no unit is annualized as hourly by the parser
-        # (the "18" -> $37,440 case); report that honestly so the UI can explain it.
-        m = _re.search(r"(\d[\d,]*\.?\d*)\s*(k)?", text.strip().lower())
-        bare_small = bool(m and not m.group(2)
-                          and float(m.group(1).replace(",", "") or 0) < 1000)
-        kind = "hourly" if bare_small else "annual"
+    annual, kind = wizard.parse_salary_input_detailed(text)
     return jsonify({"ok": True, "annual": annual, "kind": kind})
 
 

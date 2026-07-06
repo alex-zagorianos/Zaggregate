@@ -86,30 +86,51 @@ def parse_salary_input(text: str) -> int | None:
     ('90000', '$90,000', '90k') and hourly ('18/hr', '$18.50 per hour', '25 hr')
     inputs. Hourly values are annualized at 2080 h/yr. Returns None for blank or
     unparseable input (never raises)."""
+    return parse_salary_input_detailed(text)[0]
+
+
+def parse_salary_input_detailed(text: str) -> tuple[int | None, str]:
+    """Same parse as ``parse_salary_input``, but also returns HOW the input was
+    classified: ``(annual, kind)`` where ``kind`` is one of:
+
+    * ``'none'``   -- blank or unparseable input (``annual`` is None).
+    * ``'hourly'`` -- an explicit hourly marker ('/hr', 'hour') OR a small bare
+      number with no 'k' suffix and no marker (e.g. "18"), which the parser
+      treats as an hourly wage typed without the unit.
+    * ``'annual'`` -- everything else (an explicit 'k' suffix, or a bare number
+      >= 1000).
+
+    Exists so a caller (e.g. the web onboarding API's live-preview echo) can
+    report the SAME classification this function already derives internally,
+    instead of re-deriving it with its own regex."""
     s = (text or "").strip().lower()
     if not s:
-        return None
+        return None, "none"
     hourly = bool(_HOURLY_INPUT_RE.search(s))
     # Pull the first numeric token (allow a decimal point and 'k' suffix).
     m = re.search(r"(\d[\d,]*\.?\d*)\s*(k)?", s)
     if not m:
-        return None
+        return None, "none"
     num = m.group(1).replace(",", "")
     try:
         val = float(num)
     except ValueError:
-        return None
+        return None, "none"
     if m.group(2):            # explicit 'k' suffix -> thousands
         val *= 1000
     if hourly:
         val *= _FULLTIME_HOURS_PER_YEAR
+        kind = "hourly"
     # A small bare number with no 'k' and no hourly marker (e.g. "18") is almost
     # certainly an hourly wage a user typed without the unit; annualize it so it
     # isn't stored as an $18 floor. 1000 is the cutoff (nobody means $18/yr).
     elif val < 1000:
         val *= _FULLTIME_HOURS_PER_YEAR
+        kind = "hourly"
+    else:
+        kind = "annual"
     val = int(round(val))
-    return val if val > 0 else None
+    return (val, kind) if val > 0 else (None, "none")
 
 
 def _alias_table() -> dict:

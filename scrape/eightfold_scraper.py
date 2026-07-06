@@ -26,8 +26,6 @@ DOES answer is handled correctly.
 Routed through careers_session + per-host limiter; a Referer header is sent
 (some tenants require it) and paging stops at a bounded ceiling. Fail-soft -> [].
 """
-import html
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -35,12 +33,12 @@ from typing import Optional
 from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
+from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE = "https://{tenant}.eightfold.ai/api/apply/v2/jobs"
 _PAGE = 50               # positions per request
 _MAX_PAGES = 20          # ceiling (1000 positions) to bound a run
-_TAG_RE = re.compile(r"<[^>]+>")
 
 # Negative-cache window for a gated/dead tenant (mirrors workday's FAILED file).
 try:
@@ -58,9 +56,7 @@ def _split_slug(slug: str) -> tuple[str, str]:
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html.unescape(raw))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _created(pos: dict) -> str:

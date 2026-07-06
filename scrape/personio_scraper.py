@@ -1,5 +1,3 @@
-import html
-import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Optional
@@ -10,11 +8,11 @@ from scrape.cache_helpers import (
     STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
     read_cache, slug_safe,
 )
+from scrape.html_text import strip_html_to_text
 from scrape.xml_safe import _safe_fromstring
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://{slug}.jobs.personio.de/xml"
-_TAG_RE = re.compile(r"<[^>]+>")
 _HEADERS = {"Accept": "application/xml", "User-Agent": "JobSearchTool/1.0 (personal use)"}
 
 
@@ -30,9 +28,7 @@ def _parse_xml_text(resp) -> str:
 
 
 def _clean(raw: str) -> str:
-    if not raw:
-        return ""
-    return re.sub(r"\s+", " ", _TAG_RE.sub(" ", html.unescape(raw))).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def _descr(pos: ET.Element) -> str:

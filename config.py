@@ -631,12 +631,23 @@ CAREERONESTOP_ATTRIBUTION = (
 LANGUAGE_GUARD = os.getenv("LANGUAGE_GUARD", "0") not in ("", "0", "false", "False", "no")
 
 
-def language_guard_active():
+def language_guard_active(country: str | None = None):
     """True when the English-language guard should run this session: an explicit
     LANGUAGE_GUARD flag, or a non-US Adzuna country where foreign-language
     postings are expected. Read as a function so a test/CLI that flips either
-    input mid-process sees the change."""
+    input mid-process sees the change.
+
+    ``country`` (optional): the ACTIVE PROJECT's resolved Adzuna country code
+    (e.g. from ``adzuna_country_for(location)``), the same per-call value every
+    other country-routing path (adzuna/jooble/careerjet, build_clients) already
+    derives instead of trusting the process-global ADZUNA_COUNTRY env var alone.
+    When provided, a non-'us' project country arms the guard exactly as the env
+    path does today. Default None keeps today's env-only behavior UNCHANGED
+    (back-compat) -- every existing call site that doesn't pass ``country`` sees
+    no difference."""
     if LANGUAGE_GUARD:
+        return True
+    if country is not None and (country or "us").strip().lower() != "us":
         return True
     return (ADZUNA_COUNTRY or "us").strip().lower() != "us"
 

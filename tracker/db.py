@@ -962,6 +962,16 @@ def get_job(job_id):
     return dict(row) if row else None
 
 
+def _current_status(conn, job_id) -> str | None:
+    """The current ``status`` for ``job_id``, or None if the row doesn't exist.
+    Takes an already-open ``conn`` (composes inside an existing ``with
+    get_conn() as conn:`` block) rather than opening its own connection."""
+    row = conn.execute(
+        "SELECT status FROM applications WHERE id=?", (job_id,)
+    ).fetchone()
+    return row["status"] if row is not None else None
+
+
 # ── Per-stage notes + timeline (D1 P5) ────────────────────────────────────────
 
 def add_status_note(job_id, note: str) -> int | None:
@@ -974,15 +984,13 @@ def add_status_note(job_id, note: str) -> int | None:
     if not note:
         return None
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT status FROM applications WHERE id=?", (job_id,)
-        ).fetchone()
-        if row is None:
+        status = _current_status(conn, job_id)
+        if status is None:
             return None
         cur = conn.execute(
             "INSERT INTO status_history "
             "(job_id, old_status, new_status, changed_at, note) VALUES (?,?,?,?,?)",
-            (job_id, row["status"], row["status"],
+            (job_id, status, status,
              datetime.now(timezone.utc).isoformat(), note),
         )
         conn.commit()
@@ -1001,12 +1009,9 @@ def entered_status_at(job_id, status: str | None = None) -> str | None:
         if not _has_table(conn, "status_history"):
             return None
         if status is None:
-            row = conn.execute(
-                "SELECT status FROM applications WHERE id=?", (job_id,)
-            ).fetchone()
-            if row is None:
+            status = _current_status(conn, job_id)
+            if status is None:
                 return None
-            status = row["status"]
         r = conn.execute(
             "SELECT MAX(changed_at) FROM status_history "
             "WHERE job_id=? AND new_status=? AND old_status != new_status",
@@ -1086,13 +1091,11 @@ def add_interview_round(app_id, kind="other", scheduled_at="", interviewer="",
         )
         conn.commit()
         new_id = cur.lastrowid
-        cur_status_row = conn.execute(
-            "SELECT status FROM applications WHERE id=?", (app_id,)
-        ).fetchone()
+        cur_status = _current_status(conn, app_id)
     # Advance a pre-interview status OUTSIDE the connection above so update_job's
     # own transaction (which records the status_history transition + follow-up
     # side-effects) doesn't nest connections on the same db.
-    if cur_status_row and cur_status_row["status"] in _PRE_INTERVIEW_STATUSES:
+    if cur_status in _PRE_INTERVIEW_STATUSES:
         implied = _ROUND_KIND_STATUS.get(kind, "interview")
         update_job(app_id, status=implied)
     return new_id

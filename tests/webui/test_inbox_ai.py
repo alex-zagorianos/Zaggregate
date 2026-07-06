@@ -192,6 +192,55 @@ def test_import_bad_file_surfaces_errors_not_500(client, tmp_db):
     assert res["updated"] == 0
 
 
+def test_import_non_utf8_file_surfaces_400_not_500(client, tmp_db):
+    """finding #17: import_ai() lacks the exception handler its own docstring
+    promises ("never a 500"). A non-UTF-8 upload (legacy CP-1252/Excel export)
+    raises UnicodeDecodeError inside rerank.import_._read_text -- unlike the
+    parseable-garbage case above (which import_scores tolerates and reports via
+    result.errors), a decode failure propagates as a raw exception and must be
+    caught by the route, not left to fall through to Flask's generic 500."""
+    _seed(1)
+    # 0x92 (a cp1252 curly single-quote) is not valid UTF-8 on its own -- decoding
+    # it as utf-8-sig (what _read_text uses) raises UnicodeDecodeError.
+    bad_bytes = b"job_key,new_fit\nabc\x92,80\n"
+    data = {"file": (io.BytesIO(bad_bytes), "legacy_export.csv")}
+    resp = client.post("/api/inbox/import", headers=_H, data=data,
+                       content_type="multipart/form-data")
+    assert resp.status_code == 400              # not a 500
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "error" in body and body["error"]
+
+
+def test_import_non_utf8_text_paste_surfaces_400_not_500(client, tmp_db):
+    """Same poisoned-input guard via the JSON {text:...} path (bytes never
+    round-trip through JSON as invalid UTF-8, so this exercises a different
+    angle: an already-decoded str written back out to a temp file is always
+    valid UTF-8 -- the real risk is file uploads, covered above. This pins that
+    the text-paste path still 400s cleanly on other _read_text failures, e.g.
+    a path collision/permission issue, by asserting the route's except clause
+    is reachable from this branch too via a monkeypatched _read_text)."""
+    from webui.api import inbox as inbox_mod
+
+    def _boom(path):
+        raise UnicodeDecodeError("utf-8-sig", b"\x92", 0, 1, "invalid start byte")
+
+    orig = inbox_mod.import_scores
+    import rerank.import_ as import_mod
+    real_read_text = import_mod._read_text
+    import_mod._read_text = _boom
+    try:
+        resp = client.post("/api/inbox/import", headers=_H,
+                           json={"text": "job_key,new_fit\nabc,80\n"})
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["ok"] is False
+        assert "error" in body and body["error"]
+    finally:
+        import_mod._read_text = real_read_text
+        assert inbox_mod.import_scores is orig  # sanity: seam restored cleanly
+
+
 def test_import_unmatched_reported(client, tmp_db):
     _seed(1)
     resp = client.post("/api/inbox/import", headers=_H, json={

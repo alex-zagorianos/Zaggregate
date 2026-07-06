@@ -375,6 +375,75 @@ def test_language_guard_on_when_non_us_country(monkeypatch):
     assert config.language_guard_active() is True
 
 
+# ── language guard: per-project country param (finding #33) ───────────────────
+# language_guard_active() used to check ONLY the import-time ADZUNA_COUNTRY env
+# global, unlike every other country-routing path (adzuna/jooble/careerjet,
+# build_clients) which derives the ACTIVE PROJECT's country per-call via
+# adzuna_country_for(location). It now accepts an optional `country` param that
+# arms the guard the same way the env path does, while staying back-compat when
+# omitted.
+
+def test_language_guard_arms_via_non_us_project_country_while_env_stays_us(monkeypatch):
+    """The core gap this finding closes: a non-US PROJECT (passed explicitly,
+    e.g. via daily_run.py's adzuna_country_for(location)) must arm the guard
+    even though the process-wide ADZUNA_COUNTRY env stays 'us' (e.g. a
+    multi-project process where the operator never exported a non-US env var
+    for this specific project)."""
+    monkeypatch.setattr(config, "LANGUAGE_GUARD", False)
+    monkeypatch.setattr(config, "ADZUNA_COUNTRY", "us")
+    assert config.language_guard_active("de") is True
+    assert config.language_guard_active(
+        config.adzuna_country_for("Berlin, Germany")) is True
+
+
+def test_language_guard_env_only_path_unchanged(monkeypatch):
+    """Back-compat: every existing call site that doesn't pass `country` (the
+    default None) must see EXACTLY today's env-only behavior -- this pins that
+    omitting the new param doesn't change any of the 3 existing gating tests'
+    outcomes."""
+    monkeypatch.setattr(config, "LANGUAGE_GUARD", False)
+    monkeypatch.setattr(config, "ADZUNA_COUNTRY", "us")
+    assert config.language_guard_active() is False
+    assert config.language_guard_active(None) is False
+
+    monkeypatch.setattr(config, "ADZUNA_COUNTRY", "de")
+    assert config.language_guard_active() is True
+    assert config.language_guard_active(None) is True
+
+
+def test_language_guard_us_project_and_us_env_stays_off(monkeypatch):
+    """A US project's resolved country ('us') passed explicitly must NOT arm the
+    guard -- Alex's own byte-identical US run must stay unaffected by this
+    change regardless of whether daily_run.py starts passing a country."""
+    monkeypatch.setattr(config, "LANGUAGE_GUARD", False)
+    monkeypatch.setattr(config, "ADZUNA_COUNTRY", "us")
+    assert config.language_guard_active("us") is False
+    assert config.language_guard_active(
+        config.adzuna_country_for("Cincinnati, OH")) is False
+
+
+def test_language_guard_explicit_country_does_not_disarm_non_us_env(monkeypatch):
+    """A non-US env with an explicit US project country: LANGUAGE_GUARD-style
+    'either signal arms it' semantics mean the env's non-US ADZUNA_COUNTRY still
+    arms the guard even when this particular project's country is 'us' -- the
+    new param only ever WIDENS when the guard arms, never narrows it below the
+    pre-existing env-only behavior."""
+    monkeypatch.setattr(config, "LANGUAGE_GUARD", False)
+    monkeypatch.setattr(config, "ADZUNA_COUNTRY", "de")
+    assert config.language_guard_active("us") is True
+
+
+def test_daily_run_threads_project_country_into_language_guard(monkeypatch):
+    """Wiring check at the actual call site: daily_run.py must call
+    language_guard_active(adzuna_country_for(location)), not the bare
+    no-arg call, so a non-US PROJECT arms the guard even when the process env
+    stays 'us'."""
+    import inspect
+    import daily_run
+    src = inspect.getsource(daily_run.main)
+    assert "_cfg.language_guard_active(_cfg.adzuna_country_for(location))" in src
+
+
 # ── match.language heuristic ──────────────────────────────────────────────────
 
 def test_is_probably_english_true_for_english_prose():

@@ -7,13 +7,13 @@ test uses the REAL ``daily_run_core.run_ingest`` with a stubbed ``daily_run``
 module so the S27-safe pin path is verified end-to-end through the route.
 """
 import sys
-import time
 import types
 
 import pytest
 
 import applog
 import workspace
+from tests.webui.conftest import wait_until
 from webui.api import runs as runs_mod
 from webui.jobs import runner
 
@@ -61,14 +61,13 @@ def _active_slug(monkeypatch):
 
 
 def _wait_status(client, job_id, target, timeout=3.0):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    def _check():
         snap = client.get(f"/api/jobs/{job_id}").get_json()
-        if snap.get("status") == target:
-            return snap
-        time.sleep(0.01)
-    raise AssertionError(f"job {job_id} never reached {target}: "
-                         f"{client.get(f'/api/jobs/{job_id}').get_json()}")
+        return snap if snap.get("status") == target else None
+    return wait_until(
+        _check, timeout=timeout,
+        message=f"job {job_id} never reached {target}: "
+                f"{client.get(f'/api/jobs/{job_id}').get_json()}")
 
 
 # ── happy-path lifecycle + SSE ────────────────────────────────────────────────
@@ -193,10 +192,8 @@ def test_daily_run_target_from_registry_not_pin_gives_cross_project_409(client, 
     monkeypatch.setattr(workspace, "registry_active_slug", lambda: "projA")
     j1 = client.post("/api/runs/daily", headers=_H).get_json()["job_id"]
     # Wait for the pin to be taken so the divergence is real.
-    for _ in range(200):
-        if workspace.pinned() == "projA":
-            break
-        time.sleep(0.01)
+    wait_until(lambda: workspace.pinned() == "projA",
+              message="pin was never taken for projA")
     assert workspace.pinned() == "projA"
     try:
         # The user has switched the registry to B mid-run. A new run's TARGET is B.
@@ -234,11 +231,10 @@ def test_cancel_job_sets_event(client, monkeypatch):
 
     def ingest(slug, *, on_line=None, cancel=None):
         started.set()
-        for _ in range(200):
-            if cancel is not None and cancel.is_set():
-                saw_cancel["hit"] = True
-                break
-            time.sleep(0.01)
+        # cancel is a threading.Event -- .wait() blocks efficiently instead of
+        # busy-polling with a real sleep.
+        if cancel is not None and cancel.wait(2.0):
+            saw_cancel["hit"] = True
         return 130
     monkeypatch.setattr(runs_mod, "_daily_ingest", ingest)
 

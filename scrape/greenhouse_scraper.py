@@ -1,5 +1,3 @@
-import html
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -13,19 +11,16 @@ from scrape.cache_helpers import (
 )
 from scrape.company_registry import CompanyEntry
 from scrape.greenhouse_url import embed_url
+from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true"
-_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def _clean_content(raw: str) -> str:
     """Greenhouse 'content' is HTML-escaped HTML. Unescape, strip tags, and
     collapse whitespace so the match scorer can read real skill terms from it."""
-    if not raw:
-        return ""
-    text = _TAG_RE.sub(" ", html.unescape(raw))
-    return re.sub(r"\s+", " ", text).strip()[:3000]
+    return strip_html_to_text(raw)
 
 
 def scrape_greenhouse(

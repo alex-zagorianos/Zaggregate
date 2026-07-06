@@ -687,6 +687,11 @@ def import_ai():
             "skipped": res.skipped,
             "errors": list(res.errors),
         }})
+    except Exception as e:  # noqa: BLE001 — a malformed/undecodable file is a
+        # clean parse error, never a 500 (the route's own docstring promises
+        # this; e.g. a non-UTF-8 upload raises UnicodeDecodeError inside
+        # rerank.import_.import_scores -> _read_text).
+        return jsonify({"ok": False, "error": str(e)}), 400
     finally:
         if tmp_path:
             try:

@@ -38,6 +38,8 @@ Deterministic, no I/O, no network, stdlib only.
 import re
 from datetime import datetime, timezone
 
+from dateparse import parse_flex_iso
+
 # ── tuning (all in "ghost points") ────────────────────────────────────────────
 AGE_STRONG_DAYS = 45      # older than this = strong staleness bump
 AGE_MILD_DAYS = 30        # 30-45 days = mild bump
@@ -73,9 +75,11 @@ _EVERGREEN_PATTERNS = (
     "future opportunities",
 )
 
-# Mirror of search.search_engine._parse_created: ISO with/without tz, ``Z``
-# suffix, or date-only. Inlined (not imported) to keep this module stdlib-only
-# and free of any search/scraper import chain.
+# Shares its parse loop with search.search_engine._parse_created via the
+# stdlib-only dateparse.parse_flex_iso helper (finding #9) -- both derive the
+# same tolerance (ISO with/without tz, ``Z`` suffix, or date-only). Importing
+# ``dateparse`` keeps this module free of any search/scraper import chain
+# (dateparse itself only imports ``datetime``).
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 
@@ -84,14 +88,7 @@ def _parse_created(value):
     Empty / unparseable -> ``_EPOCH`` (the caller treats that as 'no date')."""
     if not value or not isinstance(value, str):
         return _EPOCH
-    s = value.strip().replace("Z", "+00:00")
-    for candidate in (s, s[:19], s[:10]):
-        try:
-            dt = datetime.fromisoformat(candidate)
-            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return _EPOCH
+    return parse_flex_iso(value) or _EPOCH
 
 
 def _get(job, key):

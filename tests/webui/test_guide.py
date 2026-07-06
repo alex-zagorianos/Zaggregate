@@ -226,11 +226,9 @@ def test_restore_refused_while_exclusive_job_running(client, tmp_data):
         release.set()
 
     # Once the exclusive job releases, a restore is allowed again.
-    import time
-    for _ in range(50):
-        if runner.exclusive_active() is None:
-            break
-        time.sleep(0.05)
+    from tests.webui.conftest import wait_until
+    wait_until(lambda: runner.exclusive_active() is None,
+              message="exclusive slot never freed")
     assert runner.exclusive_active() is None
     zbytes = _make_zip({"preferences.md": b"NOW_ALLOWED"})
     resp = client.post(
