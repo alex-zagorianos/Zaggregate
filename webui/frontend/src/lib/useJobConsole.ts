@@ -19,7 +19,13 @@ import { isAtBottom } from "@/lib/sse-console";
  *   • the `error`-event reconciliation: the browser fires SSE `error` for BOTH a
  *     server-sent terminal error frame AND a transport drop, so we close and
  *     fetch GET /api/jobs/<id>; on `failed` we surface it, on `done|cancelled`
- *     we run the terminal handler, otherwise we leave the browser to reconnect.
+ *     we run the terminal handler, otherwise (job still running) we RESUBSCRIBE
+ *     ourselves — the close() we needed for the reconcile permanently disables
+ *     the browser's native auto-reconnect, so a mid-run drop would otherwise
+ *     detach the console forever and a finish AFTER the drop would never reach
+ *     onDone (S40 live-test fix 2: the Inbox never refetched when the
+ *     handoff-attached first run completed). The branching is the pure
+ *     `reconcileAction` below, pinned by useJobConsole.test.ts.
  *   • the stick-to-bottom scroll ref + `onScroll` handler
  *   • the best-effort `onCancel` POST
  *
@@ -68,6 +74,31 @@ export interface JobConsole {
   onCancel: () => void;
 }
 
+/** What the error-reconcile status fetch decided (pure — pinned by
+ * useJobConsole.test.ts). The SSE `error` event is ambiguous (terminal error
+ * frame vs transport drop), so the hook closes the stream and fetches the job
+ * status; this maps that status to the one correct next step:
+ *   failed         → surface the failure (onFailed with the snapshot)
+ *   done|cancelled → run the terminal handler (onDone, origin "reconcile")
+ *   running/other  → the drop was MID-RUN: resubscribe. close() disabled the
+ *                    browser's native retry, so the hook must reopen the stream
+ *                    itself or the console detaches forever and a finish after
+ *                    the drop never reaches onDone (S40 live-test fix 2). An
+ *                    unknown status is treated as still-running — keep
+ *                    listening rather than silently detach. */
+export type ReconcileAction =
+  | { kind: "failed" }
+  | { kind: "terminal"; status: "done" | "cancelled" }
+  | { kind: "resubscribe" };
+
+export function reconcileAction(status: JobStatus | string): ReconcileAction {
+  if (status === "failed") return { kind: "failed" };
+  if (status === "done" || status === "cancelled") {
+    return { kind: "terminal", status };
+  }
+  return { kind: "resubscribe" };
+}
+
 export function useJobConsole(
   jobId: string | null,
   handlers: JobConsoleHandlers,
@@ -84,6 +115,12 @@ export function useJobConsole(
   const hRef = React.useRef(handlers);
   hRef.current = handlers;
 
+  // Manual-resubscribe counter: bumping it re-runs the subscription effect for
+  // the SAME job. This replaces the browser's native SSE auto-reconnect, which
+  // the reconcile's es.close() permanently disables (close() sets readyState
+  // CLOSED for good) — see the "resubscribe" branch below.
+  const [attempt, setAttempt] = React.useState(0);
+
   React.useEffect(() => {
     if (!jobId) return;
     const h = hRef.current;
@@ -92,6 +129,7 @@ export function useJobConsole(
     h.onReset?.();
 
     const es = new EventSource(jobEventsUrl(jobId));
+    let retryTimer: number | undefined;
 
     es.addEventListener("line", (e) => {
       hRef.current.onLine((e as MessageEvent).data as string);
@@ -105,19 +143,34 @@ export function useJobConsole(
 
     es.addEventListener("error", () => {
       // Terminal error frame OR transport drop — reconcile via a status fetch.
+      // close() first so the browser doesn't retry underneath the fetch; the
+      // cost is that WE now own reconnection (the resubscribe branch).
       es.close();
       endpoints
         .jobStatus(jobId)
         .then((snap) => {
           hRef.current.onReconcileLines?.(snap.lines_tail);
-          if (snap.status === "failed") {
+          const action = reconcileAction(snap.status);
+          if (action.kind === "failed") {
             setStatus("failed");
             hRef.current.onFailed?.(snap);
-          } else if (snap.status === "done" || snap.status === "cancelled") {
-            setStatus(snap.status);
-            hRef.current.onDone(snap.status, "reconcile");
+          } else if (action.kind === "terminal") {
+            setStatus(action.status);
+            hRef.current.onDone(action.status, "reconcile");
+          } else {
+            // Still running — the drop was mid-run. The old code left this
+            // branch to "the browser's reconnect", but es.close() above had
+            // already disabled that, so the console silently detached forever
+            // and a finish AFTER the drop never reached onDone — the S40
+            // live-test bug: the handoff-attached first run completed but the
+            // Inbox never refetched. Resubscribe ourselves after the same
+            // backoff the stream advertises (retry: 2000); the effect re-run
+            // replays the buffered tail, so no lines are lost.
+            retryTimer = window.setTimeout(
+              () => setAttempt((a) => a + 1),
+              2000,
+            );
           }
-          // else: a reconnect the browser handles — leave the stream alone.
         })
         .catch(() => {
           setStatus("failed");
@@ -125,10 +178,14 @@ export function useJobConsole(
         });
     });
 
-    return () => es.close();
-    // Deps intentionally just [jobId] — handlers are read via hRef.current
-    // (see above) so this subscription doesn't re-fire every render.
-  }, [jobId]);
+    return () => {
+      es.close();
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+    // Deps: jobId (a new job = a fresh subscription) + attempt (our manual
+    // resubscribe after a mid-run drop). Handlers are read via hRef.current
+    // (see above) so the subscription doesn't re-fire every render.
+  }, [jobId, attempt]);
 
   const onScroll = React.useCallback(() => {
     const el = logRef.current;

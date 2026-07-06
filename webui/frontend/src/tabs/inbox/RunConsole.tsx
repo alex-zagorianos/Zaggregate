@@ -71,6 +71,13 @@ export function RunConsole({
         }
       },
       onFailed: (snap) => {
+        // Even a failed/lost run may have landed rows before it stopped (the
+        // ingest commits as it goes), and the lost-stream toast below literally
+        // says "Check the Inbox for results" — so make that check see fresh
+        // data: refresh the inbox queries here exactly like onDone does (S40
+        // live-test fix 2 — without this, a stream failure left the list stale
+        // until the user navigated away and back).
+        refreshInbox();
         onTerminal?.("failed");
         if (snap) {
           toast.error("Run failed", {
