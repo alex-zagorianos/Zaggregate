@@ -4,6 +4,8 @@ import {
   toParams,
   activeFilterCount,
   isDefaultFilters,
+  filtersToUrlParams,
+  filtersFromUrlParams,
   type InboxFilterState,
 } from "./inbox-filter-state";
 
@@ -119,5 +121,97 @@ describe("activeFilterCount / isDefaultFilters", () => {
     };
     expect(activeFilterCount(s)).toBe(9);
     expect(isDefaultFilters(s)).toBe(false);
+  });
+});
+
+describe("filtersToUrlParams / filtersFromUrlParams (URL sync)", () => {
+  it("the default state serializes to an empty query string (clean URLs)", () => {
+    const p = filtersToUrlParams(makeDefaultFilters());
+    expect(p.toString()).toBe("");
+  });
+
+  it("round-trips a fully-narrowed state through the URL and back", () => {
+    const s: InboxFilterState = {
+      minScore: 60,
+      sources: ["adzuna", "usajobs"],
+      size: "L",
+      locationMode: "Local only",
+      payFloor: true,
+      q: "controls engineer",
+      newOnly: true,
+      unscoredOnly: true,
+      hideStale: true,
+      order: "score",
+    };
+    const params = filtersToUrlParams(s);
+    const roundTripped = filtersFromUrlParams(params);
+    expect(roundTripped).toEqual(s);
+  });
+
+  it("round-trips each location mode (including the non-default 'All locations')", () => {
+    for (const locationMode of [
+      "Local + remote",
+      "Local only",
+      "All locations",
+    ] as const) {
+      const s = { ...makeDefaultFilters(), locationMode };
+      const params = filtersToUrlParams(s);
+      expect(filtersFromUrlParams(params).locationMode).toBe(locationMode);
+    }
+  });
+
+  it("round-trips a lone search query (trims whitespace, same as toParams)", () => {
+    const s = { ...makeDefaultFilters(), q: "  react developer  " };
+    const params = filtersToUrlParams(s);
+    expect(params.get("q")).toBe("react developer");
+    expect(filtersFromUrlParams(params).q).toBe("react developer");
+  });
+
+  it("omits every default-valued field from the URL", () => {
+    const s = makeDefaultFilters();
+    s.q = "python"; // the one narrower set
+    const params = filtersToUrlParams(s);
+    expect(Array.from(params.keys())).toEqual(["q"]);
+    expect(params.toString()).toBe("q=python");
+  });
+
+  it("garbage band/size/loc/sort values fall back to defaults, not a crash", () => {
+    const params = new URLSearchParams({
+      band: "not-a-number",
+      size: "GIANT",
+      loc: "mars",
+      sort: "chaos",
+    });
+    const state = filtersFromUrlParams(params);
+    expect(state).toEqual(makeDefaultFilters());
+  });
+
+  it("an out-of-range band (negative or >100) falls back to no floor", () => {
+    expect(
+      filtersFromUrlParams(new URLSearchParams({ band: "-5" })).minScore,
+    ).toBeNull();
+    expect(
+      filtersFromUrlParams(new URLSearchParams({ band: "500" })).minScore,
+    ).toBeNull();
+  });
+
+  it("unknown query keys are ignored (never throw)", () => {
+    const params = new URLSearchParams({
+      utm_source: "newsletter",
+      band: "70",
+    });
+    expect(() => filtersFromUrlParams(params)).not.toThrow();
+    expect(filtersFromUrlParams(params).minScore).toBe(70);
+  });
+
+  it("an empty query string yields the exact default filter state", () => {
+    expect(filtersFromUrlParams(new URLSearchParams())).toEqual(
+      makeDefaultFilters(),
+    );
+  });
+
+  it("blank sources entries (trailing/double commas) are dropped, not kept as empty strings", () => {
+    const params = new URLSearchParams({ sources: "adzuna,,usajobs," });
+    expect(filtersFromUrlParams(params).sources).toEqual(["adzuna", "usajobs"]);
   });
 });

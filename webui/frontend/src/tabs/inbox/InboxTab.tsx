@@ -30,8 +30,11 @@ import {
 import {
   makeDefaultFilters,
   toParams,
+  filtersToUrlParams,
+  filtersFromUrlParams,
   type InboxFilterState,
 } from "@/lib/inbox-filter-state";
+import { useUrlSyncedState } from "@/lib/useUrlSyncedState";
 import {
   DEFAULT_PAGE_SIZE,
   hasMore,
@@ -82,6 +85,16 @@ import { RunConsole } from "./RunConsole";
 export function InboxTab() {
   const [filters, setFilters] =
     React.useState<InboxFilterState>(makeDefaultFilters);
+  // URL-synced filter state (KNOWN_ISSUES: "Filter state not URL-synced — back/
+  // refresh resets the Inbox view"). URL wins on mount; every change thereafter is
+  // mirrored back with replaceState (debounced) so typing doesn't spam history and
+  // refresh/back/forward reload the same view.
+  useUrlSyncedState<InboxFilterState>({
+    state: filters,
+    setState: setFilters,
+    serialize: filtersToUrlParams,
+    deserialize: filtersFromUrlParams,
+  });
   const params = React.useMemo(() => toParams(filters), [filters]);
   const query = useInbox(params);
 

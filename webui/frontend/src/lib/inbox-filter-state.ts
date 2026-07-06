@@ -129,3 +129,94 @@ export function activeFilterCount(state: InboxFilterState): number {
 export function isDefaultFilters(state: InboxFilterState): boolean {
   return activeFilterCount(state) === 0 && state.order === "roundrobin";
 }
+
+// ── URL sync (KNOWN_ISSUES: "Filter state not URL-synced") ─────────────────────
+//
+// The browser's address bar, not the server, is the sync target here — these are
+// SHORT param names (q/band/loc/... ) distinct from `toParams`'s server-shaped
+// names (min_score/location_mode/...), kept deliberately terse for a readable URL
+// like /app/inbox?q=engineer&band=60&loc=local&sort=score. Default-valued fields
+// are omitted (clean URLs; `/app/inbox` when everything is default) and parsing is
+// FAIL-OPEN: any missing/garbage value falls back to that field's default rather
+// than throwing or partially applying — a hand-edited or stale URL can never crash
+// the tab or filter out the whole inbox.
+
+const LOCATION_URL: Record<LocationMode, string> = {
+  "Local + remote": "localremote",
+  "Local only": "local",
+  "All locations": "all",
+};
+const LOCATION_FROM_URL: Record<string, LocationMode> = Object.fromEntries(
+  Object.entries(LOCATION_URL).map(([mode, key]) => [
+    key,
+    mode as LocationMode,
+  ]),
+);
+
+const SIZE_URL_VALUES = new Set<string>(SIZE_OPTIONS);
+const ORDER_URL_VALUES = new Set(["roundrobin", "score"]);
+
+/** InboxFilterState -> URL query params. Every default-valued field is omitted. */
+export function filtersToUrlParams(state: InboxFilterState): URLSearchParams {
+  const p = new URLSearchParams();
+  if (state.minScore !== null && Number.isFinite(state.minScore)) {
+    p.set("band", String(state.minScore));
+  }
+  if (state.sources.length > 0) p.set("sources", state.sources.join(","));
+  if (state.size !== "All") p.set("size", state.size);
+  if (state.locationMode !== "Local + remote") {
+    p.set("loc", LOCATION_URL[state.locationMode]);
+  }
+  if (state.payFloor) p.set("payFloor", "1");
+  const q = state.q.trim();
+  if (q) p.set("q", q);
+  if (state.newOnly) p.set("new", "1");
+  if (state.unscoredOnly) p.set("unscored", "1");
+  if (state.hideStale) p.set("hideStale", "1");
+  if (state.order !== "roundrobin") p.set("sort", state.order);
+  return p;
+}
+
+/** URL query params -> InboxFilterState. Fail-open: unknown keys are ignored and
+ * any garbage/unparsable value for a known key silently falls back to that
+ * field's default (never throws, never yields a state that hides everything). */
+export function filtersFromUrlParams(
+  params: URLSearchParams,
+): InboxFilterState {
+  const state = makeDefaultFilters();
+
+  const band = params.get("band");
+  if (band !== null) {
+    const n = Number(band);
+    if (Number.isFinite(n) && n > 0 && n <= 100) state.minScore = n;
+  }
+
+  const sources = params.get("sources");
+  if (sources) {
+    state.sources = sources
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const size = params.get("size");
+  if (size && SIZE_URL_VALUES.has(size)) state.size = size as SizeOption;
+
+  const loc = params.get("loc");
+  if (loc && LOCATION_FROM_URL[loc])
+    state.locationMode = LOCATION_FROM_URL[loc];
+
+  if (params.get("payFloor") === "1") state.payFloor = true;
+
+  const q = params.get("q");
+  if (q) state.q = q;
+
+  if (params.get("new") === "1") state.newOnly = true;
+  if (params.get("unscored") === "1") state.unscoredOnly = true;
+  if (params.get("hideStale") === "1") state.hideStale = true;
+
+  const sort = params.get("sort");
+  if (sort && ORDER_URL_VALUES.has(sort)) state.order = sort as InboxOrder;
+
+  return state;
+}
