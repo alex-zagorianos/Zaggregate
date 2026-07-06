@@ -21,7 +21,8 @@ ALL_SOURCES = ["adzuna", "jsearch", "usajobs", "careeronestop", "careers",
                "themuse", "remoteok", "remotive", "jobicy", "himalayas", "hn",
                "arbeitnow", "jooble", "careerjet", "linkedin_guest", "serpapi",
                "socrata", "weworkremotely", "workingnomads",
-               "higheredjobs", "rnjobsite", "jobsacuk", "reap", "edjoin"]
+               "higheredjobs", "rnjobsite", "jobsacuk", "reap", "edjoin",
+               "nspe"]
 
 # Sources that must NOT run unless the user EXPLICITLY opts in (a truthy
 # cfg_sources[<name>]), i.e. the on-by-default fallback `cfg_sources.get(s, True)`

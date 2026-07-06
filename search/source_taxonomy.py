@@ -83,6 +83,14 @@ def edjoin_active(industry: Optional[str] = None) -> bool:
     return _is_education(active_industry(industry))
 
 
+def nspe_active(industry: Optional[str] = None) -> bool:
+    """True when NSPE should poll for this field (a mechanical/manufacturing/
+    industrial-engineering-family industry). Empty/eng-generic industry ->
+    False (inert). Best-effort."""
+    from search.nspe_client import _terms_for_industry
+    return bool(_terms_for_industry(active_industry(industry)))
+
+
 def sector_feed_applies(source: str, industry: Optional[str] = None,
                         location: Optional[str] = None) -> bool:
     """Does a sector `source` apply to this field/location? For sources with no
@@ -97,4 +105,6 @@ def sector_feed_applies(source: str, industry: Optional[str] = None,
         return reap_active(industry, location)
     if s == "edjoin":
         return edjoin_active(industry)
+    if s == "nspe":
+        return nspe_active(industry)
     return True

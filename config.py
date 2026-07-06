@@ -502,7 +502,8 @@ SEMANTIC_TITLE_CAP = 0.6
 DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
                  "remoteok", "remotive", "jobicy", "himalayas", "hn",
                  "weworkremotely", "workingnomads", "jooble", "careerjet",
-                 "higheredjobs", "rnjobsite", "reap", "edjoin", "jobsacuk"]
+                 "higheredjobs", "rnjobsite", "reap", "edjoin", "jobsacuk",
+                 "nspe"]
 # weworkremotely + workingnomads (2026-07-01): free/keyless remote boards, same
 # risk profile as remoteok/remotive — added to widen the daily net. They auto-gate
 # OFF for non-knowledge-work fields (TECH_SKEWED_SOURCES). jsearch stays excluded:
@@ -533,6 +534,14 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # adding them to the daily net is byte-identical for a non-education user. NEVER
 # Frontline/AppliTrack or NEOGOV — those are ToS-blocked; REAP/EdJoin are the
 # ToS-safe public applicant sites that route around them (plan §5 Education row).
+# nspe (2026-07-05): free/keyless SECTOR RSS feed — NSPE Career Center
+# (mechanical/manufacturing/industrial engineering; careers.nspe.org, Naylor/
+# Boxwood platform, no key). INDUSTRY-GATES to mech/mfg/industrial fields (same
+# gate_tokens pattern as higheredjobs/rnjobsite, sharing industry_profile's own
+# {"mechanical","manufacturing","industrial","cad","mechdesign"} rule) — inert
+# (fetch nothing) for any non-mech field, so adding it to the daily net is
+# byte-identical for a non-mech user. US-focused source (NSPE is a US
+# professional-engineering society).
 
 # Brave Search API — free tier: 2,000 req/month at api.search.brave.com
 # Sign up at https://api.search.brave.com/ and add to .env to enable company discovery.

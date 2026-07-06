@@ -25,16 +25,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # NO credentials are configured. Computed against cli.ALL_SOURCES with a
 # zero-key environment (see `zero_key_env` fixture below) as of this writing:
 # adzuna, jsearch, usajobs, careeronestop, jooble, careerjet, serpapi (7 of the
-# 24 registered sources). Everything else in ALL_SOURCES needs no key at all.
+# 25 registered sources). Everything else in ALL_SOURCES needs no key at all.
 #
-# THE FLOOR: 17 keyless-usable sources. This is the CURRENT count, hardcoded
-# deliberately — if a future change makes one of today's free sources require
-# a key (or removes a keyless source outright) without adding a replacement,
-# this number goes down and the test FAILS. That failure is the point: it
-# forces a conscious decision ("is this breadth loss acceptable?") instead of
-# a silent shrink. Raising the floor (adding a new keyless source) is
-# encouraged and just means bumping this constant up.
-MIN_KEYLESS_SOURCES = 17
+# THE FLOOR: 18 keyless-usable sources (raised from 17, 2026-07-05: added
+# "nspe" — NSPE Career Center RSS, mech/mfg/industrial sector feed, no key).
+# This is the CURRENT count, hardcoded deliberately — if a future change makes
+# one of today's free sources require a key (or removes a keyless source
+# outright) without adding a replacement, this number goes down and the test
+# FAILS. That failure is the point: it forces a conscious decision ("is this
+# breadth loss acceptable?") instead of a silent shrink. Raising the floor
+# (adding a new keyless source) is encouraged and just means bumping this
+# constant up.
+MIN_KEYLESS_SOURCES = 18
 
 # companies.json ships as the starter ATS-discovery seed registry (tracked in
 # git, CLAUDE.md: "companies.json IS tracked (ships as starter registry)").

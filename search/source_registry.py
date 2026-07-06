@@ -319,6 +319,19 @@ def _edjoin(ctx: BuildContext) -> JobAPIClient | None:
     return c
 
 
+def _nspe(ctx: BuildContext) -> JobAPIClient | None:
+    # Sector RSS: NSPE Career Center, mechanical/manufacturing/industrial
+    # engineering. Self-skips for a non-mech field via its industry gate.
+    from search.nspe_client import NspeClient
+    c = NspeClient(cache_enabled=ctx.cache_enabled,
+                   industry=ctx.industry_filter)
+    if not c.terms:
+        ctx.slog.info(f"  [nspe] Inert for industry "
+                      f"{ctx.industry_filter or '(none)'!r} — not a "
+                      f"mechanical/manufacturing/industrial field.")
+    return c
+
+
 def _socrata(ctx: BuildContext) -> JobAPIClient | None:
     from search.socrata_client import SocrataClient
     from config import SOCRATA_APP_TOKEN, SOCRATA_CITIES
@@ -360,4 +373,5 @@ SOURCE_BUILDERS: dict[str, SourceBuilder] = {
     "reap": _reap,
     "edjoin": _edjoin,
     "socrata": _socrata,
+    "nspe": _nspe,
 }
