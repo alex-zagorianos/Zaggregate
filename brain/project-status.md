@@ -6,9 +6,10 @@
 
 ## Session 38 (2026-07-05 evening) — desktop chrome + full queue buildout + tech-debt sweep ✅
 
-Alex testing live. Three directives, all landed same night (**15 commits, PUSH
-HELD**; suite **3,218 / 0 failed**, vitest 217, exe **91.8MB** was ~141MB,
-frozen smoke green). Canonical: `docs/handoffs/handoff_20260705_session38.md`.
+Alex testing live. Three directives, all landed same night (suite **3,218 / 0
+failed**, vitest 217, exe **91.8MB** was ~141MB, frozen smoke green;
+**★PUSHED origin/master `d6d385a..dce252a` — 37 commits, pre-push scan
+clean**). Canonical: `docs/handoffs/handoff_20260705_session38.md`.
 
 1. **Title bar/icon**: `webui/native_win.py` (ctypes, tk-free) — Z mark
    (`scripts/make_icon.py` → committed .ico + favicon.svg, app.spec icon=),

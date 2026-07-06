@@ -95,8 +95,9 @@ legacy/ is gitignored PERSONAL data — left alone).
    desktop window relaunched on it — Alex's dark theme + test project
    persisted through the swap.
 2. Wave-3 GOs: IMAP status detection + ATS autofill (briefs in brain/).
-3. Push (36 commits held) · LICENSE · free API keys (Jooble = 500-request
-   starter bucket, see S38 chat — worth claiming, not load-bearing).
+3. ~~Push~~ — **PUSHED `d6d385a..dce252a` (37 commits, scan clean)** ·
+   LICENSE · free API keys (Jooble = 500-request starter bucket, see S38
+   chat — worth claiming, not load-bearing).
 4. Pending decisions that survived the sweep: tk-tab retirement · exe
    default --desktop · Discover keep/remove.
 
