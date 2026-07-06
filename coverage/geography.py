@@ -61,12 +61,55 @@ def resolve_cbsa(city: str | None, state: str | None) -> str | None:
             return r["cbsa_code"]
     return None
 
+def _title_cities_and_states(title: str) -> tuple[list[str], list[str]]:
+    """Split a CBSA title ("minneapolis-st. paul-bloomington, mn-wi metro area")
+    into its hyphen-joined principal cities and its hyphen-joined state suffix.
+    Both lowercased/casefolded; caller decides matching rules."""
+    bare = title.split(",")[0].replace(" metro area", "").replace(" micro area", "").strip()
+    cities = [p.strip() for p in bare.split("-") if p.strip()]
+    states = [s.strip() for s in
+              title.split(",")[-1].replace(" metro area", "")
+                   .replace(" micro area", "").strip().split("-") if s.strip()]
+    return cities, states
+
+
+def _city_state_input_matches_title(a: str, title: str) -> bool:
+    """True when a "city, st" input (e.g. "minneapolis, mn") names one of the
+    title's hyphen-separated cities AND one of the title's hyphen-separated
+    states — the gap the plain substring test (`a in title or title in a`)
+    misses for hyphenated multi-city CBSA titles ("Minneapolis-St.
+    Paul-Bloomington, MN-WI Metro Area"): the bare city alone already
+    substring-matches such titles, but "Minneapolis, MN" does not, because the
+    title never contains the literal "minneapolis," (it's followed by a
+    hyphen, not a comma). Requiring BOTH the city and the state to match
+    (rather than either alone) prevents cross-matching a same-named city in a
+    different state's CBSA ("Bloomington, IN" must not match the MN-WI
+    metro; "Portland, ME" must not match the OR-WA metro)."""
+    if "," not in a:
+        return False
+    in_city = a.split(",")[0].strip()
+    in_state = a.split(",", 1)[1].strip()
+    if not in_city or not in_state:
+        return False
+    cities, states = _title_cities_and_states(title)
+    if in_city not in cities:
+        return False
+    # Accept either the 2-letter abbrev or the full state name in the input.
+    for st in states:
+        if in_state == st:
+            return True
+        full = _STATE_NAMES.get(st)
+        if full and in_state == full:
+            return True
+    return False
+
+
 def metro_variants(area: str) -> set[str]:
     out = {area.strip().casefold()}
     a = area.strip().casefold()
     for r in _rows():
         title = r["cbsa_title"].casefold()
-        if a in title or title in a:
+        if a in title or title in a or _city_state_input_matches_title(a, title):
             out.add(title)
             out.add(r["principal_city"].casefold())
             bare = title.split(",")[0].replace(" metro area", "").strip()

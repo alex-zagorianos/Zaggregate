@@ -1,24 +1,25 @@
 """jobs.ac.uk per-subject-area RSS — UK academic / research / health jobs.
 
-PROVISIONAL (endpoint unverified): the plan's documented feed pattern is
+RETIRED (2026-07): jobs.ac.uk has permanently removed its entire RSS
+infrastructure upstream. Verified July 2026 — ``/feeds``, ``/feeds/subject-
+areas``, and every ``/feeds/subject-areas/<slug>`` path (including all guesses
+in SUBJECT_AREAS below) return real 404s, and the live site exposes NO feed
+links anywhere in its markup; no query-param or path variant returns XML. This
+supersedes the earlier (2026-07-01) PROVISIONAL finding, which had assumed a
+slug-naming bug — it is not a slug bug, it is a permanent upstream retirement
+of the feed product. The client is disabled at the ``RETIRED`` flag below
+rather than deleted, so a future session can revive it cheaply (flip the flag)
+if jobs.ac.uk ever ships feeds again — UK coverage in the meantime continues
+via Adzuna's ``gb`` country routing (search/adzuna_client.py).
 
-    https://www.jobs.ac.uk/feeds/subject-areas/{area}
+``search()`` short-circuits on ``RETIRED`` before any network call or opt-in
+check, so this source never polls and never raises the recurring 404s a live
+poll would produce. The historical opt-in machinery (``opt_in_active`` /
+``self.active`` — "activate on a truthy config flag or a non-US project
+country") is left in place for the same revival-cheapness reason, but no
+longer controls whether a fetch happens.
 
-but on 2026-07-01 every automated probe of that path (and several slug guesses)
-returned 404/HTML, and jobs.ac.uk exposes no feed links to an unauthenticated
-fetch — so the exact live slug scheme could NOT be confirmed against a real feed.
-The parser below assumes a standard RSS 2.0 document (the shape jobs.ac.uk has
-historically served). Treat the SUBJECT_AREAS slugs and the URL template as
-UNVERIFIED until checked against a live response. See deviations.
-
-OPT-IN ONLY. This client is deliberately excluded from a default US run and from
-DAILY_SOURCES. It activates only when the project EXPLICITLY opts in — either a
-truthy config flag ``jobsacuk`` / ``sources.jobsacuk``, or a non-US project
-country (config.adzuna_country_for on the project's location/country resolves to
-something other than 'us', e.g. a UK-based seeker). A default Cincinnati run never
-polls it. This matches the plan: "never in a default US run".
-
-Standard RSS item tags assumed:
+Standard RSS item tags assumed (kept for a future revival):
     <title> <link> <description> <pubDate> <guid>
 """
 from typing import Optional
@@ -27,11 +28,20 @@ from models import JobResult
 from scrape.xml_safe import _safe_fromstring
 from search.single_feed_client import SingleFeedClient
 
+# Flip to False (and re-verify the feed URL/slugs live) to revive this source.
+RETIRED = True
+RETIRED_NOTE = (
+    "jobs.ac.uk retired its RSS feeds upstream (2026) — source disabled; "
+    "UK coverage continues via Adzuna gb"
+)
+
 JOBSACUK_FEED_URL = "https://www.jobs.ac.uk/feeds/subject-areas/{area}"
 JOBSACUK_RATE_LIMIT = 5
 
-# Subject-area slug -> label. UNVERIFIED against a live feed (see module docstring)
-# — derived from jobs.ac.uk's published subject-area names. UK academic/health.
+# Subject-area slug -> label, kept for a future revival (see RETIRED above) —
+# derived from jobs.ac.uk's published subject-area names. UK academic/health.
+# CONFIRMED 404 (2026-07): every one of these paths under
+# /feeds/subject-areas/ returns a real 404, not a slug-naming issue.
 SUBJECT_AREAS: dict[str, str] = {
     "nursing-and-midwifery-jobs": "Nursing and Midwifery",
     "health-and-medical-jobs": "Health and Medical",
@@ -144,6 +154,11 @@ class JobsAcUkClient(SingleFeedClient):
         salary_min: Optional[int] = None,
         page: int = 1,
     ) -> dict:
+        # RETIRED short-circuit FIRST: upstream deleted the feeds entirely, so
+        # this must never poll — regardless of self.active/opt-in state — and
+        # never raise a 404. See module docstring / RETIRED_NOTE.
+        if RETIRED:
+            return {"items": []}
         if page > 1 or not self.active or not self.areas:
             return {"items": []}
         items: list[dict] = []

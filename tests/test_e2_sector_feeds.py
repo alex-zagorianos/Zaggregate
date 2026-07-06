@@ -1,8 +1,10 @@
 """E2 sector-feed RSS clients: parse from captured fixtures + industry gating +
 self-skip. Fixtures are derived from REAL captured feed responses (HigherEdJobs
 catID=148, RNJobSite /rss/jobs & /rss/jobs/type/444, both fetched 2026-07-01);
-jobs.ac.uk uses a synthetic standard-RSS fixture (its live endpoint is
-PROVISIONAL/unverified — see the client docstring)."""
+jobs.ac.uk uses a synthetic standard-RSS fixture to pin its PARSER shape for a
+future revival — the client itself is RETIRED (2026-07, upstream permanently
+removed its RSS feeds; see search/jobsacuk_client.py's RETIRED flag/docstring)
+and search() never fetches regardless of opt-in state."""
 import pytest
 
 import industry_profile
@@ -297,6 +299,10 @@ def test_jobsacuk_inert_client_self_skips(tmp_path):
 
 
 def test_jobsacuk_parse_when_opted_in(tmp_path):
+    # parse_results() itself is untouched by RETIRED (only search() the
+    # network entry point is gated) — this pins the parser shape so a future
+    # revival (flip RETIRED to False + re-verify the live feed URL) has a
+    # known-good parse path to build on.
     from search.jobsacuk_client import _parse_feed
     c = _client(JobsAcUkClient, tmp_path, industry="nursing", opt_in=True)
     assert c.active is True
@@ -305,6 +311,65 @@ def test_jobsacuk_parse_when_opted_in(tmp_path):
     j = out[0]
     assert j.location == "United Kingdom"
     assert j.source_api == "jobsacuk"
+
+
+# ── RETIRED (2026-07): upstream permanently removed the RSS feeds ────────────
+
+def test_jobsacuk_retired_never_fetches_even_when_opted_in(tmp_path):
+    # The critical retirement guarantee: even with opt_in=True (the state a
+    # non-US project would reach via opt_in_active()), search() must return
+    # empty WITHOUT touching the network — no recurring 404s from a live poll.
+    from search import jobsacuk_client
+    assert jobsacuk_client.RETIRED is True
+    c = _client(JobsAcUkClient, tmp_path, industry="nursing", opt_in=True)
+    assert c.active is True          # opt-in machinery itself still works...
+    assert c.search("nurse", page=1) == {"items": []}   # ...but never fetches.
+
+
+def test_jobsacuk_retired_no_network_call_made(tmp_path, monkeypatch):
+    # Belt-and-suspenders: patch session.get to explode if search() ever
+    # reaches the HTTP layer while retired.
+    c = _client(JobsAcUkClient, tmp_path, industry="nursing", opt_in=True)
+
+    def _boom(*a, **kw):
+        raise AssertionError("jobsacuk.search() must not make an HTTP call "
+                              "while RETIRED")
+    monkeypatch.setattr(c.session, "get", _boom)
+    assert c.search("nurse", page=1) == {"items": []}
+
+
+def test_jobsacuk_retired_note_has_required_content():
+    from search.jobsacuk_client import RETIRED_NOTE
+    assert "retired" in RETIRED_NOTE.lower()
+    assert "jobs.ac.uk" in RETIRED_NOTE
+    assert "adzuna" in RETIRED_NOTE.lower()
+
+
+def test_jobsacuk_builder_surfaces_retirement_note_not_opt_in_message(monkeypatch, tmp_path):
+    # source_registry._jobsacuk logs ONE clear retirement note via the run's
+    # logger instead of the stale "opt-in" message (and instead of letting a
+    # live poll attempt raise recurring 404s).
+    import applog
+    from search.source_registry import BuildContext, SOURCE_BUILDERS
+    from search.jobsacuk_client import RETIRED_NOTE
+
+    logged: list[str] = []
+
+    class _FakeLogger:
+        def info(self, msg):
+            logged.append(msg)
+        def warning(self, msg):
+            logged.append(msg)
+
+    ctx = BuildContext(
+        cache_enabled=False,
+        location="Cincinnati, OH",
+        slog=_FakeLogger(),
+    )
+    client = SOURCE_BUILDERS["jobsacuk"](ctx)
+    assert client is not None
+    assert any(RETIRED_NOTE in msg for msg in logged)
+    assert not any("opt-in" in msg.lower() for msg in logged)
 
 
 # ── source_taxonomy shims ─────────────────────────────────────────────────────

@@ -516,12 +516,14 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # nothing) for any field that doesn't map (an eng/finance/trade/Alex project polls
 # neither), so adding them to the daily net is byte-identical for a non-education,
 # non-nursing user. jobsacuk (UK academic, S35) IS now here: it registers on every
-# run but self-gates via its OWN opt_in_active() (a truthy config flag OR a non-US
-# adzuna_country_for(location)) — a US project (including Alex's) never satisfies
-# either trigger, so `c.active` is False and search()/parse_results() make zero
-# network calls (see jobsacuk_client.search: `if ... not self.active: return
-# {"items": []}` before any request). Registering-but-inert is the SAME contract
-# reap/edjoin/higheredjobs/rnjobsite already use above.
+# run but makes ZERO network calls, unconditionally — RETIRED as of 2026-07
+# (jobs.ac.uk permanently removed its RSS feed infrastructure upstream; see
+# search/jobsacuk_client.py's RETIRED flag/docstring for evidence + date). The
+# old opt_in_active() gate (a truthy config flag OR a non-US
+# adzuna_country_for(location)) is still evaluated for `c.active` but no
+# longer controls fetching — search() short-circuits on RETIRED first. UK
+# coverage continues via Adzuna's gb country routing. Registering-but-inert is
+# the SAME contract reap/edjoin/higheredjobs/rnjobsite already use above.
 # reap + edjoin (2026-07-02, S32b): free/keyless K-12 EDUCATION sources — REAP
 # (per-state public teacher portals; light HTML, robots.txt honored live) and
 # EdJoin (public /Home/LoadJobs JSON, California-centric). Both INDUSTRY-GATE to

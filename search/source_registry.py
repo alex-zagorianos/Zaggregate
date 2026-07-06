@@ -265,9 +265,13 @@ def _rnjobsite(ctx: BuildContext) -> JobAPIClient | None:
 
 
 def _jobsacuk(ctx: BuildContext) -> JobAPIClient | None:
-    # Sector RSS: UK academic/health. OPT-IN only (config flag or non-US
-    # country); inert in a default US run. PROVISIONAL endpoint.
-    from search.jobsacuk_client import JobsAcUkClient
+    # Sector RSS: UK academic/health. RETIRED (2026-07) — jobs.ac.uk removed
+    # its entire RSS feed infrastructure upstream (confirmed 404s on every
+    # feed path, no feed links anywhere on the live site). The client always
+    # registers (cheap, zero-network) but never polls; surface ONE clear
+    # retirement note per run instead of the old opt-in message (or, absent
+    # this guard, recurring 404 errors from a live poll attempt).
+    from search.jobsacuk_client import JobsAcUkClient, RETIRED, RETIRED_NOTE
     # Pass the run's location through so opt_in_active's own
     # non-US-country check (config.adzuna_country_for) can see it —
     # build_clients doesn't carry a full cfg dict, so a minimal one
@@ -275,7 +279,9 @@ def _jobsacuk(ctx: BuildContext) -> JobAPIClient | None:
     c = JobsAcUkClient(cache_enabled=ctx.cache_enabled,
                        industry=ctx.industry_filter,
                        cfg={"location": ctx.location})
-    if not c.active:
+    if RETIRED:
+        ctx.slog.info(f"  [jobsacuk] {RETIRED_NOTE}.")
+    elif not c.active:
         ctx.slog.info("  [jobsacuk] Inert — UK academic feeds are opt-in "
                       "(set 'jobsacuk' in config or a non-US country).")
     return c

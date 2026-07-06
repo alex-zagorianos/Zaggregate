@@ -28,12 +28,20 @@ mechanism, not the fetch pipeline.
   the extension until the registry buildout session happens (planned; Alex:
   "wait on blue collar, keep building the seeded company list in a different
   session").
-- **jobs.ac.uk PROVISIONAL endpoint 404s** (caught by the S35b live UK run):
-  `feeds/subject-areas/{area}` returned 404 for at least one slug — the feed
-  URL pattern needs re-deriving from the live site. The failure is properly
-  SURFACED now (last_run.json errors[]), never cached-empty. Also by design: a
-  UK-activated run with a non-academic field polls the broad academic net
-  (inclusion philosophy; the scorer filters).
+- **jobs.ac.uk RETIRED upstream (2026-07)**: superseded the earlier PROVISIONAL
+  404 finding (S35b) — verified July 2026 that jobs.ac.uk deleted its ENTIRE
+  RSS feed infrastructure, not one bad slug. `/feeds`, `/feeds/subject-areas`,
+  and every `/feeds/subject-areas/<slug>` path return real 404s; the live site
+  has no feed links anywhere; no query-param or path variant returns XML. This
+  is permanent upstream retirement. `search/jobsacuk_client.py`'s `RETIRED`
+  flag now hard-gates `search()` before any network call, so the source
+  registers (cheap, zero-network) but never polls and never raises a 404 —
+  `_jobsacuk`'s builder (search/source_registry.py) logs ONE clear note per
+  run ("jobs.ac.uk retired its RSS feeds upstream (2026) — source disabled; UK
+  coverage continues via Adzuna gb") instead. The module + opt-in machinery
+  are kept (not deleted) so a future session can revive it cheaply (flip
+  `RETIRED = False` + re-verify the feed URL) if jobs.ac.uk ever ships feeds
+  again. UK coverage continues via Adzuna's `gb` country routing.
 - **Sector-feed breadth (#16/#17)**: discovery's LLM-enumeration angle biases
   toward ATS-having employers; sector RSS feeds only cover education. Both are
   new-source builds, not bugs.
@@ -60,7 +68,7 @@ mechanism, not the fetch pipeline.
   paste reply -> lane-grouped cards -> additive keyword apply). Web-only, no
   tk twin, no DB schema. Removal = delete `recommend.py`,
   `webui/api/recommend.py`, `src/tabs/discover/` + the three marked one-line
-  registrations (api/__init__.py, registry.ts, TabRoutes.tsx).
+  registrations (api/**init**.py, registry.ts, TabRoutes.tsx).
 - **Recall (S36c, 2026-07-04)** — full program in
   `brain/findings-2026-07-04-search-optimization.md`:
   - **Free keys unclaimed** (CareerOneStop, Brave Search, Jooble, Careerjet,
