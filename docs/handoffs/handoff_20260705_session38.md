@@ -89,11 +89,13 @@ legacy/ is gitignored PERSONAL data — left alone).
 
 ## Needs Alex
 
-1. **Swap the running window**: production\ still runs the pre-chrome-queue
-   build from 21:59; dist\ has the final 91.8MB build (smoke-green). Say the
-   word (or close the window) → mirror + relaunch.
+1. ~~Swap the running window~~ — **DONE at finalization**: production\
+   mirrored to the final 91.8MB build (byte-verified; the one robocopy
+   "FAILED" DLL is hash-identical, dist-side lock is cosmetic) and the
+   desktop window relaunched on it — Alex's dark theme + test project
+   persisted through the swap.
 2. Wave-3 GOs: IMAP status detection + ATS autofill (briefs in brain/).
-3. Push (~38 commits held) · LICENSE · free API keys (Jooble = 500-request
+3. Push (36 commits held) · LICENSE · free API keys (Jooble = 500-request
    starter bucket, see S38 chat — worth claiming, not load-bearing).
 4. Pending decisions that survived the sweep: tk-tab retirement · exe
    default --desktop · Discover keep/remove.
