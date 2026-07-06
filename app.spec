@@ -121,7 +121,11 @@ for _opt in ('scrapling', 'playwright', 'patchright', 'browserforge'):
         hiddenimports += collect_submodules(_opt)
         datas += collect_data_files(_opt)
     except Exception:
-        pass
+        # Not installed on this build box -> the stealth-fetch seam ships as
+        # its graceful no-op. Say so instead of silently shrinking the build
+        # (S38 debt sweep #24: the old bare pass hid which flavor you built).
+        print(f"app.spec: optional package '{_opt}' not present - "
+              f"stealth fetch will be unavailable in this build")
 
 # Desktop mode (--desktop): pywebview native window over Edge WebView2. The
 # Windows backend rides pythonnet + clr_loader (Python.Runtime.dll ships as
@@ -146,7 +150,17 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # S38 debt sweep #23: ~30MB of numpy/tokenizers/hf_xet/safetensors was
+    # riding in on match/semantic.py's literal `import numpy` even though
+    # model2vec itself never bundles - so the semantic-ranking feature could
+    # never work in the exe anyway. Excluding the chain makes semantic.py's
+    # gated import degrade to available()==False, byte-identical to the
+    # shipped behavior. coverage/estimators.py's numpy path is unreachable
+    # too (gated behind statsmodels, also excluded/never bundled). If
+    # semantic ranking should ever WORK frozen, remove these and add
+    # model2vec + a bundled model dir instead.
+    excludes=['numpy', 'tokenizers', 'hf_xet', 'safetensors',
+              'huggingface_hub', 'model2vec', 'statsmodels'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

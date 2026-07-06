@@ -1,12 +1,15 @@
 python-dotenv==1.1.0
 beautifulsoup4==4.12.3
 requests==2.32.3
+# TLS trust store - requests pulls it transitively, but search/reap_client.py
+# imports it DIRECTLY (lazy), so declare it explicitly (S38 debt sweep #26).
+certifi>=2025.1.31
 jinja2==3.1.6
 anthropic==0.52.0
 python-docx==1.1.2
 flask==3.1.1
 pytest==8.3.5
-pyinstaller==6.11.1
+pyinstaller==6.21.0
 # coverage/ entity-resolution + clustering (light, required; C-extensions -> app.spec hiddenimports)
 cleanco==2.3
 rapidfuzz==3.14.5
