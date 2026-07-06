@@ -94,13 +94,40 @@ def test_project_switch_loopback_origin_allowed(client, tmp_projects):
     assert workspace.active_slug() == b
 
 
-def test_project_switch_under_pin_echoes_written_slug(client, tmp_projects):
-    """While a pinned engine run holds project A, a switch to B must NOT report a
-    silent no-op: active_slug() returns the pinned A, but the write to B DID take
-    effect. The route echoes the persisted slug (B) + a ``pending_pinned`` note so
-    the UI can explain the switch goes live once the run finishes. (finding #6)"""
+def test_project_switch_moves_idle_launch_pin(client, tmp_projects):
+    """THE dead-switcher regression (S39): ``py -m webui`` pins the launch project
+    for the whole process, so with no engine run in flight a switch used to persist
+    to the registry but never go LIVE — active_slug() kept returning the pin and
+    the UI snapped back forever. An idle pin (no exclusive engine job) must MOVE
+    to the switched slug so the user's own switch takes effect immediately."""
     a, b = tmp_projects
-    workspace.pin_active(a)          # simulate an in-flight run pinned to A
+    workspace.pin_active(a)          # simulate webui/__main__'s launch pin
+    try:
+        resp = client.post("/api/project", json={"slug": b},
+                           headers={"Origin": "http://127.0.0.1:5002"})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        # The switch is LIVE, not pending: no pending_pinned in the response…
+        assert body == {"ok": True, "active": b}
+        # …the pin followed the switch, and live resolution returns B now.
+        assert workspace.pinned() == b
+        assert workspace.active_slug() == b
+        assert workspace.registry_active_slug() == b
+    finally:
+        workspace.unpin_active()
+
+
+def test_project_switch_under_running_engine_is_pending(client, tmp_projects,
+                                                        monkeypatch):
+    """While an EXCLUSIVE engine run holds project A pinned, a switch to B must NOT
+    repoint the run (S27 corruption class) and must not report a silent no-op:
+    the write to B takes effect in the registry, the pin stays on A, and the route
+    echoes the persisted slug (B) + a ``pending_pinned`` note so the UI can explain
+    the switch goes live once the run finishes. (finding #6)"""
+    from webui.jobs import runner
+    a, b = tmp_projects
+    workspace.pin_active(a)          # the in-flight run's pin
+    monkeypatch.setattr(runner, "exclusive_active", lambda: "job-in-flight")
     try:
         resp = client.post("/api/project", json={"slug": b},
                            headers={"Origin": "http://127.0.0.1:5002"})
@@ -111,9 +138,10 @@ def test_project_switch_under_pin_echoes_written_slug(client, tmp_projects):
         assert body["pending_pinned"] == a
         # The registry really was switched (the write was not a no-op)…
         assert workspace.registry_active_slug() == b
-        # …even though live resolution still returns the pin until the run ends.
+        # …but the run's pin was NOT moved: live resolution stays on A.
+        assert workspace.pinned() == a
         assert workspace.active_slug() == a
     finally:
         workspace.unpin_active()
-    # Once the pin releases, resolution catches up to the persisted switch.
+    # Once the run releases the pin, resolution catches up to the switch.
     assert workspace.active_slug() == b

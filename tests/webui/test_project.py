@@ -114,13 +114,36 @@ def test_create_project_foreign_origin_403(client, tmp_projects):
     assert "should-not-exist" not in {p["slug"] for p in workspace.list_projects()}
 
 
-def test_create_project_switch_under_pin_is_pending(client, tmp_projects):
-    """Creating+switching while a run pins a DIFFERENT project: the switch is
-    persisted (registry moves) but live resolution stays on the pin until the run
-    releases it, surfaced via ``pending_pinned`` (mirrors the switch route's
-    exclusive-run guard — the switch is never blocked, only pending). (finding #6)"""
+def test_create_project_switch_moves_idle_launch_pin(client, tmp_projects):
+    """Create+switch under an IDLE process pin (the webui launch pin, no engine
+    run in flight): the pin must move to the new project so the switch goes live
+    immediately — the S39 dead-switcher regression, create-route flavor."""
     a = tmp_projects
-    workspace.pin_active(a)  # simulate an in-flight run pinned to A
+    workspace.pin_active(a)  # simulate webui/__main__'s launch pin
+    try:
+        resp = _post(client, {"name": "Nights Only", "switch": True})
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["slug"] == "nights-only"
+        assert body["active"] == "nights-only"
+        assert "pending_pinned" not in body
+        assert workspace.pinned() == "nights-only"
+        assert workspace.active_slug() == "nights-only"
+    finally:
+        workspace.unpin_active()
+
+
+def test_create_project_switch_under_running_engine_is_pending(
+        client, tmp_projects, monkeypatch):
+    """Creating+switching while an exclusive engine run pins a DIFFERENT project:
+    the switch is persisted (registry moves) but live resolution stays on the pin
+    until the run releases it, surfaced via ``pending_pinned`` (mirrors the switch
+    route's exclusive-run guard — the switch is never blocked, only pending).
+    (finding #6)"""
+    from webui.jobs import runner
+    a = tmp_projects
+    workspace.pin_active(a)  # the in-flight run's pin
+    monkeypatch.setattr(runner, "exclusive_active", lambda: "job-in-flight")
     try:
         resp = _post(client, {"name": "Nights Only", "switch": True})
         assert resp.status_code == 200
@@ -132,6 +155,7 @@ def test_create_project_switch_under_pin_is_pending(client, tmp_projects):
         assert workspace.registry_active_slug() == "nights-only"
         # …but live resolution still returns the pin until the run ends.
         assert workspace.active_slug() == a
+        assert workspace.pinned() == a
     finally:
         workspace.unpin_active()
     assert workspace.active_slug() == "nights-only"

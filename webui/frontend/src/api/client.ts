@@ -143,6 +143,15 @@ export interface ProjectListResponse extends ApiEnvelope {
   projects: ProjectSummary[];
 }
 
+/** POST /api/project (switch). Echoes the PERSISTED slug; `pending_pinned` is set
+ * only when an in-flight run holds a DIFFERENT project — the switch is persisted
+ * but goes live once the run releases the pin (an idle process pin is moved
+ * server-side, so the switch is normally immediate). */
+export interface SwitchProjectResponse extends ApiEnvelope {
+  active: string;
+  pending_pinned?: string;
+}
+
 /** POST /api/project/create. Echoes the new slug + the full project list, and
  * (when switch:true) the now-active slug. `pending_pinned` is set only when an
  * in-flight run holds a DIFFERENT project — the switch is persisted but goes live
@@ -386,7 +395,7 @@ export const endpoints = {
   status: () => api.get<StatusResponse>("/status"),
   projects: () => api.get<ProjectListResponse>("/project"),
   switchProject: (slug: string) =>
-    api.post<ProjectListResponse>("/project", { json: { slug } }),
+    api.post<SwitchProjectResponse>("/project", { json: { slug } }),
   // Create a new campaign (web twin of the tk New Project / New Person flow).
   // Distinct path from the switch POST (same /project rule can only bind one POST
   // view); duplicate slug -> 409, empty name -> 400, both thrown as ApiError.

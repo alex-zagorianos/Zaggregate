@@ -10,9 +10,32 @@ from __future__ import annotations
 from flask import Blueprint, request, jsonify
 
 import workspace
+from ..jobs import runner
 from ..security import require_local_origin
 
 system_bp = Blueprint("webui_system", __name__)
+
+
+def _go_live_or_pending(slug: str, body: dict) -> None:
+    """Make a just-persisted switch to ``slug`` LIVE for this process, or mark it
+    pending.
+
+    ``py -m webui`` pins the launch project once at startup so a registry write
+    from ANOTHER process can't repoint this server's writes mid-session. But a
+    switch through THIS process's own routes is the user's explicit intent — with
+    no exclusive engine job in flight the pin is idle, so MOVE it to the new slug
+    (leaving it would make the in-app switcher a permanent no-op: persisted but
+    never live, the S39 dead-switcher bug). Only a pin owned by a running engine
+    job is left alone (repointing it mid-run is the S27 corruption class); that
+    one case is surfaced as ``pending_pinned`` — the switch goes live when the
+    run's ``finally`` unpins."""
+    pin = workspace.pinned()
+    if pin is None or pin == slug:
+        return
+    if runner.exclusive_active() is None:
+        workspace.pin_active(slug)
+    else:
+        body["pending_pinned"] = pin
 
 
 def _theme() -> str:
@@ -77,12 +100,7 @@ def project_switch():
     # report the switch as a silent no-op even though projects.json now holds the
     # new slug. The write is what took effect; report it. (scenario finding #6)
     body = {"ok": True, "active": slug}
-    pin = workspace.pinned()
-    if pin is not None and pin != slug:
-        # A run is holding a different project pinned; the switch is persisted but
-        # won't be LIVE (DB resolution stays on the pin) until the run finishes.
-        # Surface it so the UI can explain the delay instead of looking broken.
-        body["pending_pinned"] = pin
+    _go_live_or_pending(slug, body)
     return jsonify(body)
 
 
@@ -141,7 +159,5 @@ def project_create():
     if want_switch:
         workspace.set_active(slug)
         body["active"] = slug
-        pin = workspace.pinned()
-        if pin is not None and pin != slug:
-            body["pending_pinned"] = pin
+        _go_live_or_pending(slug, body)
     return jsonify(body)

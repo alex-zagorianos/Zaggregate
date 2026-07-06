@@ -4,6 +4,33 @@
 
 ---
 
+## Session 39 (2026-07-06 overnight) — dead project switcher fixed + Alex's 4-lane session ✅
+
+Suite **3,221 / 0**, vitest 217, bundle rebuilt. Committed locally, PUSH HELD.
+Canonical: `docs/handoffs/handoff_20260706_session39.md`.
+
+1. **Switcher bug (Alex report)**: the webui launch pin ate every in-app
+   project switch — persisted to registry, never went live, UI snapped back
+   mute. Fix: `webui/api/system._go_live_or_pending` MOVES an idle pin (no
+   exclusive engine job) on switch/create+switch; `pending_pinned` only for a
+   real in-flight run. Frontend: `SwitchProjectResponse` type + toasts on
+   pending/error. Tests split idle-pin vs running-engine (TDD, red→green).
+2. **Ops**: dev receiver AND the S38 production JobProgram.exe (--desktop,
+   EMPTY `production\JobProgram\data` root) were BOTH bound to 5002
+   (SO_REUSEADDR) — the exe answered `project:null` intermittently. Both
+   killed; one clean dev receiver runs the fix (live-verified round-trip).
+   Production exe still has OLD code — repackage before next swap. New debt:
+   port-conflict guard; run-finally unpin destroys the launch pin
+   (save/restore semantics).
+3. **Alex's session**: active=applied-ai; daily lanes EXCLUSIVELY applied-ai /
+   software / controls / mechdesign (controls-cincinnati OFF); per-project
+   schtasks 07:30–07:45; legacy bare `\JobSearchDaily` deleted (restore cmd in
+   handoff). No data wiped.
+
+Needs Alex: production repackage GO · wave-3 GOs (IMAP status, ATS autofill).
+
+---
+
 ## Session 38 (2026-07-05 evening) — desktop chrome + full queue buildout + tech-debt sweep ✅
 
 Alex testing live. Three directives, all landed same night (suite **3,218 / 0

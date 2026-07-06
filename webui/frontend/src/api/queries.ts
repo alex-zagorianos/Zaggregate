@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   endpoints,
   importInbox,
@@ -87,9 +88,21 @@ export function useSwitchProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (slug: string) => endpoints.switchProject(slug),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res.pending_pinned) {
+        // A run holds another project pinned; the switch is persisted and goes
+        // live when the run finishes. Explain rather than look broken (the list
+        // will still show the pinned project as active until then).
+        toast.info("Switch saved", {
+          description: "It'll take effect once the current run finishes.",
+        });
+      }
       // A project switch changes basically everything the engine reads.
       qc.invalidateQueries();
+    },
+    onError: () => {
+      // A silently-dead switcher was the S39 bug shape — never fail mute again.
+      toast.error("Couldn't switch project.");
     },
   });
 }

@@ -26,6 +26,9 @@ Sequence (matches the tk/daily entry points):
 2. Pin the active project ONCE for this process (the receiver OWNS the process
    here, like the standalone ``browser_receiver.__main__`` / mcp_server pattern —
    a project switch in another process must not repoint this receiver's writes).
+   A switch through THIS process's own POST /api/project MOVES the pin when no
+   engine run is in flight (``webui.api.system._go_live_or_pending``) — otherwise
+   the in-app switcher would be a permanent no-op against the launch pin.
 3. Present ``http://127.0.0.1:<PORT_RECEIVER>/app`` per mode (browser open after
    the socket accepts, or the native window whose first load retries internally).
 4. Serve until the browser-mode server is interrupted / the desktop window closes.
