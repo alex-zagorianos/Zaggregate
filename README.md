@@ -83,7 +83,7 @@ local-first by design, and that turns two industry-wide problems into features:
 
 ## Quick start (the packaged app)
 
-Download and unzip the release, then:
+Download and unzip [the latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest), then:
 
 1. Open the `JobProgram` folder and run **`JobProgram.exe`**.
 2. A short **Setup wizard** asks what jobs you want, where, your salary, and your
