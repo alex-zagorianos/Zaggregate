@@ -60,6 +60,38 @@ def test_failure_capture():
     assert snap["lines_tail"] == ["before boom"]
 
 
+def test_finished_job_releases_its_cached_db_connection(tmp_db):
+    # An engine job opens a per-thread WAL connection via tracker.db.get_conn();
+    # before the S40 fix that handle was reclaimed only lazily on the NEXT
+    # new-thread cache miss, so tracker.db could stay locked ([WinError 32])
+    # through a project-folder delete after a first_run job. JobRunner._run's
+    # finally now closes the CURRENT thread's connection, so the registry holds
+    # no live connection for the (dead) job thread WITHOUT a fresh-thread sweep.
+    from tracker import db
+
+    runner = JobRunner()
+    captured = {}
+
+    def fn(h):
+        # Touch get_conn on the job thread exactly like init_db/inbox_add_many do.
+        db.get_conn().execute("PRAGMA user_version")
+        captured["ident"] = threading.get_ident()
+        return "ok"
+
+    jid = runner.start("first_run", "k1", fn, exclusive=True)
+    _wait_status(runner, jid, "done")
+    # Give the daemon thread a beat to run its finally after finish() flips status.
+    wait_until(
+        lambda: True if captured.get("ident") not in db._registry else None,
+        timeout=3.0,
+        message="job thread's cached connection was never released from _registry")
+
+    job_ident = captured["ident"]
+    # The finally released it WITHOUT needing a new-thread get_conn() sweep: the
+    # registry entry for the (now-dead) job thread ident is simply gone.
+    assert job_ident not in db._registry
+
+
 def test_single_flight_conflict_same_kind_key():
     runner = JobRunner()
     gate = threading.Event()

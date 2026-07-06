@@ -519,12 +519,34 @@ def split_full_reply(text: str) -> tuple[str, str]:
     return config_text, seed_text
 
 
+def _span_matches(candidate: str, obj: dict) -> bool:
+    """True when the raw ``candidate`` substring parses to ``obj``, TOLERANTLY.
+
+    ``_best_config_object`` may return an object that came from its trailing-comma
+    /comment repair fallback (``claude_bridge._extract_json``), so the object is
+    the REPAIRED dict while the source substring still carries the trailing comma.
+    A strict ``json.loads(candidate) == obj`` therefore never matches on that path
+    (JSONDecodeError on the comma) and the span can't be pinned — which used to let
+    a ``preferences_md`` value like ``"portfolio | https://…"`` leak into seed_text.
+    We mirror the same repair here (strip trailing commas, then retry) so the span
+    is located on the tolerant path too, keeping the pipe-inside-JSON guard intact."""
+    from claude_bridge import _strip_trailing_commas
+    for cand in (candidate, _strip_trailing_commas(candidate)):
+        try:
+            if json.loads(cand) == obj:
+                return True
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return False
+
+
 def _locate_object_span(text: str, obj: dict) -> tuple[int, int] | None:
     """Return the ``[start, end)`` char span of the brace-balanced JSON object in
     ``text`` that parses to ``obj`` (the config block), or None if it can't be
     pinned. Used by ``split_full_reply`` to exclude the config block's interior
     (which may contain pipe characters) from seed-line scanning. Mirrors
-    ``_best_config_object``'s brace-walk so the SAME object is located."""
+    ``_best_config_object``'s brace-walk AND its trailing-comma tolerance (via
+    ``_span_matches``) so the SAME object is located even on the repair fallback."""
     depth, start = 0, None
     for i, ch in enumerate(text):
         if ch == "{":
@@ -534,11 +556,8 @@ def _locate_object_span(text: str, obj: dict) -> tuple[int, int] | None:
         elif ch == "}" and depth > 0:
             depth -= 1
             if depth == 0 and start is not None:
-                try:
-                    if json.loads(text[start:i + 1]) == obj:
-                        return (start, i + 1)
-                except (json.JSONDecodeError, ValueError):
-                    pass
+                if _span_matches(text[start:i + 1], obj):
+                    return (start, i + 1)
                 start = None
     return None
 

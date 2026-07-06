@@ -356,6 +356,28 @@ def test_split_full_reply_pipe_inside_json_is_not_a_seed():
     assert seed_text == ""          # the internal pipe is not a seed
 
 
+def test_split_full_reply_trailing_comma_json_pipe_url_not_a_seed():
+    # Non-strict JSON (a trailing comma) forces _best_config_object onto its
+    # TOLERANT repair fallback, which returns the REPAIRED dict. If the span
+    # locator only compared strictly it could never pin the (still-trailing-comma)
+    # source substring, so a `| https://…` inside preferences_md would leak into
+    # seed_text. _span_matches mirrors the same repair, so the span is pinned and
+    # the internal pipe-URL is correctly excluded. (Regression: S40 seed-leak span.)
+    cfg = dict(_FULL_CONFIG,
+               preferences_md="See portfolio | https://example.com/me here.")
+    # Hand-build the ```json block WITH a trailing comma before the closing brace
+    # (json.dumps never emits one), so the strict brace-walk fails and the tolerant
+    # fallback fires — the exact condition the fix targets.
+    body = json.dumps(cfg)
+    assert body.endswith("}")
+    trailing_comma_body = body[:-1].rstrip() + ",\n}"
+    reply = "```json\n" + trailing_comma_body + "\n```\n"
+    cfg_text, seed_text = ai_setup.split_full_reply(reply)
+    # Config still parses (tolerant path), and the pipe-URL never becomes a seed.
+    assert ai_setup.parse_setup_block(cfg_text)["answers"]["industry"] == "nursing"
+    assert seed_text == ""
+
+
 def test_split_full_reply_prefers_fence_over_stray_pipe_lines():
     # When a ```seeds fence exists, ONLY its body becomes seeds — a stray pipe-line
     # in the surrounding prose is ignored (the fence is authoritative).

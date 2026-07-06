@@ -141,6 +141,69 @@ def test_harvest_accepts_localhost_origin(client):
     assert resp.status_code == 400
 
 
+def _harvest_hermetic(monkeypatch, tmp_path):
+    """Stub the side-effecting bits of harvest() (report files, browser tab,
+    capture counter, output dir) so a full /harvest POST runs without touching the
+    real workspace, and return nothing — the caller drives the request."""
+    from scrape import browser_receiver as br
+    monkeypatch.setattr(br.workspace, "output_dir", lambda slug=None: tmp_path)
+    monkeypatch.setattr(br, "generate_html_report", lambda *a, **k: None)
+    monkeypatch.setattr(br, "generate_csv_report", lambda *a, **k: None)
+    monkeypatch.setattr(br.webbrowser, "open", lambda *a, **k: None)
+    monkeypatch.setattr(br, "_bump_capture", lambda *a, **k: None)
+
+
+def test_harvest_inbox_failure_surfaces_error_not_silent_drop(
+        client, monkeypatch, tmp_path):
+    """A scoring/DB failure during inbox routing must NOT report a clean
+    inboxed:0 (indistinguishable from success). The capture succeeded (report
+    saved) so it stays HTTP 200, but the response carries an additive
+    ``inbox_error`` field so the extension can tell the user their hand-picked
+    jobs were NOT triaged — the project's 'surface, don't silently drop' rule."""
+    _harvest_hermetic(monkeypatch, tmp_path)
+    # Force the inbox-routing block to blow up exactly where score_jobs runs.
+    import match.scorer as scorer
+    def _boom(*a, **k):
+        raise RuntimeError("scorer exploded")
+    monkeypatch.setattr(scorer, "score_jobs", _boom)
+
+    resp = client.post(
+        "/harvest",
+        json={"jobs": [{"title": "Nurse", "url": "https://e.com/1"}],
+              "open_report": False},
+        headers={"Origin": "chrome-extension://abcdefghijklmnop"},
+    )
+    assert resp.status_code == 200          # capture itself succeeded
+    data = resp.get_json()
+    assert data["received"] == 1
+    assert data["inboxed"] == 0
+    # The failure is surfaced, not hidden — an additive field the extension reads.
+    assert "inbox_error" in data
+    assert "scorer exploded" in data["inbox_error"]
+
+
+def test_harvest_success_has_no_inbox_error_field(client, monkeypatch, tmp_path):
+    """The happy path is byte-shape identical to before the S40 fix: no
+    ``inbox_error`` key (additive-only means old extension builds are unaffected)."""
+    _harvest_hermetic(monkeypatch, tmp_path)
+    import match.scorer as scorer
+    from tracker import db as trackerdb
+    monkeypatch.setattr(scorer, "score_jobs", lambda results, **k: results)
+    monkeypatch.setattr(trackerdb, "init_db", lambda *a, **k: False)
+    monkeypatch.setattr(trackerdb, "inbox_add_many", lambda scored: len(scored))
+
+    resp = client.post(
+        "/harvest",
+        json={"jobs": [{"title": "Nurse", "url": "https://e.com/1"}],
+              "open_report": False},
+        headers={"Origin": "chrome-extension://abcdefghijklmnop"},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "inbox_error" not in data       # additive-only: absent on success
+    assert data["inboxed"] == 1
+
+
 def test_origin_allowed_helper():
     assert _origin_allowed("chrome-extension://abcdef") is True
     assert _origin_allowed("http://localhost:5002") is True

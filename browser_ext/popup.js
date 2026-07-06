@@ -126,12 +126,22 @@ sendBtn.addEventListener("click", async () => {
     });
     const data = await resp.json();
     if (resp.ok) {
-      const inboxed =
-        data.inboxed != null ? `, ${data.inboxed} new to inbox` : "";
-      setStatus(
-        `Sent ${data.received} jobs${inboxed} - report opening in browser`,
-        "ok",
-      );
+      // The receiver saves the report BEFORE inbox scoring, so a 200 can still
+      // carry inbox_error when scoring/DB failed — surface it instead of a clean
+      // "0 new to inbox" that would silently drop the user's hand-picked jobs.
+      if (data.inbox_error) {
+        setStatus(
+          `Sent ${data.received} jobs, but inbox triage FAILED (${data.inbox_error}) - report opened; jobs NOT added to inbox`,
+          "err",
+        );
+      } else {
+        const inboxed =
+          data.inboxed != null ? `, ${data.inboxed} new to inbox` : "";
+        setStatus(
+          `Sent ${data.received} jobs${inboxed} - report opening in browser`,
+          "ok",
+        );
+      }
       await recordSentKeys(jobs); // ledger BEFORE the wipe (resurrection guard)
       await chrome.storage.local.set({ jobs: [], autoSendLastAt: 0 });
       chrome.runtime.sendMessage({ type: "UPDATE_BADGE", count: 0 });

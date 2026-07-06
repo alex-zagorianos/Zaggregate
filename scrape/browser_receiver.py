@@ -481,6 +481,7 @@ def harvest():
     # scraping can't see the posting body — so the skill component scores 0
     # and the Claude fit prompt is the better ranking signal for these.)
     inboxed = 0
+    inbox_error = None
     try:
         from match.scorer import score_jobs
         from search.cli import load_user_config
@@ -516,22 +517,41 @@ def harvest():
         init_db()
         inboxed = inbox_add_many(scored)
     except Exception as e:
-        # The report already saved; a scoring/DB hiccup shouldn't lose the run.
-        print(f"[receiver] inbox routing failed - {e}")
+        # The report already saved, so we keep HTTP 200 (the capture itself
+        # SUCCEEDED — the on-disk report/CSV are written above). But do NOT report
+        # a clean inboxed:0 indistinguishable from "0 genuinely new": that silently
+        # drops the user's hand-picked postings (the project's cardinal sin), and
+        # the only prior diagnostic was a console print the exe/web user never
+        # sees. Surface it two ways: log the full traceback via applog (persisted
+        # to the rotating log file, not just stdout) AND carry an additive
+        # `inbox_error` field in the JSON so the extension can tell the user their
+        # jobs were NOT triaged. `inbox_error` is additive — popup.js/background.js
+        # both branch only on resp.ok today, so an older extension safely ignores
+        # it while the updated popup surfaces it.
+        inbox_error = str(e)
+        import applog
+        applog.get_logger("receiver").exception(
+            "browser harvest inbox routing failed - %d jobs NOT triaged", len(results))
 
     if open_report:
         webbrowser.open(html_path.as_uri())
 
     _bump_capture(len(results))
-    print(f"\n[receiver] {len(results)} jobs received -> {html_path.name} "
-          f"({inboxed} new to inbox)")
+    _tail = (f" (inbox routing FAILED: {inbox_error})" if inbox_error
+             else f" ({inboxed} new to inbox)")
+    print(f"\n[receiver] {len(results)} jobs received -> {html_path.name}{_tail}")
 
-    return jsonify({
+    payload = {
         "received": len(results),
         "inboxed": inboxed,
         "html": str(html_path),
         "csv":  str(csv_path),
-    })
+    }
+    # Additive-only: present ONLY on failure, so a success response is byte-shape
+    # identical to before and old extension builds are unaffected.
+    if inbox_error is not None:
+        payload["inbox_error"] = inbox_error
+    return jsonify(payload)
 
 
 @app.route("/track", methods=["POST", "OPTIONS"])

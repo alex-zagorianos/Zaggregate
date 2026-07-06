@@ -279,6 +279,14 @@ export function InboxTab() {
     if (row.url) window.open(String(row.url), "_blank", "noopener,noreferrer");
   }, []);
 
+  // Stable so the memoized <InboxTableRow> isn't re-rendered by an inline arrow's
+  // fresh identity each parent render. Opens the detail rail on first select;
+  // the functional setter reads detailOpen without adding it as a dep.
+  const onSelectRow = React.useCallback((id: number) => {
+    setSelectedId(id);
+    setDetailOpen((open) => open || true);
+  }, []);
+
   // ── bulk dismiss (all shown) ─────────────────────────────────────────────────
   const [confirmBulk, setConfirmBulk] = React.useState(false);
   const onDismissAllShown = React.useCallback(() => {
@@ -525,10 +533,7 @@ export function InboxTab() {
                 rows={visibleRows}
                 totalRows={rows.length}
                 selectedId={selectedId}
-                onSelect={(id) => {
-                  setSelectedId(id);
-                  if (!detailOpen) setDetailOpen(true);
-                }}
+                onSelect={onSelectRow}
                 rangeSelected={rangeSelected}
                 onRangeChange={setRangeSelected}
                 onTrack={onTrack}
@@ -611,6 +616,20 @@ function InboxTable({
   // effect sees the value as of the last focus/blur, not a stale render closure.
   const rowHadFocus = React.useRef(false);
 
+  // Mirror the mutable values the per-row handlers read into refs so those
+  // handlers can be wrapped in stable useCallbacks (identity fixed for the
+  // table's life). Without this the handlers close over `rows`/`rangeSelected`/
+  // `focused` and change identity every render, defeating <InboxTableRow>'s
+  // React.memo — the whole ~100-row window would re-reconcile on every unrelated
+  // parent state change (scroll windowSize bump, run streaming, …). (S40 fix:
+  // row-level re-render hotspot.)
+  const rowsRef = React.useRef(rows);
+  rowsRef.current = rows;
+  const rangeSelectedRef = React.useRef(rangeSelected);
+  rangeSelectedRef.current = rangeSelected;
+  const focusedRef = React.useRef(focused);
+  focusedRef.current = focused;
+
   React.useEffect(() => {
     if (focused > rows.length - 1) setFocused(Math.max(0, rows.length - 1));
   }, [rows.length, focused]);
@@ -634,59 +653,87 @@ function InboxTable({
     rowRefs.current[idx]?.focus();
   }, [rows.length, focused]);
 
-  const focusRow = (i: number) => {
-    const clamped = Math.max(0, Math.min(rows.length - 1, i));
+  // All stable (empty deps, mutable reads via refs) so <InboxTableRow>'s memo holds.
+  const focusRow = React.useCallback((i: number) => {
+    const clamped = Math.max(0, Math.min(rowsRef.current.length - 1, i));
     setFocused(clamped);
     rowRefs.current[clamped]?.focus();
-  };
+  }, []);
 
-  const onRowKeyDown = (e: React.KeyboardEvent, row: InboxRow, i: number) => {
-    switch (e.key.toLowerCase()) {
-      case "t":
-        e.preventDefault();
-        onTrack(row);
-        break;
-      case "d":
-        e.preventDefault();
-        onDismiss(row);
-        break;
-      case "o":
-        e.preventDefault();
-        onOpen(row);
-        break;
-      case "enter":
-        e.preventDefault();
-        onSelect(row.id);
-        break;
-      case "arrowdown":
-        e.preventDefault();
-        focusRow(i + 1);
-        break;
-      case "arrowup":
-        e.preventDefault();
-        focusRow(i - 1);
-        break;
-      default:
-        break;
-    }
-  };
+  const onRowKeyDown = React.useCallback(
+    (e: React.KeyboardEvent, row: InboxRow, i: number) => {
+      switch (e.key.toLowerCase()) {
+        case "t":
+          e.preventDefault();
+          onTrack(row);
+          break;
+        case "d":
+          e.preventDefault();
+          onDismiss(row);
+          break;
+        case "o":
+          e.preventDefault();
+          onOpen(row);
+          break;
+        case "enter":
+          e.preventDefault();
+          onSelect(row.id);
+          break;
+        case "arrowdown":
+          e.preventDefault();
+          focusRow(i + 1);
+          break;
+        case "arrowup":
+          e.preventDefault();
+          focusRow(i - 1);
+          break;
+        default:
+          break;
+      }
+    },
+    [onTrack, onDismiss, onOpen, onSelect, focusRow],
+  );
 
   // Shift-click range select over the currently-rendered rows.
-  const onRowClick = (e: React.MouseEvent, index: number, row: InboxRow) => {
-    if (e.shiftKey && lastClicked.current !== null) {
-      e.preventDefault();
-      const [a, b] = [lastClicked.current, index].sort((x, y) => x - y);
-      const next = new Set(rangeSelected);
-      for (let k = a; k <= b; k++) {
-        const id = rows[k]?.id;
-        if (id !== undefined) next.add(id);
+  const onRowClick = React.useCallback(
+    (e: React.MouseEvent, index: number, row: InboxRow) => {
+      if (e.shiftKey && lastClicked.current !== null) {
+        e.preventDefault();
+        const [a, b] = [lastClicked.current, index].sort((x, y) => x - y);
+        const next = new Set(rangeSelectedRef.current);
+        for (let k = a; k <= b; k++) {
+          const id = rowsRef.current[k]?.id;
+          if (id !== undefined) next.add(id);
+        }
+        onRangeChange(next);
+      } else {
+        lastClicked.current = index;
+        onSelect(row.id);
       }
-      onRangeChange(next);
-    } else {
-      lastClicked.current = index;
-      onSelect(row.id);
-    }
-  };
+    },
+    [onRangeChange, onSelect],
+  );
+
+  // Row ref registration + focus/blur bookkeeping, all stable so they don't
+  // invalidate the memoized rows.
+  const registerRow = React.useCallback(
+    (i: number, el: HTMLTableRowElement | null) => {
+      rowRefs.current[i] = el;
+    },
+    [],
+  );
+  const onRowFocus = React.useCallback((i: number) => {
+    setFocused(i);
+    rowHadFocus.current = true;
+  }, []);
+  const onRowBlur = React.useCallback((e: React.FocusEvent) => {
+    // Focus left this row; only mark the table as unfocused if it didn't move to
+    // another row (a removal unmounts the row with no relatedTarget, which we
+    // WANT to treat as still-in-triage).
+    const next = e.relatedTarget as Node | null;
+    if (next && rowRefs.current.some((el) => el === next)) return;
+    if (next) rowHadFocus.current = false;
+  }, []);
 
   return (
     <div className="border-border bg-card overflow-hidden rounded-lg border">
@@ -704,95 +751,24 @@ function InboxTable({
             </tr>
           </thead>
           <tbody className="[&_tr:last-child]:border-0">
-            {rows.map((row, i) => {
-              const isSelected = row.id === selectedId;
-              const isChecked = rangeSelected.has(row.id);
-              return (
-                <tr
-                  key={row.id}
-                  ref={(el) => {
-                    rowRefs.current[i] = el;
-                  }}
-                  tabIndex={i === focused ? 0 : -1}
-                  onFocus={() => {
-                    setFocused(i);
-                    rowHadFocus.current = true;
-                  }}
-                  onBlur={(e) => {
-                    // Focus left this row; only mark the table as unfocused if it
-                    // didn't move to another row (a removal unmounts the row with no
-                    // relatedTarget, which we WANT to treat as still-in-triage).
-                    const next = e.relatedTarget as Node | null;
-                    if (next && rowRefs.current.some((el) => el === next))
-                      return;
-                    if (next) rowHadFocus.current = false;
-                  }}
-                  onKeyDown={(e) => onRowKeyDown(e, row, i)}
-                  onClick={(e) => onRowClick(e, i, row)}
-                  aria-selected={isSelected}
-                  aria-label={`${row.title} at ${row.company}`}
-                  className={cn(
-                    "group border-border/70 hover:bg-secondary/45 cursor-pointer border-b transition-colors outline-none",
-                    "focus-visible:bg-secondary/50 focus-visible:ring-ring/40 focus-visible:ring-2 focus-visible:ring-inset",
-                    isSelected && "bg-accent/60 hover:bg-accent/60",
-                    isChecked && "bg-primary/8",
-                  )}
-                >
-                  <td className="px-3 py-2.5 text-center align-middle">
-                    <ScoreChip value={fitValue(row)} />
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <div className="flex items-center gap-2">
-                      {row.computed.is_new && (
-                        <span
-                          title="New in the latest run"
-                          aria-label="New"
-                          className="bg-primary size-2 shrink-0 rounded-full"
-                        />
-                      )}
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <span className="flex items-center gap-1.5">
-                          <span className="text-foreground truncate leading-snug font-medium">
-                            {row.title || "Untitled role"}
-                          </span>
-                          <GhostRowBadge ghost={row.ghost} />
-                        </span>
-                        <span className="text-muted-foreground truncate text-xs">
-                          {row.company || "Unknown company"}
-                        </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="text-muted-foreground hidden px-3 py-2.5 align-middle text-sm md:table-cell">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="truncate">{row.location || "—"}</span>
-                      {isRemote(row) && (
-                        <span className="border-primary/40 bg-primary/10 text-primary rounded-[var(--radius-chip)] border px-1 py-0.5 text-[0.65rem] font-medium">
-                          Remote
-                        </span>
-                      )}
-                    </span>
-                  </td>
-                  <td className="zg-num text-muted-foreground hidden px-3 py-2.5 text-right align-middle text-xs lg:table-cell">
-                    {row.salary_text || "—"}
-                  </td>
-                  <td className="text-muted-foreground hidden px-3 py-2.5 align-middle text-xs capitalize sm:table-cell">
-                    {row.source || "—"}
-                  </td>
-                  <td className="zg-num text-muted-foreground hidden px-3 py-2.5 text-right align-middle text-xs xl:table-cell">
-                    {postedLabel(row)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right align-middle">
-                    <RowActions
-                      row={row}
-                      onTrack={onTrack}
-                      onDismiss={onDismiss}
-                      onOpen={onOpen}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map((row, i) => (
+              <InboxTableRow
+                key={row.id}
+                row={row}
+                index={i}
+                isSelected={row.id === selectedId}
+                isChecked={rangeSelected.has(row.id)}
+                isFocused={i === focused}
+                registerRow={registerRow}
+                onRowFocus={onRowFocus}
+                onRowBlur={onRowBlur}
+                onRowKeyDown={onRowKeyDown}
+                onRowClick={onRowClick}
+                onTrack={onTrack}
+                onDismiss={onDismiss}
+                onOpen={onOpen}
+              />
+            ))}
 
             {moreToLoad && (
               <tr ref={sentinelRef} aria-hidden>
@@ -810,6 +786,115 @@ function InboxTable({
     </div>
   );
 }
+
+// One inbox <tr>, memoized so unrelated parent state churn (scroll windowSize
+// bumps, run-console streaming, detail-rail toggles) doesn't re-reconcile every
+// visible row. Receives ONLY primitives + table-stable callbacks (see the ref
+// mirrors + useCallbacks in InboxTable), so React.memo's shallow prop compare
+// skips a row whose own row/flags are unchanged. (S40 fix: row re-render hotspot.)
+interface InboxTableRowProps {
+  row: InboxRow;
+  index: number;
+  isSelected: boolean;
+  isChecked: boolean;
+  isFocused: boolean;
+  registerRow: (i: number, el: HTMLTableRowElement | null) => void;
+  onRowFocus: (i: number) => void;
+  onRowBlur: (e: React.FocusEvent) => void;
+  onRowKeyDown: (e: React.KeyboardEvent, row: InboxRow, i: number) => void;
+  onRowClick: (e: React.MouseEvent, index: number, row: InboxRow) => void;
+  onTrack: (row: InboxRow) => void;
+  onDismiss: (row: InboxRow) => void;
+  onOpen: (row: InboxRow) => void;
+}
+
+const InboxTableRow = React.memo(function InboxTableRow({
+  row,
+  index,
+  isSelected,
+  isChecked,
+  isFocused,
+  registerRow,
+  onRowFocus,
+  onRowBlur,
+  onRowKeyDown,
+  onRowClick,
+  onTrack,
+  onDismiss,
+  onOpen,
+}: InboxTableRowProps) {
+  return (
+    <tr
+      ref={(el) => registerRow(index, el)}
+      tabIndex={isFocused ? 0 : -1}
+      onFocus={() => onRowFocus(index)}
+      onBlur={onRowBlur}
+      onKeyDown={(e) => onRowKeyDown(e, row, index)}
+      onClick={(e) => onRowClick(e, index, row)}
+      aria-selected={isSelected}
+      aria-label={`${row.title} at ${row.company}`}
+      className={cn(
+        "group border-border/70 hover:bg-secondary/45 cursor-pointer border-b transition-colors outline-none",
+        "focus-visible:bg-secondary/50 focus-visible:ring-ring/40 focus-visible:ring-2 focus-visible:ring-inset",
+        isSelected && "bg-accent/60 hover:bg-accent/60",
+        isChecked && "bg-primary/8",
+      )}
+    >
+      <td className="px-3 py-2.5 text-center align-middle">
+        <ScoreChip value={fitValue(row)} />
+      </td>
+      <td className="px-3 py-2.5 align-middle">
+        <div className="flex items-center gap-2">
+          {row.computed.is_new && (
+            <span
+              title="New in the latest run"
+              aria-label="New"
+              className="bg-primary size-2 shrink-0 rounded-full"
+            />
+          )}
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="flex items-center gap-1.5">
+              <span className="text-foreground truncate leading-snug font-medium">
+                {row.title || "Untitled role"}
+              </span>
+              <GhostRowBadge ghost={row.ghost} />
+            </span>
+            <span className="text-muted-foreground truncate text-xs">
+              {row.company || "Unknown company"}
+            </span>
+          </div>
+        </div>
+      </td>
+      <td className="text-muted-foreground hidden px-3 py-2.5 align-middle text-sm md:table-cell">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="truncate">{row.location || "—"}</span>
+          {isRemote(row) && (
+            <span className="border-primary/40 bg-primary/10 text-primary rounded-[var(--radius-chip)] border px-1 py-0.5 text-[0.65rem] font-medium">
+              Remote
+            </span>
+          )}
+        </span>
+      </td>
+      <td className="zg-num text-muted-foreground hidden px-3 py-2.5 text-right align-middle text-xs lg:table-cell">
+        {row.salary_text || "—"}
+      </td>
+      <td className="text-muted-foreground hidden px-3 py-2.5 align-middle text-xs capitalize sm:table-cell">
+        {row.source || "—"}
+      </td>
+      <td className="zg-num text-muted-foreground hidden px-3 py-2.5 text-right align-middle text-xs xl:table-cell">
+        {postedLabel(row)}
+      </td>
+      <td className="px-3 py-2.5 text-right align-middle">
+        <RowActions
+          row={row}
+          onTrack={onTrack}
+          onDismiss={onDismiss}
+          onOpen={onOpen}
+        />
+      </td>
+    </tr>
+  );
+});
 
 function Th({
   className,

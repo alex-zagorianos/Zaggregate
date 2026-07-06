@@ -315,6 +315,21 @@ class JobRunner:
                     with self._lock:
                         if self._exclusive_active == job_id:
                             self._exclusive_active = None
+                # Release THIS thread's cached WAL connection deterministically.
+                # An engine job (init_db/inbox_add_many) opens a per-thread WAL
+                # connection via tracker.db.get_conn(); once this daemon thread
+                # dies that handle is reclaimed only lazily on the next new-thread
+                # cache miss, so tracker.db + its -wal/-shm sidecars can stay
+                # locked ([WinError 32]) through a project-folder delete that
+                # follows a first_run job. Closing only OUR thread's connection
+                # drops the lock now without touching live server-thread handles.
+                # Late/defensive import so a runner that never touched the DB (or
+                # a partial checkout) still finishes cleanly.
+                try:
+                    from tracker import db as _tracker_db
+                    _tracker_db.close_current_thread_connection()
+                except Exception:  # noqa: BLE001 — cleanup must never fail a job
+                    pass
 
         t = threading.Thread(target=_run, name=f"job-{kind}-{job_id[:8]}",
                              daemon=True)

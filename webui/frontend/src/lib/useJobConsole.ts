@@ -128,14 +128,26 @@ export function useJobConsole(
     stickRef.current = true;
     h.onReset?.();
 
+    // Armed for THIS jobId's subscription. The error-reconcile does an async
+    // GET /api/jobs/<id>; the effect cleanup (jobId change or unmount) cannot
+    // abort that in-flight promise, so without this guard a stale fetch that
+    // resolves AFTER the user starts a new run would call hRef.current's
+    // terminal handlers (now bound to the NEW job) + setStatus — flipping the
+    // new run's console to done/failed and firing onDone (invalidate queries +
+    // "Inbox updated" toast) on behalf of a job that is still running. `alive`
+    // is flipped false in cleanup so every reconcile branch bails first (S40
+    // fix: stale-job terminal handlers after jobId changes mid-flight).
+    let alive = true;
     const es = new EventSource(jobEventsUrl(jobId));
     let retryTimer: number | undefined;
 
     es.addEventListener("line", (e) => {
+      if (!alive) return;
       hRef.current.onLine((e as MessageEvent).data as string);
     });
 
     es.addEventListener("done", () => {
+      if (!alive) return;
       setStatus("done");
       es.close();
       hRef.current.onDone("done", "frame");
@@ -149,6 +161,10 @@ export function useJobConsole(
       endpoints
         .jobStatus(jobId)
         .then((snap) => {
+          // Bail if this subscription was torn down (jobId changed / unmount)
+          // while the status fetch was in flight — otherwise we'd drive the
+          // CURRENT render's handlers for a job that is no longer displayed.
+          if (!alive) return;
           hRef.current.onReconcileLines?.(snap.lines_tail);
           const action = reconcileAction(snap.status);
           if (action.kind === "failed") {
@@ -173,12 +189,14 @@ export function useJobConsole(
           }
         })
         .catch(() => {
+          if (!alive) return;
           setStatus("failed");
           hRef.current.onFailed?.();
         });
     });
 
     return () => {
+      alive = false;
       es.close();
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };

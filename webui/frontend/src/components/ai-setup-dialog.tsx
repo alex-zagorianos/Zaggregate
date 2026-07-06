@@ -93,26 +93,53 @@ export function AiSetupPanes({
   const [copied, setCopied] = React.useState(false);
   const [reply, setReply] = React.useState("");
   const [result, setResult] = React.useState<AiSetupResult | null>(null);
+  // The "Copied" flag reverts on a timer; track it so unmount can cancel a
+  // pending revert (same no-setState-after-unmount guard as the prompt fetch).
+  const copyTimerRef = React.useRef<number | undefined>(undefined);
+  React.useEffect(
+    () => () => {
+      if (copyTimerRef.current !== undefined)
+        window.clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
   const applyConfigMut = useApplyAiSetup();
   const applyFullMut = useApplyAiSetupFull();
   const applying = applyConfigMut.isPending || applyFullMut.isPending;
 
   // Fetch the right prompt lazily on first mount. The two kinds fetch different
   // endpoints (config vs `?full=1`), so re-fetch if promptKind changes.
+  //
+  // AiSetupDialog renders these panes only while open and unmounts them the
+  // instant `open` flips false (the `{open && …}` guard), so a slow prompt GET
+  // can settle AFTER unmount — or after promptKind changes mid-fetch. Guard with
+  // an `alive` flag (the repo's cleanup convention, cf. theme.tsx) so a stale
+  // resolution never calls setPrompt/setPromptLoading on an unmounted pane or
+  // clobbers the newer kind's prompt (S40 fix: prompt-fetch cancellation).
   React.useEffect(() => {
+    let alive = true;
     setPromptLoading(true);
     const fetcher =
       promptKind === "full"
         ? endpoints.aiSetupFullPrompt()
         : endpoints.aiSetupPrompt();
     fetcher
-      .then((r) => setPrompt(r.prompt))
-      .catch((e) =>
-        toast.error("Couldn't load the setup prompt", {
-          description: e instanceof ApiError ? e.message : "Please try again.",
-        }),
-      )
-      .finally(() => setPromptLoading(false));
+      .then((r) => {
+        if (alive) setPrompt(r.prompt);
+      })
+      .catch((e) => {
+        if (alive)
+          toast.error("Couldn't load the setup prompt", {
+            description:
+              e instanceof ApiError ? e.message : "Please try again.",
+          });
+      })
+      .finally(() => {
+        if (alive) setPromptLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [promptKind]);
 
   const onCopy = async () => {
@@ -123,7 +150,9 @@ export function AiSetupPanes({
         description:
           "Paste it into your AI above your résumé, then paste the reply back.",
       });
-      window.setTimeout(() => setCopied(false), 1600);
+      if (copyTimerRef.current !== undefined)
+        window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1600);
     } else {
       toast.error("Couldn't copy", {
         description: "Select the text and copy it manually.",

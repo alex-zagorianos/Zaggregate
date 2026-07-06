@@ -240,6 +240,44 @@ def close_all_connections() -> None:
         _tlocal.conn = None
 
 
+def close_current_thread_connection() -> None:
+    """Close + de-register ONLY the CALLING thread's cached connection (drops its
+    Windows file lock deterministically), leaving every OTHER thread's cached
+    handle untouched.
+
+    The seam a finishing background-JOB thread uses (webui.jobs.JobRunner._run):
+    that daemon thread opened its own WAL connection via get_conn() and is the
+    only owner, but once it dies the connection is reclaimed only lazily — on the
+    NEXT new-thread cache miss anywhere (_sweep_dead_threads_locked). If no such
+    miss happens before a project-folder delete, tracker.db + its -wal/-shm
+    sidecars stay locked ([WinError 32]). Calling this in the job's finally drops
+    that lock the instant the job leaves the running state, without the blast
+    radius of close_all_connections() (which would close per-request server
+    threads' live handles mid-flight — a regression).
+
+    Skips a connection that is mid-transaction (an outer ``with get_conn()`` block
+    still relies on it) so nested-txn semantics are preserved; that connection is
+    then released by the outer scope / normal thread teardown. Never raises."""
+    conn = getattr(_tlocal, "conn", None)
+    if conn is not None:
+        try:
+            if conn.in_transaction:
+                return
+        except Exception:  # noqa: BLE001 — already closed: fall through to clear
+            pass
+        _tlocal.conn = None
+    tid = threading.current_thread().ident
+    with _registry_lock:
+        entry = _registry.pop(tid, None)
+    if entry is not None:
+        _retire(entry[1])
+    elif conn is not None:
+        # Registered under a different ident (shouldn't happen — get_conn keys by
+        # the same current-thread ident) or an untracked nested conn: retire the
+        # thread-local handle directly so it doesn't leak the lock.
+        _retire(conn)
+
+
 def checkpoint() -> None:
     """Best-effort WAL checkpoint (TRUNCATE) so the -wal sidecar doesn't grow
     unbounded, plus PRAGMA optimize (SQLite's own recommended pre-close
