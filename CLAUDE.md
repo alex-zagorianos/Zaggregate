@@ -29,7 +29,8 @@ completely unrelated. Trade-offs + accepted gaps live in `docs/KNOWN_ISSUES.md`.
 
 ## Gotchas
 
-- **Never run two project-touching processes at once** — `current_db_path` reads the global `active` project; concurrent daily_runs corrupted inbox routing before the S27 pin. `daily_run --project X` flips the GLOBAL active project.
+- **Never run two project-touching processes at once** — `current_db_path` reads the global `active` project; concurrent daily_runs corrupted inbox routing before the S27 pin. (`daily_run --project X` pins process-locally only — it does NOT flip global active since S32/L1.)
+- **One server per port**: Windows SO_REUSEADDR lets a second receiver/exe bind 5002 silently and answer with ITS data root (S39: the production exe's EMPTY data dir answered `project:null` under the dev instance). Check `Get-NetTCPConnection -LocalPort 5002` before starting/diagnosing servers.
 - `scripts/setup_lanes.py`: RUN it, never import it (import executes and rewrites projects.json).
 - Rescore must pass ALL scoring levers — S32's rescore-drift bug erased new levers same-run; parity tests must be lever-tripping.
 - Windows FileCache: keys with `:` are NTFS ADS — sanitized since S30; keep new cache keys filename-safe.
