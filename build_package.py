@@ -149,6 +149,21 @@ echo Starting Zaggregate...
 start "" "JobProgram.exe"
 """
 
+# One-click launchers for the two modern app modes, so nobody has to type
+# command-line flags. `%~dp0` = this .bat's own folder, so a shortcut (or a
+# double-click from anywhere) still finds the exe sitting next to it.
+DESKTOP_BAT = """\
+@echo off
+echo Starting Zaggregate (desktop app)...
+start "" "%~dp0JobProgram.exe" --desktop
+"""
+
+WEB_BAT = """\
+@echo off
+echo Starting Zaggregate (web version, opens in your browser)...
+start "" "%~dp0JobProgram.exe" --web
+"""
+
 # Top-level "start here" for the production/ folder. Deliberately SHORT: the app's
 # own in-app Guide (Help ▸ Guide) carries the full walkthrough — this just gets a
 # user from "unzipped folder" to "the wizard is open" and points at the extension.
@@ -173,13 +188,14 @@ your salary, and your resume. No files to edit. (Change your mind later from
 
 ### Prefer the modern look? (optional)
 
-The same exe runs three ways — pick whichever you like:
+The same exe runs three ways — the `JobProgram` folder has a double-clickable
+launcher for each, no typing needed:
 
-- `JobProgram.exe` — the classic desktop app (this is the default).
-- `JobProgram.exe --desktop` — the modern web UI in a native desktop window (no
-  browser needed).
-- `JobProgram.exe --web` — the modern web UI in your default browser (loopback
-  only — nothing is exposed off your machine).
+- `JobProgram.exe` (or `launch.bat`) — the classic desktop app (the default).
+- **`Zaggregate Desktop.bat`** (= `JobProgram.exe --desktop`) — the modern web
+  UI in a native desktop window (no browser needed).
+- **`Zaggregate Web.bat`** (= `JobProgram.exe --web`) — the modern web UI in
+  your default browser (loopback only — nothing is exposed off your machine).
 
 ## 2. Get a ranked inbox
 
@@ -223,10 +239,12 @@ users can copy it to `.env` next to the exe, or paste keys into the in-app
 def write_first_run_kit(dest_dir):
     """Write the SmartScreen first-run helpers into *dest_dir*.
 
-    Drops two plain-English files next to JobProgram.exe so a non-technical
-    Windows user can open the unsigned app:
-      - FIRST-RUN.txt : numbered steps to unblock / "Run anyway" past SmartScreen
-      - launch.bat    : a friendly one-liner that starts the exe
+    Drops plain-English files next to JobProgram.exe so a non-technical
+    Windows user can open the unsigned app in any mode without typing flags:
+      - FIRST-RUN.txt          : numbered steps to unblock / "Run anyway" past SmartScreen
+      - launch.bat             : a friendly one-liner that starts the exe (classic mode)
+      - Zaggregate Desktop.bat : the modern web UI in a native desktop window
+      - Zaggregate Web.bat     : the modern web UI in the default browser
 
     Returns the list of filenames created (handy for the build log).
     """
@@ -234,7 +252,9 @@ def write_first_run_kit(dest_dir):
     dest_dir.mkdir(parents=True, exist_ok=True)
     (dest_dir / "FIRST-RUN.txt").write_text(FIRST_RUN_TXT, encoding="utf-8")
     (dest_dir / "launch.bat").write_text(LAUNCH_BAT, encoding="utf-8")
-    return ["FIRST-RUN.txt", "launch.bat"]
+    (dest_dir / "Zaggregate Desktop.bat").write_text(DESKTOP_BAT, encoding="utf-8")
+    (dest_dir / "Zaggregate Web.bat").write_text(WEB_BAT, encoding="utf-8")
+    return ["FIRST-RUN.txt", "launch.bat", "Zaggregate Desktop.bat", "Zaggregate Web.bat"]
 
 
 def run_pyinstaller() -> None:

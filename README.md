@@ -96,15 +96,17 @@ ways past it, or just double-click `JobProgram/launch.bat`.
 
 ### App modes (the same exe)
 
-`JobProgram.exe` runs three ways — pick whichever you like:
+`JobProgram.exe` runs three ways — the packaged `JobProgram` folder ships a
+double-clickable launcher for each, so nobody has to type flags:
 
-- **`JobProgram.exe`** — the default desktop app (classic Tk window).
-- **`JobProgram.exe --desktop`** — the modern web UI in a native desktop window
-  (no browser needed; falls back to browser mode if the desktop runtime is
-  missing).
-- **`JobProgram.exe --web`** — the modern web UI in your default browser at
-  `http://127.0.0.1:5002/app` (loopback only — nothing is exposed off your
-  machine).
+- **`JobProgram.exe`** (or `launch.bat`) — the default desktop app (classic Tk
+  window).
+- **`Zaggregate Desktop.bat`** (= `JobProgram.exe --desktop`) — the modern web
+  UI in a native desktop window (no browser needed; falls back to browser mode
+  if the desktop runtime is missing).
+- **`Zaggregate Web.bat`** (= `JobProgram.exe --web`) — the modern web UI in
+  your default browser at `http://127.0.0.1:5002/app` (loopback only — nothing
+  is exposed off your machine).
 
 (There is also a headless `--daily` mode used by the scheduled daily update.)
 

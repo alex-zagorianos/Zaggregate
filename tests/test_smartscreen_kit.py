@@ -32,6 +32,19 @@ def test_write_first_run_kit_returns_created_names(tmp_path):
     assert "launch.bat" in created
 
 
+def test_mode_launchers_run_the_exe_with_the_right_flags(tmp_path):
+    # One-click launchers for the two modern modes, so nobody types flags.
+    created = build_package.write_first_run_kit(tmp_path)
+    assert "Zaggregate Desktop.bat" in created
+    assert "Zaggregate Web.bat" in created
+    desktop = (tmp_path / "Zaggregate Desktop.bat").read_text(encoding="utf-8")
+    web = (tmp_path / "Zaggregate Web.bat").read_text(encoding="utf-8")
+    assert "JobProgram.exe" in desktop and "--desktop" in desktop
+    assert "JobProgram.exe" in web and "--web" in web
+    # %~dp0 anchors the exe path to the .bat's own folder (shortcut-safe).
+    assert "%~dp0" in desktop and "%~dp0" in web
+
+
 # ── production/ folder manifest (build_package --production) ───────────────────
 
 def test_production_contents_lists_the_required_entries():
