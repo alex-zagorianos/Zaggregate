@@ -48,6 +48,16 @@ blobs, and the dad evaluation dossier files.
 4. gh CLI installed (winget) but needs interactive `gh auth login` — repo
    creation was Alex's web-UI step instead; the push itself is plain SSH.
 
+## S42c addendum — one-click mode launchers (`3a86c61`)
+
+`write_first_run_kit` now also drops **`Zaggregate Desktop.bat`** and
+**`Zaggregate Web.bat`** next to the exe (`%~dp0`-anchored, shortcut-safe) so
+both modern modes are double-clickable — no flags to type. QUICKSTART + README
+updated; new kit test; zip + production/ reassembled (`--no-build`) and the
+Web launcher live-tested end-to-end (bat → exe sole 5002 listener → /app 200).
+Public repo fast-forwarded to `22c2dc6`. The release zip's SHA256 changed —
+release.ps1 uploads whatever is current in `dist\`, so no action needed.
+
 ## S42b addendum (same day) — v1.0.0 release staged
 
 Fresh `build_package.py` → `dist/Zaggregate-v1.0.0.zip` + `SHA256SUMS.txt`;
