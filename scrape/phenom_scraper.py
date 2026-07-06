@@ -37,6 +37,7 @@ from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
 from scrape.html_text import strip_html_to_text
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _PAGE = 50
@@ -122,7 +123,7 @@ def fetch(slug: str, *, keyword: str = "", ref_num: str = "",
     if not ref_num:
         ref_num = discover_ref_num(domain)
         if not ref_num:
-            print(f"  [phenom] {domain}: no refNum discoverable — skipping")
+            diag(f"  [phenom] {domain}: no refNum discoverable — skipping")
             return []
 
     cache_file = ((cache_dir or CACHE_DIR) / f"phenom_{slug_safe(domain)}.json"
@@ -168,14 +169,14 @@ def _fetch_all(domain: str, ref_num: str, keyword: str):
             if 400 <= code < 500 and code != 429:
                 saw_permanent = True
                 if page == 0:
-                    print(f"  [phenom] {domain}: HTTP {code} — gone, skipping")
+                    diag(f"  [phenom] {domain}: HTTP {code} — gone, skipping")
                     return None, total, True
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 0:
-                print(f"  [phenom] {domain}: transient error — {e}")
+                diag(f"  [phenom] {domain}: transient error — {e}")
                 return None, total, False
             break
         rs = (body.get("refineSearch") or {}) if isinstance(body, dict) else {}

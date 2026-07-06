@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from scrape._log import diag
+
 # Serializes the read-modify-write of companies.json. The GUI's "+ Add
 # Companies" and the embedded Flask browser-receiver (/clip) both write this file
 # from the SAME process, and Flask serves on threaded=True — so two near-
@@ -241,7 +243,7 @@ def _load_user_companies(json_path: Optional[Path] = None) -> list[CompanyEntry]
             ))
         return entries
     except Exception as e:
-        print(f"  [registry] Warning: could not load {path.name} — {e}")
+        diag(f"  [registry] Warning: could not load {path.name} — {e}")
         return []
 
 
@@ -285,7 +287,7 @@ def _save_companies_locked(new_entries: list[CompanyEntry], path: Path,
     try:
         raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except Exception as e:
-        print(f"  [registry] Could not read {path.name} — {e}; not saving.")
+        diag(f"  [registry] Could not read {path.name} — {e}; not saving.")
         return 0
     if not isinstance(raw, dict):
         raw = {}

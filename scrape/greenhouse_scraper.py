@@ -10,6 +10,7 @@ from scrape.cache_helpers import (
     read_cache, slug_safe,
 )
 from scrape.company_registry import CompanyEntry
+from scrape._log import diag
 from scrape.greenhouse_url import embed_url
 from scrape.html_text import strip_html_to_text
 from search.http_util import careers_host_limiter, careers_session, host_of
@@ -52,13 +53,13 @@ def scrape_greenhouse(
                                  session=careers_session())
         if result.status == STATUS_PERMANENT:
             # Genuinely dead (404/410) — negative-cache it, exactly as before.
-            print(f"  [greenhouse] {company.name}: gone — skipping")
+            diag(f"  [greenhouse] {company.name}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
             # Transient (429/5xx/network) with no stale snapshot — skip WITHOUT
             # poisoning; the board is retried next run.
-            print(f"  [greenhouse] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [greenhouse] {company.name}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _filter_and_map(result.body, company, keyword)
 
@@ -67,10 +68,10 @@ def scrape_greenhouse(
         resp.raise_for_status()
         data = resp.json()
     except requests.HTTPError as e:
-        print(f"  [greenhouse] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
+        diag(f"  [greenhouse] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
         return []
     except Exception as e:
-        print(f"  [greenhouse] {company.name}: error — {e}")
+        diag(f"  [greenhouse] {company.name}: error — {e}")
         return []
 
     return _filter_and_map(data, company, keyword)

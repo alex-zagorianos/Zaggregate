@@ -27,6 +27,7 @@ from typing import Optional
 from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE = ("https://workforcenow.adp.com/mascsr/default/careercenter/public/events/"
@@ -109,14 +110,14 @@ def _fetch_all(cid: str):
             if 400 <= code < 500 and code != 429:
                 saw_permanent = True
                 if page == 0:
-                    print(f"  [adp] {cid}: HTTP {code} — gone, skipping")
+                    diag(f"  [adp] {cid}: HTTP {code} — gone, skipping")
                     return None, total, True
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 0:
-                print(f"  [adp] {cid}: transient error — {e}")
+                diag(f"  [adp] {cid}: transient error — {e}")
                 return None, total, False
             break
         if not isinstance(body, dict):

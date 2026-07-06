@@ -65,6 +65,7 @@ from scrape.cache_helpers import (
     slug_safe,
     write_cache,
 )
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _AJAX = "https://{host}/ajax/search-jobs"
@@ -209,7 +210,7 @@ def fetch_with_status(slug: str, *, keyword: str = "",
     # robots gate (per-host): an explicit Disallow of the ajax path -> skip this
     # host with a single log line, negative-cache it like a wall.
     if not _robots_ok(host):
-        print(f"  [vincere] {host}: robots.txt disallows /ajax/search-jobs — skipping")
+        diag(f"  [vincere] {host}: robots.txt disallows /ajax/search-jobs — skipping")
         if cache_enabled and failed_file is not None:
             mark_failed(failed_file)
         return [], STATUS_PERMANENT
@@ -240,7 +241,7 @@ def _fetch_all(host: str):
     if not m:
         # No CSRF token to send -> the ajax POST would 419 (Page Expired). Treat
         # as transient (a page-shape change), not a permanent wall.
-        print(f"  [vincere] {host}: no CSRF token on landing page — skipping")
+        diag(f"  [vincere] {host}: no CSRF token on landing page — skipping")
         return None, -1, STATUS_TRANSIENT
     token = m.group(1)
 
@@ -265,14 +266,14 @@ def _fetch_all(host: str):
             code = getattr(resp, "status_code", 200)
             if 400 <= code < 500 and code != 429:
                 if page == 1:
-                    print(f"  [vincere] {host}: HTTP {code} on ajax — gone/walled, skipping")
+                    diag(f"  [vincere] {host}: HTTP {code} on ajax — gone/walled, skipping")
                     return None, total, STATUS_PERMANENT
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 1:
-                print(f"  [vincere] {host}: transient error — {e}")
+                diag(f"  [vincere] {host}: transient error — {e}")
                 return None, total, STATUS_TRANSIENT
             break
         if not isinstance(body, dict):

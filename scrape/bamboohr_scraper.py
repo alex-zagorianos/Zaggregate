@@ -26,6 +26,7 @@ from scrape.cache_helpers import (
     STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
     read_cache, slug_safe,
 )
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://{slug}.bamboohr.com/careers/list"
@@ -99,11 +100,11 @@ def fetch(slug: str, *, keyword: str = "", fetcher=None,
                                  timeout=CAREERS_REQUEST_TIMEOUT,
                                  session=careers_session())
         if result.status == STATUS_PERMANENT:
-            print(f"  [bamboohr] {slug}: gone — skipping")
+            diag(f"  [bamboohr] {slug}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
-            print(f"  [bamboohr] {slug}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [bamboohr] {slug}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _map(result.body, slug, keyword)
 
@@ -113,7 +114,7 @@ def fetch(slug: str, *, keyword: str = "", fetcher=None,
         if isinstance(data, (str, bytes)):
             data = json.loads(data)
     except Exception as e:
-        print(f"  [bamboohr] {slug}: error — {e}")
+        diag(f"  [bamboohr] {slug}: error — {e}")
         return []
     return _map(data, slug, keyword)
 

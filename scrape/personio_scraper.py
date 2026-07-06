@@ -10,6 +10,7 @@ from scrape.cache_helpers import (
 )
 from scrape.html_text import strip_html_to_text
 from scrape.xml_safe import _safe_fromstring
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://{slug}.jobs.personio.de/xml"
@@ -57,11 +58,11 @@ def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
                                  timeout=CAREERS_REQUEST_TIMEOUT,
                                  session=careers_session(), parse=_parse_xml_text)
         if result.status == STATUS_PERMANENT:
-            print(f"  [personio] {slug}: gone — skipping")
+            diag(f"  [personio] {slug}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
-            print(f"  [personio] {slug}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [personio] {slug}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _map(result.body, slug, keyword)
 
@@ -72,7 +73,7 @@ def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
         resp.raise_for_status()
         xml_text = resp.text
     except Exception as e:
-        print(f"  [personio] {slug}: error — {e}")
+        diag(f"  [personio] {slug}: error — {e}")
         return []
     return _map(xml_text, slug, keyword)
 
@@ -81,7 +82,7 @@ def _map(xml_text: str, slug: str, keyword: str) -> list[JobResult]:
     try:
         root = _safe_fromstring(xml_text.encode("utf-8"))  # XXE/billion-laughs-safe
     except Exception as e:
-        print(f"  [personio] {slug}: parse error — {e}")
+        diag(f"  [personio] {slug}: parse error — {e}")
         return []
     positions = [el for el in root.iter() if el.tag == "position"]
     out: list[JobResult] = []

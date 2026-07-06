@@ -8,6 +8,7 @@ from scrape.cache_helpers import (
     read_cache, slug_safe,
 )
 from scrape.html_text import strip_html_to_text
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://apply.workable.com/api/v1/widget/accounts/{slug}"
@@ -41,11 +42,11 @@ def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
                                  timeout=CAREERS_REQUEST_TIMEOUT,
                                  session=careers_session())
         if result.status == STATUS_PERMANENT:
-            print(f"  [workable] {slug}: gone — skipping")
+            diag(f"  [workable] {slug}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
-            print(f"  [workable] {slug}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [workable] {slug}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _map(result.body, slug, keyword)
 
@@ -57,7 +58,7 @@ def fetch(slug: str, *, keyword: str = "", cache_dir: Optional[Path] = None,
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"  [workable] {slug}: error — {e}")
+        diag(f"  [workable] {slug}: error — {e}")
         return []
     return _map(data, slug, keyword)
 

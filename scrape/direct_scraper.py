@@ -10,6 +10,7 @@ from models import JobResult
 from scrape.cache_helpers import is_failed, mark_failed, read_cache, read_failed, write_cache
 from scrape.company_registry import CompanyEntry
 from scrape.jsonld_scraper import extract_jobs as _jsonld_extract
+from scrape._log import diag
 
 _JOB_URL_PATTERNS = ("/job/", "/jobs/", "/opening/", "/openings/", "/position/", "/careers/job", "/career/")
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -37,7 +38,7 @@ def _stealth_escalation_allowed(company: CompanyEntry) -> bool:
     legal force and a hiccup here must never block a working board."""
     from discover.career_link import is_disallowed
     if is_disallowed(company.slug):
-        print(f"  [direct] {company.name}: robots.txt disallows this path — skipping stealth fetch")
+        diag(f"  [direct] {company.name}: robots.txt disallows this path — skipping stealth fetch")
         return False
     return True
 
@@ -76,13 +77,13 @@ def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> 
             resp.raise_for_status()
             html = resp.text
         except Exception as e:
-            print(f"  [direct] {company.name}: fetch error -- {e}")
+            diag(f"  [direct] {company.name}: fetch error -- {e}")
             # (a) Try stealth fallback before marking the URL as dead.
             import config
             from scrape import stealth_fetch
             if (config.SCRAPLING_FALLBACK and stealth_fetch.available()
                     and _stealth_escalation_allowed(company)):
-                print(f"  [direct] {company.name}: escalating to stealth fetch")
+                diag(f"  [direct] {company.name}: escalating to stealth fetch")
                 html = stealth_fetch.fetch_html(company.slug, company=company)
                 if html:
                     if cache_enabled:
@@ -99,7 +100,7 @@ def _fetch_html(company: CompanyEntry, cache_dir: Path, cache_enabled: bool) -> 
             from scrape import stealth_fetch
             if (config.SCRAPLING_FALLBACK and stealth_fetch.available()
                     and _stealth_escalation_allowed(company)):
-                print(f"  [direct] {company.name}: JS shell detected, escalating to stealth fetch")
+                diag(f"  [direct] {company.name}: JS shell detected, escalating to stealth fetch")
                 fallback = stealth_fetch.fetch_html(company.slug, company=company)
                 if fallback:
                     html = fallback

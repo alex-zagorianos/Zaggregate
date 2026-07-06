@@ -10,6 +10,7 @@ from scrape.cache_helpers import (
     read_cache, slug_safe,
 )
 from scrape.company_registry import CompanyEntry
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
@@ -42,11 +43,11 @@ def scrape_lever(
         result = conditional_get(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT,
                                  session=careers_session())
         if result.status == STATUS_PERMANENT:
-            print(f"  [lever] {company.name}: gone — skipping")
+            diag(f"  [lever] {company.name}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
-            print(f"  [lever] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [lever] {company.name}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _filter_and_map(result.body, company, keyword)
 
@@ -55,10 +56,10 @@ def scrape_lever(
         resp.raise_for_status()
         data = resp.json()  # returns a list, not a dict
     except requests.HTTPError as e:
-        print(f"  [lever] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
+        diag(f"  [lever] {company.name}: HTTP {getattr(e.response, 'status_code', '?')} — skipping")
         return []
     except Exception as e:
-        print(f"  [lever] {company.name}: error — {e}")
+        diag(f"  [lever] {company.name}: error — {e}")
         return []
 
     return _filter_and_map(data, company, keyword)

@@ -48,6 +48,7 @@ from scrape.cache_helpers import (
     slug_safe,
     write_cache,
 )
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _CXS = "https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
@@ -174,7 +175,7 @@ def fetch_with_status(slug: str, *, keyword: str = "",
     verdict stays stable across the negative-cache window without re-probing."""
     parsed = _parse_slug(slug)
     if parsed is None:
-        print(f"  [workday_cxs] bad slug '{slug}' — expected tenant:N:site")
+        diag(f"  [workday_cxs] bad slug '{slug}' — expected tenant:N:site")
         return [], STATUS_PERMANENT
     tenant, n, site = parsed
 
@@ -232,14 +233,14 @@ def _fetch_all(tenant: str, n: str, site: str):
                 # 404/410/403/422 -> board removed/renamed or CSRF-walled: permanent.
                 status = STATUS_PERMANENT
                 if page == 0:
-                    print(f"  [workday_cxs] {tenant}:{n}:{site}: HTTP {code} — gone/walled, skipping")
+                    diag(f"  [workday_cxs] {tenant}:{n}:{site}: HTTP {code} — gone/walled, skipping")
                     return None, total, STATUS_PERMANENT
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 0:
-                print(f"  [workday_cxs] {tenant}:{n}:{site}: transient error — {e}")
+                diag(f"  [workday_cxs] {tenant}:{n}:{site}: transient error — {e}")
                 return None, total, STATUS_TRANSIENT
             break
         if not isinstance(body, dict):

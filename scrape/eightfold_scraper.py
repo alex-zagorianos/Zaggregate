@@ -34,6 +34,7 @@ from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
 from scrape.html_text import strip_html_to_text
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _BASE = "https://{tenant}.eightfold.ai/api/apply/v2/jobs"
@@ -137,14 +138,14 @@ def _fetch_all(url: str, tenant: str, domain: str):
             if 400 <= code < 500 and code != 429:
                 saw_permanent = True
                 if page == 0:
-                    print(f"  [eightfold] {tenant}: HTTP {code} — gated/gone, skipping")
+                    diag(f"  [eightfold] {tenant}: HTTP {code} — gated/gone, skipping")
                     return None, count, True
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 0:
-                print(f"  [eightfold] {tenant}: transient error — {e}")
+                diag(f"  [eightfold] {tenant}: transient error — {e}")
                 return None, count, False
             break
         if not isinstance(body, dict):

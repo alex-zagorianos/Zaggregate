@@ -7,6 +7,7 @@ from scrape.cache_helpers import (
     read_cache, slug_safe, write_cache,
 )
 from scrape.company_registry import CompanyEntry
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 # SmartRecruiters public postings API — no auth. Mid-market manufacturers
@@ -41,11 +42,11 @@ def scrape_smartrecruiters(
         result = conditional_get(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT,
                                  session=careers_session())
         if result.status == STATUS_PERMANENT:
-            print(f"  [smartrecruiters] {company.name}: gone — skipping")
+            diag(f"  [smartrecruiters] {company.name}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
-            print(f"  [smartrecruiters] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [smartrecruiters] {company.name}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _filter_and_map(result.body, company, keyword, cache_dir, cache_enabled)
 
@@ -56,7 +57,7 @@ def scrape_smartrecruiters(
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"  [smartrecruiters] {company.name}: error — {e}")
+        diag(f"  [smartrecruiters] {company.name}: error — {e}")
         return []
     return _filter_and_map(data, company, keyword, cache_dir, cache_enabled)
 

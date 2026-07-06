@@ -6,6 +6,7 @@ from config import CAREERS_SLOW_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import is_failed, mark_failed, read_cache, read_failed, slug_safe, write_cache
 from scrape.company_registry import CompanyEntry
+from scrape._log import diag
 from search.http_util import make_session as _make_session
 
 # Workday exposes a consistent undocumented JSON endpoint across all tenants.
@@ -74,7 +75,7 @@ def scrape_workday(
 ) -> list[JobResult]:
     parsed = _parse_slug(company.slug)
     if parsed is None:
-        print(f"  [workday] {company.name}: bad slug format '{company.slug}' — expected tenant:N:site")
+        diag(f"  [workday] {company.name}: bad slug format '{company.slug}' — expected tenant:N:site")
         return []
 
     tenant, n, site = parsed
@@ -111,14 +112,14 @@ def scrape_workday(
             if 400 <= code < 500 and code != 429:
                 # 404/410/403 etc. -> board removed/renamed: permanent.
                 saw_permanent["v"] = True
-                print(f"  [workday] {company.name}: HTTP {code} at offset {offset} — gone")
+                diag(f"  [workday] {company.name}: HTTP {code} at offset {offset} — gone")
                 return None
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
             # No status / 429 / 5xx / parse error -> transient. Leave saw_permanent
             # False so the board is retried next run, not marked dead.
-            print(f"  [workday] {company.name}: transient error at offset {offset} — {e}")
+            diag(f"  [workday] {company.name}: transient error at offset {offset} — {e}")
             return None
 
     first = _post(0)

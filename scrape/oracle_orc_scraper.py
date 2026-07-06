@@ -39,6 +39,7 @@ from config import CACHE_DIR, CAREERS_REQUEST_TIMEOUT
 from models import JobResult
 from scrape.cache_helpers import slug_safe, is_failed, mark_failed, read_cache, write_cache
 from scrape.html_text import strip_html_to_text
+from scrape._log import diag
 from search.http_util import careers_host_limiter, careers_session, host_of
 
 _PATH = "/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
@@ -115,7 +116,7 @@ def fetch(slug: str, *, keyword: str = "", site: str = "",
         # dispatcher passes the cached extra["site"] so a normal run skips this).
         site = discover_site_number(host)
         if not site:
-            print(f"  [oracle_orc] {host}: no siteNumber (CX_N) discoverable — skipping")
+            diag(f"  [oracle_orc] {host}: no siteNumber (CX_N) discoverable — skipping")
             return []
 
     cache_file = ((cache_dir or CACHE_DIR) / f"oracleorc_{slug_safe(host)}_{slug_safe(site)}.json"
@@ -175,14 +176,14 @@ def _fetch_all(host: str, site: str, keyword: str):
             if 400 <= code < 500 and code != 429:
                 saw_permanent = True
                 if page == 0:
-                    print(f"  [oracle_orc] {host}/{site}: HTTP {code} — gone, skipping")
+                    diag(f"  [oracle_orc] {host}/{site}: HTTP {code} — gone, skipping")
                     return None, total, True
                 break
             resp.raise_for_status()
             body = resp.json()
         except Exception as e:
             if page == 0:
-                print(f"  [oracle_orc] {host}/{site}: transient error — {e}")
+                diag(f"  [oracle_orc] {host}/{site}: transient error — {e}")
                 return None, total, False
             break
         items = body.get("items") if isinstance(body, dict) else None

@@ -7,6 +7,7 @@ from scrape.cache_helpers import (
     STATUS_PERMANENT, conditional_get, http_cache_body, is_failed, mark_failed,
     read_cache, slug_safe,
 )
+from scrape._log import diag
 from scrape.company_registry import CompanyEntry
 from search.http_util import careers_host_limiter, careers_session, host_of
 
@@ -39,11 +40,11 @@ def scrape_ashby(
         result = conditional_get(url, cache_file, timeout=CAREERS_REQUEST_TIMEOUT,
                                  session=careers_session())
         if result.status == STATUS_PERMANENT:
-            print(f"  [ashby] {company.name}: gone — skipping")
+            diag(f"  [ashby] {company.name}: gone — skipping")
             mark_failed(cache_file)
             return []
         if result.body is None:
-            print(f"  [ashby] {company.name}: throttled/unreachable — skipping (not marked dead)")
+            diag(f"  [ashby] {company.name}: throttled/unreachable — skipping (not marked dead)")
             return []
         return _filter_and_map(result.body, company, keyword)
 
@@ -54,7 +55,7 @@ def scrape_ashby(
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"  [ashby] {company.name}: error — {e}")
+        diag(f"  [ashby] {company.name}: error — {e}")
         return []
     return _filter_and_map(data, company, keyword)
 
