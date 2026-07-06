@@ -422,9 +422,10 @@ DISCOVERY_CACHE_TTL_HOURS = 168
 # renamed domain, a new ATS) is retried well within a month.
 INBOX_HARVEST_NEGATIVE_TTL_HOURS = 336
 
-# Flask server ports
-PORT_RESUME   = 5000
-PORT_TRACKER  = 5001
+# Flask server port. ONE server since S36: the browser receiver also serves
+# the web UI at /app. (:5000 resume and :5001 tracker were folded in and their
+# constants deleted in the S38 debt sweep — resume/app.py and tracker/app.py
+# are gone.)
 PORT_RECEIVER = 5002
 
 # The Muse — free public API, no key. Keyword filtering is client-side.

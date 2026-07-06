@@ -48,9 +48,9 @@ mechanism, not the fetch pipeline.
 - **Non-US metro scoring beyond substring (#27)**: the S35 bare-city fallback
   makes international local-matching work; a proper non-US metro table (à la
   the US CBSA data) would still improve suburb/variant matching.
-- **Zero-key regression floor (from #8)**: a standing CI test pinning "N
-  keyless sources / companies.json ≥ 400" is a suggested follow-up so breadth
-  can't silently shrink.
+- ~~Zero-key regression floor (from #8)~~ — **BUILT S38**:
+  `tests/test_breadth_floor.py` pins 18 keyless-usable sources and
+  companies.json ≥ 400 (currently 558).
 - **Web-UI era (S36, 2026-07-04 — the tkinter-ceiling roadmap item is BUILT).**
   The web UI (React/shadcn served by the receiver at 127.0.0.1:5002/app,
   launcher `py -m webui` / exe `--web`) now twins every tk surface. Accepted
@@ -58,11 +58,21 @@ mechanism, not the fetch pipeline.
   `brain/findings-2026-07-04-webui-scenarios.md`):
   - ~~No web create-project / new-person flow~~ — **SHIPPED S37 (B2)**:
     topbar "New project…" dialog + POST /api/project/create.
-  - Filter state not URL-synced (back/refresh resets the Inbox view).
+  - ~~Filter state not URL-synced~~ — **SHIPPED S38**: Inbox filters mirror
+    into the URL (debounced replaceState, fail-open parsing); refresh/back
+    keep the view.
   - **Pending Alex decisions**: tk-tab retirement (GO/NO-GO read in the
-    findings report §6), deletion of the deprecated `tracker/app.py` (:5001
-    retired; file kept), and whether the exe DEFAULT becomes `--desktop`
+    findings report §6) and whether the exe DEFAULT becomes `--desktop`
     (native window shipped in S36c; tk remains the no-flag default).
+    ~~Deletion of the deprecated `tracker/app.py`~~ — **DONE S38** (debt
+    sweep): app + template + its CSRF tests deleted, `PORT_TRACKER` /
+    `PORT_RESUME` constants removed, and the HTML report's dead ":5001 /add"
+    link now opens the web Inbox pre-filtered to the job's company.
+  - **arbeitnow for US users (S38 sweep, documented as-is)**: the EU-centric
+    feed has no country gate, so US runs pay one cached fetch per cycle whose
+    rows mostly fail local matching downstream. Left ungated on purpose —
+    inclusion over precision (it does carry remote rows) and the per-cycle
+    cache makes the real cost negligible.
 - **Discover tab (S36c, EXPERIMENTAL — may be removed)**: BYO-AI role
   recommendations (prompt from experience/preferences/tracked signal ->
   paste reply -> lane-grouped cards -> additive keyword apply). Web-only, no

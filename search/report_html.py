@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 from jinja2 import Environment, FileSystemLoader
 
-from config import BASE_DIR, PORT_TRACKER
+from config import BASE_DIR, PORT_RECEIVER
 from models import JobResult
 
 
@@ -33,7 +33,10 @@ def generate_html_report(
         search_params=search_params,
         keyword_counts=keyword_counts,
         total=len(results),
-        tracker_port=PORT_TRACKER,
+        # The web UI (S36+) is the tracking surface; the retired :5001
+        # tracker's /add form is gone, so report links open the Inbox
+        # pre-filtered to the job's company instead (URL-synced filters, S38).
+        receiver_port=PORT_RECEIVER,
     )
 
     with open(output_path, "w", encoding="utf-8") as f:

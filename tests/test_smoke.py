@@ -12,7 +12,7 @@ MODULES = [
     "scrape.greenhouse_scraper", "scrape.lever_scraper", "scrape.workday_scraper",
     "scrape.direct_scraper", "scrape.discoverer", "scrape.browser_receiver",
     "scrape.company_health",
-    "tracker.db", "tracker.app",
+    "tracker.db",   # tracker.app (:5001) deleted in the S38 debt sweep
     "resume.experience_parser", "resume.generator", "resume.docx_builder",
     "resume.service",
     "claude_bridge",

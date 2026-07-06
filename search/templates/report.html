@@ -276,11 +276,14 @@
             %}...{% endif %}
           </div>
           <div style="margin-top: 8px">
+            <!-- The retired :5001 tracker's /add form is gone (S36); open the
+                 web UI's Inbox pre-filtered to this job's company instead
+                 (URL-synced filters). Works whenever the app is running. -->
             <a
               class="track-btn"
-              href="http://localhost:{{ tracker_port }}/add?title={{ job.title|urlencode }}&company={{ job.company|urlencode }}&location={{ job.location|urlencode }}&url={{ job.url|urlencode }}&salary={{ (job.salary_display())|urlencode }}"
+              href="http://127.0.0.1:{{ receiver_port }}/app/inbox?q={{ job.company|urlencode }}"
               target="_blank"
-              >+ Track</a
+              >Open in Zaggregate</a
             >
           </div>
         </div>

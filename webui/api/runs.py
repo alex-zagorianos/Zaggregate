@@ -224,11 +224,9 @@ def _test_hooks_enabled() -> bool:
     app must be in TESTING mode AND pytest must be imported in this process. Either
     alone is insufficient — a stray ``TESTING=True`` in a real launch (or a future
     caller reusing the receiver app) can't reach these routes unless pytest is also
-    resident, which it never is in a shipped ``--web`` process.
-
-    Phase 5 TODO: before the ``--web`` launcher ships, consider registration-time
-    exclusion (don't register these routes at all outside a test run) rather than
-    relying solely on this per-request gate.
+    resident, which it never is in a shipped ``--web`` process. (``--web``
+    shipped in S36 with exactly this per-request dual gate; the registration-
+    time exclusion once floated for Phase 5 proved unnecessary.)
     """
     return bool(current_app.config.get("TESTING")) and "pytest" in sys.modules
 

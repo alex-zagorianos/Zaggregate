@@ -6,8 +6,9 @@ Tabs:
   Inbox            — scored matches from the daily headless run (daily_run.py)
   Search           — multi-source search with match scoring
   Apply Queue      — ranked 'interested' jobs; docs + mark-applied workflow
-  Job Tracker      — replaces tracker/app.py  (http://localhost:5001)
-  Resume Generator — replaces resume/app.py   (http://localhost:5000)
+  Job Tracker      — application pipeline (the :5001 Flask tracker it
+                     replaced was deleted in the S38 debt sweep)
+  Resume Generator — tailored resume/cover generation (ex resume/app.py :5000)
 """
 import io
 import json

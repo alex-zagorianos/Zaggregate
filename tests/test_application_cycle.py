@@ -67,15 +67,9 @@ def test_update_job_caller_supplied_values_win(tmp_db):
     assert j["follow_up_date"] == "2026-03-10"
 
 
-def test_flask_update_path_arms_follow_up(tmp_db, monkeypatch):
-    """The Flask /update route calls db.update_job, so it inherits the stamp."""
-    from tracker import app as flask_app
-    jid = db.add_job("Analyst", "Bank", status="interested")
-    # /update ultimately calls tracker.db.update_job (imported into tracker.app).
-    flask_app.update_job(jid, status="applied")
-    j = db.get_job(jid)
-    assert j["date_applied"] == date.today().isoformat()
-    assert j["follow_up_date"]
+# (The old "Flask /update route inherits the stamp" test died with tracker/
+# app.py — the retired :5001 server, deleted S38. The db.update_job contract
+# it re-verified is covered directly by the tests above.)
 
 
 # ── 2. accepted / ghosted terminal states ─────────────────────────────────────
