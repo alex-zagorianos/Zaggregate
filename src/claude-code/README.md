@@ -5,9 +5,16 @@ preferences using **your own Claude Code plan** — no API key, no copy-pasting.
 
 ## Setup
 
+> **Running the packaged app?** The MCP server runs from the Python source,
+> which the packaged exe doesn't include — grab the repo first:
+> `git clone https://github.com/alex-zagorianos/Zaggregate` and follow these
+> steps in that checkout (your app data stays wherever the packaged app put it;
+> point the server at it with the `JOBPROGRAM_DATA` env var).
+
 1. `pip install -r requirements-mcp.txt` (installs the `mcp` SDK the server needs).
-2. Copy this folder's `.mcp.json` into the Zaggregate project folder (next to
-   `mcp_server.py`), or merge its `mcpServers.jobscout` entry into an existing one.
+2. Copy this folder's `.mcp.json` into the Zaggregate project folder (the repo
+   root — the server lives at `src/mcp_server.py`), or merge its
+   `mcpServers.jobscout` entry into an existing one.
 3. Copy `skills/find-jobs/` into `.claude/skills/` in that folder (or into your
    global `~/.claude/skills/`).
 4. Fill in `data/preferences.md` (what you want, plain English) and
@@ -37,7 +44,7 @@ your `data/` folder.
 
 The same `mcp_server.py` is a standard **stdio** MCP server — nothing is
 Claude-Code-specific. Any MCP client (Claude Desktop, Cursor, or your own SDK
-client) can launch it with the `.mcp.json` command (`py mcp_server.py`, or
+client) can launch it with the `.mcp.json` command (`py src/mcp_server.py`, or
 `python3` on macOS/Linux) and call the tools above. It's a pure local data layer
 over your `data/` folder; the client's model does the ranking and drafting.
 

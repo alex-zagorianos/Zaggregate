@@ -64,7 +64,7 @@ def _run_command(slug: str) -> tuple[str, str]:
               f'>> "{log_name}" 2>&1')
     else:
         work_dir = str(BASE)
-        tr = (f'cmd /c cd /d "{work_dir}" && py daily_run.py --project {slug} '
+        tr = (f'cmd /c cd /d "{work_dir}" && py src\\daily_run.py --project {slug} '
               f'>> "{log_name}" 2>&1')
     return work_dir, tr
 

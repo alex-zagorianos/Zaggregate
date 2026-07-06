@@ -39,9 +39,10 @@ native window); the plain exe opens the classic Tk window.
 
 ```
 py -3.12 -m pip install -r requirements.txt
-py -3.12 gui.py              # classic desktop app
-py -3.12 -m webui            # modern web UI at 127.0.0.1:5002/app
-py -3.12 -m webui --desktop  # modern web UI in a native window
+py -3.12 src\gui.py                 # classic desktop app
+cd src
+py -3.12 -m webui                   # modern web UI at 127.0.0.1:5002/app
+py -3.12 -m webui --desktop         # modern web UI in a native window
 ```
 
 On first launch, with no `.onboarded` marker, the **Setup wizard** opens
@@ -342,7 +343,7 @@ Inbox header shows when it last ran and what it found.
 Scheduling is **per project**: each project gets its own scheduled task
 (`JobSearchDaily_<slug>`), so a multi-person or multi-campaign setup keeps its
 lanes separate and staggered a few minutes apart. Under the hood the task invokes
-`daily_run.py --project <slug>` (or the frozen exe's `--daily --project <slug>`).
+`src\daily_run.py --project <slug>` (or the frozen exe's `--daily --project <slug>`).
 
 > The modern web UI's **Update my Inbox now** is an on-demand trigger; the
 > scheduled daily update is set up from the classic desktop app's Tools menu.

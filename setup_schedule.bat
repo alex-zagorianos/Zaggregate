@@ -10,7 +10,7 @@ rem Run once (double-click). Remove a task with:
 rem   schtasks /Delete /TN JobSearchDaily_<slug> /F
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR:~0,-1%"
-py scripts\setup_schedule.py
+py src\scripts\setup_schedule.py
 if %ERRORLEVEL%==0 (
     echo.
     echo Per-project daily tasks registered.

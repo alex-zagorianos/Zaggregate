@@ -1,6 +1,6 @@
 # CLAUDE.md — Zaggregate (ZAG0005 Job-Program)
 
-Python wide-net job aggregator + match-scoring + BYO-AI re-rank + resume gen + application tracker. tkinter GUI (`py gui.py`), MCP server (`mcp_server.py`), browser extension (`browser_ext/`, MV3).
+Python wide-net job aggregator + match-scoring + BYO-AI re-rank + resume gen + application tracker. tkinter GUI (`py src\gui.py`), MCP server (`src/mcp_server.py`), browser extension (`src/browser_ext/`, MV3).
 
 ## Session open
 
@@ -31,7 +31,8 @@ completely unrelated. Trade-offs + accepted gaps live in `docs/KNOWN_ISSUES.md`.
 
 - **Never run two project-touching processes at once** — `current_db_path` reads the global `active` project; concurrent daily_runs corrupted inbox routing before the S27 pin. (`daily_run --project X` pins process-locally only — it does NOT flip global active since S32/L1.)
 - **One server per port**: Windows SO_REUSEADDR lets a second receiver/exe bind 5002 silently and answer with ITS data root (S39: the production exe's EMPTY data dir answered `project:null` under the dev instance). Check `Get-NetTCPConnection -LocalPort 5002` before starting/diagnosing servers.
-- `scripts/setup_lanes.py`: RUN it, never import it (import executes and rewrites projects.json).
+- `src/scripts/setup_lanes.py`: RUN it, never import it (import executes and rewrites projects.json).
+- S43 (2026-07-06): all code moved to src/ — user data (projects/, output/, .env) stays at repo root via config.py's split anchors; run tests from repo root as always.
 - Rescore must pass ALL scoring levers — S32's rescore-drift bug erased new levers same-run; parity tests must be lever-tripping.
 - Windows FileCache: keys with `:` are NTFS ADS — sanitized since S30; keep new cache keys filename-safe.
 - Scoring changes: Alex's eng daily run must stay byte-identical unless he approves a delta (verified per wave).

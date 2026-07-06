@@ -2,7 +2,7 @@
 ``scripts/gen_web_tokens.py`` produces from the current ``ui/theme.py``.
 
 If a palette color (or spacing/radius) changes in ``ui/theme.py`` without a
-``py -3.12 scripts/gen_web_tokens.py`` re-run, the tk app and the web app fall out
+``py -3.12 src/scripts/gen_web_tokens.py`` re-run, the tk app and the web app fall out
 of sync silently. This test fails loudly instead, telling the dev to regenerate.
 
 Also pins the pieces of the contract the Phase-1+ frontend relies on: every
@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parent.parent.parent
-_GEN_PY = _REPO / "scripts" / "gen_web_tokens.py"
-_TOKENS_CSS = _REPO / "webui" / "frontend" / "src" / "tokens.css"
+_GEN_PY = _REPO / "src" / "scripts" / "gen_web_tokens.py"
+_TOKENS_CSS = _REPO / "src" / "webui" / "frontend" / "src" / "tokens.css"
 
 
 def _load_gen():
@@ -38,7 +38,7 @@ def test_committed_tokens_match_generator():
     actual = _TOKENS_CSS.read_text(encoding="utf-8")
     assert actual == expected, (
         "tokens.css is out of date with ui/theme.py — "
-        "re-run: py -3.12 scripts/gen_web_tokens.py"
+        "re-run: py -3.12 src/scripts/gen_web_tokens.py"
     )
 
 
@@ -57,7 +57,7 @@ def test_header_comment_present():
 
 def test_every_light_key_emitted_kebab_cased():
     """Every _LIGHT palette key appears as a kebab-cased --zg-* var in :root."""
-    data = gen._parse_theme((_REPO / "ui" / "theme.py").read_text(encoding="utf-8"))
+    data = gen._parse_theme((_REPO / "src" / "ui" / "theme.py").read_text(encoding="utf-8"))
     css = _TOKENS_CSS.read_text(encoding="utf-8")
     for key in data["light"]:
         assert f"--zg-{gen._kebab(key)}:" in css, f"missing token for {key}"
@@ -72,7 +72,7 @@ def test_dark_block_present_and_overrides_window():
 
 
 def test_status_badge_tokens_all_nine_statuses():
-    data = gen._parse_theme((_REPO / "ui" / "theme.py").read_text(encoding="utf-8"))
+    data = gen._parse_theme((_REPO / "src" / "ui" / "theme.py").read_text(encoding="utf-8"))
     css = _TOKENS_CSS.read_text(encoding="utf-8")
     for status in data["status_badge"]["light"]:
         assert f"--zg-status-{gen._kebab(status)}:" in css
@@ -95,7 +95,7 @@ def test_spacing_and_radius_tokens():
 
 def test_output_is_deterministic():
     """Two renders of the same source are identical (idempotent generator)."""
-    src = (_REPO / "ui" / "theme.py").read_text(encoding="utf-8")
+    src = (_REPO / "src" / "ui" / "theme.py").read_text(encoding="utf-8")
     assert gen.render(src) == gen.render(src)
 
 

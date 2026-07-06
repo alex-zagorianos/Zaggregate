@@ -3,7 +3,12 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Dev checkout: .env lives at the repo root (one level above src/). Frozen exe:
+# keep the historical CWD-walk (finds .env next to the exe).
+if getattr(sys, "frozen", False):
+    load_dotenv()
+else:
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 # ── Product version (single source of truth) ──────────────────────────────────
 # Every user-facing version string (packaged zip name, CHANGES.txt, the About
@@ -49,7 +54,9 @@ def _dir_writable(path: Path) -> bool:
 
 
 def _get_data_dir() -> Path:
-    """Read-only bundle root: _MEIPASS when frozen, else the repo root."""
+    """Read-only bundle root: _MEIPASS when frozen, else src/ (this file's own
+    directory — data_static/, data_templates/, and the seed companies.json
+    live beside the code)."""
     if _is_frozen():
         return Path(sys._MEIPASS)
     return Path(__file__).parent
@@ -59,7 +66,8 @@ def _get_user_data_dir() -> Path:
     """External, user-editable data root: experience/preferences/companies/db/
     cache/output/secrets live here. JOBPROGRAM_DATA overrides anywhere. Frozen
     default: <exe>/data if writable, else %LOCALAPPDATA%/JobProgram. Dev (not
-    frozen): the repo root, so the current files-at-root layout is unchanged."""
+    frozen): the REPO ROOT (one level above src/) — code moved into src/ in
+    the 2026-07 restructure, user data stayed where it always was."""
     override = os.getenv("JOBPROGRAM_DATA")
     if override:
         return Path(override)
@@ -68,7 +76,7 @@ def _get_user_data_dir() -> Path:
         if _dir_writable(exe_data):
             return exe_data
         return Path(os.getenv("LOCALAPPDATA", ".")) / "JobProgram"
-    return Path(__file__).parent
+    return Path(__file__).resolve().parent.parent
 
 
 DATA_DIR = _get_data_dir()

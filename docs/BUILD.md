@@ -1,16 +1,18 @@
 # Building Zaggregate
 
-Two artifacts come out of one script, `build_package.py`, driven by `app.spec`
-(the PyInstaller onedir spec — the reproducibility anchor, committed to the repo):
+Two artifacts come out of one script, `src/build_package.py`, driven by
+`src/app.spec` (the PyInstaller onedir spec — the reproducibility anchor,
+committed to the repo). Both commands are run from the repo root and their
+outputs land at the **repo root** (not under `src/`):
 
-| Artifact              | Command                                  | What it is                                                                              |
-| --------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------- |
-| **Shippable zip**     | `py -3.12 build_package.py`              | `dist/Zaggregate-v{ver}.zip` — a friend downloads, unzips, runs.                        |
-| **Production folder** | `py -3.12 build_package.py --production` | `production/` at the repo root — the same app, already unzipped and ready to hand over. |
+| Artifact              | Command                                      | What it is                                                                              |
+| --------------------- | -------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **Shippable zip**     | `py -3.12 src\build_package.py`              | `dist/Zaggregate-v{ver}.zip` (repo root) — a friend downloads, unzips, runs.            |
+| **Production folder** | `py -3.12 src\build_package.py --production` | `production/` at the repo root — the same app, already unzipped and ready to hand over. |
 
 Both are **build artifacts** and are gitignored (`dist/`, `build/`, `production/`,
-throwaway `*.spec`). The deliverables under version control are `build_package.py`
-and `app.spec`; you regenerate the folders with one command.
+throwaway `*.spec`). The deliverables under version control are `src/build_package.py`
+and `src/app.spec`; you regenerate the folders with one command.
 
 Requires PyInstaller (pinned in `requirements.txt`): `py -3.12 -m pip install pyinstaller`.
 
@@ -22,15 +24,15 @@ Requires PyInstaller (pinned in `requirements.txt`): `py -3.12 -m pip install py
 ## The production folder — one command
 
 ```
-py -3.12 build_package.py --production
+py -3.12 src\build_package.py --production
 ```
 
-This runs PyInstaller (`app.spec` → `dist/JobProgram/`), then assembles
-`production/`. To skip the ~2-minute PyInstaller pass and just re-assemble from an
-existing `dist/JobProgram/`, add `--no-build`:
+This runs PyInstaller (`src/app.spec` → `dist/JobProgram/` at the repo root),
+then assembles `production/` at the repo root. To skip the ~2-minute PyInstaller
+pass and just re-assemble from an existing `dist/JobProgram/`, add `--no-build`:
 
 ```
-py -3.12 build_package.py --production --no-build
+py -3.12 src\build_package.py --production --no-build
 ```
 
 ### What's inside `production/`
@@ -69,26 +71,27 @@ No personal data ships: `data/` carries only the neutral templates from
 Launching `JobProgram.exe` with no `.onboarded` marker opens the **Setup wizard**
 ~120 ms after the window appears, then bootstraps the data folder (seeds
 preferences/experience, initializes `tracker.db`). The smoke test in
-`build_package.py`'s CI story just confirms the frozen exe stays alive (a missing
+`src/build_package.py`'s CI story just confirms the frozen exe stays alive (a missing
 hidden import kills a windowed exe within ~1-2 s) — liveness alone proves the
 wizard/window came up clean.
 
 ## Cutting a release / bumping the version
 
-The version is a **single source of truth**: `config.APP_VERSION`. Bump that one
-line (semantic versioning, `MAJOR.MINOR.PATCH`) and everything follows:
+The version is a **single source of truth**: `config.APP_VERSION` (in
+`src/config.py`). Bump that one line (semantic versioning, `MAJOR.MINOR.PATCH`)
+and everything follows:
 
 - the zip name (`Zaggregate-v{ver}.zip`),
-- the exe's Windows version resource (`app.spec` reads `config.APP_VERSION`),
+- the exe's Windows version resource (`src/app.spec` reads `config.APP_VERSION`),
 - `QUICKSTART.md`, `README.txt`, `CHANGES.txt`,
 - the in-app About dialog / `last_run.json` / problem-report bundle.
 
-After bumping, edit the `CHANGES` stub in `build_package.py` (replace the
+After bumping, edit the `CHANGES` stub in `src/build_package.py` (replace the
 placeholder date with the ship date, add user-facing bullets) and rebuild.
 
 ## Code signing (optional, not enabled)
 
 The exe is unsigned, so Windows shows an "unknown publisher" warning the first
 time (handled by `FIRST-RUN.txt`). To remove it, get an OV/EV code-signing cert
-and wire up `_sign_exe()` in `build_package.py` — see its docstring for the
+and wire up `_sign_exe()` in `src/build_package.py` — see its docstring for the
 `signtool` invocation. Left off by default.

@@ -30,9 +30,10 @@ import sys
 from datetime import date
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = Path(__file__).resolve().parent    # src/ — code + bundled assets
+ROOT = SRC.parent                        # repo root — build outputs, user-facing docs
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 import config
 
 # Single source of truth for the release version (config.APP_VERSION): names the
@@ -43,7 +44,7 @@ DIST = ROOT / "dist"
 APP_BUILD = DIST / "JobProgram"     # PyInstaller onedir output
 PKG = DIST / "Zaggregate"             # assembled package
 PROD = ROOT / "production"           # ready-to-run production folder (gitignored)
-TEMPLATES = ROOT / "data_templates"
+TEMPLATES = SRC / "data_templates"
 
 # data_templates filename -> seeded name in the user's data folder
 _SEEDS = {
@@ -259,7 +260,9 @@ def write_first_run_kit(dest_dir):
 
 def run_pyinstaller() -> None:
     print("[1/3] PyInstaller (app.spec)...")
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "app.spec"],
+    # cwd=ROOT keeps PyInstaller's dist/ + build/ outputs at the repo root;
+    # the spec lives in src/ so its own relative paths resolve beside the code.
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "src/app.spec"],
                    cwd=ROOT, check=True)
 
 
@@ -279,7 +282,7 @@ def _populate_app(app) -> dict:
         if src.exists():
             shutil.copyfile(src, data / target)
             created.append(target)
-    companies = ROOT / "companies.json"
+    companies = SRC / "companies.json"
     if companies.exists():
         shutil.copyfile(companies, data / "companies.json")
         created.append("companies.json")
@@ -292,7 +295,7 @@ def _populate_app(app) -> dict:
     # browser" walkthrough (Help ▸ Guide) can point at a real browser_ext/ folder
     # next to the exe. The receiver runs in-process (Tools ▸ Capture); the
     # extension is what the user loads via chrome://extensions ▸ Load unpacked.
-    ext_src = ROOT / "browser_ext"
+    ext_src = SRC / "browser_ext"
     ext_bundled = False
     if ext_src.exists():
         shutil.copytree(ext_src, app / "browser_ext")
@@ -303,7 +306,7 @@ def _populate_app(app) -> dict:
     # client has the server config, skill, README, and its pip requirements next
     # to the exe. This is the bring-your-own-AI path; it needs a Python + `mcp`
     # SDK the exe user may not have, so it ships as source alongside, not baked in.
-    cc_src = ROOT / "claude-code"
+    cc_src = SRC / "claude-code"
     cc_bundled = False
     if cc_src.exists():
         shutil.copytree(cc_src, app / "claude-code")
@@ -420,7 +423,7 @@ def assemble_production() -> None:
     # Lift browser_ext/ to the production root so the "Load unpacked" target is
     # obvious without digging into JobProgram/. (JobProgram/browser_ext also exists
     # for the in-app Guide's relative pointer — this is the friendly duplicate.)
-    ext_src = ROOT / "browser_ext"
+    ext_src = SRC / "browser_ext"
     if ext_src.exists():
         shutil.copytree(ext_src, PROD / "browser_ext")
 

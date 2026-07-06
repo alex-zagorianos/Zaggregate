@@ -17,8 +17,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SRC = ROOT / "src"          # all app code lives under src/ (2026-07 restructure)
+for _p in (str(SRC), str(ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # The real connect methods, captured before any patching.
 _real_connect = socket.socket.connect

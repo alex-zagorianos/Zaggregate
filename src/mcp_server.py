@@ -7,7 +7,7 @@ folder) — it does NOT call any AI. A typical find-jobs flow:
   get_preferences -> search_jobs -> list_inbox(unscored) -> [Claude ranks] ->
   set_fit_scores -> track_job (the best ones)
 
-Run:  py mcp_server.py            (stdio transport; see claude-code/.mcp.json)
+Run:  py src/mcp_server.py        (stdio transport; see src/claude-code/.mcp.json)
 Requires the `mcp` package (official SDK; ships FastMCP). The data folder is
 resolved by config (JOBPROGRAM_DATA env / ./data when frozen / repo root in dev).
 """

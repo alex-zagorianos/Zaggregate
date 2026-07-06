@@ -1,7 +1,7 @@
 import json, re
 from pathlib import Path
 
-DATA_STATIC = Path(__file__).resolve().parents[2] / "data_static"
+DATA_STATIC = Path(__file__).resolve().parents[2] / "src" / "data_static"
 SOC_RE = re.compile(r"^\d{2}-\d{4}(\.\d{2})?$")
 
 def _onet_rows():

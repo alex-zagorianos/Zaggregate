@@ -49,7 +49,7 @@ def _run(module, base, *extra):
     env = dict(os.environ, JOBPROGRAM_DATA=str(base))
     return subprocess.run(
         [sys.executable, "-m", module, "--dry-run", *extra],
-        cwd=str(REPO), env=env, capture_output=True, text=True)
+        cwd=str(REPO / "src"), env=env, capture_output=True, text=True)
 
 
 @pytest.mark.parametrize("module,url,expect_fix", [

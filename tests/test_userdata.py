@@ -12,10 +12,11 @@ def test_user_data_dir_env_override(monkeypatch, tmp_path):
 
 
 def test_user_data_dir_dev_is_repo_root(monkeypatch):
-    """Dev (non-frozen) keeps the current files-at-repo-root layout."""
+    """Dev (non-frozen) keeps user files at the REPO ROOT — one level above
+    src/, where config.py lives since the 2026-07 restructure."""
     monkeypatch.delenv("JOBPROGRAM_DATA", raising=False)
     monkeypatch.setattr(config, "_is_frozen", lambda: False)
-    assert config._get_user_data_dir() == Path(config.__file__).parent
+    assert config._get_user_data_dir() == Path(config.__file__).resolve().parent.parent
 
 
 def test_user_data_dir_frozen_prefers_exe_data(monkeypatch, tmp_path):

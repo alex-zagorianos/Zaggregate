@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
+_SRC = _ROOT / "src"    # webui/ lives under src/; the fresh interpreter needs it as cwd
 
 _PROBE = r"""
 import sys
@@ -37,7 +38,7 @@ print("CLEAN")
 def test_webui_import_is_gui_free_and_no_tracker_app():
     proc = subprocess.run(
         [sys.executable, "-c", _PROBE],
-        cwd=str(_ROOT), capture_output=True, text=True, timeout=60,
+        cwd=str(_SRC), capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 0, (
         f"probe failed ({proc.returncode}): {proc.stdout!r} {proc.stderr!r}")

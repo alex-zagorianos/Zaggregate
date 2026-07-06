@@ -190,8 +190,8 @@ orphan existing users' data under `%LOCALAPPDATA%\JobProgram`.
 
 ### Module map
 
-The app is a flat set of **root modules** plus focused **packages**. Paths are
-relative to the repo root.
+The app is a flat set of **root modules** plus focused **packages**, all living
+under `src/`. Paths are relative to `src/`.
 
 #### Root modules
 
@@ -294,8 +294,9 @@ relative to the repo root.
   capture), `selectors.js` / `selector_check.js`, `popup.html` / `popup.js`.
 - **`scripts/`** — one-off maintenance/build helpers, run directly (e.g.
   `setup_schedule.py` for the daily task), never imported by the app.
-- **`tests/`** — the pytest suite (`py -3.12 -m pytest`), including the doc-pin
-  guards (`test_positioning_copy.py`, `ui/test_help.py`).
+- **`tests/`** (repo root, not under `src/`) — the pytest suite
+  (`py -3.12 -m pytest` from the repo root), including the doc-pin guards
+  (`test_positioning_copy.py`, `ui/test_help.py`).
 
 ### Data-flow diagrams
 

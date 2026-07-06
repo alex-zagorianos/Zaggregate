@@ -39,7 +39,7 @@ def test_register_daily_task_dev_builds_py_command(monkeypatch):
     assert cmd[0] == "schtasks" and "/Create" in cmd and "/F" in cmd
     assert "/TN" in cmd and "JobSearchDaily_myproj" in cmd
     tr = cmd[cmd.index("/TR") + 1]
-    assert "py daily_run.py --project myproj" in tr
+    assert "py src\\daily_run.py --project myproj" in tr
     assert ">>" in tr and "2>&1" in tr           # log redirect present
     assert "07:30" in cmd                         # start time honored
 

@@ -105,7 +105,7 @@ def test_companies_json_floor_does_not_shrink():
     "companies" key. Shrinking this list silently narrows the careers/
     ATS-discovery source's reach for every user who hasn't customized it."""
     import json
-    data = json.loads((REPO_ROOT / "companies.json").read_text(encoding="utf-8"))
+    data = json.loads((REPO_ROOT / "src" / "companies.json").read_text(encoding="utf-8"))
     companies = data["companies"]
     assert isinstance(companies, list)
     assert len(companies) >= MIN_COMPANIES, (

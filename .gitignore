@@ -10,7 +10,7 @@
 # — it is a publicly-distributed CA certificate). It must SHIP so search/
 # reap_client.py can complete those servers' incomplete TLS chain. See the file's
 # own header for why. This is the only *.pem that is intentionally tracked.
-!data_static/reap_sectigo_r36_intermediate.pem
+!src/data_static/reap_sectigo_r36_intermediate.pem
 secrets/
 credentials/
 
@@ -36,7 +36,7 @@ build/
 # script + app.spec are the reproducibility anchor, not the folder.
 production/
 *.spec
-!app.spec
+!src/app.spec
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -45,10 +45,10 @@ production/
 # node_modules is transient; reinstall with `npm install`. The BUILT output
 # (webui/static/) is intentionally COMMITTED so source users without Node still
 # get the web UI — do NOT ignore it.
-webui/frontend/node_modules/
+src/webui/frontend/node_modules/
 # Vite's local build caches / tsbuildinfo
-webui/frontend/.vite/
-webui/frontend/**/*.tsbuildinfo
+src/webui/frontend/.vite/
+src/webui/frontend/**/*.tsbuildinfo
 
 # === VIRTUAL ENVIRONMENTS ===
 venv/
@@ -69,8 +69,11 @@ desktop.ini
 tracker.db
 
 # === PERSONAL CONFIG (sanitized template lives in config.example.json) ===
-legacy/config_dad.json
+src/legacy/config_dad.json
 /user_config.json
+# The user's live registry copy, seeded at first run from the tracked seed at
+# src/companies.json (pre-S43 the seed and the user copy were the same root file)
+/companies.json
 # User data scaffolded from data_templates/ (root only; keep the templates tracked)
 /preferences.md
 /preferences.json
@@ -100,13 +103,13 @@ last_run.json
 
 # Claude Code agent worktrees (transient; created per builder run) + reach run data
 .claude/worktrees/
-coverage/reach/
+src/coverage/reach/
 
 # === LOCAL SCAFFOLDING & PERSONAL STRATEGY (kept local; not part of the distributable) ===
-legacy/candidates.json
-legacy/flatten_candidates.py
-legacy/verify_and_add.py
-/legacy/job search/
+src/legacy/candidates.json
+src/legacy/flatten_candidates.py
+src/legacy/verify_and_add.py
+/src/legacy/job search/
 
 # graphify knowledge graph (local artifact, rebuild via graphify update .)
 graphify-out/

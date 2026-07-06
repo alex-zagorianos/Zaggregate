@@ -2,7 +2,7 @@
   "mcpServers": {
     "jobscout": {
       "command": "py",
-      "args": ["mcp_server.py"]
+      "args": ["src/mcp_server.py"]
     }
   }
 }

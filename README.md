@@ -9,6 +9,8 @@ used **with** the AI you already have.
 
 ![The Zaggregate Inbox — a daily, scored feed of matched jobs](docs/images/inbox.png)
 
+**[Download for Windows](https://github.com/alex-zagorianos/Zaggregate/releases/latest)** — unzip, open the `JobProgram` folder, and double-click the launcher for your preferred mode. Prefer source? See [Quick start](#quick-start-run-from-source).
+
 ## The fast way: let your AI set it up
 
 The quickest path from download to a running search is **one round-trip with any
@@ -116,9 +118,10 @@ Requires Python 3.12 on Windows (`py -3.12`).
 
 ```
 py -3.12 -m pip install -r requirements.txt
-py -3.12 gui.py              # default desktop app (classic Tk window)
-py -3.12 -m webui            # modern web UI in the browser (127.0.0.1:5002/app)
-py -3.12 -m webui --desktop  # modern web UI in a native window
+py -3.12 src\gui.py                 # default desktop app (classic Tk window)
+cd src
+py -3.12 -m webui                   # modern web UI in the browser (127.0.0.1:5002/app)
+py -3.12 -m webui --desktop         # modern web UI in a native window
 ```
 
 The web UI ships a pre-built front end, so no Node/npm is needed to run from
@@ -128,8 +131,8 @@ source. See [docs/BUILD.md](docs/BUILD.md) to rebuild the front end or the exe.
 
 ```
 py -3.12 -m pip install pyinstaller
-py -3.12 build_package.py                # -> dist/Zaggregate-v<version>.zip
-py -3.12 build_package.py --production   # -> a ready-to-run production/ folder
+py -3.12 src\build_package.py                # -> dist/Zaggregate-v<version>.zip (repo root)
+py -3.12 src\build_package.py --production   # -> a ready-to-run production/ folder (repo root)
 ```
 
 The zip is a folder a friend unzips and runs with no Python install. Each built
@@ -190,43 +193,53 @@ includes your API keys or resume.
 
 ## Repository layout
 
-A quick map for anyone reading the source. Everything runs on top of a flat set
-of root modules (`config.py`, `models.py`, `ranker.py`, …) plus a handful of
-focused packages:
+A quick map for anyone reading the source. Application code lives under `src/`
+(a flat set of root modules — `config.py`, `models.py`, `ranker.py`, … — plus a
+handful of focused packages); the repo root holds docs, tests, and your own
+data folder:
 
 ```
-gui.py            Desktop app (tkinter) — the default entry point
-daily_run.py      Headless daily search that fills your inbox (scheduled runs)
-mcp_server.py     MCP server so an AI agent can drive the app
-build_package.py  Builds the distributable exe/zip (see docs/BUILD.md)
-config.py         Settings, paths, and feature flags
-models.py         Core data types (Job, scores) shared across the app
-
-search/           Job-source clients (Adzuna, USAJobs, RemoteOK, …) + the search engine
-scrape/           Company career-page scrapers, one per ATS (Greenhouse, Lever, Workday, …)
-match/            Fit-scoring: rubric, salary, ghost-job flags, skill-gap
-discover/         Finds new companies/boards to add to your search
-coverage/         Estimates how much of your local market the app can see ("reach")
-resume/           Resume + cover-letter generation and tailoring
-rerank/           Import/export for the bring-your-own-AI ranking round-trip
-ui/               Desktop (tkinter) tabs and dialogs
-webui/            Modern web UI — Flask API (webui/) + React front end (webui/frontend/)
-tracker/          Local SQLite application tracker (tracker.db lives in your data folder)
-browser_ext/      Chrome/Edge extension (MV3) for capturing jobs off any page
-
-data_static/      Shipped reference data (metro tables, alt job titles, CA cert)
-data_templates/   Starter files copied into your data folder on first run
-companies.json    Built-in starter company registry (merged with yours at runtime)
-scripts/          One-off maintenance/build helpers (run directly, not imported by the app)
-tests/            Test suite (py -3.12 -m pytest)
+README.md, LICENSE, EULA.txt, PRIVACY.md   Top-level docs and terms
+CLAUDE.md, _index.md                       Project brain entry points
 docs/             Build guide, known issues, and per-session development handoffs
 brain/            Design notes, plans, and review logs kept as an open development journal
+tests/            Test suite (py -3.12 -m pytest, run from the repo root)
+src/              All application code (see below)
+
+src/
+  gui.py            Desktop app (tkinter) — the default entry point
+  daily_run.py      Headless daily search that fills your inbox (scheduled runs)
+  mcp_server.py     MCP server so an AI agent can drive the app
+  build_package.py  Builds the distributable exe/zip (see docs/BUILD.md)
+  config.py         Settings, paths, and feature flags
+  models.py         Core data types (Job, scores) shared across the app
+
+  search/           Job-source clients (Adzuna, USAJobs, RemoteOK, …) + the search engine
+  scrape/           Company career-page scrapers, one per ATS (Greenhouse, Lever, Workday, …)
+  match/            Fit-scoring: rubric, salary, ghost-job flags, skill-gap
+  discover/         Finds new companies/boards to add to your search
+  coverage/         Estimates how much of your local market the app can see ("reach")
+  resume/           Resume + cover-letter generation and tailoring
+  rerank/           Import/export for the bring-your-own-AI ranking round-trip
+  ui/               Desktop (tkinter) tabs and dialogs
+  webui/            Modern web UI — Flask API (webui/) + React front end (webui/frontend/)
+  tracker/          Local SQLite application tracker (tracker.db lives in your data folder)
+  browser_ext/      Chrome/Edge extension (MV3) for capturing jobs off any page
+
+  data_static/      Shipped reference data (metro tables, alt job titles, CA cert)
+  data_templates/   Starter files copied into your data folder on first run
+  companies.json    Built-in starter company registry (merged with yours at runtime)
+  scripts/          One-off maintenance/build helpers (run directly, not imported by the app)
+  claude-code/      MCP server setup for driving the app from Claude Code / MCP clients
+  legacy/           Retired code kept for reference, not imported by the app
+  packaging/        Packaging assets consumed by build_package.py
+  app.spec          PyInstaller onedir spec (see docs/BUILD.md)
 ```
 
 Your own data — preferences, resume, scores, and tracker — never lives in the
-repo; it's written to a local data folder and is git-ignored. See the
-[Architecture](#architecture) section above for the entry points and
-`_index.md` for the deeper map.
+repo; it's written to a local data folder at the repo root (resolved by
+`src/config.py`) and is git-ignored. See the [Architecture](#architecture)
+section above for the entry points and `_index.md` for the deeper map.
 
 ## Developed in the open
 
