@@ -67,6 +67,62 @@ def test_put_theme_foreign_origin_403(client, tmp_settings):
     assert ui_settings.get_theme() == "light"
 
 
+# ── /api/settings/notify ───────────────────────────────────────────────────────
+
+def test_get_notify_default_false(client, tmp_settings):
+    body = client.get("/api/settings/notify").get_json()
+    assert body["ok"] is True
+    assert body["notify_high_fit"] is False  # opt-in, default off
+
+
+def test_put_notify_persists_true(client, tmp_settings):
+    resp = client.put("/api/settings/notify", json={"notify_high_fit": True},
+                      headers={"Origin": "http://127.0.0.1:5002"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"ok": True, "notify_high_fit": True}
+    assert ui_settings.get_notify_high_fit() is True
+    assert client.get("/api/settings/notify").get_json()["notify_high_fit"] is True
+
+
+def test_put_notify_roundtrip_false(client, tmp_settings):
+    client.put("/api/settings/notify", json={"notify_high_fit": True},
+              headers={"Origin": "http://127.0.0.1:5002"})
+    resp = client.put("/api/settings/notify", json={"notify_high_fit": False},
+                      headers={"Origin": "http://127.0.0.1:5002"})
+    assert resp.get_json() == {"ok": True, "notify_high_fit": False}
+    assert ui_settings.get_notify_high_fit() is False
+
+
+def test_put_notify_headerless_403(client, tmp_settings):
+    resp = client.put("/api/settings/notify", json={"notify_high_fit": True})
+    assert resp.status_code == 403
+    assert resp.get_json() == {"ok": False, "error": "forbidden origin"}
+    assert ui_settings.get_notify_high_fit() is False  # nothing persisted
+
+
+def test_put_notify_foreign_origin_403(client, tmp_settings):
+    resp = client.put("/api/settings/notify", json={"notify_high_fit": True},
+                      headers={"Origin": _FOREIGN_ORIGIN})
+    assert resp.status_code == 403
+    assert ui_settings.get_notify_high_fit() is False
+
+
+def test_put_notify_missing_field_400(client, tmp_settings):
+    resp = client.put("/api/settings/notify", json={},
+                      headers={"Origin": _EXT_ORIGIN})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+    assert ui_settings.get_notify_high_fit() is False
+
+
+def test_put_notify_non_bool_400(client, tmp_settings):
+    resp = client.put("/api/settings/notify", json={"notify_high_fit": "yes"},
+                      headers={"Origin": _EXT_ORIGIN})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+    assert ui_settings.get_notify_high_fit() is False
+
+
 # ── /api/settings/keys ────────────────────────────────────────────────────────
 
 _LOOPBACK = "http://127.0.0.1:5002"

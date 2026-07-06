@@ -27,6 +27,7 @@ export const queryKeys = {
   status: ["status"] as const,
   projects: ["projects"] as const,
   theme: ["theme"] as const,
+  notifyHighFit: ["notify-high-fit"] as const,
   topPicks: (limit: TopPicksLimit) => ["toppicks", limit] as const,
   topPicksAll: ["toppicks"] as const,
   sourceKeys: ["source-keys"] as const,
@@ -173,6 +174,27 @@ export function useDismissInbox() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });
+    },
+  });
+}
+
+// ── Notification settings ─────────────────────────────────────────────────────
+
+/** The "notify on high-fit matches" toggle (opt-in, default False). */
+export function useNotifyHighFit() {
+  return useQuery({
+    queryKey: queryKeys.notifyHighFit,
+    queryFn: () => endpoints.getNotifyHighFit(),
+    staleTime: 30_000,
+  });
+}
+
+export function useSetNotifyHighFit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (value: boolean) => endpoints.setNotifyHighFit(value),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.notifyHighFit });
     },
   });
 }

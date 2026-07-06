@@ -49,6 +49,19 @@ def set_theme(mode: str) -> None:
     save(data)
 
 
+def get_notify_high_fit() -> bool:
+    """Whether to fire a Windows notification when a daily run finds new
+    high-fit matches (opt-in, default False)."""
+    return bool(load().get("notify_high_fit", False))
+
+
+def set_notify_high_fit(value: bool) -> None:
+    """Persist the high-fit notification toggle."""
+    data = load()
+    data["notify_high_fit"] = bool(value)
+    save(data)
+
+
 def get_location_mode() -> str:
     """The saved Inbox Location view-filter mode, or the local-focused default."""
     mode = load().get("location_mode")

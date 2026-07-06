@@ -95,6 +95,31 @@ def _maybe_auto_rank(cfg: dict) -> None:
         log(f"WARN: auto-rank skipped: {type(e).__name__}: {e}")
 
 
+def _maybe_notify_high_fit(qualified: list, added: int) -> None:
+    """Opt-in: fire a Windows balloon/toast when this run inboxed new, high-fit
+    matches (P-notify). OFF by default (``ui.settings.get_notify_high_fit()``
+    -- byte-identical for a user who never opts in).
+
+    Gated on ``added >= 1`` (the run actually inserted something into the
+    inbox — a zero-insert run never notifies) AND the setting being on. The
+    candidate set is ``qualified`` (this run's scored, min-score-passing
+    results) filtered to ``r.is_new`` (set earlier in ``main()`` from the
+    freshness baseline) -- both are in-memory data this run already computed,
+    so no historical DB re-query is needed to decide "new this run".
+
+    Wrapped so a notification hiccup (a Win32 failure, being off-Windows, or
+    any other error) can NEVER affect the run — mirrors ``_maybe_auto_rank``'s
+    own never-fail contract."""
+    try:
+        from ui import settings as ui_settings
+        if added >= 1 and ui_settings.get_notify_high_fit():
+            import notify_win
+            new_qualified = [r for r in qualified if r.is_new]
+            notify_win.notify_high_fit_matches(new_qualified)
+    except Exception as e:  # a notification hiccup must never fail the run
+        log(f"WARN: high-fit notification skipped: {type(e).__name__}: {e}")
+
+
 def _reach_probe(engine, results, keywords, location, cfg) -> int:
     """SerpApi reach probe (E2 / review P1 Tier A): issue 1-2 Google-Jobs queries
     on the broadest keyword + location, MERGE the parsed jobs into BOTH the run's
@@ -468,6 +493,10 @@ def main():
     if cap_overflow:
         top = sorted(cap_overflow.items(), key=lambda kv: kv[1], reverse=True)
         log("capped: " + ", ".join(f"{c} {n}" for c, n in top))
+
+    # Opt-in Windows notification for new high-fit matches (see
+    # _maybe_notify_high_fit's docstring for the gating + data-source rules).
+    _maybe_notify_high_fit(qualified, added)
 
     # Repost/evergreen visibility (C1): how many of this run's qualified jobs the
     # persisted history flags as re-listed or perpetual reqs.

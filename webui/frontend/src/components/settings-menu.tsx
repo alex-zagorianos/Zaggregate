@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   RefreshCw,
   MessageSquare,
+  BellRing,
 } from "lucide-react";
 
 import {
@@ -19,6 +20,7 @@ import {
   endpoints,
   ApiError,
 } from "@/api/client";
+import { useNotifyHighFit, useSetNotifyHighFit } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -34,6 +36,46 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
+
+/* The high-fit notification toggle — a plain checkbox styled like the existing
+ * inline Toggle idiom (tabs/companies/BuildListDialog.tsx), not a dropdown item
+ * (a DropdownMenuItem's onSelect closes the menu, which fights a checkbox
+ * click). Reads/writes GET+PUT /api/settings/notify via ui.settings on the
+ * server, mirroring the theme toggle's persistence pattern exactly. */
+function NotifyHighFitToggle() {
+  const query = useNotifyHighFit();
+  const mutation = useSetNotifyHighFit();
+  const checked = query.data?.notify_high_fit ?? false;
+
+  const onChange = (value: boolean) => {
+    mutation.mutate(value, {
+      onError: () =>
+        toast.error("Couldn't save that setting", {
+          description: "Please try again.",
+        }),
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+      <BellRing className="text-muted-foreground size-4 shrink-0" />
+      <label
+        htmlFor="notify-high-fit-toggle"
+        className="flex flex-1 cursor-pointer items-center justify-between gap-3"
+      >
+        <span>Notify on high-fit matches (Windows)</span>
+        <input
+          id="notify-high-fit-toggle"
+          type="checkbox"
+          checked={checked}
+          disabled={query.isLoading || mutation.isPending}
+          onChange={(e) => onChange(e.target.checked)}
+          className="accent-[var(--zg-accent)]"
+        />
+      </label>
+    </div>
+  );
+}
 
 /* The topbar gear menu — settings + data tools. Replaces the old single gear
  * that just navigated to Sources. Items:
@@ -199,6 +241,7 @@ export function SettingsMenu() {
             <BookOpen className="size-4 opacity-70" />
             Open the guide
           </DropdownMenuItem>
+          <NotifyHighFitToggle />
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Your data</DropdownMenuLabel>
           <DropdownMenuItem

@@ -168,6 +168,10 @@ export interface ThemeResponse extends ApiEnvelope {
   mode: ThemeMode;
 }
 
+export interface NotifyHighFitResponse extends ApiEnvelope {
+  notify_high_fit: boolean;
+}
+
 // ── Top Picks ─────────────────────────────────────────────────────────────────
 /** An inbox row as ranked into the Top Picks shortlist. Engine columns pass
  * through as-is (serializers.inbox_row); we type the fields the tab reads and
@@ -391,6 +395,11 @@ export const endpoints = {
   getTheme: () => api.get<ThemeResponse>("/settings/theme"),
   setTheme: (mode: ThemeMode) =>
     api.put<ThemeResponse>("/settings/theme", { json: { mode } }),
+  getNotifyHighFit: () => api.get<NotifyHighFitResponse>("/settings/notify"),
+  setNotifyHighFit: (value: boolean) =>
+    api.put<NotifyHighFitResponse>("/settings/notify", {
+      json: { notify_high_fit: value },
+    }),
 
   // Top Picks
   topPicks: (limit: TopPicksLimit) =>

@@ -53,6 +53,30 @@ def put_theme():
     return jsonify({"ok": True, "mode": ui_settings.get_theme()})
 
 
+# ── High-fit notification toggle ──────────────────────────────────────────────
+# Same zero-Tk persistence as theme (ui.settings, ui_settings.json). Opt-in,
+# default False; the daily run reads this via ui_settings.get_notify_high_fit()
+# to decide whether to raise a Windows balloon/toast (notify_win.py) for new
+# high-fit matches.
+
+@settings_bp.get("/settings/notify")
+def get_notify():
+    return jsonify({"ok": True, "notify_high_fit": ui_settings.get_notify_high_fit()})
+
+
+@settings_bp.put("/settings/notify")
+@require_local_origin
+def put_notify():
+    data = request.get_json(force=True, silent=True) or {}
+    if "notify_high_fit" not in data:
+        return jsonify({"ok": False, "error": "missing notify_high_fit"}), 400
+    value = data.get("notify_high_fit")
+    if not isinstance(value, bool):
+        return jsonify({"ok": False, "error": "notify_high_fit must be a boolean"}), 400
+    ui_settings.set_notify_high_fit(value)
+    return jsonify({"ok": True, "notify_high_fit": ui_settings.get_notify_high_fit()})
+
+
 # ── Job-source API keys ───────────────────────────────────────────────────────
 
 def _mask(value: str) -> str | None:
