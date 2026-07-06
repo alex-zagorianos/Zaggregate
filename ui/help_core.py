@@ -24,7 +24,7 @@ from pathlib import Path
 
 import config
 
-APP_NAME = "Job Search Tools"
+APP_NAME = "Zaggregate"
 
 # The Guide is a list of (tag, text). Tags: h1/h2 (headings), body/bullet (text),
 # muted (a footnote). The web Guide page folds these into sections via
@@ -525,7 +525,7 @@ def auto_backup(keep: int = 7, when=None) -> str | None:
     if not src.exists():
         return None
     stamp = (when or _dt.now()).strftime("%Y%m%d_%H%M%S")
-    dest = backups_dir() / f"jobscout-backup-{stamp}"
+    dest = backups_dir() / f"zaggregate-backup-{stamp}"
     out = make_backup(str(dest))
     _prune_backups(keep)
     return out
@@ -536,7 +536,7 @@ def _prune_backups(keep: int) -> list[str]:
     filenames. Only touches files matching the auto-backup name pattern so a
     user's manually-saved zip dropped in here is never removed."""
     d = backups_dir()
-    archives = sorted(d.glob("jobscout-backup-*.zip"),
+    archives = sorted(d.glob("zaggregate-backup-*.zip"),
                       key=lambda p: p.name, reverse=True)
     removed = []
     for old in archives[max(keep, 0):]:

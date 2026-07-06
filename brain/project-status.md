@@ -11,13 +11,14 @@ Suite **3,247 / 0** (2 headless-tk skips), vitest **237**, bundle current.
 **S40b (morning): ★PUSHED `e298bd2..aeed3fe` + production exe REBUILT +
 frozen-smoked (serves `index-mlVew1_R.js`; production now carries S39+S40).**
 **LICENSE DECIDED (S40b, Alex): AGPL-3.0 adopted + pushed `0890217`** (LICENSE
-+ README section w/ DCO note + EULA §6 grant reference; dual-license door for
-institutions kept open). Repo still PRIVATE — going public needs the
-PII-in-old-history sweep first (S34 note stands).
-GOTCHA: Claude desktop's chrome-native-host.exe had the production
-VCRUNTIME140.dll mapped → rmtree Access-denied; kill the native host (respawns)
-to release. Canonical:
-`docs/handoffs/handoff_20260706_session40.md` + `brain/plan-2026-07-06-ai-first-setup.md`.
+
+- README section w/ DCO note + EULA §6 grant reference; dual-license door for
+  institutions kept open). Repo still PRIVATE — going public needs the
+  PII-in-old-history sweep first (S34 note stands).
+  GOTCHA: Claude desktop's chrome-native-host.exe had the production
+  VCRUNTIME140.dll mapped → rmtree Access-denied; kill the native host (respawns)
+  to release. Canonical:
+  `docs/handoffs/handoff_20260706_session40.md` + `brain/plan-2026-07-06-ai-first-setup.md`.
 
 1. **"Paste one reply, start searching"** = THE setup path now: combined
    config+seeds prompt (`build_full_setup_prompt`/`split_full_reply`),
@@ -961,4 +962,4 @@ Full record: `handoff_20260630_session23.md`. **859 → 925 tests (+66), push HE
 
 **Adversarial review at close (`2dc1a82`) — 9 confirmed defects, ALL fixed (925→931 tests, `tests/test_review_fixes_s23.py`):** `normalize_url` generic redirect-unwrap over-collapsed direct/apply URLs (real inbox data-loss) → host/path-gated; **`ranker._facts_profile` didn't fall back to active config when cfg=None → the 1E agnostic feature never fired through the live GUI "Ask AI to rank" path + collapsed the facts cache to the shared job_key-only file** → now falls back like build_rubric (tech byte-identical); `harvest_host_index` lost earlier pages on a later-page failure → first-page reachability; `dataset_seed` ignored the real name column → same-slug boards collided → threads real name; national pass now explicit opt-in; `_new_person`/`_new_project` duplicate-slug guard; project switcher index-based; `classify` symbol-keyword regex (C++/.NET).
 
-**Post-session — real-data test setup (2026-06-30):** Dad's real resume (Dad — healthcare analytics/BI leadership, 20+ yrs, Epic Clarity/Power BI/SQL/HIPAA) saved to `projects/dad-health-informatics/dad-resume-2025-v2.docx` + extracted → that project's `experience.md` (canonical `## ` headings; verified: 6 sections, 44 skill terms). Then a **dedicated isolated TEST project** `projects/health-informatics-test/` was created dogfooding GOAL 2 (`workspace.create_project(person="Dad", copy_resume_from="dad-health-informatics", make_active=True)` + manual `preferences.{json,md}` copy), so test runs don't touch the real dad project. `people()` → `[None, 'Dad']`; **active project is now `health-informatics-test`.** Verified `ranker._facts_profile(None)` → `health_informatics` + 44 skill_terms (the review-fixed 1E path fires through the live GUI route). `projects/` is gitignored (local data) — no repo change. Staged to run a real-data health-informatics search. ⚠️ resume is BI/analytics-leadership vs the clinical-informatics/CMIO keyword lean → may want "Director Analytics / VP Business Intelligence" keyword variants. **Active-project note: `controls-cincinnati` for Alex's controls work, `health-informatics-test` for dad testing, `dad-health-informatics` for the real (non-test) dad search.**
+**Post-session — real-data test setup (2026-06-30):** Dad's real resume (healthcare analytics/BI leadership, 20+ yrs, Epic Clarity/Power BI/SQL/HIPAA) saved to `projects/dad-health-informatics/dad-resume-2025-v2.docx` + extracted → that project's `experience.md` (canonical `## ` headings; verified: 6 sections, 44 skill terms). Then a **dedicated isolated TEST project** `projects/health-informatics-test/` was created dogfooding GOAL 2 (`workspace.create_project(person="Dad", copy_resume_from="dad-health-informatics", make_active=True)` + manual `preferences.{json,md}` copy), so test runs don't touch the real dad project. `people()` → `[None, 'Dad']`; **active project is now `health-informatics-test`.** Verified `ranker._facts_profile(None)` → `health_informatics` + 44 skill_terms (the review-fixed 1E path fires through the live GUI route). `projects/` is gitignored (local data) — no repo change. Staged to run a real-data health-informatics search. ⚠️ resume is BI/analytics-leadership vs the clinical-informatics/CMIO keyword lean → may want "Director Analytics / VP Business Intelligence" keyword variants. **Active-project note: `controls-cincinnati` for Alex's controls work, `health-informatics-test` for dad testing, `dad-health-informatics` for the real (non-test) dad search.**

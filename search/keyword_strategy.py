@@ -10,7 +10,7 @@ query set; the original roles stay the scoring/target_roles set untouched.
 
 Design guarantees:
 - A plain IC title with no seniority tokens ("controls engineer") is returned
-  unchanged, so Alex's engineering flow is byte-identical.
+  unchanged, so the engineering flow is byte-identical.
 - Pure transform, no I/O — trivially testable and safe to call per search.
 """
 from __future__ import annotations
@@ -200,7 +200,7 @@ def broad_query_keywords(roles: Iterable[str], industry: str = "",
     # resolved field, LOWER priority than tier 1 — only fills whatever slots
     # tier 1 left under the SAME _MAX_SYNONYMS cap, and never displaces a user
     # term. No-op for eng IC titles / empty industry (industry_profile gates it),
-    # so Alex's engineering flow is byte-identical.
+    # so the engineering flow is byte-identical.
     if industry and added < _MAX_SYNONYMS:
         try:
             import industry_profile
@@ -294,7 +294,7 @@ def is_knowledge_work(industry: str) -> bool:
     Layered signal (first decisive wins), so a field is judged on the strongest
     thing we know about it:
       1. eng_like / mapped-Jobicy -- the original signal Muse/Jobicy already route
-         on (empty industry -> eng_like True -> Alex byte-identical).
+         on (empty industry -> eng_like True -> default profile byte-identical).
       2. SOC major group -- a resolved O*NET occupation in a desk/knowledge major
          group (11/13/15/17/19/23/25/27) is knowledge work; a hands-on major group
          (29 clinical, 31 support, 47 construction, 49 repair, 51 production, ...)

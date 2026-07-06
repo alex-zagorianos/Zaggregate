@@ -71,7 +71,7 @@ def _terms_for_industry(industry: Optional[str]) -> list[str]:
 
     Returns NSPE_TERMS when the industry is mechanical/manufacturing/
     industrial-family (token overlap with _MECH_TOKENS), else []. An empty/
-    None industry (Alex's engineering default, and every eng sub-rule EXCEPT
+    None industry (the engineering default, and every eng sub-rule EXCEPT
     the mech/mfg/industrial one) returns [] -> the client is inert, so adding
     it to DAILY_SOURCES changes nothing for a non-mech field."""
     import industry_profile

@@ -1,6 +1,6 @@
 # Session 25 — Exhaustive Reach Research → Plan → Build (2026-07-01, Opus/ultracode, overnight autonomous)
 
-**Mandate (Alex, verbatim intent):** cast as WIDE a net as possible — for Alex, his dad (Dad, VP
+**Mandate (Alex, verbatim intent):** cast as WIDE a net as possible — for Alex, his dad (VP
 Health Informatics), and general users of ANY field (agnostic). Specifically: (1) access **Indeed** the
 way we access LinkedIn; (2) research how others do deep/exhaustive searching & scraping + ways to make ours
 more efficient; (3) research ways to **certify we've found 90–100%** of relevant companies/jobs; (4) research

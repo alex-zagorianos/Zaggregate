@@ -1,6 +1,6 @@
 # Overnight autonomous review + fixes — 2026-07-01
 
-Context: Alex asked for an exhaustive test of the app using his dad's (Dad, VP Health
+Context: Alex asked for an exhaustive test of the app using his dad's (VP Health
 Informatics, Cincinnati + remote) resume/data, focused on COMPANY/JOB REACH ("as close to ALL
 as possible"), agnostic use, easier setup, and measuring reach. Ran on Opus (ultracode). Full
 test suite was green at start (923 passed, 2 skipped). Everything below is config-gated /

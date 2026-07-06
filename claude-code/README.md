@@ -1,4 +1,4 @@
-# JobScout — Claude Code channel
+# Zaggregate — Claude Code channel
 
 Drive your job search from Claude Code: it searches, then ranks your inbox to your
 preferences using **your own Claude Code plan** — no API key, no copy-pasting.
@@ -6,7 +6,7 @@ preferences using **your own Claude Code plan** — no API key, no copy-pasting.
 ## Setup
 
 1. `pip install -r requirements-mcp.txt` (installs the `mcp` SDK the server needs).
-2. Copy this folder's `.mcp.json` into the JobScout project folder (next to
+2. Copy this folder's `.mcp.json` into the Zaggregate project folder (next to
    `mcp_server.py`), or merge its `mcpServers.jobscout` entry into an existing one.
 3. Copy `skills/find-jobs/` into `.claude/skills/` in that folder (or into your
    global `~/.claude/skills/`).

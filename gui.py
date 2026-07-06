@@ -28,6 +28,7 @@ from tkinter import ttk, messagebox, simpledialog, filedialog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import applog
 import ranker as _ranker_mod
 import workspace
 from tracker import service as tracker_service
@@ -245,7 +246,7 @@ class App(tk.Tk):
 
     def _make_tools_menu(self, parent):
         """Build the Tools menu once so BOTH the menubar cascade and the branded
-        top-bar 'Tools ▾' button post the identical actions (Alex's ask: surface
+        top-bar 'Tools ▾' button post the identical actions (surface
         Tools as a top button while keeping the menubar entry for muscle memory).
         Kept on self so the topbar can reuse it and a theme rebuild re-creates it."""
         toolsm = theme.style_menu(tk.Menu(parent, tearoff=0))
@@ -1146,9 +1147,9 @@ class App(tk.Tk):
 
     def _update_title(self):
         if workspace.has_projects():
-            self.title(f"Job Search Tools — {workspace.active_slug()}")
+            self.title(f"Zaggregate — {workspace.active_slug()}")
         else:
-            self.title("Job Search Tools")
+            self.title("Zaggregate")
 
     def _update_badges(self):
         if not self._nb.tabs():
@@ -1220,8 +1221,12 @@ class App(tk.Tk):
         integrity check surfaces a warning banner but never crashes."""
         try:
             rolling_backup()
-        except Exception:
-            pass
+        except Exception as e:
+            # A missed rolling backup is non-fatal (the next launch retries), but
+            # log it once so a persistently-failing backup isn't silently invisible.
+            applog.warn_once(
+                f"Rolling daily backup failed ({e}); will retry next launch.",
+                key="gui_rolling_backup_failed")
         try:
             ok, msg = quick_check()
         except Exception:

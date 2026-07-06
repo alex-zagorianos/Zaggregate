@@ -1,7 +1,7 @@
 """One-time migration to the projects/ workspace model.
 
-Moves current root data into projects/controls-cincinnati (the existing campaign)
-and creates projects/dad-health-informatics from config_dad.json (fresh, empty
+Moves current root data into projects/primary (the existing campaign)
+and creates projects/secondary from a secondary config (fresh, empty
 inbox). Idempotent guard: aborts if projects/projects.json already exists.
 
 Safety (copy-verify-delete): we write projects.json FIRST, then COPY files into
@@ -61,8 +61,8 @@ def _seed_project(slug: str, name: str, *, config_src: Path, db_src: Path | None
             shutil.copy2(exp_src, dest_exp)
         else:
             dest_exp.write_text("# Experience\n", encoding="utf-8")
-    # tracker.db: COPY the existing one for controls (deleted post-verify); dad
-    # starts empty (lazy init creates it on first use).
+    # tracker.db: COPY the existing one for the primary project (deleted
+    # post-verify); the secondary starts empty (lazy init creates it on first use).
     dest_db = pdir / "tracker.db"
     if db_src is not None and db_src.exists() and not dest_db.exists():
         shutil.copy2(db_src, dest_db)
@@ -88,18 +88,18 @@ def migrate(today: str | None = None) -> bool:
     #    where the data is being migrated, never a deleted root DB with no record.
     PROJECTS.mkdir(parents=True, exist_ok=True)
     reg = {
-        "active": "controls-cincinnati",
+        "active": "primary",
         "projects": [
-            {"slug": "controls-cincinnati", "name": "Controls — Cincinnati",
+            {"slug": "primary", "name": "Primary",
              "created": today, "daily": True},
-            {"slug": "dad-health-informatics", "name": "Dad — Health Informatics",
+            {"slug": "secondary", "name": "Secondary",
              "created": today, "daily": False},
         ],
     }
     (PROJECTS / "projects.json").write_text(json.dumps(reg, indent=2), encoding="utf-8")
 
     # 2) COPY root data into controls-cincinnati (config + resume + db) + output.
-    cc = _seed_project("controls-cincinnati", "Controls — Cincinnati",
+    cc = _seed_project("primary", "Primary",
                        config_src=root_cfg, db_src=root_db, exp_src=root_exp)
     copied_out = []  # (src, dest) pairs to delete from root only after verify
     if root_out.exists():
@@ -112,8 +112,8 @@ def migrate(today: str | None = None) -> bool:
                     shutil.copy2(item, dest)
             copied_out.append((item, dest))
 
-    # 3) dad-health-informatics ← config_dad.json, copy of resume, fresh empty db
-    _seed_project("dad-health-informatics", "Dad — Health Informatics",
+    # 3) secondary project ← secondary config, copy of resume, fresh empty db
+    _seed_project("secondary", "Secondary",
                   config_src=dad_cfg, db_src=None, exp_src=root_exp)
 
     # 4) VERIFY the copy before touching the originals: db row-parity + existence

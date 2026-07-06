@@ -109,7 +109,7 @@ def hard_gate(jobs, hard: dict, *, counts: Optional[dict] = None) -> list:
     smin = hard.get("salary_min")
     variants = _location_variants(hard.get("locations", []) or [])
     remote_ok = hard.get("remote_ok", True)
-    # Word-boundary blockers (S35, Alex-approved): plain substring over-dropped —
+    # Word-boundary blockers (S35): plain substring over-dropped —
     # a "sales" dealbreaker killed "Salesforce Engineer", "it" killed "Editor".
     # Design philosophy: get as many potential jobs in front of the user as
     # possible and let THEM drop; the gate only cuts a clearly-stated blocker

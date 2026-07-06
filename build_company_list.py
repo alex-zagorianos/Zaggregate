@@ -1,6 +1,6 @@
 """ONE onboarding command: build a target-company list for ANY field + location.
 
-A brand-new user (any profession, not just Alex's controls/software flow) should
+A brand-new user (any profession, not just the default controls/software flow) should
 not have to know that a healthy `companies.json` comes out of stitching together
 four separate scripts. This module orchestrates the EXISTING pieces:
 

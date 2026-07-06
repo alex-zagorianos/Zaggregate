@@ -36,7 +36,7 @@ DEFAULT_ANGLES = [
 
 # Industry tags that the eng-flavored DEFAULT_ANGLES already cover well. When the
 # resolved industry is one of these (or empty), angles_for_industry returns
-# DEFAULT_ANGLES *byte-identically* — so Alex's controls flow is unchanged.
+# DEFAULT_ANGLES *byte-identically* — so the default controls flow is unchanged.
 _ENG_INDUSTRY_TOKENS = {
     "controls", "control", "engineering", "engineer", "software", "robotics",
     "robot", "embedded", "mechanical", "mechatronics", "automation", "hardware",
@@ -82,7 +82,7 @@ def angles_for_industry(industry: str = "", keywords=None, *, scope: str = "metr
     """Enumeration angles tuned to a field.
 
     - scope='national' -> nationwide/remote-first angle set (plan P5).
-    - empty or eng-like industry -> DEFAULT_ANGLES byte-identically (Alex unchanged).
+    - empty or eng-like industry -> DEFAULT_ANGLES byte-identically (default profile unchanged).
     - any other field -> neutral size/type-spread angles NAMING that field, so a
       health-informatics (or nursing, legal, finance…) seeker gets the same breadth.
     """

@@ -313,7 +313,7 @@ def anthropic_base_url():
     env-then-secret ('base_url'): the ANTHROPIC_BASE_URL env var wins, else the
     plaintext file the in-app 'Connect your AI' box writes to secrets/base_url,
     else None (the SDK's default = Anthropic's own endpoint, byte-identical for
-    Alex). Any Anthropic-compatible endpoint works: Ollama v0.14+ native, GLM,
+    the default profile). Any Anthropic-compatible endpoint works: Ollama v0.14+ native, GLM,
     DeepSeek, Kimi. Read as a function (not frozen at import) so a URL pasted
     into the box after startup takes effect without a restart, mirroring
     resolve_secret's laziness.
@@ -332,7 +332,7 @@ ANTHROPIC_BASE_URL = anthropic_base_url()
 # Opt-in auto-rank: after a daily run scores + inboxes new jobs, optionally rank
 # the top-K new qualified jobs via the direct API/local model so the user "wakes
 # up to a ranked inbox". OFF by default (env AUTO_RANK / user_config 'auto_rank')
-# so Alex's run stays byte-identical. Requires a configured key OR base_url.
+# so the default-profile run stays byte-identical. Requires a configured key OR base_url.
 AUTO_RANK = os.getenv("AUTO_RANK", "0") not in ("", "0", "false", "False", "no")
 # How many of the top new qualified jobs to auto-rank per run (a compact prompt,
 # so ~trivial cost); overridable via user_config 'auto_rank_top_k'.
@@ -366,11 +366,11 @@ USAJOBS_RATE_LIMIT = 50
 USAJOBS_RESULTS_PER_PAGE = 25
 
 # Search defaults
-# Empty by default: a hardcoded "Cincinnati" leaked Alex's home metro into every
+# Empty by default: a hardcoded "Cincinnati" leaked the owner's home metro into every
 # skip-wizard user's Search prefill, Inbox home area, and keyless fallbacks (P3).
 # Empty means "no location filter" -- non-GUI consumers treat "" as unset (search
 # without a location bias rather than everyone's default being Cincinnati). GUI
-# consumers that need a display placeholder are handled in a later wave.
+# consumers that need a display placeholder supply their own at the call site.
 DEFAULT_LOCATION = ""
 # Field/industry the app is tuned for. Empty = today's behavior (eng-flavored
 # enumeration angles, no industry scoping). A user onboarding into another field
@@ -490,7 +490,7 @@ MIN_SCORE_DEFAULT = 0            # CLI --min-score default (0 = show all)
 DAILY_MIN_SCORE = 40             # daily_run.py inbox threshold
 
 # Local semantic ranking (match/semantic.py, Model2Vec). OFF by default: enabling
-# it is Alex's explicit call. When ON *and* the model is present, a semantic
+# it is the user's explicit call. When ON *and* the model is present, a semantic
 # similarity component joins the score AND vetoes generic-token full title matches
 # (sem below SEMANTIC_TITLE_VETO_SIM caps the title component). Env SEMANTIC_RANKING
 # overrides this constant (semantic._enabled reads env first). No model -> abstains,
@@ -515,7 +515,7 @@ DAILY_SOURCES = ["adzuna", "usajobs", "careeronestop", "careers", "themuse",
 # unchanged — they light up the moment a key is pasted into 'Connect job sources'.
 # higheredjobs + rnjobsite (2026-07-01, E2): free/keyless SECTOR RSS feeds
 # (education-family / nursing). They INDUSTRY-GATE at construction — inert (fetch
-# nothing) for any field that doesn't map (an eng/finance/trade/Alex project polls
+# nothing) for any field that doesn't map (any non-education, non-nursing project polls
 # neither), so adding them to the daily net is byte-identical for a non-education,
 # non-nursing user. jobsacuk (UK academic, S35) IS now here: it registers on every
 # run but makes ZERO network calls, unconditionally — RETIRED as of 2026-07
@@ -626,7 +626,7 @@ CAREERONESTOP_ATTRIBUTION = (
 # Language guard (match/language.py): when armed, a posting whose title+description
 # does not read as English is marked score=None ('not scored (language)') instead
 # of letting keyword scoring confidently mis-rank a foreign-language listing. OFF
-# by default -> byte-identical for Alex; auto-arms when ADZUNA_COUNTRY != 'us', or
+# by default -> byte-identical for the default profile; auto-arms when ADZUNA_COUNTRY != 'us', or
 # force it with LANGUAGE_GUARD=1.
 LANGUAGE_GUARD = os.getenv("LANGUAGE_GUARD", "0") not in ("", "0", "false", "False", "no")
 
@@ -682,7 +682,7 @@ SERPAPI_ENGINE = os.getenv("SERPAPI_ENGINE", "google_jobs")
 # reach badge finally lights up. The probe jobs are REAL postings and also flow
 # into the normal scored pipeline (job_key dedup handles collisions).
 #
-# Default ON when a SerpApi key is present (Alex has one — intended). It never
+# Default ON when a SerpApi key is present. It never
 # runs without a key, and the MonthlyQuota inside SerpApiClient still bounds spend.
 # Turn OFF with REACH_PROBE=0 (env) or "reach_probe": false (user_config).
 REACH_PROBE = os.getenv("REACH_PROBE", "1") not in ("", "0", "false", "False", "no")

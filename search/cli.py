@@ -410,7 +410,7 @@ def main():
     # Broaden the QUERY keywords for API recall (search broad, score narrow). Job
     # APIs phrase-match, so narrow seniority-laden titles return ~0; the field term
     # returns far more. Original `keywords` stay the scoring set. No-op for eng IC
-    # titles, so Alex's flow is byte-identical. Opt out with "broaden_keywords": false.
+    # titles, so the eng flow is byte-identical. Opt out with "broaden_keywords": false.
     from search.keyword_strategy import broad_query_keywords
     if user_cfg.get("broaden_keywords", True):
         import industry_profile

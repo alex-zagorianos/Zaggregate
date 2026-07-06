@@ -1,7 +1,7 @@
 """One-off: create the 2026 job-search lane projects (controls / software /
 applied-ai) per the agreed strategy — $90k floor, inverted exclude_titles
 (no longer hiding ai/ml/software/data), seeded from the updated root
-experience.md. Non-destructive: leaves mechdesign / controls-cincinnati intact.
+experience.md. Non-destructive: leaves existing lane projects intact.
 """
 import sys
 from pathlib import Path

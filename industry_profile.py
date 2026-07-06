@@ -21,7 +21,7 @@ Resolution order (first hit wins):
 Reach is never reduced: category routing only *adds precision*; query synonyms
 only *widen* recall (capped); the generic fallback fetches everything.
 
-The engineering profile stays effectively unchanged for Alex (see ENG_MUSE note).
+The engineering profile stays effectively unchanged for the default profile (see ENG_MUSE note).
 """
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ _MUSE_VALID = set(MUSE_CATEGORIES_ALL)
 # NOTE: the app previously requested Muse category "Engineering" (invalid -> 0) plus
 # "Science and Engineering", so engineering searches silently missed the entire
 # "Software Engineering" category. The eng profile below uses the CORRECT pair, so
-# Alex's Muse reach GROWS (never shrinks) — consistent with "retain the blast radius".
+# the eng Muse reach GROWS (never shrinks) — consistent with "retain the blast radius".
 _ENG_MUSE = ["Software Engineering", "Science and Engineering"]
 
 
@@ -338,7 +338,7 @@ SOC_MAJOR_GROUPS: dict[str, dict] = {
 # (Management Occupations) — a manager/supervisor's own core work IS people
 # management ("manage a team", "direct reports"), exactly the "manage" penalty
 # keywords, so it must be exempted the same way sales/maintain already are.
-# Engineering (SOC 15/17) is untouched -> no new exemption for Alex (parity).
+# Engineering (SOC 15/17) is untouched -> no new exemption for the eng profile (parity).
 SOC_MAJOR_PENALTY_DROP: dict[str, str] = {
     "11": "manage",    # Management Occupations
     "41": "sales",     # Sales and Related Occupations
@@ -351,7 +351,7 @@ def penalty_role_to_drop(soc_code: Optional[str] = None,
     """The penalty role rubric should DROP for this field, or None (default). Prefer
     an explicit O*NET-SOC code (its 2-digit major group); else resolve the free-text
     industry to a SOC and use that. eng/tech fields resolve to None (byte-identical
-    for Alex -- resolve_soc already returns None for eng-like)."""
+    for the eng profile -- resolve_soc already returns None for eng-like)."""
     code = (soc_code or "").strip()
     if not code and industry:
         try:
@@ -609,7 +609,7 @@ def related_occupation_titles(industry: str, *, exclude=(), limit: int = 6) -> l
     which resolve() tier matched it (seed or O*NET) — the second, lower-priority
     synonym tier for search.keyword_strategy.broad_query_keywords (item 26). []
     when the field doesn't confidently resolve, or is eng-like (no-op for eng IC
-    titles — Alex's flow is unaffected)."""
+    titles — the eng flow is unaffected)."""
     if not industry or not industry.strip():
         return []
     if resolve(industry).eng_like:
@@ -652,7 +652,7 @@ def resolve(industry: Optional[str]) -> IndustryProfile:
         _cache[key] = prof
         return prof
 
-    # 2) empty / eng -> engineering profile (Alex path). S36b: a NAMED eng field
+    # 2) empty / eng -> engineering profile (default path). S36b: a NAMED eng field
     # additionally borrows the curated query_synonyms from the matching eng
     # sub-rule in _RULES (controls/mech/AI/software) — the syn tier only ever
     # ADDS capped query terms (keyword_strategy._MAX_SYNONYMS), never displaces

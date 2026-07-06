@@ -16,6 +16,7 @@ experience.md) — so ranking weighs desire and fit together. The cheap
 preferences hard-gate (gate) runs first, before any AI call is spent.
 """
 import typing
+import applog
 import config
 import preferences
 import claude_bridge as bridge
@@ -31,7 +32,12 @@ def build_profile(prefs: dict | None = None, experience_summary: str | None = No
     if experience_summary is None:
         try:
             experience_summary = bridge.profile_summary()
-        except Exception:
+        except Exception as e:
+            # Degrade soft: a missing/unreadable experience.md still ranks against
+            # the preferences profile alone, so we log once rather than fail.
+            applog.warn_once(
+                f"Could not read experience summary ({e}); ranking on preferences only.",
+                key="ranker_experience_summary_read")
             experience_summary = ""
     parts = []
     if profile_md:
@@ -44,7 +50,7 @@ def build_profile(prefs: dict | None = None, experience_summary: str | None = No
 def _fit_preference(prefs: dict | None) -> str:
     """The per-profile fit-preference bias sentence ('' = neutral). Read from the
     passed prefs, else preferences.load(). Empty when the profile sets none, so
-    no bias is baked into the ranking (de-Alex'd default)."""
+    no bias is baked into the ranking (neutral default: an empty preference adds no bias sentence)."""
     if prefs is None:
         prefs = preferences.load()
     return (prefs.get("fit_preference") or "").strip()
@@ -69,7 +75,7 @@ def build_request(jobs, prefs: dict | None = None,
 def _facts_profile(cfg: dict | None):
     """(industry, skill_terms, soc_code) for facts extraction from the active
     search config. A tech/empty field keeps the engineering-tuned map + vocab
-    (byte-identical for Alex); any other field merges universal role buckets
+    (byte-identical for the default profile); any other field merges universal role buckets
     and falls back to profile-derived skills (the eng vocab is useless there).
     Plan 1E. `soc_code` is the project's PERSISTED O*NET-SOC code (item 25,
     workspace.create_project) when one was resolved at creation — extra,

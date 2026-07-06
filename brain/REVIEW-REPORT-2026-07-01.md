@@ -1,6 +1,6 @@
 # JobScout — Deep Review & Reach Test (2026-07-01, overnight, autonomous)
 
-**Scope:** exhaustive test of the app using Dad's (Dad) real resume/data — VP-level
+**Scope:** exhaustive test of the app using Dad's real resume/data — VP-level
 Health Informatics, Cincinnati + remote-favoring — focused on the four goals you set:
 (1) reach as close to **all relevant employers/jobs** as possible, (2) work for **any field** (agnostic),
 (3) **easy setup** for a non-technical user, (4) a real way to **measure reach**.

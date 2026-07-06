@@ -15,14 +15,13 @@
 // (It used to carry a hand-kept mirror of the registries; selectors.js removed
 // that drift risk.)
 //
-// Returns the report as a string (so chrome.scripting surfaces it as `result`)
-// AND console.logs it (so the manual console paste still prints).
+// Returns the report as a string, so chrome.scripting surfaces it as `result`
+// (and a manual console paste of this IIFE shows its return value in DevTools).
 (() => {
   if (typeof SITES === "undefined" || typeof DETAIL === "undefined") {
     const msg =
       "[selector check] SITES/DETAIL not found — paste selectors.js in the " +
       "console FIRST (it defines the shared selector registries), then re-run.";
-    console.log(msg);
     return msg;
   }
 
@@ -30,7 +29,6 @@
   if (!entry) {
     const msg =
       "Not on a supported job site — open a jobs SEARCH results page first.";
-    console.log(msg);
     return msg;
   }
   const name = entry.name;
@@ -149,6 +147,5 @@
     "Copy this whole block back to Claude to patch any rotted selectors.",
   );
   const report = out.join("\n");
-  console.log(report);
   return report;
 })();

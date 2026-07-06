@@ -55,7 +55,7 @@ _NURSING_TOKENS = frozenset({
 
 def _should_poll(industry: Optional[str]) -> bool:
     """True when the project's industry is a nursing/healthcare-clinical field.
-    Empty/None (Alex's engineering default) -> False -> the client is inert, so
+    Empty/None (the engineering default) -> False -> the client is inert, so
     adding it to DAILY_SOURCES changes nothing for a non-nursing project."""
     import industry_profile
     # gate_tokens (not _tokens) so a PLURAL O*NET title the wizard persists

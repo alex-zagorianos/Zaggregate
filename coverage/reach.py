@@ -1,6 +1,6 @@
 """Job-level reach certification for a real search run.
 
-This is the capstone that answers Alex's standing question — "have we found
+This is the capstone that answers the module's central question — "have we found
 90-100% of the relevant jobs?" — with an honest, defensible number instead of a
 vibe. It uses the ONE thing a multi-source search already gives us for free: the
 set of INDEPENDENT sources that found each posting. Capture-recapture turns the

@@ -1493,7 +1493,7 @@ export async function downloadBackup(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "jobscout-backup.zip";
+  a.download = "zaggregate-backup.zip";
   document.body.appendChild(a);
   a.click();
   a.remove();

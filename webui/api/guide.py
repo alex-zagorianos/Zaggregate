@@ -70,7 +70,7 @@ def backup_download():
 
     tmpdir = tempfile.mkdtemp(prefix="zag-backup-")
     try:
-        zip_path = make_backup(str(Path(tmpdir) / "jobscout-backup"))
+        zip_path = make_backup(str(Path(tmpdir) / "zaggregate-backup"))
     except Exception as e:  # noqa: BLE001 — surface a build failure as 500
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -83,7 +83,7 @@ def backup_download():
         return response
 
     return send_file(zip_path, as_attachment=True,
-                     download_name="jobscout-backup.zip",
+                     download_name="zaggregate-backup.zip",
                      mimetype="application/zip")
 
 

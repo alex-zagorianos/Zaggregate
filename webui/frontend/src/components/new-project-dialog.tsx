@@ -24,7 +24,7 @@ import { checkProjectName } from "@/lib/project-name";
  * WITH switch we route to /inbox — the app-level onboarding gate then re-reads
  * (the create mutation invalidated it) and the setup wizard appears for the
  * empty project, which IS the intended new-project flow. No resume is ever
- * copied (identity/PII isolation — the dad-data bug the tk flow guards against).
+ * copied (identity/PII isolation — the cross-project PII-isolation bug the tk flow guards against).
  *
  * A duplicate name (409) or empty name (400) is caught client-side first (live
  * hint) and, as a backstop, surfaced from the server error via a toast. */

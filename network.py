@@ -219,8 +219,8 @@ def clear() -> int:
 
 
 def _dedup_key(contact: dict) -> tuple[str, str, str]:
-    """Merge identity for a contact: (lowercased name, canonical company). Two
-    imports of the same person at the same company collapse to one row.
+    """Merge identity for a contact: (name, company-key, position-when-companyless).
+    Two imports of the same person at the same company collapse to one row.
 
     NO-COMPANY contacts fold the position into the key instead (S37 Phase-2
     review): with company_key == '' the old key collapsed two distinct people

@@ -496,8 +496,8 @@ def prefill_from_existing(prefs: dict | None = None, cfg: dict | None = None) ->
 #
 # Every token here is a regression-tested contract (tests/ui/test_field_presets.py):
 # each must resolve to a non-generic profile and self-match under the registry's
-# _industry_tag_match. The tokens span the eight tested personas + the eng fields
-# Alex uses. The last entry is an "Other" escape hatch that keeps the free-text
+# _industry_tag_match. The tokens span the eight tested personas + the default
+# engineering fields. The last entry is an "Other" escape hatch that keeps the free-text
 # box for anything unlisted (reach is never reduced — an unlisted field still
 # searches broadly via the generic fallback).
 _OTHER_PRESET = "Other (type your own)…"

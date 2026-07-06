@@ -120,7 +120,7 @@ _UNIVERSAL_ROLE_KEYWORDS = {
                 "machinist", "install technician", "maintenance technician"],
 }
 
-# Industry tokens that keep the engineering-tuned maps (byte-identical for Alex).
+# Industry tokens that keep the engineering-tuned maps (byte-identical for the default profile).
 _TECH_TOKENS = {
     "controls", "control", "engineering", "engineer", "software", "robotics",
     "embedded", "mechanical", "mechatronics", "automation", "hardware", "electrical",
@@ -280,7 +280,7 @@ def extract_facts(job, *, skill_terms=None, industry: str = "",
 
     Returns a JobFacts dict:
       {seniority, required_years, role_type, clearance_required, location_type,
-       restriction, comp_min, comp_max, top_skills}
+       restriction, comp_min, comp_max, top_skills, employment_type}
 
     `industry`/`skill_terms` are agnostic seams (plan 1E): a non-tech industry
     merges universal role buckets; `skill_terms` (profile-derived) replaces the
@@ -368,7 +368,7 @@ def _profile_sig(industry: str, skill_terms, soc_code: str | None = None,
     seeker's facts can't be served from an engineering seeker's cache (the trap:
     the cache is keyed by job_key only). None for the default tech/no-skills/
     no-soc path -> the original `{job_key}.json` filename, byte-identical for
-    Alex. `soc_code` (item 25: workspace's persisted, STABLE O*NET-SOC code) is
+    the default profile. `soc_code` (item 25: workspace's persisted, STABLE O*NET-SOC code) is
     optional extra entropy only — it can only make the key MORE specific than
     industry+skill_terms alone, never less, so it cannot reintroduce a leak;
     omitted entirely from the payload when falsy so passing soc_code=None (every

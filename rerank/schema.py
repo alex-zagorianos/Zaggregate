@@ -84,7 +84,7 @@ def build_prompt(profile_md: str, fit_preference: str = "") -> str:
 
     `fit_preference` is the per-profile bias sentence ('' = neutral). It replaces
     the old baked-in 'prefers smaller companies' text so the file route matches
-    the bridge/API de-Alex'd default: an empty preference adds NO bias sentence."""
+    the bridge/API neutral default: an empty preference adds NO bias sentence."""
     # Only the scoring SCALE - NOT the bridge's "respond with a JSON array
     # {i,token,fit}" contract, which contradicts this route's CSV/job_key answer.
     guide = ("Scoring guide: 90+ apply today; 70-89 strong; 50-69 plausible "
@@ -128,23 +128,3 @@ def build_prompt(profile_md: str, fit_preference: str = "") -> str:
         "",
         f"## CSV columns, in order\n{cols}",
     ])
-
-
-# Module-level convenience: the default prompt rendered against the user's live
-# preferences.md. Built lazily so importing schema.py never reads the data dir.
-class _LazyPromptTemplate(str):
-    pass
-
-
-def _render_default_prompt() -> str:
-    try:
-        import preferences
-        p = preferences.load() or {}
-        profile = p.get("profile_md", "") or ""
-        fit_pref = p.get("fit_preference", "") or ""
-    except Exception:
-        profile, fit_pref = "", ""
-    return build_prompt(profile, fit_pref)
-
-
-PROMPT_TEMPLATE = _render_default_prompt()

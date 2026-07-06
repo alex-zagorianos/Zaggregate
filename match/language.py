@@ -14,7 +14,7 @@ of title+description and measure what fraction are English stopwords. Real
 English paragraphs sit well above the threshold; German/French/Spanish/etc. prose
 sits well below (their function words differ). Deliberately conservative — the
 cost of a false 'non-English' is a skipped score, not a crash, and the guard is
-OFF unless armed, so Alex's US runs never touch this path.
+OFF unless armed, so the default US runs never touch this path.
 """
 import re
 

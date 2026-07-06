@@ -1,15 +1,30 @@
 """Local match scorer — ranks JobResults against the user's profile with zero
 API calls so every search (CLI, GUI, daily run) surfaces best-fit jobs first.
 
-Composite 0-100:
+Composite 0-100, built from up to six weighted components (base weights):
     title match      35  — search keywords found in the job title
     skill overlap    25  — terms from experience.md TECHNICAL SKILLS in the
-                           description (missing description = neutral)
-    salary           15  — posted floor vs the user's salary_min (missing = neutral;
-                           ranges printed inside descriptions are parsed out first)
+                           description
+    salary           15  — posted floor vs the user's salary_min (ranges printed
+                           inside descriptions are parsed out first)
     location         15  — token proximity to the target location
-    recency          10  — posting age, exponential decay (10-day half-life);
-                           unknown dates are neutral, not penalized
+    recency          10  — posting age, exponential decay (10-day half-life)
+    semantic  SEM_WEIGHT — optional Model2Vec similarity, only when armed +
+                           the model is present (OFF by default)
+
+Rather than scoring missing components as a neutral 0.5 (which inflated
+data-poor jobs), the base weights are RENORMALIZED over the components that
+actually have data: title and location are always present; skill, salary,
+recency, and semantic drop out when their data is absent, and their freed
+weight is spread proportionally over the present ones so a job is judged only
+on what is known about it.
+
+The renormalized aggregate is then shrunk toward the neutral midpoint of 50 by
+a confidence factor (0.7 + 0.3·present/5): a full-data job is untouched, a
+title+location-only job's spread contracts, so a sparse title-only match can no
+longer outrank a data-rich one. Per-component notes stay as-computed; only the
+aggregate is damped.
+
 Company-size modifier: careers-scraper jobs carry the total postings on the
 company's board (board_count) — <=30 +8, <=100 +4, <=250 -2, >250 -6.
 Exclude-keywords (user_config "exclude_keywords") subtract 30 each, floor 0.
@@ -39,7 +54,7 @@ _STOPWORDS = {"engineer", "engineering", "senior", "junior", "lead", "staff",
 # Health") would otherwise get full title credit AND escape the miss-penalty. A
 # match on ONLY generic words is capped to partial credit. Field-specific terms
 # ("controls", "informatics", "analytics", "nurse", ...) are NOT here, so a genuine
-# single-term field match (Alex's "controls") is unaffected.
+# single-term field match (e.g. a "controls" search) is unaffected.
 _GENERIC_TITLE_TERMS = frozenset({
     "health", "care", "medical", "clinical", "services", "service", "business",
     "data", "systems", "system", "technology", "information", "digital",
@@ -56,7 +71,7 @@ _MIN_TERM_LEN = 3
 # keyword-matching but clearly-below role (a "Senior Manager"/IC title). This adds
 # a bounded target-level adjustment, but ONLY when the user is explicitly targeting
 # management/exec (target level >= manager) — an IC/senior search is unchanged
-# (Alex byte-identical). Levels reuse match.facts._detect_seniority's buckets
+# (default profile byte-identical). Levels reuse match.facts._detect_seniority's buckets
 # (director == director/VP/chief), mapped to an ordinal.
 _LEVEL_ORD = {"intern": 0, "entry": 1, "mid": 2, "senior": 3, "lead": 3,
               "manager": 4, "director": 5}
@@ -188,8 +203,8 @@ def _seniority_target_adj(job_title: str, desc: str, target_ord: Optional[int],
 # A title that satisfies none of the search queries (positive miss, or a NOT
 # term present) takes a heavy penalty so it sinks below the noise but stays
 # visible if you sort to it. exclude_titles / seniority_exclude are profile-
-# specific blocklists (Alex excludes "AI Engineer"; Dad's health-informatics
-# campaign may want data roles), so both default OFF here and are supplied per
+# specific blocklists (one profile may exclude "AI Engineer" while another
+# health-informatics campaign keeps data roles), so both default OFF here and are supplied per
 # profile from user_config.json. Only the title-miss gate is on by default —
 # it's relative to *your* keywords, so it's safe for every profile.
 DEFAULT_TITLE_MISS_PENALTY = 35
@@ -418,19 +433,6 @@ def _annualize(raw: Optional[float], mult: float) -> Optional[float]:
     return val if floor <= val <= 500_000 else None
 
 
-def _parse_money(tok: Optional[str], hourly: bool = False) -> Optional[float]:
-    """Back-compat shim (used by tests / callers): '$165,000' / '95k' / '45.50' ->
-    annual dollars or None, with the original 30k-500k bound. A bare small value is
-    annualized ONLY under an explicit hourly context."""
-    raw = _raw_money(tok)
-    if raw is None:
-        return None
-    if hourly and raw < 200:
-        val = raw * 2080
-        return val if 15_000 <= val <= 500_000 else None
-    return raw if 30_000 <= raw <= 500_000 else None
-
-
 # Fallback for pay ranges printed WITHOUT a leading currency symbol: either
 # comma-grouped 5-6 digit numbers ("Pay range: 120,000 - 150,000") or a bare
 # k-range ("80k-100k"). Both endpoints required so a lone figure / "401(k)" can't
@@ -439,8 +441,6 @@ _SALARY_RE_BARE = re.compile(
     r"(\d{2,3},\d{3}|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*(\d{2,3},\d{3}|\d{2,3}\s?[kK])"
 )
 
-# Kept for external callers that imported these context regexes.
-_HOURLY_CTX = _PERIOD_CTX[0][2]
 _NON_SALARY_CTX = re.compile(
     r"\bstipend\b|\bgift\s?card\b|\binsurance\b|401\s?\(?k\)?|\breimburs\w*|"
     r"\brelocation\b|\bper diem\b|\ballowance\b|\bsign[- ]?on\b|"
@@ -853,7 +853,7 @@ def score_job(
     # about data-presence and would render a misleading "Skills 50%" chip in the
     # GUI scorecard (score_breakdown parses whatever tokens are present). Mirrors
     # how "sem" is already conditionally appended only when sem_present. A
-    # rich-resume profile (skill_present True, e.g. Alex's eng profile) is
+    # rich-resume profile (skill_present True, e.g. a full engineering profile) is
     # completely unaffected -- the token still always appears (parity).
     notes = f"title {t:.0%}"
     if skill_present:

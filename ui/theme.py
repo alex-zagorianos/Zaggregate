@@ -148,10 +148,11 @@ def toggle_mode() -> str:
 set_mode("light")
 
 # ── Fonts (plain tuples; valid before a root exists) ────────────────────────────
-# Font families. Bundled OFL fonts (Inter / Fraunces / JetBrains Mono) are a later
-# enhancement; for now we resolve to high-quality Windows-native families so the
-# editorial serif look ships with zero bundled assets. Tk silently falls back if a
-# family is absent, so these are safe on any Windows box.
+# Font families. We deliberately use high-quality Windows-native families (Segoe
+# UI / Georgia / Consolas) rather than bundling OFL fonts (Inter / Fraunces /
+# JetBrains Mono): the editorial serif look ships with zero bundled assets and no
+# licensing/packaging overhead. Tk silently falls back if a family is absent, so
+# these are safe on any Windows box.
 SANS  = "Segoe UI"   # body / UI
 SERIF = "Georgia"    # editorial headlines (built-in Windows transitional serif)
 MONO  = "Consolas"   # numerals in tables, code / log panes

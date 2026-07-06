@@ -83,7 +83,7 @@ def _categories_for_industry(industry: Optional[str]) -> list[int]:
 
     Returns every catID in CATEGORIES when the industry is education-family
     (token overlap with _EDUCATION_TOKENS), else []. An empty/None industry
-    (Alex's engineering default) returns [] -> the client is inert, so adding it
+    (the engineering default) returns [] -> the client is inert, so adding it
     to DAILY_SOURCES changes nothing for a non-education project."""
     import industry_profile
     # gate_tokens (not _tokens) so a PLURAL O*NET title ("Postsecondary Teachers",

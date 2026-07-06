@@ -223,7 +223,7 @@ def test_auto_backup_keeps_last_seven(data_dir):
         out = uihelp.auto_backup(keep=7, when=base + timedelta(minutes=i))
         assert out is not None
         made.append(out)
-    archives = sorted((data_dir / uihelp.BACKUP_DIR_NAME).glob("jobscout-backup-*.zip"))
+    archives = sorted((data_dir / uihelp.BACKUP_DIR_NAME).glob("zaggregate-backup-*.zip"))
     assert len(archives) == 7                      # older 3 pruned
     # The 7 kept are the most recent (highest timestamps).
     kept_names = {p.name for p in archives}

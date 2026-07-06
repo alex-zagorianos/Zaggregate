@@ -57,7 +57,7 @@ class CareerjetClient(SingleFeedClient):
                 "pagesize": 50, "user_ip": "11.22.33.44", "user_agent": self.user_agent,
             }
             # Only sent for a mapped non-US country -- a US/unmapped request
-            # omits the param exactly as before (byte-identical for Alex).
+            # omits the param exactly as before (byte-identical for the default profile).
             if locale_code:
                 params["locale_code"] = locale_code
             resp = self.session.get(CAREERJET_URL, params=params, timeout=30)

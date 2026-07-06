@@ -50,7 +50,7 @@ The parser reads several plausible aliases per field so a minor casing/spelling
 difference does not silently drop a business. Both the path template
 (BUSINESS_FINDER_URL / _build_url) and the field mapping (_parse_business) are
 marked PROVISIONAL — a recorded-fixture toggle (COS_BF_FIXTURE env var, read by
-`search`) makes them trivially verifiable the moment Alex gets a key: drop one
+`search`) makes them trivially verifiable the moment a CareerOneStop key is configured: drop one
 real JSON response into the fixture path and the tests replay it byte-for-byte.
 """
 from __future__ import annotations
@@ -78,7 +78,7 @@ BUSINESS_FINDER_URL = os.getenv(
 )
 # Fixture toggle: point COS_BF_FIXTURE at a saved real JSON response and the
 # client replays it instead of calling the network — the "trivially verifiable
-# once Alex gets a key" path the plan asks for.
+# once a CareerOneStop key is configured" path the plan asks for.
 _FIXTURE_ENV = "COS_BF_FIXTURE"
 
 DEFAULT_RADIUS = config.CAREERONESTOP_RADIUS   # miles (reuse the jobs default: 25)

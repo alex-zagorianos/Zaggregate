@@ -43,13 +43,9 @@ from ui.setup_wizard_core import (  # noqa: F401  (re-exported public surface)
 )
 
 
-# -- (the pure transforms above now live in setup_wizard_core) -------------------
-_PURE_MOVED_TO_CORE = True  # marker; see ui/setup_wizard_core.py
-
-
-def _dead_region_placeholder():  # pragma: no cover — never called
-    """Placeholder so the following historical comment block reads cleanly; the
-    real implementations are imported from setup_wizard_core above."""
+# The pure transforms (presets, level mapping, search-config apply) live in
+# ui/setup_wizard_core.py and are imported above; this module keeps only the
+# tkinter wizard window.
 
 
 # ── the wizard window ───────────────────────────────────────────────────────────

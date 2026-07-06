@@ -119,7 +119,7 @@ def _resolve_metro(arg_metro):
 def _resolve_industry(arg_industry):
     """Single field/industry for enumeration-angle selection (mirrors
     _resolve_metro): CLI > active-project config `industry` > DEFAULT_INDUSTRY.
-    Empty/eng-like -> DEFAULT_ANGLES (Alex's controls flow unchanged)."""
+    Empty/eng-like -> DEFAULT_ANGLES (the default controls flow unchanged)."""
     if arg_industry:
         return arg_industry
     try:

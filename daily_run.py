@@ -47,7 +47,7 @@ def _maybe_auto_rank(cfg: dict) -> None:
     """Opt-in: after new jobs are inboxed, rank the top-K still-unscored ones via
     the direct API / local model so the user wakes up to a ranked inbox (P4).
 
-    Gated three ways so Alex's run stays byte-identical:
+    Gated three ways so the default-profile run stays byte-identical:
       * config.auto_rank_enabled(cfg) — AUTO_RANK env or user_config 'auto_rank'.
       * a configured backend — an API key OR a base_url (local Ollama etc).
     Uses the SAME compact prompt + shared parser as the GUI's 'Ask AI to rank',
@@ -297,7 +297,7 @@ def main():
 
     # Drop the tech/remote-skewed boards (RemoteOK, Remotive, Himalayas,
     # Arbeitnow, HN) for a non-knowledge-work field — noise + wasted calls for a
-    # plumber/nurse search. No-op for eng/knowledge-work fields (Alex unchanged);
+    # plumber/nurse search. No-op for eng/knowledge-work fields (default profile unchanged);
     # an explicit cfg_sources[<name>]=True override always wins.
     from search.keyword_strategy import gate_tech_sources
     sources = gate_tech_sources(sources, industry or "", cfg_sources)
@@ -306,7 +306,7 @@ def main():
     # seniority-laden titles ("VP Clinical Informatics") return ~0 while the field
     # term ("clinical informatics") returns 20x more (measured 2026-07-01). The
     # ORIGINAL keywords stay the scoring/title-match set below; seniority is handled
-    # in scoring/gate, not the query string. No-op for eng IC titles (Alex unchanged).
+    # in scoring/gate, not the query string. No-op for eng IC titles (default profile unchanged).
     from search.keyword_strategy import broad_query_keywords
     if cfg.get("broaden_keywords", True):
         import industry_profile
@@ -408,7 +408,7 @@ def main():
     # Language guard: when armed (a non-US Adzuna country, or LANGUAGE_GUARD=1),
     # a posting that doesn't read as English is marked 'not scored (language)' and
     # held out of scoring, so the keyword matcher can't confidently mis-rank a
-    # foreign-language listing. OFF by default -> byte-identical for Alex's US run
+    # foreign-language listing. OFF by default -> byte-identical for the default US run
     # (the branch is skipped entirely and `results` is scored intact).
     #
     # Thread the ACTIVE PROJECT's resolved country in (finding #33) -- every
@@ -537,7 +537,7 @@ def main():
 
     # Opt-in auto-rank: rank the top-K still-unscored inbox jobs via the direct
     # API / local model so the user wakes up to a ranked inbox. OFF by default
-    # (byte-identical for Alex); wrapped so a backend hiccup never kills the run.
+    # (byte-identical for the default profile); wrapped so a backend hiccup never kills the run.
     _maybe_auto_rank(cfg)
 
     # Optionally remove dead (404) inbox links each run. OFF by default: it

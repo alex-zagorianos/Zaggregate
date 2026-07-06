@@ -54,7 +54,7 @@ def build_top_bar(parent, before=None, tools_menu=None):
     When `tools_menu` (a tk.Menu) is supplied, a discoverable 'Tools ▾' button is
     added at the right of the bar that posts that menu — the same actions as the
     menubar's Tools cascade, surfaced where a first-time user will actually find
-    them (Alex's ask: "make it a button on the top like in the app")."""
+    them (surfacing Tools as a top button, mirroring the in-app placement)."""
     wrap = tk.Frame(parent, bg=theme.SURFACE)
     if before is not None:
         wrap.pack(fill="x", side="top", before=before)

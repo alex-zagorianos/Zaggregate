@@ -192,7 +192,7 @@ def backup_data(parent=None) -> None:
     'lose-everything-if-the-laptop-dies'."""
     dest = filedialog.asksaveasfilename(
         parent=parent, title="Back up my data", defaultextension=".zip",
-        initialfile="jobscout-backup.zip", filetypes=[("Zip archive", "*.zip")])
+        initialfile="zaggregate-backup.zip", filetypes=[("Zip archive", "*.zip")])
     if not dest:
         return
     try:

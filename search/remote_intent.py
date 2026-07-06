@@ -11,7 +11,7 @@ national noise that dies at the location gate.
 Design intent (plan P0-5 + coverage §4/§5):
   * ``is_remote_only(location)`` is deliberately CONSERVATIVE — it fires only when
     the string carries a remote signal and NO concrete place token. "Cincinnati,
-    OH", "Boise, ID", "" (Alex's empty default) all return False, so every
+    OH", "Boise, ID", "" (the empty default) all return False, so every
     non-remote search path is byte-identical to before.
   * The national feeds don't fake locality: for a metro-bound user their rows are
     filtered to the user's metro (real localization); for a remote-only user the

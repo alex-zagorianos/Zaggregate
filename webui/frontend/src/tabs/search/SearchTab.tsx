@@ -237,7 +237,7 @@ export function SearchTab() {
       .addAllToInbox(rows)
       .then((r) => {
         toast.success("Added to Inbox", {
-          description: `${r.added} job${r.added === 1 ? "" : "s"} added for triage in your Inbox.`,
+          description: `${r.added} job${r.added === 1 ? "" : "s"} ready to triage.`,
         });
         qc.invalidateQueries({ queryKey: queryKeys.inboxAll });
         qc.invalidateQueries({ queryKey: queryKeys.topPicksAll });

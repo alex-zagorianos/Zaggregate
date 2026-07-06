@@ -1,7 +1,7 @@
 """Workspace = the active job-search *project*. A project groups everything for
 one search campaign -- its config, resume base, inbox/applications/dismissed
 (tracker.db), and generated output -- under projects/<slug>/, so two campaigns
-(e.g. controls-cincinnati and dad-health-informatics) never mix.
+(e.g. a primary and a secondary campaign) never mix.
 
 Paths are resolved at call-time from projects/projects.json, so the app can
 switch the active project at runtime. Back-compat: when no projects/ dir exists
