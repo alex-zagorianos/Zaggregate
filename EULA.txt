@@ -42,10 +42,12 @@ use the Software.
    PRIVACY.md.
 
 6. LICENSE STATUS
-   The open-source license for the Software's source code has not yet been
-   chosen and is a pending decision by the author. Until a license is published,
-   all rights are reserved. This EULA governs your use of the distributed beta
-   build; it is not itself an open-source license grant.
+   The Software's source code is licensed under the GNU Affero General Public
+   License v3.0 (AGPL-3.0) — see the LICENSE file in the source repository
+   (github.com/alex-zagorianos/Job-Program). Nothing in this EULA limits,
+   replaces, or adds restrictions to the rights the AGPL grants you; sections
+   1-5 and 7 are disclaimers and notices of the kind AGPL-3.0 section 7
+   permits, applying to this distributed beta build.
 
 7. NOT LEGAL ADVICE
    Nothing in the Software or its documentation is legal advice.

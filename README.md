@@ -147,4 +147,14 @@ includes your API keys or resume.
 
 ## License
 
-License: not yet chosen — all rights reserved for now. See `EULA.txt`.
+**[AGPL-3.0](LICENSE)** (GNU Affero General Public License v3.0). In plain
+terms: use it, read it, modify it, share it freely — but if you distribute a
+modified version, or offer a modified version to others over a network, your
+modifications must be published under the same license. Your own local use is
+never affected. The packaged beta additionally ships the disclaimers in
+`EULA.txt` (as-is / own-behalf-querying notices of the kind AGPL §7 permits).
+
+Contributions are accepted under AGPL-3.0 with a
+[Developer Certificate of Origin](https://developercertificate.org/) sign-off
+(`git commit -s`) — this keeps future licensing options (e.g. commercial
+exceptions for institutions) available to the project.
