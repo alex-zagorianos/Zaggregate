@@ -22,7 +22,7 @@ import {
   type SourceKeyInfo,
   type SourceField,
 } from "@/api/client";
-import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { EmptyState, useQueryGuard } from "@/components/states";
 import { NetworkImportCard } from "@/tabs/sources/NetworkImportCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,19 +88,11 @@ export function SourceCardGrid() {
   const query = useSourceKeys();
   const sources = query.data?.sources ?? [];
 
-  if (query.isLoading) return <LoadingState />;
-  if (query.isError)
-    return (
-      <ErrorState
-        title="Couldn't load your sources"
-        message={
-          query.error instanceof ApiError
-            ? query.error.message
-            : "The settings service didn't respond."
-        }
-        onRetry={() => query.refetch()}
-      />
-    );
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your sources",
+    fallback: "The settings service didn't respond.",
+  });
+  if (guard) return guard;
   if (sources.length === 0)
     return (
       <EmptyState

@@ -18,7 +18,7 @@ import {
 import { useTopPicks, useTrackInbox, useDismissInbox } from "@/api/queries";
 import type { TopPickRow, TopPicksLimit } from "@/api/client";
 import { ScoreChip } from "@/components/score-chip";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { EmptyState, TableSkeleton, useQueryGuard } from "@/components/states";
 import { ShortcutHint } from "@/components/kbd";
 import { TriageActions } from "@/components/row-actions";
 import {
@@ -114,6 +114,16 @@ export function TopPicksTab() {
     if (row.url) window.open(row.url, "_blank", "noopener,noreferrer");
   }, []);
 
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your Top Picks",
+    fallback: "The recommendation service didn't respond.",
+    loading: (
+      <div className="mt-6 rounded-lg border border-border bg-card p-2">
+        <TableSkeleton rows={8} />
+      </div>
+    ),
+  });
+
   return (
     <section aria-labelledby="toppicks-heading">
       <Header
@@ -122,30 +132,17 @@ export function TopPicksTab() {
         count={rows.length}
       />
 
-      {query.isLoading ? (
-        <div className="mt-6 rounded-lg border border-border bg-card p-2">
-          <TableSkeleton rows={8} />
-        </div>
-      ) : query.isError ? (
-        <ErrorState
-          title="Couldn't load your Top Picks"
-          message={
-            query.error instanceof ApiError
-              ? query.error.message
-              : "The recommendation service didn't respond."
-          }
-          onRetry={() => query.refetch()}
-        />
-      ) : rows.length === 0 ? (
-        <TopPicksEmpty />
-      ) : (
-        <PicksTable
-          rows={rows}
-          onTrack={onTrack}
-          onDismiss={onDismiss}
-          onOpen={onOpen}
-        />
-      )}
+      {guard ??
+        (rows.length === 0 ? (
+          <TopPicksEmpty />
+        ) : (
+          <PicksTable
+            rows={rows}
+            onTrack={onTrack}
+            onDismiss={onDismiss}
+            onOpen={onOpen}
+          />
+        ))}
     </section>
   );
 }

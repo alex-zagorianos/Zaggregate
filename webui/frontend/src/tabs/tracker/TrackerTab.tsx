@@ -37,7 +37,7 @@ import {
 } from "@/lib/status";
 import { StatusChip } from "@/components/status-chip";
 import { JobDialog } from "@/components/job-dialog";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { EmptyState, TableSkeleton, useQueryGuard } from "@/components/states";
 import {
   Table,
   TableHeader,
@@ -97,6 +97,16 @@ export function TrackerTab() {
     setDialogOpen(true);
   };
 
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your applications",
+    fallback: "The tracker service didn't respond.",
+    loading: (
+      <div className="rounded-lg border border-border bg-card p-2">
+        <TableSkeleton rows={8} />
+      </div>
+    ),
+  });
+
   return (
     <section aria-labelledby="tracker-heading">
       <Header
@@ -108,30 +118,17 @@ export function TrackerTab() {
       <FilterBar view={view} onView={setView} counts={counts} labels={labels} />
 
       <div className="mt-5">
-        {query.isLoading ? (
-          <div className="rounded-lg border border-border bg-card p-2">
-            <TableSkeleton rows={8} />
-          </div>
-        ) : query.isError ? (
-          <ErrorState
-            title="Couldn't load your applications"
-            message={
-              query.error instanceof ApiError
-                ? query.error.message
-                : "The tracker service didn't respond."
-            }
-            onRetry={() => query.refetch()}
-          />
-        ) : rows.length === 0 ? (
-          <TrackerEmpty view={view} onAdd={openCreate} />
-        ) : (
-          <TrackerTable
-            rows={rows}
-            labels={labels}
-            isArchive={isArchive}
-            onEdit={openEdit}
-          />
-        )}
+        {guard ??
+          (rows.length === 0 ? (
+            <TrackerEmpty view={view} onAdd={openCreate} />
+          ) : (
+            <TrackerTable
+              rows={rows}
+              labels={labels}
+              isArchive={isArchive}
+              onEdit={openEdit}
+            />
+          ))}
       </div>
 
       <JobDialog

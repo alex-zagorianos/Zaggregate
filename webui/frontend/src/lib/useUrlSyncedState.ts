@@ -61,7 +61,6 @@ export function useUrlSyncedState<T>({
     setStateRef.current(deserializeRef.current(searchParams));
     // Intentionally run once — this is a mount-time initializer, not a live sync
     // (live URL edits, e.g. back/forward, are handled by the popstate effect below).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── back/forward: re-apply state when the URL changes out from under us ────
@@ -75,7 +74,9 @@ export function useUrlSyncedState<T>({
     const current = searchParams.toString();
     if (current === lastWrittenRef.current) return; // our own write; state already matches
     setStateRef.current(deserializeRef.current(searchParams));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps intentionally just [searchParams] — setStateRef/deserializeRef are
+    // refs read via .current precisely so this effect doesn't need to depend
+    // on the (possibly-unstable) setState/deserialize the caller passed in.
   }, [searchParams]);
 
   // ── state -> URL, debounced, replaceState (no history spam) ────────────────
@@ -88,6 +89,7 @@ export function useUrlSyncedState<T>({
       setSearchParams(next, { replace: true });
     }, debounceMs);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- setSearchParams/searchParams intentionally excluded (see above)
+    // setSearchParams/searchParams intentionally excluded (see above) — this
+    // effect only reacts to state/debounceMs changes.
   }, [state, debounceMs]);
 }

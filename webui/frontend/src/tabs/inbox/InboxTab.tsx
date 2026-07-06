@@ -46,7 +46,7 @@ import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
 import { postedLabel as postedLabelFromDate } from "@/lib/relative-time";
 import { ScoreChip } from "@/components/score-chip";
 import { GhostRowBadge } from "@/components/ghost-row-badge";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { EmptyState, TableSkeleton, useQueryGuard } from "@/components/states";
 import { ShortcutHint } from "@/components/kbd";
 import { TriageActions } from "@/components/row-actions";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
@@ -311,6 +311,16 @@ export function InboxTab() {
 
   const hasSelection = rangeSelected.size > 0;
 
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your Inbox",
+    fallback: "The inbox service didn't respond.",
+    loading: (
+      <div className="border-border bg-card rounded-lg border p-2">
+        <TableSkeleton rows={10} />
+      </div>
+    ),
+  });
+
   return (
     <section aria-labelledby="inbox-heading" className="flex h-full flex-col">
       {/* Header */}
@@ -476,45 +486,32 @@ export function InboxTab() {
             detailOpen && "lg:max-w-[calc(100%-24rem)]",
           )}
         >
-          {query.isLoading ? (
-            <div className="border-border bg-card rounded-lg border p-2">
-              <TableSkeleton rows={10} />
-            </div>
-          ) : query.isError ? (
-            <ErrorState
-              title="Couldn't load your Inbox"
-              message={
-                query.error instanceof ApiError
-                  ? query.error.message
-                  : "The inbox service didn't respond."
-              }
-              onRetry={() => query.refetch()}
-            />
-          ) : rows.length === 0 ? (
-            <InboxEmpty
-              filtered={total > 0}
-              running={running}
-              onClearFilters={() => setFilters(makeDefaultFilters())}
-              onUpdate={startRun}
-            />
-          ) : (
-            <InboxTable
-              rows={visibleRows}
-              totalRows={rows.length}
-              selectedId={selectedId}
-              onSelect={(id) => {
-                setSelectedId(id);
-                if (!detailOpen) setDetailOpen(true);
-              }}
-              rangeSelected={rangeSelected}
-              onRangeChange={setRangeSelected}
-              onTrack={onTrack}
-              onDismiss={onDismiss}
-              onOpen={onOpen}
-              moreToLoad={moreToLoad}
-              sentinelRef={sentinelRef}
-            />
-          )}
+          {guard ??
+            (rows.length === 0 ? (
+              <InboxEmpty
+                filtered={total > 0}
+                running={running}
+                onClearFilters={() => setFilters(makeDefaultFilters())}
+                onUpdate={startRun}
+              />
+            ) : (
+              <InboxTable
+                rows={visibleRows}
+                totalRows={rows.length}
+                selectedId={selectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  if (!detailOpen) setDetailOpen(true);
+                }}
+                rangeSelected={rangeSelected}
+                onRangeChange={setRangeSelected}
+                onTrack={onTrack}
+                onDismiss={onDismiss}
+                onOpen={onOpen}
+                moreToLoad={moreToLoad}
+                sentinelRef={sentinelRef}
+              />
+            ))}
         </div>
 
         {/* Detail rail — collapsible on large screens; on small screens it stacks */}

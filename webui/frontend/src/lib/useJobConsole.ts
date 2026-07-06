@@ -126,7 +126,8 @@ export function useJobConsole(
     });
 
     return () => es.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps intentionally just [jobId] — handlers are read via hRef.current
+    // (see above) so this subscription doesn't re-fire every render.
   }, [jobId]);
 
   const onScroll = React.useCallback(() => {

@@ -1,13 +1,12 @@
 import { BarChart3, Users } from "lucide-react";
 
 import { useInsights } from "@/api/queries";
-import {
-  ApiError,
-  type InsightsFunnel,
-  type InsightsSourceRow,
-  type InsightsCadence,
+import type {
+  InsightsFunnel,
+  InsightsSourceRow,
+  InsightsCadence,
 } from "@/api/client";
-import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { EmptyState, useQueryGuard } from "@/components/states";
 import {
   Table,
   TableBody,
@@ -34,20 +33,11 @@ function pct(rate: number): string {
 export function InsightsTab() {
   const query = useInsights();
 
-  if (query.isLoading) return <LoadingState />;
-  if (query.isError) {
-    return (
-      <ErrorState
-        title="Couldn't load your insights"
-        message={
-          query.error instanceof ApiError
-            ? query.error.message
-            : "The insights service didn't respond."
-        }
-        onRetry={() => query.refetch()}
-      />
-    );
-  }
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your insights",
+    fallback: "The insights service didn't respond.",
+  });
+  if (guard) return guard;
 
   const data = query.data;
   const funnel = data?.funnel;

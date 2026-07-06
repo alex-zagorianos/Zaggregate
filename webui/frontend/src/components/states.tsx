@@ -5,6 +5,7 @@ import { Inbox, AlertTriangle, Loader2, MousePointerClick } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiError } from "@/api/client";
 
 /* Shared full-panel states — the web twins of ui.theme.empty_state. Every tab
  * uses these so "nothing here", "it broke", and "loading" read identically
@@ -158,4 +159,69 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
       ))}
     </div>
   );
+}
+
+// ── useQueryGuard ─────────────────────────────────────────────────────────────
+
+/** The minimal shape of a TanStack Query result this guard needs — kept
+ * structural (not `UseQueryResult<T>`) so it works with any query's result
+ * object without a generic type param leaking through call sites. */
+export interface QueryGuardLike {
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: () => unknown;
+}
+
+export interface UseQueryGuardOptions {
+  /** ErrorState title (e.g. "Couldn't load your board"). */
+  title?: string;
+  /** ErrorState message shown when `error` is NOT an ApiError. */
+  fallback: string;
+  /** Loading element to render instead of the default full-panel LoadingState
+   * (e.g. a tab's inline <TableSkeleton />, matching its pre-hook rendering). */
+  loading?: ReactNode;
+  /** Extra className passed to ErrorState (e.g. a detail-rail's tighter
+   * "min-h-0 py-8" instead of the full-panel min-height). */
+  errorClassName?: string;
+}
+
+/** Pure decision logic behind useQueryGuard, extracted so it's unit-testable
+ * without React Testing Library (this project has no component-render test
+ * infra — see brain/techdebt-register-2026-07-05.md #21). Given a query-like
+ * result and the guard options, returns the node to render, or null when the
+ * query is ready and the caller should render its real content. */
+export function queryGuardDecision(
+  query: QueryGuardLike,
+  { title, fallback, loading, errorClassName }: UseQueryGuardOptions,
+): ReactNode | null {
+  if (query.isLoading) return loading ?? <LoadingState />;
+  if (query.isError) {
+    return (
+      <ErrorState
+        title={title}
+        message={
+          query.error instanceof ApiError ? query.error.message : fallback
+        }
+        onRetry={() => query.refetch()}
+        className={errorClassName}
+      />
+    );
+  }
+  return null;
+}
+
+/** Shared loading/error guard for a TanStack Query result. Replaces the
+ * copy-pasted `if (query.isLoading) return <LoadingState/>; if (query.isError)
+ * return <ErrorState .../>;` block duplicated across tabs — see
+ * brain/techdebt-register-2026-07-05.md #21.
+ *
+ * Usage: `const guard = useQueryGuard(query, {title, fallback}); if (guard)
+ * return guard;` — returns null when the query is ready, so the call site's
+ * own render path (including empty-state checks) takes over unchanged. */
+export function useQueryGuard(
+  query: QueryGuardLike,
+  options: UseQueryGuardOptions,
+): ReactNode | null {
+  return queryGuardDecision(query, options);
 }

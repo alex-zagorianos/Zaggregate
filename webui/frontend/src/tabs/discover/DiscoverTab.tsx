@@ -21,7 +21,7 @@ import { endpoints, type Recommendation } from "@/api/client";
 import { friendlyError } from "@/lib/friendly-error";
 import { PromptDialog } from "@/components/prompt-dialog";
 import { PasteDialog } from "@/components/paste-dialog";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { EmptyState, TableSkeleton, useQueryGuard } from "@/components/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +55,11 @@ export function DiscoverTab() {
   const applyMut = useRecommendApply();
   const dismissMut = useRecommendDismiss();
   const navigate = useNavigate();
+
+  const guard = useQueryGuard(query, {
+    fallback: "",
+    loading: <TableSkeleton rows={4} />,
+  });
 
   const [interests, setInterests] = React.useState<string | null>(null);
   const [prompt, setPrompt] = React.useState("");
@@ -213,14 +218,8 @@ export function DiscoverTab() {
       </div>
 
       {/* Results */}
-      {query.isLoading ? (
-        <div className="mt-6">
-          <TableSkeleton rows={4} />
-        </div>
-      ) : query.isError ? (
-        <div className="mt-6">
-          <ErrorState onRetry={() => query.refetch()} />
-        </div>
+      {guard ? (
+        <div className="mt-6">{guard}</div>
       ) : recs.length === 0 ? (
         <div className="mt-6">
           <EmptyState

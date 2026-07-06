@@ -97,7 +97,7 @@ export function BatchDialog({
         }
       })
       .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps intentionally just [open] — rebuild once per dialog open.
   }, [open]);
 
   const onCopy = async () => {

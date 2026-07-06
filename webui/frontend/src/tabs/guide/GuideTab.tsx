@@ -2,8 +2,8 @@ import * as React from "react";
 import { BookOpen } from "lucide-react";
 
 import { useGuide } from "@/api/queries";
-import { ApiError, type GuideSection } from "@/api/client";
-import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import type { GuideSection } from "@/api/client";
+import { EmptyState, useQueryGuard } from "@/components/states";
 
 /* Guide — the in-app help, rendered as an editorial reading page. This is the
  * typography showcase for the whole app: Fraunces headings at a real display
@@ -20,20 +20,11 @@ export function GuideTab() {
   const query = useGuide();
   const sections = query.data?.sections ?? [];
 
-  if (query.isLoading) return <LoadingState />;
-  if (query.isError) {
-    return (
-      <ErrorState
-        title="Couldn't load the guide"
-        message={
-          query.error instanceof ApiError
-            ? query.error.message
-            : "The guide service didn't respond."
-        }
-        onRetry={() => query.refetch()}
-      />
-    );
-  }
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load the guide",
+    fallback: "The guide service didn't respond.",
+  });
+  if (guard) return guard;
   if (sections.length === 0) {
     return (
       <EmptyState

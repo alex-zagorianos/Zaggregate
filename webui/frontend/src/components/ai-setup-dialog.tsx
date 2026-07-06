@@ -79,7 +79,8 @@ export function AiSetupDialog({
         )
         .finally(() => setPromptLoading(false));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps intentionally just [open] — this resets/fetches once per dialog
+    // open, not on every change to prompt/toast/endpoints identities.
   }, [open]);
 
   const onCopy = async () => {

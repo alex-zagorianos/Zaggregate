@@ -10,7 +10,7 @@ import {
 } from "@/api/queries";
 import { ApiError, endpoints, type QueueRow } from "@/api/client";
 import { useRegisterCommands, type AppCommand } from "@/lib/app-commands";
-import { EmptyState, ErrorState, TableSkeleton } from "@/components/states";
+import { EmptyState, TableSkeleton, useQueryGuard } from "@/components/states";
 import { ShortcutHint } from "@/components/kbd";
 import { Button } from "@/components/ui/button";
 import {
@@ -190,6 +190,16 @@ export function ApplyQueueTab() {
   );
   useRegisterCommands("apply-queue", paletteCommands);
 
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your apply queue",
+    fallback: "The queue service didn't respond.",
+    loading: (
+      <div className="border-border bg-card rounded-lg border p-2">
+        <TableSkeleton rows={8} />
+      </div>
+    ),
+  });
+
   return (
     <section aria-labelledby="queue-heading" className="flex h-full flex-col">
       {/* Header */}
@@ -233,32 +243,19 @@ export function ApplyQueueTab() {
       {/* Split body */}
       <div className="mt-5 flex min-h-0 flex-1 gap-4">
         <div className="min-w-0 flex-1 lg:max-w-[calc(100%-26rem)]">
-          {query.isLoading ? (
-            <div className="border-border bg-card rounded-lg border p-2">
-              <TableSkeleton rows={8} />
-            </div>
-          ) : query.isError ? (
-            <ErrorState
-              title="Couldn't load your apply queue"
-              message={
-                query.error instanceof ApiError
-                  ? query.error.message
-                  : "The queue service didn't respond."
-              }
-              onRetry={() => query.refetch()}
-            />
-          ) : rows.length === 0 ? (
-            <QueueEmpty />
-          ) : (
-            <QueueList
-              rows={rows}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onMarkApplied={onMarkApplied}
-              onDismiss={onDismiss}
-              onOpen={onOpen}
-            />
-          )}
+          {guard ??
+            (rows.length === 0 ? (
+              <QueueEmpty />
+            ) : (
+              <QueueList
+                rows={rows}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                onMarkApplied={onMarkApplied}
+                onDismiss={onDismiss}
+                onOpen={onOpen}
+              />
+            ))}
         </div>
 
         {rows.length > 0 && (

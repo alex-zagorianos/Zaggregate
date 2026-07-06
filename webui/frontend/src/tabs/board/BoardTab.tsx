@@ -27,7 +27,7 @@ import { statusLabel, isTerminal } from "@/lib/status";
 import { daysInStageLabel } from "@/lib/board-labels";
 import { canDrop, isRealMove, rejectReason } from "./board-logic";
 import { JobDialog } from "@/components/job-dialog";
-import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { EmptyState, useQueryGuard } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -111,20 +111,11 @@ export function BoardTab() {
     );
   };
 
-  if (query.isLoading) return <LoadingState />;
-  if (query.isError) {
-    return (
-      <ErrorState
-        title="Couldn't load your board"
-        message={
-          query.error instanceof ApiError
-            ? query.error.message
-            : "The board service didn't respond."
-        }
-        onRetry={() => query.refetch()}
-      />
-    );
-  }
+  const guard = useQueryGuard(query, {
+    title: "Couldn't load your board",
+    fallback: "The board service didn't respond.",
+  });
+  if (guard) return guard;
 
   const totalCards = columns.reduce((n, c) => n + c.cards.length, 0);
 

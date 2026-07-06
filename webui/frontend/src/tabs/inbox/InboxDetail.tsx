@@ -11,12 +11,12 @@ import {
 } from "lucide-react";
 
 import { useInboxDetail } from "@/api/queries";
-import { ApiError, type InboxRow } from "@/api/client";
+import type { InboxRow } from "@/api/client";
 import { ScoreChip } from "@/components/score-chip";
 import { Button } from "@/components/ui/button";
 import { NetworkBlockView } from "@/components/network-block";
 import { GhostedBeforeNote } from "@/components/ghosted-before-note";
-import { ErrorState, SelectPrompt } from "@/components/states";
+import { SelectPrompt, useQueryGuard } from "@/components/states";
 import { scoreNoteLabel } from "@/lib/score";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +43,17 @@ export function InboxDetail({
   onOpen,
 }: InboxDetailProps) {
   const detail = useInboxDetail(row?.id ?? null);
+  const guard = useQueryGuard(detail, {
+    title: "Couldn't load details",
+    fallback: "The detail service didn't respond.",
+    loading: (
+      <p className="text-muted-foreground flex items-center gap-2 text-sm">
+        <Loader2 className="size-4 animate-spin" />
+        Loading details…
+      </p>
+    ),
+    errorClassName: "min-h-0 py-8",
+  });
 
   if (!row) {
     return (
@@ -121,23 +132,7 @@ export function InboxDetail({
 
       {/* Scrolling body */}
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-        {detail.isError ? (
-          <ErrorState
-            title="Couldn't load details"
-            message={
-              detail.error instanceof ApiError
-                ? detail.error.message
-                : "The detail service didn't respond."
-            }
-            onRetry={() => detail.refetch()}
-            className="min-h-0 py-8"
-          />
-        ) : detail.isLoading ? (
-          <p className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Loader2 className="size-4 animate-spin" />
-            Loading details…
-          </p>
-        ) : (
+        {guard ?? (
           <>
             <GhostBanner ghost={detail.data?.ghost} />
 
