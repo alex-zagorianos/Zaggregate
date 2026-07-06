@@ -22,7 +22,7 @@ from scrape.company_registry import CompanyEntry
 
 _GREENHOUSE_URL = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
 _LEVER_URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
-_UA = {"User-Agent": "Mozilla/5.0 (job-program company-health probe)"}
+_UA = {"User-Agent": "Mozilla/5.0 (zaggregate company-health probe)"}
 
 
 def _probe(entry: CompanyEntry) -> Optional[bool]:

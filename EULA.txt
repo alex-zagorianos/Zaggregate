@@ -44,7 +44,7 @@ use the Software.
 6. LICENSE STATUS
    The Software's source code is licensed under the GNU Affero General Public
    License v3.0 (AGPL-3.0) — see the LICENSE file in the source repository
-   (github.com/alex-zagorianos/Job-Program). Nothing in this EULA limits,
+   (github.com/alex-zagorianos/zaggregate). Nothing in this EULA limits,
    replaces, or adds restrictions to the rights the AGPL grants you; sections
    1-5 and 7 are disclaimers and notices of the kind AGPL-3.0 section 7
    permits, applying to this distributed beta build.

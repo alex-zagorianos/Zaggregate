@@ -16,7 +16,7 @@ APP_VERSION = "1.0.0"
 # The GitHub repo the optional in-app "Check for updates" queries via the public
 # releases API (no auth, no telemetry — a single GET the user triggers). Compared
 # against APP_VERSION. Overridable via env for a fork/testing.
-UPDATE_REPO = os.getenv("UPDATE_REPO", "alex-zagorianos/Job-Program")
+UPDATE_REPO = os.getenv("UPDATE_REPO", "alex-zagorianos/zaggregate")
 # Where "Send feedback" mails to (a client-side mailto: opens the user's own mail
 # app — nothing is sent from the app itself).
 FEEDBACK_EMAIL = os.getenv("FEEDBACK_EMAIL", "alexzagorianos@gmail.com")

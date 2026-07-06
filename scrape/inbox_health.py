@@ -24,7 +24,7 @@ from config import CAREERS_REQUEST_TIMEOUT
 from scrape import greenhouse_url
 from tracker.db import current_db_path
 
-_UA = {"User-Agent": "Mozilla/5.0 (job-program inbox-health probe)"}
+_UA = {"User-Agent": "Mozilla/5.0 (zaggregate inbox-health probe)"}
 _GH_JOB = "https://boards-api.greenhouse.io/v1/boards/{slug}/jobs/{token}"
 _LEVER_JOB = "https://api.lever.co/v0/postings/{slug}/{token}?mode=json"
 _LEVER_RE = re.compile(r"lever\.co/(?P<slug>[^/]+)/(?P<token>[^/?#]+)")
