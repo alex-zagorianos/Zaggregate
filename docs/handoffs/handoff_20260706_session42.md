@@ -48,9 +48,23 @@ blobs, and the dad evaluation dossier files.
 4. gh CLI installed (winget) but needs interactive `gh auth login` — repo
    creation was Alex's web-UI step instead; the push itself is plain SSH.
 
+## S42b addendum (same day) — v1.0.0 release staged
+
+Fresh `build_package.py` → `dist/Zaggregate-v1.0.0.zip` + `SHA256SUMS.txt`;
+zip PII-scanned (blank-template experience.md, only the accepted contact
+email) and frozen-smoke-tested (exe verified as the SOLE 5002 listener — dev
+receiver stopped for the smoke and restored after). README quick start links
+`/releases/latest`; mirror re-run and pushed — public master `c9a33f1`. The
+history rewrite proved deterministic: identical prefix SHAs, so the second
+publish fast-forwarded instead of force-replacing. Release creation is the
+owner's step: `gh auth login` once, then run
+`%USERPROFILE%\job-program-public-release\release.ps1` (creates the release
+and sets About/topics), or draft it in the web UI with the two `dist\` files.
+
 ## Open
 
-- Repo About/description + topics (gh auth or web UI).
+- Create the v1.0.0 release (see addendum above).
+- Repo About/description + topics (gh auth or web UI — release.ps1 covers both).
 - Auto-update pipeline (Actions on version tags → pre-releases → Velopack)
   targets Zaggregate; awaiting Alex's two design calls.
 - Re-publish flow: re-run `brain/public-release-runbook.md` recipe on a fresh

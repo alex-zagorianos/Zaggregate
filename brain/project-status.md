@@ -46,6 +46,17 @@ notes. Staging record: `%USERPROFILE%\job-program-public-release\PUBLISH.md`.
 Open: repo About/topics (needs gh auth or web), auto-update pipeline build,
 re-publish flow = runbook + `push --mirror`.
 
+**S42b (same day) — v1.0.0 RELEASE STAGED + REPUBLISH:** fresh
+`build_package.py` → `dist/Zaggregate-v1.0.0.zip` (46.5MB) + SHA256SUMS;
+zip PII-scanned (experience.md = blank template; only accepted contact email
+in EULA/PRIVACY); frozen smoke passed (exe alone on 5002 verified — killed dev
+receiver first, restored after; port co-bind trap respected). README quick
+start now links `/releases/latest` (`d060fd3`); mirror re-run → public master
+**`c9a33f1`** (★rewrite is DETERMINISTIC — identical prefix SHAs, push was a
+fast-forward, no churn for cloners). Release creation = Alex:
+`gh auth login` then `%USERPROFILE%\job-program-public-release\release.ps1`
+(release + About/topics in one go), or web-UI draft w/ the 2 dist/ files.
+
 ## Session 41 (2026-07-06 early AM, same conversation) — AGPL + PUBLIC-PREP DEEP CLEAN ✅
 
 Alex: license adopted → deep-clean audit before going public. **★PUSHED
