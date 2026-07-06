@@ -4,6 +4,44 @@
 
 ---
 
+## Session 40 (2026-07-06 overnight, same night as S39) — AI-FIRST SETUP shipped + review fleet + searches + cleanup ✅
+
+Alex approved the design then slept; Opus builders implemented everything.
+Suite **3,247 / 0** (2 headless-tk skips), vitest **237**, bundle current.
+Commits `868bb33`→`23c7efd` (+docs), PUSH HELD. Canonical:
+`docs/handoffs/handoff_20260706_session40.md` + `brain/plan-2026-07-06-ai-first-setup.md`.
+
+1. **"Paste one reply, start searching"** = THE setup path now: combined
+   config+seeds prompt (`build_full_setup_prompt`/`split_full_reply`),
+   `POST /api/ai-setup/apply-full` → sync config apply + ONE exclusive job
+   (seed-probe → quick first run via shared knobs helper); wizard landing step
+   = inline AI panes (manual = quiet link); Search tab "Set up with AI";
+   Guide re-led. Live-verified 3× in a real browser: one paste → config +
+   starter companies + first search streaming in the Inbox console →
+   auto-refetch on done.
+2. **Two live-test bugs found by clicking, both fixed same night**: handoff
+   consumed only on InboxTab mount (takeover overlays a mounted Inbox) →
+   location.key-keyed consume `4e4a2b0`; shared SSE reconcile silently
+   detached at the finish boundary + failed path never invalidated →
+   resubscribe + onFailed invalidation `91b8697` (benefits all consoles).
+3. **Review fleet** (12 Opus agents, 4 dims → adversarial verify): 6 confirmed
+   / 2 refuted → ALL fixed `23c7efd` (seed-leak span pin, ★job-thread WAL
+   release, ★harvest silent-drop surfacing w/ ext-compatible `inbox_error`,
+   stale console handlers, inbox row memoization, prompt-fetch abort).
+   Findings: `brain/review-2026-07-06-s40-fleet-findings.json`.
+4. **Searches + picks**: all 5 projects ran (log `logs/s40_runs.log`); 2 Opus
+   curators → `output/job-picks-2026-07-06.md` (11 Alex / 8 dad). Scoring
+   tune-ups surfaced: title-seniority-blind ranking, offshore-remote loc
+   over-credit, cross-board dupes (need Alex's parity approval).
+5. **Cleanup**: 19 test profiles deleted (8 real projects remain; mecheng/eng2/
+   proj-x flagged for Alex); ClaudeWork strays → `_archive/zag0005-cleanup-2026-07-06/`.
+
+New debt: residual DB-lock class (live request threads cache other-project
+conns — matters for a future delete-project feature). Needs Alex: production
+exe repackage, scoring tune-up GOs, mecheng/eng2/proj-x ruling, wave-3 GOs.
+
+---
+
 ## Session 39 (2026-07-06 overnight) — dead project switcher fixed + Alex's 4-lane session ✅
 
 Suite **3,221 / 0**, vitest 217, bundle rebuilt. Committed locally, PUSH HELD.
