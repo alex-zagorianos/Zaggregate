@@ -9,7 +9,7 @@ used **with** the AI you already have.
 
 ![The Zaggregate Inbox — a daily, scored feed of matched jobs](docs/images/inbox.png)
 
-**[Download for Windows](https://github.com/alex-zagorianos/Zaggregate/releases/latest)** — unzip, open the `JobProgram` folder, and double-click the launcher for your preferred mode. Prefer source? See [Quick start](#quick-start-run-from-source).
+**[Download for Windows → `Executables/`](Executables/)** — grab the zip, unzip, and double-click a launcher; plain-English steps are in that folder's README. Prefer source? See [Quick start](#quick-start-run-from-source).
 
 ## The fast way: let your AI set it up
 
@@ -85,7 +85,8 @@ local-first by design, and that turns two industry-wide problems into features:
 
 ## Quick start (the packaged app)
 
-Download and unzip [the latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest), then:
+Download and unzip [the app zip from `Executables/`](Executables/) (new versions
+also land on the [Releases page](https://github.com/alex-zagorianos/Zaggregate/releases)), then:
 
 1. Open the `JobProgram` folder and run **`JobProgram.exe`**.
 2. A short **Setup wizard** asks what jobs you want, where, your salary, and your
@@ -201,6 +202,7 @@ data folder:
 ```
 README.md, LICENSE, EULA.txt, PRIVACY.md   Top-level docs and terms
 CLAUDE.md, _index.md                       Project brain entry points
+Executables/      The ready-to-run Windows app (zip + how-to) — no source needed
 docs/             Build guide, known issues, and per-session development handoffs
 brain/            Design notes, plans, and review logs kept as an open development journal
 tests/            Test suite (py -3.12 -m pytest, run from the repo root)

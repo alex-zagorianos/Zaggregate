@@ -67,6 +67,17 @@ def test_quickstart_md_is_actionable_and_versioned():
     assert "browser_ext" in md
 
 
+def test_executables_readme_is_versioned_and_actionable():
+    # The in-repo Executables/ download README is regenerated per build; it must
+    # carry the current version's zip name and point at the mode launchers.
+    import config
+    md = build_package.EXECUTABLES_README
+    assert f"Zaggregate-v{config.APP_VERSION}.zip" in md
+    assert "Zaggregate Desktop.bat" in md
+    assert "Zaggregate Web.bat" in md
+    assert "Run anyway" in md                  # SmartScreen guidance present
+
+
 def test_quickstart_md_has_desktop_mode_note_and_privacy_line():
     # B3: QUICKSTART must call out the modern app modes (--desktop / --web) and
     # carry a one-line privacy assurance.
