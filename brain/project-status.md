@@ -10,6 +10,10 @@ Alex approved the design then slept; Opus builders implemented everything.
 Suite **3,247 / 0** (2 headless-tk skips), vitest **237**, bundle current.
 **S40b (morning): ★PUSHED `e298bd2..aeed3fe` + production exe REBUILT +
 frozen-smoked (serves `index-mlVew1_R.js`; production now carries S39+S40).**
+**LICENSE DECIDED (S40b, Alex): AGPL-3.0 adopted + pushed `0890217`** (LICENSE
++ README section w/ DCO note + EULA §6 grant reference; dual-license door for
+institutions kept open). Repo still PRIVATE — going public needs the
+PII-in-old-history sweep first (S34 note stands).
 GOTCHA: Claude desktop's chrome-native-host.exe had the production
 VCRUNTIME140.dll mapped → rmtree Access-denied; kill the native host (respawns)
 to release. Canonical:
