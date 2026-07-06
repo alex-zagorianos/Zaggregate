@@ -1,6 +1,8 @@
 import atexit
 import sqlite3
 import sys
+import threading
+import weakref
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -119,11 +121,63 @@ def _reject_unknown_fields(fn_name: str, fields: dict, allowed: set) -> None:
 _MMAP_SIZE = 256 * 1024 * 1024
 
 
-def get_conn():
+# ── Connection reuse (S38) ────────────────────────────────────────────────────
+# get_conn() historically opened a fresh connection per call; `with get_conn()`
+# call sites only scope a TRANSACTION, so every call leaked an open handle until
+# GC — on Windows those handles keep tracker.db + -wal/-shm locked (the S36
+# restore bug), and the connect+5-PRAGMA setup ran thousands of times per GUI
+# session. Now each THREAD caches one connection per resolved db path:
+#
+# * same thread, idle connection, same path  -> the cached connection;
+# * cached connection mid-transaction (a call site nested inside another's
+#   `with` block) -> a FRESH untracked connection, exactly the pre-S38
+#   semantics, so an inner commit can never close/commit the outer transaction;
+# * active project switched (current_db_path() changed — the S27 pin flow)
+#   -> the stale connection is retired and a new one opened;
+# * a caller closed the connection we handed out (analytics/inbox_health do)
+#   -> the liveness probe notices and rebuilds. Self-healing, no call-site
+#   contract change.
+#
+# Connections are created with check_same_thread=False ONLY so that
+# close_all_connections()/release_for_restore() may close other threads'
+# cached handles at shutdown/restore; each connection is still USED by a
+# single thread via the thread-local cache (CPython's sqlite3 is serialized).
+#
+# Registry: sqlite3.Connection is not weak-referenceable, so cached handles
+# are tracked per-thread-ident with a weakref to the OWNING thread; entries
+# whose thread died are swept (and their connections closed) on the next
+# cache miss anywhere — per-request server threads can't accumulate handles.
+_tlocal = threading.local()
+_registry: dict[int, tuple["weakref.ref[threading.Thread]",
+                           sqlite3.Connection]] = {}
+_registry_lock = threading.Lock()
+
+
+def _sweep_dead_threads_locked() -> None:
+    """Close + drop cached connections whose owning thread is gone. Caller
+    holds _registry_lock."""
+    dead = [tid for tid, (tref, _) in _registry.items()
+            if (t := tref()) is None or not t.is_alive()]
+    for tid in dead:
+        _, conn = _registry.pop(tid)
+        _retire(conn)
+
+
+def _register_current_thread(conn: sqlite3.Connection) -> None:
+    t = threading.current_thread()
+    with _registry_lock:
+        _sweep_dead_threads_locked()
+        prev = _registry.get(t.ident)
+        if prev is not None and prev[1] is not conn:
+            _retire(prev[1])   # ident reuse after a thread died — don't leak
+        _registry[t.ident] = (weakref.ref(t), conn)
+
+
+def _new_conn(path: str) -> sqlite3.Connection:
     # The headless daily_run and the GUI write the same project DB. WAL lets
     # reads proceed during a write, and busy_timeout waits out brief lock
     # contention instead of raising 'database is locked'.
-    conn = sqlite3.connect(str(current_db_path()), timeout=30)
+    conn = sqlite3.connect(path, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA journal_mode=WAL")
@@ -135,6 +189,55 @@ def get_conn():
     conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute(f"PRAGMA mmap_size={_MMAP_SIZE}")
     return conn
+
+
+def _alive(conn: sqlite3.Connection) -> bool:
+    """Liveness probe: False if a call site closed the handle we cached."""
+    try:
+        conn.execute("PRAGMA user_version")
+        return True
+    except Exception:  # noqa: BLE001 — closed or otherwise unusable
+        return False
+
+
+def _retire(conn: sqlite3.Connection) -> None:
+    try:
+        conn.close()
+    except Exception:  # noqa: BLE001 — already closed / mid-statement
+        pass
+
+
+def get_conn() -> sqlite3.Connection:
+    path = str(current_db_path())
+    cached = getattr(_tlocal, "conn", None)
+    if cached is not None:
+        if getattr(_tlocal, "path", None) != path:
+            _retire(cached)                      # project switch on this thread
+            _tlocal.conn = None
+        elif not _alive(cached):                 # a caller closed it — rebuild
+            _tlocal.conn = None                  # (probe BEFORE .in_transaction:
+        elif cached.in_transaction:              #  that raises on a closed conn)
+            return _new_conn(path)               # nested call: pre-S38 semantics
+        else:
+            return cached
+    conn = _new_conn(path)
+    _tlocal.conn, _tlocal.path = conn, path
+    _register_current_thread(conn)
+    return conn
+
+
+def close_all_connections() -> None:
+    """Deterministically close every cached connection (all threads). The seam
+    release_for_restore()/close_db() use so Windows file locks are DROPPED
+    rather than waiting on GC. Other threads' cleared handles self-heal via
+    the liveness probe on their next get_conn(). Never raises."""
+    with _registry_lock:
+        conns = [conn for _, conn in _registry.values()]
+        _registry.clear()
+    for conn in conns:
+        _retire(conn)
+    if getattr(_tlocal, "conn", None) is not None:
+        _tlocal.conn = None
 
 
 def checkpoint() -> None:
@@ -162,8 +265,10 @@ def checkpoint() -> None:
 
 
 def close_db() -> None:
-    """Explicit clean-shutdown hook (GUI window close, CLI exit) - alias for
-    checkpoint(). Safe to call multiple times."""
+    """Explicit clean-shutdown hook (GUI window close, CLI exit): close the
+    cached connections (drops their Windows file locks), then checkpoint.
+    Safe to call multiple times — the next get_conn() simply reopens."""
+    close_all_connections()
     checkpoint()
 
 
@@ -171,23 +276,25 @@ def release_for_restore() -> None:
     """Fully release this process's lock on the tracker.db files so a backup
     restore can OVERWRITE them (the Windows-locked-file critical, S36).
 
-    get_conn() opens a fresh sqlite3 connection per call but ``with get_conn()``
-    only manages a TRANSACTION — it does NOT close the connection, so every call
-    leaks an open handle that GC closes eventually. On Windows an open WAL
-    connection keeps ``tracker.db`` + its ``-shm``/``-wal`` sidecars LOCKED
-    ([WinError 32] / [Errno 22]), so a restore extracting over them fails. A bare
-    checkpoint() can't fix this — it opens its OWN connection and the leaked ones
-    stay open.
+    Since S38, get_conn() caches one connection per thread, and any nested call
+    inside an open transaction hands out a fresh untracked one — an open WAL
+    connection of either kind keeps ``tracker.db`` + its ``-shm``/``-wal``
+    sidecars LOCKED on Windows ([WinError 32] / [Errno 22]), so a restore
+    extracting over them fails. A bare checkpoint() can't fix this — it opens
+    its OWN connection and the others stay open.
 
-    So this: (1) forces a GC pass to close any leaked get_conn() connections, then
-    (2) opens one connection, TRUNCATE-checkpoints the WAL, and switches the db out
-    of WAL (``journal_mode=DELETE``) which DELETES the ``-shm``/``-wal`` sidecars
-    and drops their locks, then closes and GCs again. After this the .db file can
-    be overwritten; the next get_conn() re-enables WAL cleanly on the restored db.
-    Fully guarded — never raises (a restore must not fail on a release hiccup)."""
+    So this: (1) deterministically closes every cached connection
+    (close_all_connections) and forces a GC pass for any untracked nested ones,
+    then (2) opens one connection, TRUNCATE-checkpoints the WAL, and switches
+    the db out of WAL (``journal_mode=DELETE``) which DELETES the
+    ``-shm``/``-wal`` sidecars and drops their locks, then closes and GCs
+    again. After this the .db file can be overwritten; the next get_conn()
+    re-enables WAL cleanly on the restored db. Fully guarded — never raises (a
+    restore must not fail on a release hiccup)."""
     import gc
     try:
-        gc.collect()  # close connections leaked by `with get_conn()` (txn-only)
+        close_all_connections()  # cached per-thread connections (S38)
+        gc.collect()             # untracked nested/transaction-time connections
         path = current_db_path()
         if not Path(path).exists():
             return
@@ -207,9 +314,10 @@ def release_for_restore() -> None:
 
 
 # Run on clean process exit so a normal quit doesn't leave a growing -wal
-# sidecar behind. checkpoint() is fully guarded (never raises), so this can't
-# turn a clean exit into a crash.
-atexit.register(checkpoint)
+# sidecar behind. close_db() first closes the cached connections (their open
+# WAL handles would otherwise block the TRUNCATE checkpoint), then checkpoints.
+# Fully guarded (never raises), so this can't turn a clean exit into a crash.
+atexit.register(close_db)
 
 
 def _existing_columns(conn) -> set[str]:

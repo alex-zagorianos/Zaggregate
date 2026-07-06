@@ -89,17 +89,19 @@ def test_checkpoint_never_raises_when_db_path_unresolvable(tmp_path, monkeypatch
 
 
 def test_checkpoint_registered_for_atexit(monkeypatch):
-    """Verify the module wires checkpoint() into atexit.register at import
-    time. CPython 3.12's atexit is a C-accelerated module with no introspect-
-    able handler list (no `_exithandlers`), so this spies on atexit.register
-    and reloads the module rather than inspecting private state."""
+    """Verify the module wires close_db() into atexit.register at import time
+    (S38: close cached connections first, THEN checkpoint — an open WAL handle
+    would block the TRUNCATE). CPython 3.12's atexit is a C-accelerated module
+    with no introspectable handler list (no `_exithandlers`), so this spies on
+    atexit.register and reloads the module rather than inspecting private
+    state."""
     import importlib
 
     calls = []
     monkeypatch.setattr(atexit, "register", lambda fn: calls.append(fn))
     importlib.reload(db)
     try:
-        assert any(fn is db.checkpoint for fn in calls)
+        assert any(fn is db.close_db for fn in calls)
     finally:
         # Restore real atexit wiring for the (already-imported) module before
         # the monkeypatch reverts, so the process ends up in a normal state.
