@@ -14,3 +14,7 @@ actually built.
 
 The canonical project status is [`project-status.md`](project-status.md); the
 navigable index of everything is [`../_index.md`](../_index.md).
+
+A few linked notes (personal evaluation docs and the release runbook) are kept
+private and don't ship in the public repo — dangling `[[wiki-links]]` to them
+are expected.
