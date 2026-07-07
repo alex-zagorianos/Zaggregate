@@ -65,6 +65,20 @@ pytest 3,248 passed / 2 skipped · vitest 237 · exe rebuilt from `src/app.spec`
   byte-identical (1,430 entries, PII re-scanned clean) · daily_run fast-fail +
   db-path checks · receiver live with real data · graphify rebuilt.
 
+## S43b addendum — in-repo Executables/ download folder (`2bc4af4`, public `2cba1ec`)
+
+Repo root gained `Executables/`: the single ready-to-run zip (46.5MB) +
+SHA256SUMS + a 3-step plain-English README. A GitHub folder can't be
+downloaded by itself, so the folder carries the one-click zip — and it works
+BEFORE any GitHub Release exists (the README's Releases links 404 until Alex
+runs `gh auth login` + release.ps1). Self-maintaining:
+`build_package.zip_package()` now ends with `refresh_executables()`
+(version-stamped README regenerated, old-version zips dropped; kit test pins
+it). Root README download links point at the folder; raw download URL
+live-verified (HTTP 206). Trade-off on record: ~46MB per version enters git
+history — slim to a pointer README once the Releases pipeline is live (the
+republish rewrite can drop the blobs).
+
 ## Notes
 
 - The S43 plan doc (`brain/plan-2026-07-06-src-layout.md`) is purged from the
