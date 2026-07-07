@@ -489,64 +489,66 @@ def zip_package() -> None:
     print(f"Done -> {out}")
     sums = write_sha256sums([out], DIST)
     print(f"Checksums -> {sums}")
-    refresh_executables(Path(out), Path(sums))
+    refresh_executables(PKG / "JobProgram")
 
 
-# The tracked repo-root Executables/ folder: the in-repo download spot for
-# non-technical visitors (a GitHub folder can't be downloaded by itself, so it
-# holds the single ready-to-run zip + checksums + a plain-English README).
-# Regenerated on every zip build so it can never go stale on a version bump.
+# The tracked repo-root Executables/ folder: the in-repo, directly-runnable app
+# for non-technical visitors. It holds the UNZIPPED JobProgram/ onedir (exe +
+# launchers + runtime), NOT a nested zip — so the common GitHub path (green
+# Code button -> Download ZIP -> extract once) lands on a double-clickable app
+# with no second extraction. Regenerated on every zip build; never goes stale.
 EXECUTABLES = ROOT / "Executables"
 
 EXECUTABLES_README = f"""\
-# Just want to run the app? Start here.
+# Just want to run the app? It's right here.
 
-No Python, no build tools, no source code needed — this folder has the
-ready-to-run Windows app.
+This folder contains the ready-to-run Windows app (Zaggregate
+v{APP_VERSION}) — no Python, no build tools, no source code needed.
 
-## 3 steps
+## Already downloaded or cloned the repository?
 
-1. **Download** [`Zaggregate-v{APP_VERSION}.zip`](https://github.com/alex-zagorianos/Zaggregate/raw/master/Executables/Zaggregate-v{APP_VERSION}.zip)
-   (~46 MB — click the link, then the download starts or a **Download raw
-   file** button appears).
-2. **Unzip it** anywhere (right-click → *Extract All…*), then open the
-   `Zaggregate` → `JobProgram` folder inside.
-3. **Double-click the launcher you prefer:**
-   - `Zaggregate Desktop.bat` — the modern app in its own window *(recommended)*
-   - `Zaggregate Web.bat` — the same app in your browser
-   - `JobProgram.exe` or `launch.bat` — the classic desktop window
+The app is on your machine right now. Open the [`JobProgram/`](JobProgram/)
+folder next to this file and **double-click the launcher you prefer**:
 
-First launch only, Windows may show an "unknown publisher" warning (the app is
-safe — it just isn't code-signed yet). Click **More info → Run anyway**, or see
-`FIRST-RUN.txt` next to the exe for the two safe ways past it.
+- `Zaggregate Desktop.bat` — the modern app in its own window *(recommended)*
+- `Zaggregate Web.bat` — the same app in your browser
+- `JobProgram.exe` or `launch.bat` — the classic desktop window
+
+## Browsing on GitHub?
+
+Click the green **Code** button at the top of the repository page →
+**Download ZIP**, extract it anywhere (right-click → *Extract All…*), then
+open this `Executables/JobProgram` folder inside and double-click a launcher
+as above. (App-only zips also land on the
+[Releases page](https://github.com/alex-zagorianos/Zaggregate/releases).)
+
+## First launch
+
+Windows may show an "unknown publisher" warning once (the app is safe — it
+just isn't code-signed yet). Click **More info → Run anyway**, or see
+`JobProgram/FIRST-RUN.txt` for the two safe ways past it.
 
 That's it — a short setup wizard opens, or use **Set up with AI** to configure
 everything with one paste. Everything stays on your computer: no account, no
-cloud, no telemetry.
-
-## Extras
-
-- `SHA256SUMS.txt` here lets you verify the download if you want to
-  (`certutil -hashfile Zaggregate-v{APP_VERSION}.zip SHA256` should match).
-- New versions will also appear on the
-  [Releases page](https://github.com/alex-zagorianos/Zaggregate/releases).
-- Curious how it works, or want to run from source? Start at the
-  [main README](../README.md).
+cloud, no telemetry. Curious how it works, or want to run from source? Start
+at the [main README](../README.md).
 """
 
 
-def refresh_executables(zip_path: Path, sums: Path) -> None:
-    """Sync Executables/ with the freshly built zip: copy zip + SHA256SUMS,
-    regenerate the README (version-stamped), drop zips of other versions so the
-    folder always holds exactly one app zip."""
+def refresh_executables(app_dir: Path) -> None:
+    """Sync Executables/ with the freshly assembled app: replace the tracked
+    JobProgram/ onedir wholesale, regenerate the version-stamped README, and
+    clear the pre-S43c nested-zip layout if present."""
     EXECUTABLES.mkdir(exist_ok=True)
-    shutil.copyfile(zip_path, EXECUTABLES / zip_path.name)
-    shutil.copyfile(sums, EXECUTABLES / SHA256SUMS_NAME)
+    dest = EXECUTABLES / "JobProgram"
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(app_dir, dest)
     (EXECUTABLES / "README.md").write_text(EXECUTABLES_README, encoding="utf-8")
-    for old in EXECUTABLES.glob("Zaggregate-v*.zip"):
-        if old.name != zip_path.name:
+    for old in list(EXECUTABLES.glob("Zaggregate-v*.zip")) + [EXECUTABLES / SHA256SUMS_NAME]:
+        if old.exists():
             old.unlink()
-    print(f"Executables/ refreshed -> {EXECUTABLES / zip_path.name}")
+    print(f"Executables/ refreshed -> {dest}")
 
 
 def _sign_exe(exe_path) -> None:

@@ -68,14 +68,16 @@ def test_quickstart_md_is_actionable_and_versioned():
 
 
 def test_executables_readme_is_versioned_and_actionable():
-    # The in-repo Executables/ download README is regenerated per build; it must
-    # carry the current version's zip name and point at the mode launchers.
+    # The in-repo Executables/ README is regenerated per build; it must carry
+    # the current version, the mode launchers, the Code->Download ZIP path for
+    # GitHub visitors, and the SmartScreen guidance.
     import config
     md = build_package.EXECUTABLES_README
-    assert f"Zaggregate-v{config.APP_VERSION}.zip" in md
+    assert f"v{config.APP_VERSION}" in md
     assert "Zaggregate Desktop.bat" in md
     assert "Zaggregate Web.bat" in md
-    assert "Run anyway" in md                  # SmartScreen guidance present
+    assert "Download ZIP" in md
+    assert "Run anyway" in md
 
 
 def test_quickstart_md_has_desktop_mode_note_and_privacy_line():

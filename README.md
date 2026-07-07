@@ -9,7 +9,7 @@ used **with** the AI you already have.
 
 ![The Zaggregate Inbox — a daily, scored feed of matched jobs](docs/images/inbox.png)
 
-**[Download for Windows → `Executables/`](Executables/)** — grab the zip, unzip, and double-click a launcher; plain-English steps are in that folder's README. Prefer source? See [Quick start](#quick-start-run-from-source).
+**Download for Windows:** green **Code** button → **Download ZIP** → extract → open [`Executables/JobProgram`](Executables/) → double-click a launcher. That's the whole install. Prefer source? See [Quick start](#quick-start-run-from-source).
 
 ## The fast way: let your AI set it up
 
@@ -85,10 +85,12 @@ local-first by design, and that turns two industry-wide problems into features:
 
 ## Quick start (the packaged app)
 
-Download and unzip [the app zip from `Executables/`](Executables/) (new versions
-also land on the [Releases page](https://github.com/alex-zagorianos/Zaggregate/releases)), then:
+Download the repository (green **Code** button → **Download ZIP**; app-only
+zips also land on the [Releases page](https://github.com/alex-zagorianos/Zaggregate/releases))
+and extract it, then:
 
-1. Open the `JobProgram` folder and run **`JobProgram.exe`**.
+1. Open the [`Executables/JobProgram`](Executables/) folder and run
+   **`JobProgram.exe`** (or one of the launchers next to it).
 2. A short **Setup wizard** asks what jobs you want, where, your salary, and your
    resume — or use **Set up with AI** to do it in one paste.
 3. Open your Inbox and click **Update my Inbox now**, or use the Search tab.
@@ -202,7 +204,7 @@ data folder:
 ```
 README.md, LICENSE, EULA.txt, PRIVACY.md   Top-level docs and terms
 CLAUDE.md, _index.md                       Project brain entry points
-Executables/      The ready-to-run Windows app (zip + how-to) — no source needed
+Executables/      The ready-to-run Windows app (exe + launchers) — just open and run
 docs/             Build guide, known issues, and per-session development handoffs
 brain/            Design notes, plans, and review logs kept as an open development journal
 tests/            Test suite (py -3.12 -m pytest, run from the repo root)
