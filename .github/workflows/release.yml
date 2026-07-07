@@ -1,0 +1,81 @@
+# Release pipeline: push a version tag (v1.2.3, or v1.2.3-beta1 for a
+# pre-release) and this builds the Windows distributable from that exact tree
+# and publishes it as a GitHub Release — Zaggregate-v<version>.zip +
+# SHA256SUMS.txt under Assets. The app zip ships ONLY as a Release asset (it
+# is not committed; Executables/ is a pointer README), and the in-app update
+# check (src/webui/api/meta.py) reads releases/latest from this repo, so a
+# published release is what makes existing installs see the new version.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # gh release create
+
+jobs:
+  release:
+    # Only the public repo publishes releases. The private day-to-day mirror
+    # (Job-Program) carries this file too and must not build or double-publish.
+    if: github.repository == 'alex-zagorianos/Zaggregate'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Tag must match config.APP_VERSION
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import config; print(config.APP_VERSION)"
+          $tag = "${{ github.ref_name }}"
+          if ($tag -ne "v$version" -and -not $tag.StartsWith("v$version-")) {
+            throw "Tag '$tag' does not match src/config.py APP_VERSION '$version' - bump APP_VERSION or fix the tag."
+          }
+
+      - name: Packaging tests
+        run: python -m pytest tests/test_smartscreen_kit.py -q
+
+      - name: Build distributable
+        run: python src/build_package.py
+
+      - name: Verify artifacts
+        shell: pwsh
+        run: |
+          $zip = Get-Item dist/Zaggregate-v*.zip
+          if (-not $zip) { throw "No zip produced under dist/" }
+          $expected = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          $sums = Get-Content dist/SHA256SUMS.txt -Raw
+          if ($sums -notmatch [regex]::Escape("$expected  $($zip.Name)")) {
+            throw "SHA256SUMS.txt does not match $($zip.Name)"
+          }
+          Write-Host "OK: $($zip.Name) ($([math]::Round($zip.Length / 1MB, 1)) MB) verified against SHA256SUMS.txt"
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = (Get-Item dist/Zaggregate-v*.zip).FullName
+          $notes = @"
+Download **Zaggregate-$($tag.TrimStart('v')).zip** below, extract it anywhere, open the ``Zaggregate/JobProgram`` folder, and double-click a launcher — ``Zaggregate Desktop.bat`` (recommended), ``Zaggregate Web.bat``, or ``JobProgram.exe`` for the classic window. No Python install needed.
+
+First launch: Windows may warn about an "unknown publisher" (the app is unsigned) — click **More info -> Run anyway**, or see ``JobProgram/FIRST-RUN.txt``.
+
+Verify your download against ``SHA256SUMS.txt`` (``certutil -hashfile <zip> SHA256`` on Windows).
+"@
+          $ghArgs = @("release", "create", $tag, "--verify-tag",
+                      "--title", "Zaggregate $tag", "--notes", $notes)
+          # A hyphenated tag (v1.2.3-beta1) publishes as a pre-release; the
+          # update check and the /releases/latest link only follow full releases.
+          if ($tag.Contains("-")) { $ghArgs += "--prerelease" } else { $ghArgs += "--latest" }
+          gh @ghArgs $zip dist/SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

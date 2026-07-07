@@ -9,7 +9,7 @@ used **with** the AI you already have.
 
 ![The Zaggregate Inbox — a daily, scored feed of matched jobs](docs/images/inbox.png)
 
-**Download for Windows:** green **Code** button → **Download ZIP** → extract → open [`Executables/JobProgram`](Executables/) → double-click a launcher. That's the whole install. Prefer source? See [Quick start](#quick-start-run-from-source).
+**Download for Windows:** grab the app zip from the [**latest release**](https://github.com/alex-zagorianos/Zaggregate/releases/latest) → extract → open `Zaggregate/JobProgram` → double-click a launcher. That's the whole install. Prefer source? See [Quick start](#quick-start-run-from-source).
 
 ## The fast way: let your AI set it up
 
@@ -85,11 +85,12 @@ local-first by design, and that turns two industry-wide problems into features:
 
 ## Quick start (the packaged app)
 
-Download the repository (green **Code** button → **Download ZIP**; app-only
-zips also land on the [Releases page](https://github.com/alex-zagorianos/Zaggregate/releases))
-and extract it, then:
+Download **`Zaggregate-v<version>.zip`** from the
+[latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest)
+(under _Assets_; `SHA256SUMS.txt` next to it verifies the download) and extract
+it, then:
 
-1. Open the [`Executables/JobProgram`](Executables/) folder and run
+1. Open the extracted `Zaggregate/JobProgram` folder and run
    **`JobProgram.exe`** (or one of the launchers next to it).
 2. A short **Setup wizard** asks what jobs you want, where, your salary, and your
    resume — or use **Set up with AI** to do it in one paste.
@@ -204,7 +205,7 @@ data folder:
 ```
 README.md, LICENSE, EULA.txt, PRIVACY.md   Top-level docs and terms
 CLAUDE.md, _index.md                       Project brain entry points
-Executables/      The ready-to-run Windows app (exe + launchers) — just open and run
+Executables/      Pointer to the ready-to-run Windows app (download it from Releases)
 docs/             Build guide, known issues, and per-session development handoffs
 brain/            Design notes, plans, and review logs kept as an open development journal
 tests/            Test suite (py -3.12 -m pytest, run from the repo root)

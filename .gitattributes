@@ -25,8 +25,3 @@ src/webui/static/**/*.woff2 binary
 src/webui/static/**/*.png binary
 src/webui/static/**/*.ico binary
 src/webui/static/**/*.svg text eol=lf
-
-# The in-repo runnable app (Executables/): store byte-for-byte, never
-# eol-normalize — a GitHub Code->Download ZIP must deliver exactly the bytes
-# PyInstaller produced (tcl/tzdata/encoding data files are eol-sensitive).
-Executables/** -text

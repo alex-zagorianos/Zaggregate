@@ -89,6 +89,28 @@ and everything follows:
 After bumping, edit the `CHANGES` stub in `src/build_package.py` (replace the
 placeholder date with the ship date, add user-facing bullets) and rebuild.
 
+### Publishing a release (GitHub Actions)
+
+Releases are built and published by CI — nothing is built or uploaded from a
+dev machine. Pushing a version tag to this repository triggers
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), which:
+
+1. checks the tag against `config.APP_VERSION` (they must agree),
+2. runs the packaging tests,
+3. builds `dist/Zaggregate-v{ver}.zip` + `SHA256SUMS.txt` from that exact tree,
+4. verifies the checksum, and
+5. publishes a GitHub Release with both files under Assets.
+
+```
+git tag v1.2.3 && git push origin v1.2.3     # full release (marked "latest")
+git tag v1.2.4-beta1 && ...                  # hyphenated tag -> pre-release
+```
+
+The in-app update check (`src/webui/api/meta.py`) reads `releases/latest`
+from this repository, so publishing a full release is what makes existing
+installs offer the new version. The built app is **not** committed to the
+repo — `Executables/` is a pointer README; the Release asset is the download.
+
 ## Code signing (optional, not enabled)
 
 The exe is unsigned, so Windows shows an "unknown publisher" warning the first

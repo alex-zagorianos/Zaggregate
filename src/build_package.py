@@ -489,66 +489,72 @@ def zip_package() -> None:
     print(f"Done -> {out}")
     sums = write_sha256sums([out], DIST)
     print(f"Checksums -> {sums}")
-    refresh_executables(PKG / "JobProgram")
+    refresh_executables()
 
 
-# The tracked repo-root Executables/ folder: the in-repo, directly-runnable app
-# for non-technical visitors. It holds the UNZIPPED JobProgram/ onedir (exe +
-# launchers + runtime), NOT a nested zip — so the common GitHub path (green
-# Code button -> Download ZIP -> extract once) lands on a double-clickable app
-# with no second extraction. Regenerated on every zip build; never goes stale.
+# The tracked repo-root Executables/ folder: a lightweight POINTER for
+# non-technical visitors. The app itself ships as a zip attached to each
+# GitHub Release, built by CI (.github/workflows/release.yml) when a version
+# tag is pushed — committing the ~50 MB onedir per version was bloating git
+# history (S43c layout, retired S44). Only the version-stamped README lives
+# here now, regenerated on every zip build so it never goes stale.
 EXECUTABLES = ROOT / "Executables"
 
 EXECUTABLES_README = f"""\
-# Just want to run the app? It's right here.
+# Just want to run the app? Download it here.
 
-This folder contains the ready-to-run Windows app (Zaggregate
-v{APP_VERSION}) — no Python, no build tools, no source code needed.
+The ready-to-run Windows app — Zaggregate v{APP_VERSION} — is a free download
+on the **[latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest)**
+page. No Python, no build tools, no source code needed.
 
-## Already downloaded or cloned the repository?
+## Get the app (about 2 minutes)
 
-The app is on your machine right now. Open the [`JobProgram/`](JobProgram/)
-folder next to this file and **double-click the launcher you prefer**:
+1. Open the [latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest)
+   and, under **Assets**, download **`Zaggregate-v{APP_VERSION}.zip`**.
+2. Extract it anywhere (right-click → *Extract All…*).
+3. Open the extracted `Zaggregate/JobProgram` folder and **double-click the
+   launcher you prefer**:
+   - `Zaggregate Desktop.bat` — the modern app in its own window *(recommended)*
+   - `Zaggregate Web.bat` — the same app in your browser
+   - `JobProgram.exe` or `launch.bat` — the classic desktop window
 
-- `Zaggregate Desktop.bat` — the modern app in its own window *(recommended)*
-- `Zaggregate Web.bat` — the same app in your browser
-- `JobProgram.exe` or `launch.bat` — the classic desktop window
-
-## Browsing on GitHub?
-
-Click the green **Code** button at the top of the repository page →
-**Download ZIP**, extract it anywhere (right-click → *Extract All…*), then
-open this `Executables/JobProgram` folder inside and double-click a launcher
-as above. (App-only zips also land on the
-[Releases page](https://github.com/alex-zagorianos/Zaggregate/releases).)
+Want to check the download? `SHA256SUMS.txt` on the same release page carries
+the zip's checksum (`certutil -hashfile <zip> SHA256` on Windows).
 
 ## First launch
 
 Windows may show an "unknown publisher" warning once (the app is safe — it
 just isn't code-signed yet). Click **More info → Run anyway**, or see
-`JobProgram/FIRST-RUN.txt` for the two safe ways past it.
+`JobProgram/FIRST-RUN.txt` inside the download for the two safe ways past it.
 
 That's it — a short setup wizard opens, or use **Set up with AI** to configure
 everything with one paste. Everything stays on your computer: no account, no
-cloud, no telemetry. Curious how it works, or want to run from source? Start
-at the [main README](../README.md).
+cloud, no telemetry.
+
+## Why isn't the app in this folder anymore?
+
+It used to be — but shipping the built app inside the repository added ~50 MB
+to its history with every version. Each release zip is now built from this
+exact source by GitHub Actions and attached to the Release instead. Curious
+how it works, or want to run from source? Start at the
+[main README](../README.md).
 """
 
 
-def refresh_executables(app_dir: Path) -> None:
-    """Sync Executables/ with the freshly assembled app: replace the tracked
-    JobProgram/ onedir wholesale, regenerate the version-stamped README, and
-    clear the pre-S43c nested-zip layout if present."""
+def refresh_executables() -> None:
+    """Keep Executables/ a lightweight pointer: regenerate the version-stamped
+    README that sends users to the GitHub Release download, and clear any app
+    payload left by the retired layouts (S43b nested zip, S43c unzipped
+    onedir) so ~50 MB per version stays out of git."""
     EXECUTABLES.mkdir(exist_ok=True)
-    dest = EXECUTABLES / "JobProgram"
-    if dest.exists():
-        shutil.rmtree(dest)
-    shutil.copytree(app_dir, dest)
-    (EXECUTABLES / "README.md").write_text(EXECUTABLES_README, encoding="utf-8")
+    stale_app = EXECUTABLES / "JobProgram"
+    if stale_app.exists():
+        shutil.rmtree(stale_app)
     for old in list(EXECUTABLES.glob("Zaggregate-v*.zip")) + [EXECUTABLES / SHA256SUMS_NAME]:
         if old.exists():
             old.unlink()
-    print(f"Executables/ refreshed -> {dest}")
+    (EXECUTABLES / "README.md").write_text(EXECUTABLES_README, encoding="utf-8")
+    print("Executables/ README refreshed (the app ships via GitHub Releases)")
 
 
 def _sign_exe(exe_path) -> None:

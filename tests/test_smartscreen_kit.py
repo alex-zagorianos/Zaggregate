@@ -68,16 +68,33 @@ def test_quickstart_md_is_actionable_and_versioned():
 
 
 def test_executables_readme_is_versioned_and_actionable():
-    # The in-repo Executables/ README is regenerated per build; it must carry
-    # the current version, the mode launchers, the Code->Download ZIP path for
-    # GitHub visitors, and the SmartScreen guidance.
+    # Executables/ is a lightweight pointer since S44: the regenerated README
+    # must carry the current version, name the release zip and both mode
+    # launchers, link the Releases download, and keep the SmartScreen guidance.
     import config
     md = build_package.EXECUTABLES_README
     assert f"v{config.APP_VERSION}" in md
+    assert f"Zaggregate-v{config.APP_VERSION}.zip" in md
     assert "Zaggregate Desktop.bat" in md
     assert "Zaggregate Web.bat" in md
-    assert "Download ZIP" in md
+    assert "releases/latest" in md
     assert "Run anyway" in md
+
+
+def test_refresh_executables_writes_pointer_and_clears_payload(tmp_path, monkeypatch):
+    # The retired layouts (S43b nested zip, S43c unzipped onedir) must be swept
+    # away, leaving only the pointer README — the app ships as a Release asset.
+    monkeypatch.setattr(build_package, "EXECUTABLES", tmp_path)
+    (tmp_path / "JobProgram").mkdir()
+    (tmp_path / "JobProgram" / "JobProgram.exe").write_bytes(b"stale exe")
+    (tmp_path / "Zaggregate-v0.9.0.zip").write_bytes(b"stale zip")
+    (tmp_path / build_package.SHA256SUMS_NAME).write_text("stale", encoding="utf-8")
+    build_package.refresh_executables()
+    assert not (tmp_path / "JobProgram").exists()
+    assert not (tmp_path / "Zaggregate-v0.9.0.zip").exists()
+    assert not (tmp_path / build_package.SHA256SUMS_NAME).exists()
+    readme = (tmp_path / "README.md").read_text(encoding="utf-8")
+    assert "releases/latest" in readme
 
 
 def test_quickstart_md_has_desktop_mode_note_and_privacy_line():

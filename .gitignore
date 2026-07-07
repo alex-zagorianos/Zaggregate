@@ -114,9 +114,11 @@ src/legacy/verify_and_add.py
 # graphify knowledge graph (local artifact, rebuild via graphify update .)
 graphify-out/
 
-# === IN-REPO RUNNABLE APP (Executables/) ===
-# The tracked, directly-runnable JobProgram/ onedir MUST ship complete: un-ignore
-# everything under it so pattern rules above (*.pem -> certifi/cacert.pem!,
-# *.log, tracker.db, ...) can't silently hole the app for zip-download users.
-# LAST-MATCH-WINS: keep this block at the END of the file.
-!Executables/**
+# === EXECUTABLES/ POINTER (in-repo app RETIRED in S44) ===
+# Executables/ now holds only a README pointing at the GitHub Release download;
+# the app zip is built by CI (.github/workflows/release.yml) on version tags.
+# Ignore any locally-generated payload (old layouts, stray builds) so the
+# ~50 MB-per-version onedir can never sneak back into a commit.
+Executables/JobProgram/
+Executables/*.zip
+Executables/SHA256SUMS.txt
