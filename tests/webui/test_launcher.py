@@ -158,6 +158,46 @@ def test_gui_no_web_flag_does_not_delegate(monkeypatch):
     assert web_called["n"] == 0   # web launcher never invoked
 
 
+def test_gui_frozen_bare_launch_opens_desktop(monkeypatch):
+    """S44c: the packaged exe (sys.frozen) with NO flags opens the desktop app —
+    a tester double-clicking JobProgram.exe must never land in the legacy Tk
+    window by accident."""
+    import sys
+    import gui
+
+    called = {}
+    def fake_web_main(argv):
+        called["argv"] = argv
+        return 0
+    monkeypatch.setattr(wm, "main", fake_web_main)
+    monkeypatch.setattr(sys, "argv", ["JobProgram.exe"])
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+
+    assert gui.main() == 0
+    assert called["argv"] == ["--desktop"]
+
+
+def test_gui_frozen_classic_flag_skips_the_desktop_default(monkeypatch):
+    """``JobProgram.exe --classic`` keeps the legacy Tk window reachable: the
+    web launcher must NOT be invoked (Tk App stubbed so no window opens)."""
+    import sys
+    import gui
+
+    web_called = {"n": 0}
+    monkeypatch.setattr(wm, "main",
+                        lambda argv: web_called.__setitem__("n", web_called["n"] + 1) or 0)
+    monkeypatch.setattr(sys, "argv", ["JobProgram.exe", "--classic"])
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+
+    class _FakeApp:
+        def mainloop(self):
+            return None
+    monkeypatch.setattr(gui, "App", _FakeApp)
+
+    assert gui.main() == 0
+    assert web_called["n"] == 0
+
+
 # ── desktop mode (--desktop -> pywebview native window; S36b) ─────────────────
 
 class _FakeEvent:
