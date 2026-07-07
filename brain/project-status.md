@@ -4,6 +4,52 @@
 
 ---
 
+## Session 44b+c (2026-07-07, same conversation) — GO-LIVE EXECUTED: v1.0.2 IS THE SHIPPING RELEASE ✅
+
+Alex: "go live", then "take out the old exe… single file opens the desktop
+app… rename launchers to <app name>-Desktop/-Web."
+
+1. **History slim EXECUTED** (Alex's explicit force-push approval via
+   AskUserQuestion — the auto-mode classifier rightly refused "go live" as
+   too vague): 12-path rewrite, public pack **55→7 MiB**, force-pushed
+   `51bc5ae...87acbd1`. Full battery clean pre-push (20/20 PII zero, purge +
+   payload paths absent, pointer README intact). The 3 payload paths are now
+   CANONICAL in the runbook recipe.
+2. **Three releases cut through the pipeline** (each: republish → release.ps1
+   tag → Actions build → downloaded-asset verification):
+   - **v1.0.0** — first pipeline run; checksum + contents verified from the
+     live asset. ★CI-BUILD TRAP FOUND: pywebview was installed only on local
+     build boxes, never pinned in requirements.txt — app.spec bundles it
+     TOLERANTLY, so CI built "successfully" and `--desktop` silently fell
+     back to the browser (exactly what Alex then hit and reported).
+   - **v1.0.1** — `pywebview==6.2.1` pinned; webview verified IN the zip.
+     ★Also caught: piping pytest to `tail` ate a failing exit code (stale
+     CHANGES-pin test) — commit had to be repaired after; always
+     exit-code-check, the S40b lesson re-learned.
+   - **v1.0.2 (latest)** — the launcher overhaul: **the packaged exe now
+     DEFAULTS to the desktop app** (frozen-only dispatch in gui.main;
+     `--classic` = legacy Tk; dev `py src\gui.py` unchanged); kit ships
+     exactly TWO product-named launchers — `Zaggregate-Desktop.bat` +
+     `Zaggregate-Web.bat`; `launch.bat` + space-named bats RETIRED; all
+     user-facing docs/README/QUICKSTART/FIRST-RUN/release-notes updated.
+     Verified from the live asset: checksum, new bats present, legacy bats
+     absent, webview bundled, `--desktop` flag in the bat. Dispatch pinned by
+     2 new unit tests (frozen bare → `["--desktop"]`; frozen `--classic` →
+     no delegate). Suite **3,254/0** (exit-code checked).
+3. Tags v1.0.0/v1.0.1/v1.0.2 live; `/releases/latest` (= the in-app update
+   check) serves v1.0.2. CHANGES.txt is now a real cumulative ledger.
+
+**Needs Alex:** (a) OPTIONAL cleanup — delete the superseded v1.0.0/v1.0.1
+releases+tags (web UI, or `gh release delete v1.0.0 --cleanup-tag` once
+authed) so testers can't grab stale builds; (b) About/topics still unset (gh
+unauthed — `gh auth login` + re-run release.ps1, or web UI); (c) a human
+double-click of the v1.0.2 zip's `Zaggregate-Desktop.bat` + bare
+`JobProgram.exe` on a machine (the one thing CI can't prove — unit-pinned but
+not frozen-smoked this session; do NOT run it on this box while the dev
+receiver holds 5002 without the kill/restore dance).
+
+---
+
 ## Session 44 (2026-07-07) — RELEASES PIPELINE + Executables/ SLIM ★LIVE (public `ea28750`) ✅
 
 Alex: "fix what's needed for a releases pipeline + slim the 50MB/version."

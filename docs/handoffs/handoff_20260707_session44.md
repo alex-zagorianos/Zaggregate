@@ -100,3 +100,33 @@ what `slim-history.ps1` removes (below, held).
 
 Auto-update pipeline phase 2 (Velopack — 2 design calls still open), scoring
 tune-up GOs, mecheng/eng2/proj-x ruling, wave-3 design GOs.
+
+---
+
+# Addendum — S44b/c (same day): go-live executed, v1.0.2 shipping
+
+**"Go live"** (Alex) → slim + release pipeline exercised three times same day:
+
+- **Slim force-pushed** `51bc5ae...87acbd1` (Alex's explicit approval via
+  question prompt — the permission classifier correctly refused the vague
+  "go live" for a history rewrite). Public pack 55→7 MiB; full verification
+  battery clean; the 3 payload paths are canonical in the runbook now.
+- **v1.0.0**: pipeline's first run worked end-to-end (checksum-verified from
+  the live asset). Found the ★CI-build trap: pywebview lived only on local
+  build boxes (never in requirements.txt) and app.spec bundles it TOLERANTLY
+  → CI exe silently lost the native desktop window (browser fallback) —
+  exactly what Alex hit.
+- **v1.0.1**: `pywebview==6.2.1` pinned into requirements.txt; webview
+  verified inside the CI zip. (Also repaired a stale CHANGES-pin test that a
+  `| tail` pipe had let slip into a pushed commit — exit-code-check builds.)
+- **v1.0.2 (latest)**, Alex's launcher directive: packaged exe **defaults to
+  the desktop app** (frozen-only dispatch; `--classic` = legacy Tk; dev
+  `py src\gui.py` unchanged); exactly two launchers ship, product-named
+  **`Zaggregate-Desktop.bat` / `Zaggregate-Web.bat`**; `launch.bat` retired.
+  Docs/README/QUICKSTART/FIRST-RUN/workflow release notes all updated; 2 new
+  unit tests pin the dispatch. Suite 3,254/0. Live-asset verification: sha256
+  match, new bats present + legacy names absent, webview bundled.
+
+**Left for Alex:** delete superseded v1.0.0/v1.0.1 releases+tags (optional,
+web UI or gh once authed); About/topics (gh unauthed); a human double-click
+smoke of the v1.0.2 zip on a real desktop (mind the 5002 dev receiver).
