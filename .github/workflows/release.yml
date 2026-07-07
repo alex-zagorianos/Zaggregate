@@ -12,7 +12,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write   # gh release create
+  contents: write # gh release create
 
 jobs:
   release:
@@ -65,13 +65,16 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $zip = (Get-Item dist/Zaggregate-v*.zip).FullName
-          $notes = @"
-Download **Zaggregate-$($tag.TrimStart('v')).zip** below, extract it anywhere, open the ``Zaggregate/JobProgram`` folder, and double-click a launcher — ``Zaggregate Desktop.bat`` (recommended), ``Zaggregate Web.bat``, or ``JobProgram.exe`` for the classic window. No Python install needed.
-
-First launch: Windows may warn about an "unknown publisher" (the app is unsigned) — click **More info -> Run anyway**, or see ``JobProgram/FIRST-RUN.txt``.
-
-Verify your download against ``SHA256SUMS.txt`` (``certutil -hashfile <zip> SHA256`` on Windows).
-"@
+          $zipName = Split-Path $zip -Leaf
+          # No here-string here: its closing "@ must sit at column 0, which
+          # would terminate this YAML block scalar. Join lines instead.
+          $notes = @(
+            "Download **$zipName** below, extract it anywhere, open the ``Zaggregate/JobProgram`` folder, and double-click a launcher - ``Zaggregate Desktop.bat`` (recommended), ``Zaggregate Web.bat``, or ``JobProgram.exe`` for the classic window. No Python install needed.",
+            "",
+            'First launch: Windows may warn about an "unknown publisher" (the app is unsigned) - click **More info -> Run anyway**, or see `JobProgram/FIRST-RUN.txt`.',
+            "",
+            "Verify your download against ``SHA256SUMS.txt`` (``certutil -hashfile $zipName SHA256`` on Windows)."
+          ) -join "`n"
           $ghArgs = @("release", "create", $tag, "--verify-tag",
                       "--title", "Zaggregate $tag", "--notes", $notes)
           # A hyphenated tag (v1.2.3-beta1) publishes as a pre-release; the
