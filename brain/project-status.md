@@ -4,6 +4,56 @@
 
 ---
 
+## Session 44 (2026-07-07) — RELEASES PIPELINE + Executables/ SLIM ★LIVE (public `ea28750`) ✅
+
+Alex: "fix what's needed for a releases pipeline + slim the 50MB/version."
+Private `07f4d10`+`9730351`, public fast-forwarded `b5fdb50..ea28750`.
+
+1. **Actions release pipeline:** `.github/workflows/release.yml` — push a `v*`
+   tag → repo-name guard (`== Zaggregate`; the private mirror carries the file
+   but never builds/publishes) → py3.12 + `pip install -r requirements.txt`
+   (pytest + pyinstaller already pinned) → tag-must-match-`APP_VERSION` gate
+   (accepts `-beta1` suffixes → published `--prerelease`) → kit tests →
+   `build_package.py` → SHA256SUMS re-verified against the zip → `gh release
+create` with zip + sums. ★YAML gotcha caught by parse-check: a PowerShell
+   here-string's closing `"@` must sit at column 0, which TERMINATES a YAML
+   block scalar — release notes are now array-join built (PS dry-run rendered
+   the markdown clean).
+2. **Executables/ = pointer README** (S43c onedir RETIRED): `git rm` of the
+   1,300-file JobProgram/ onedir; `refresh_executables()` now only writes the
+   version-stamped releases/latest pointer + sweeps stale payload (S43b zip /
+   S43c onedir); .gitignore payload-block replaces the `!Executables/**`
+   un-ignore; the `.gitattributes` `-text` rule dropped; root README +
+   BUILD.md download flows point at Release assets. **~50 MB per version
+   stays OUT of git history.** New kit test pins pointer+sweep; the README
+   test re-pinned to releases/latest. Suite 3,250/2-skip.
+3. **Release ops rewired** (`%USERPROFILE%\job-program-public-release\`):
+   `release.ps1` v2 = verify mirror==GitHub → tag `v<APP_VERSION>` on public
+   master → push the tag (Actions does the rest; gh auth only for the
+   About/topics extra). ★Republish pushes are now **HEADS-ONLY**
+   (`refs/heads/*:refs/heads/*`) — a `--mirror` push from a fresh rewrite
+   mirror has no tags and would DELETE release tags + their Releases.
+   `slim-history.ps1` staged (**HELD — force-push needs Alex**): 12-path
+   rewrite drops the ~50 MB S43b/c payload from public history; refuses to
+   run if tags exist (they'd strand on pre-rewrite commits); once run, the 3
+   payload paths join the canonical republish recipe permanently. Runbook +
+   PUBLISH.md updated.
+4. **Verification:** kit 14/14 + full suite 3,250/2-skip; the 20-pattern PII
+   battery re-run on the rewritten mirror (harness sanity-checked against a
+   known-hit pattern first; 0 leaks in blobs or commit messages), purge paths
+   absent, fast-forward proven, public HEAD tree spot-checked (pointer README
+   - workflow present, no payload); workflow YAML parsed + the notes
+     construction dry-run in PowerShell.
+
+**Alex's go-live, in order:** 1) `slim-history.ps1` (force-push — BEFORE the
+first tag; it refuses afterwards) → 2) `release.ps1` (tags v1.0.0 → Actions
+builds + publishes the Release) → 3) optional `gh auth login` for
+About/topics (release.ps1 prints a reminder if unauthed).
+
+Canonical: [[handoff_20260707_session44]].
+
+---
+
 ## Session 43 (2026-07-06 evening, same conversation) — src/ LAYOUT RESTRUCTURE ★LIVE on the public repo ✅
 
 Alex approved the full restructure (root = README/LICENSE/docs + src/; exes
