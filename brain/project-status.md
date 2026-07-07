@@ -53,6 +53,22 @@ version lands in git history; when the Releases/Velopack pipeline is live,
 consider slimming the folder to a pointer README (drop the blob via the
 republish rewrite). Suite 3,250/1-skip.
 
+**S43c — Executables/ now ships UNZIPPED (`5cfad57` → public `b5fdb50`):**
+Alex's point: the real user path is Code → Download ZIP → extract; the S43b
+layout put a zip INSIDE that zip. Now `Executables/JobProgram/` holds the
+onedir directly — ONE extraction lands on a double-clickable app. ★Two traps
+defused: (1) .gitignore's `*.pem` would have silently holed the app (certifi
+cacert.pem + Sectigo cert!) → `!Executables/**` at EOF (last-match-wins);
+(2) autocrlf would rewrite eol-sensitive data files and a fresh clone would
+re-CRLF tokens.css because **.gitattributes' webui/ rules had ALSO gone
+path-stale in the src/ move** → rules re-pointed to src/webui/ +
+`Executables/** -text` (byte-exact storage, verified via `git ls-files
+--eol`). `refresh_executables()` now copies the assembled onedir wholesale
+per build. ★END-TO-END PROOF against the LIVE public repo: downloaded
+GitHub's actual master.zip (48.7MB), extracted once, cacert.pem
+SHA256-identical, double-clicked `Zaggregate Web.bat` from the extracted
+folder → app served /app as sole listener. The definitive user-journey test.
+
 ## Session 42 (2026-07-06 PM, same conversation) — ★PUBLISHED to github.com/alex-zagorianos/Zaggregate ✅
 
 Alex: "change what is needed to turn the repo public" → executed the runbook
