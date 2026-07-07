@@ -53,7 +53,9 @@ def test_build_package_readme_and_changes_reference_version_and_upgrade():
     # data + app are described as separate in the upgrade path
     assert "data" in build_package.README.lower()
     assert config.APP_VERSION in build_package.CHANGES
-    assert "brain/review-2026-07-01" in build_package.CHANGES
+    # CHANGES is a cumulative ledger since v1.0.1: the current version gets an
+    # entry AND the origin release stays on record.
+    assert "v1.0.0" in build_package.CHANGES
 
 
 # ── 2. logging framework: handlers + rotation ─────────────────────────────────
