@@ -16,6 +16,12 @@ rapidfuzz==3.14.5
 defusedxml==0.7.1
 # Modern flat GUI theme engine (ui/theme.py). Pure-Python; pulls in Pillow.
 ttkbootstrap==1.20.4
+# Desktop mode (--desktop): native window over Edge WebView2. Optional at
+# RUNTIME (missing -> browser fallback) but required at BUILD time or the
+# packaged exe ships without it — app.spec bundles it tolerantly, so a build
+# box that skips this line silently produces a browser-fallback-only exe
+# (bit the v1.0.0 CI release; fixed in v1.0.1). Pulls pythonnet + clr_loader.
+pywebview==6.2.1
 # Optional stealth/JS fetch fallback (scrape/stealth_fetch.py). Browser binaries
 # are a separate one-time `scrapling install`; absent package => graceful no-op.
 # Pinned (was unpinned) so an upgrade can't silently change the default stealth

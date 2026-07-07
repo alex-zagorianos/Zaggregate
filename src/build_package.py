@@ -100,11 +100,13 @@ CHANGES = f"""\
 Zaggregate - CHANGES
 
 v{APP_VERSION} - {date.today().isoformat()}
-  First versioned release. See brain/review-2026-07-01-deep-product-review.md in
-  the source tree for the full remediation plan behind this build.
+  Desktop mode restored in the packaged app: "Zaggregate Desktop.bat" opens
+  the app in its own native window again. (The v1.0.0 CI build shipped
+  without the native-window runtime, so that launcher quietly fell back to
+  the browser.)
 
-  (Release author: replace the date above with the actual ship date and add a
-  short bullet list of user-facing changes for each future version.)
+v1.0.0 - 2026-07-07
+  First public release.
 """
 
 # Friendly walkthrough for getting past SmartScreen. A non-technical user reads
