@@ -10,7 +10,8 @@ will **never apply to a job for you** — you always click Submit yourself.
 
 1. Unzip the release anywhere (Desktop or Documents is fine).
 2. Open the **JobProgram** folder inside.
-3. Double-click **launch.bat** (easiest) — or **JobProgram.exe**.
+3. Double-click **Zaggregate-Desktop.bat** — or **JobProgram.exe** (same thing:
+   the app opens in its own window).
 
 **First time only:** Windows may show a blue "Windows protected your PC"
 warning. That's just because the app isn't code-signed yet — it's safe. Click

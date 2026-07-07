@@ -29,11 +29,12 @@ own AI chat.
 ### Starting the app
 
 **Packaged app (a friend's download):** unzip the release, open the `JobProgram`
-folder, and run `JobProgram.exe` (or double-click `launch.bat`). The first time,
-Windows may show an "unknown publisher" warning because the app isn't
-code-signed yet — `FIRST-RUN.txt` in the same folder walks you past it. The exe
-also accepts `--web` (modern UI in your browser) and `--desktop` (modern UI in a
-native window); the plain exe opens the classic Tk window.
+folder, and double-click `Zaggregate-Desktop.bat` (or `JobProgram.exe` — same
+thing): the app opens in its own window. The first time, Windows may show an
+"unknown publisher" warning because the app isn't code-signed yet —
+`FIRST-RUN.txt` in the same folder walks you past it. `Zaggregate-Web.bat`
+(= `--web`) runs the same app in your browser; the legacy Tk window is
+`JobProgram.exe --classic`.
 
 **From source:** with Python 3.12 on Windows,
 

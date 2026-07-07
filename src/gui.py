@@ -1461,10 +1461,21 @@ def main() -> int:
     # so a friend can run the modern web UI from the same single exe. The
     # PyInstaller entry stays gui.py, so the frozen bundle gets both for free
     # (app.spec only needs the pywebview hidden imports for --desktop).
-    if "--web" in sys.argv[1:] or "--desktop" in sys.argv[1:]:
+    #
+    # The PACKAGED exe defaults to the DESKTOP app (S44c): double-clicking
+    # JobProgram.exe bare opens the modern UI in its own native window (browser
+    # fallback if the runtime is missing) — testers should never land in the
+    # legacy Tk window by accident. `--classic` keeps it reachable; a dev
+    # `py src\gui.py` keeps the Tk default (tests and muscle memory intact).
+    args = sys.argv[1:]
+    frozen_default_desktop = (
+        getattr(sys, "frozen", False)
+        and not any(f in args for f in ("--classic", "--daily", "--web", "--desktop"))
+    )
+    if "--web" in args or "--desktop" in args or frozen_default_desktop:
         try:
             from webui.__main__ import main as _web_main
-            return _web_main(sys.argv[1:])
+            return _web_main(["--desktop", *args] if frozen_default_desktop else args)
         except Exception as e:
             _log_fatal(e)
             return 1

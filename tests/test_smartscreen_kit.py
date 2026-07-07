@@ -6,7 +6,7 @@ import build_package
 def test_write_first_run_kit_creates_both_files(tmp_path):
     build_package.write_first_run_kit(tmp_path)
     assert (tmp_path / "FIRST-RUN.txt").exists()
-    assert (tmp_path / "launch.bat").exists()
+    assert (tmp_path / "Zaggregate-Desktop.bat").exists()
 
 
 def test_first_run_txt_has_smartscreen_steps(tmp_path):
@@ -17,28 +17,35 @@ def test_first_run_txt_has_smartscreen_steps(tmp_path):
     assert "Run anyway" in txt
     assert "More info" in txt
     assert "JobProgram.exe" in txt
+    # ...and the launchers a user should actually reach for.
+    assert "Zaggregate-Desktop.bat" in txt
+    assert "Zaggregate-Web.bat" in txt
 
 
-def test_launch_bat_runs_the_exe(tmp_path):
-    build_package.write_first_run_kit(tmp_path)
-    bat = (tmp_path / "launch.bat").read_text(encoding="utf-8")
-    assert "Starting Zaggregate" in bat
-    assert "JobProgram.exe" in bat
+def test_kit_ships_no_legacy_launchers(tmp_path):
+    # S44c: exactly two product-named launchers; the old classic-mode
+    # launch.bat (and the space-named bats) must not come back.
+    created = build_package.write_first_run_kit(tmp_path)
+    assert "launch.bat" not in created
+    assert not (tmp_path / "launch.bat").exists()
+    assert not (tmp_path / "Zaggregate Desktop.bat").exists()
+    assert not (tmp_path / "Zaggregate Web.bat").exists()
 
 
 def test_write_first_run_kit_returns_created_names(tmp_path):
     created = build_package.write_first_run_kit(tmp_path)
     assert "FIRST-RUN.txt" in created
-    assert "launch.bat" in created
+    assert "Zaggregate-Desktop.bat" in created
+    assert "Zaggregate-Web.bat" in created
 
 
 def test_mode_launchers_run_the_exe_with_the_right_flags(tmp_path):
-    # One-click launchers for the two modern modes, so nobody types flags.
+    # One-click launchers for the two modes, so nobody types flags.
     created = build_package.write_first_run_kit(tmp_path)
-    assert "Zaggregate Desktop.bat" in created
-    assert "Zaggregate Web.bat" in created
-    desktop = (tmp_path / "Zaggregate Desktop.bat").read_text(encoding="utf-8")
-    web = (tmp_path / "Zaggregate Web.bat").read_text(encoding="utf-8")
+    assert "Zaggregate-Desktop.bat" in created
+    assert "Zaggregate-Web.bat" in created
+    desktop = (tmp_path / "Zaggregate-Desktop.bat").read_text(encoding="utf-8")
+    web = (tmp_path / "Zaggregate-Web.bat").read_text(encoding="utf-8")
     assert "JobProgram.exe" in desktop and "--desktop" in desktop
     assert "JobProgram.exe" in web and "--web" in web
     # %~dp0 anchors the exe path to the .bat's own folder (shortcut-safe).
@@ -75,8 +82,8 @@ def test_executables_readme_is_versioned_and_actionable():
     md = build_package.EXECUTABLES_README
     assert f"v{config.APP_VERSION}" in md
     assert f"Zaggregate-v{config.APP_VERSION}.zip" in md
-    assert "Zaggregate Desktop.bat" in md
-    assert "Zaggregate Web.bat" in md
+    assert "Zaggregate-Desktop.bat" in md
+    assert "Zaggregate-Web.bat" in md
     assert "releases/latest" in md
     assert "Run anyway" in md
 

@@ -15,7 +15,7 @@ else:
 # dialog, last_run.json, the "Report a problem" bundle, app.spec metadata) reads
 # THIS constant so a release bumps one line. Semantic versioning; see
 # brain/review-2026-07-01-deep-product-review.md (P7 product lifecycle).
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 
 # ── Update check + feedback (webui/api/meta.py) ───────────────────────────────
 # The GitHub repo the optional in-app "Check for updates" queries via the public

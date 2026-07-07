@@ -49,7 +49,9 @@ production/
                           falls back to %LOCALAPPDATA%\JobProgram if <exe>/data is
                           read-only, e.g. Program Files)
     FIRST-RUN.txt         plain-English steps past the SmartScreen "unknown publisher"
-    launch.bat            friendly one-line launcher for the exe
+    Zaggregate-Desktop.bat / Zaggregate-Web.bat
+                          one-click launchers (desktop window / browser); the
+                          bare exe opens the desktop app too, --classic = legacy Tk
     browser_ext/          the extension, next to the exe (the in-app Guide points here)
     claude-code/          the MCP / Claude Code channel (BYO-AI, ships as source)
     requirements-mcp.txt  pip deps for the MCP channel

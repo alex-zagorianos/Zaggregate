@@ -69,7 +69,7 @@ jobs:
           # No here-string here: its closing "@ must sit at column 0, which
           # would terminate this YAML block scalar. Join lines instead.
           $notes = @(
-            "Download **$zipName** below, extract it anywhere, open the ``Zaggregate/JobProgram`` folder, and double-click a launcher - ``Zaggregate Desktop.bat`` (recommended), ``Zaggregate Web.bat``, or ``JobProgram.exe`` for the classic window. No Python install needed.",
+            "Download **$zipName** below, extract it anywhere, open the ``Zaggregate/JobProgram`` folder, and double-click ``Zaggregate-Desktop.bat`` - the app opens in its own window (``Zaggregate-Web.bat`` runs it in your browser instead; plain ``JobProgram.exe`` opens the desktop app too). No Python install needed.",
             "",
             'First launch: Windows may warn about an "unknown publisher" (the app is unsigned) - click **More info -> Run anyway**, or see `JobProgram/FIRST-RUN.txt`.',
             "",

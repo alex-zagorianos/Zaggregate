@@ -63,7 +63,9 @@ Zaggregate - a personal job search that ranks roles to YOUR preferences using
 your own AI (Claude, ChatGPT, Gemini, Copilot - a free tier is fine).
 
 QUICK START
-  1. Run  JobProgram\\JobProgram.exe.
+  1. Open the JobProgram folder and double-click  Zaggregate-Desktop.bat
+     (or JobProgram.exe - same thing): the app opens in its own window.
+     Prefer your browser? Double-click  Zaggregate-Web.bat  instead.
   2. The first time, a short Setup wizard asks what jobs you want, where, your
      salary, and your resume - no files to edit. (Changed your mind later? Run it
      again from  Help -> Run Setup Wizard.)
@@ -100,10 +102,15 @@ CHANGES = f"""\
 Zaggregate - CHANGES
 
 v{APP_VERSION} - {date.today().isoformat()}
-  Desktop mode restored in the packaged app: "Zaggregate Desktop.bat" opens
-  the app in its own native window again. (The v1.0.0 CI build shipped
-  without the native-window runtime, so that launcher quietly fell back to
-  the browser.)
+  The desktop app is now the default: double-clicking JobProgram.exe (or
+  Zaggregate-Desktop.bat) opens the app in its own window. Zaggregate-Web.bat
+  opens the same app in your browser. The legacy window moved behind
+  "JobProgram.exe --classic" and the old launch.bat is gone.
+
+v1.0.1 - 2026-07-07
+  Desktop mode restored in the packaged app: the Desktop launcher opens the
+  app in its own native window again. (The v1.0.0 build shipped without the
+  native-window runtime, so it quietly fell back to the browser.)
 
 v1.0.0 - 2026-07-07
   First public release.
@@ -135,26 +142,25 @@ IF YOU STILL SEE A BLUE BOX - "Windows protected your PC"
   3. A  "Run anyway"  button appears at the bottom. Click  "Run anyway".
   4. Zaggregate starts. You won't be asked again.
 
-PREFER A SHORTCUT?
-  You can also double-click  launch.bat  - it starts Zaggregate for you and shows
-  a friendly "Starting Zaggregate..." message.
+THE EASY LAUNCHERS
+  Zaggregate-Desktop.bat  opens the app in its own window (recommended), and
+  Zaggregate-Web.bat  opens the same app in your browser. Both run
+  JobProgram.exe for you, so the one-time steps above cover them too.
 
 That's it. Once it has opened the first time, just double-click it like any
 other program from then on.
 """
 
-# A .bat is far less likely to be quarantined than the .exe and lets us print a
-# friendly line. `start "" "..."` launches the exe and returns immediately; the
-# empty "" is the (required) window title for start, not part of the path.
-LAUNCH_BAT = """\
-@echo off
-echo Starting Zaggregate...
-start "" "JobProgram.exe"
-"""
-
-# One-click launchers for the two modern app modes, so nobody has to type
-# command-line flags. `%~dp0` = this .bat's own folder, so a shortcut (or a
-# double-click from anywhere) still finds the exe sitting next to it.
+# One-click launchers, named after the product so the folder reads itself
+# (S44c: exactly two, no legacy `launch.bat`):
+#   Zaggregate-Desktop.bat -> the app in its own native window (the default —
+#                             bare JobProgram.exe opens the same thing)
+#   Zaggregate-Web.bat     -> the same app in the user's default browser
+# A .bat is far less likely to be quarantined than the .exe and lets us print
+# a friendly line. `start "" "..."` launches and returns immediately (the
+# empty "" is start's required window title); `%~dp0` = this .bat's own
+# folder, so a shortcut still finds the exe sitting next to it. The legacy Tk
+# window ships without a launcher — `JobProgram.exe --classic` only.
 DESKTOP_BAT = """\
 @echo off
 echo Starting Zaggregate (desktop app)...
@@ -179,26 +185,28 @@ stays on this computer — no account, no cloud, no telemetry (see `PRIVACY.md`)
 
 ## 1. Run the app
 
-Open the `JobProgram` folder and double-click **`JobProgram.exe`**.
+Open the `JobProgram` folder and double-click **`Zaggregate-Desktop.bat`**
+(or `JobProgram.exe` — same thing): the app opens in its own window.
 
 First time only, Windows may warn about an "unknown publisher" (the app is safe,
 it just isn't code-signed yet). See `JobProgram/FIRST-RUN.txt` for the two safe
-ways past it — or just double-click `JobProgram/launch.bat`.
+ways past it.
 
 A short **Setup wizard** opens the first time and asks what jobs you want, where,
 your salary, and your resume. No files to edit. (Change your mind later from
 **Help ▸ Run Setup Wizard**.)
 
-### Prefer the modern look? (optional)
+### Prefer your browser? (optional)
 
-The same exe runs three ways — the `JobProgram` folder has a double-clickable
+The same exe runs every mode — the `JobProgram` folder has a double-clickable
 launcher for each, no typing needed:
 
-- `JobProgram.exe` (or `launch.bat`) — the classic desktop app (the default).
-- **`Zaggregate Desktop.bat`** (= `JobProgram.exe --desktop`) — the modern web
-  UI in a native desktop window (no browser needed).
-- **`Zaggregate Web.bat`** (= `JobProgram.exe --web`) — the modern web UI in
+- **`Zaggregate-Desktop.bat`** (= `JobProgram.exe --desktop`, also what plain
+  `JobProgram.exe` opens) — the app in its own window (no browser needed).
+- **`Zaggregate-Web.bat`** (= `JobProgram.exe --web`) — the same app in
   your default browser (loopback only — nothing is exposed off your machine).
+- `JobProgram.exe --classic` — the legacy desktop window, kept for the curious
+  (no launcher; type the flag).
 
 ## 2. Get a ranked inbox
 
@@ -243,21 +251,19 @@ def write_first_run_kit(dest_dir):
     """Write the SmartScreen first-run helpers into *dest_dir*.
 
     Drops plain-English files next to JobProgram.exe so a non-technical
-    Windows user can open the unsigned app in any mode without typing flags:
+    Windows user can open the unsigned app without typing flags:
       - FIRST-RUN.txt          : numbered steps to unblock / "Run anyway" past SmartScreen
-      - launch.bat             : a friendly one-liner that starts the exe (classic mode)
-      - Zaggregate Desktop.bat : the modern web UI in a native desktop window
-      - Zaggregate Web.bat     : the modern web UI in the default browser
+      - Zaggregate-Desktop.bat : the app in its own native window (the default)
+      - Zaggregate-Web.bat     : the same app in the default browser
 
     Returns the list of filenames created (handy for the build log).
     """
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     (dest_dir / "FIRST-RUN.txt").write_text(FIRST_RUN_TXT, encoding="utf-8")
-    (dest_dir / "launch.bat").write_text(LAUNCH_BAT, encoding="utf-8")
-    (dest_dir / "Zaggregate Desktop.bat").write_text(DESKTOP_BAT, encoding="utf-8")
-    (dest_dir / "Zaggregate Web.bat").write_text(WEB_BAT, encoding="utf-8")
-    return ["FIRST-RUN.txt", "launch.bat", "Zaggregate Desktop.bat", "Zaggregate Web.bat"]
+    (dest_dir / "Zaggregate-Desktop.bat").write_text(DESKTOP_BAT, encoding="utf-8")
+    (dest_dir / "Zaggregate-Web.bat").write_text(WEB_BAT, encoding="utf-8")
+    return ["FIRST-RUN.txt", "Zaggregate-Desktop.bat", "Zaggregate-Web.bat"]
 
 
 def run_pyinstaller() -> None:
@@ -514,11 +520,10 @@ page. No Python, no build tools, no source code needed.
 1. Open the [latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest)
    and, under **Assets**, download **`Zaggregate-v{APP_VERSION}.zip`**.
 2. Extract it anywhere (right-click → *Extract All…*).
-3. Open the extracted `Zaggregate/JobProgram` folder and **double-click the
-   launcher you prefer**:
-   - `Zaggregate Desktop.bat` — the modern app in its own window *(recommended)*
-   - `Zaggregate Web.bat` — the same app in your browser
-   - `JobProgram.exe` or `launch.bat` — the classic desktop window
+3. Open the extracted `Zaggregate/JobProgram` folder and **double-click
+   `Zaggregate-Desktop.bat`** — the app opens in its own window.
+   (`Zaggregate-Web.bat` opens the same app in your browser instead; plain
+   `JobProgram.exe` also opens the desktop app.)
 
 Want to check the download? `SHA256SUMS.txt` on the same release page carries
 the zip's checksum (`certutil -hashfile <zip> SHA256` on Windows).

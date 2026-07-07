@@ -90,29 +90,30 @@ Download **`Zaggregate-v<version>.zip`** from the
 (under _Assets_; `SHA256SUMS.txt` next to it verifies the download) and extract
 it, then:
 
-1. Open the extracted `Zaggregate/JobProgram` folder and run
-   **`JobProgram.exe`** (or one of the launchers next to it).
+1. Open the extracted `Zaggregate/JobProgram` folder and double-click
+   **`Zaggregate-Desktop.bat`** (or `JobProgram.exe` — it opens the same
+   desktop app).
 2. A short **Setup wizard** asks what jobs you want, where, your salary, and your
    resume — or use **Set up with AI** to do it in one paste.
 3. Open your Inbox and click **Update my Inbox now**, or use the Search tab.
 
 First time only, Windows may warn about an "unknown publisher" (the app is safe,
 it just isn't code-signed yet). `JobProgram/FIRST-RUN.txt` shows the two safe
-ways past it, or just double-click `JobProgram/launch.bat`.
+ways past it.
 
 ### App modes (the same exe)
 
-`JobProgram.exe` runs three ways — the packaged `JobProgram` folder ships a
-double-clickable launcher for each, so nobody has to type flags:
+The packaged app opens as the **desktop app by default** — double-clicking
+`JobProgram.exe` and `Zaggregate-Desktop.bat` do the same thing. The
+`JobProgram` folder ships a launcher per mode, so nobody has to type flags:
 
-- **`JobProgram.exe`** (or `launch.bat`) — the default desktop app (classic Tk
-  window).
-- **`Zaggregate Desktop.bat`** (= `JobProgram.exe --desktop`) — the modern web
-  UI in a native desktop window (no browser needed; falls back to browser mode
-  if the desktop runtime is missing).
-- **`Zaggregate Web.bat`** (= `JobProgram.exe --web`) — the modern web UI in
+- **`Zaggregate-Desktop.bat`** (= `JobProgram.exe --desktop`, also what plain
+  `JobProgram.exe` opens) — the app in its own native window (no browser
+  needed; falls back to browser mode if the desktop runtime is missing).
+- **`Zaggregate-Web.bat`** (= `JobProgram.exe --web`) — the same app in
   your default browser at `http://127.0.0.1:5002/app` (loopback only — nothing
   is exposed off your machine).
+- `JobProgram.exe --classic` — the legacy Tk desktop window (no launcher).
 
 (There is also a headless `--daily` mode used by the scheduled daily update.)
 
