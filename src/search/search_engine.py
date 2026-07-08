@@ -342,6 +342,8 @@ class SearchEngine:
                         break  # genuine end-of-results for this keyword
                     continue
                 out.extend(results)
+                if getattr(client, "_last_page_short", False):
+                    break  # client saw a short raw page — no further page exists
         return out, first_error
 
     def _deduplicate(self, results: list[JobResult]) -> list[JobResult]:

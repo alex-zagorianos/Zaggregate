@@ -129,8 +129,13 @@ class AdzunaClient(JobAPIClient):
 
     def parse_results(self, raw: dict, source_keyword: str) -> list[JobResult]:
         remote_intent = bool(raw.get("_remote_intent"))
+        raw_rows = raw.get("results", [])
+        # A raw page shorter than the requested results_per_page means Adzuna
+        # has no further page for this query — the engine reads this flag and
+        # skips the follow-up request that would only burn a rate-limited slot.
+        self._last_page_short = len(raw_rows) < ADZUNA_RESULTS_PER_PAGE
         results = []
-        for item in raw.get("results", []):
+        for item in raw_rows:
             loc = (item.get("location") or {}).get("display_name", "Unknown")
             # On the remote path, tag a row as remote ONLY when its own
             # title/description actually says "remote" — Adzuna fan-copies remote

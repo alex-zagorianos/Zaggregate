@@ -216,13 +216,15 @@ def test_count_followups_due_real(tmp_path, monkeypatch):
 # ── 6. auto-backup keep-7 rotation ────────────────────────────────────────────
 
 def test_auto_backup_keeps_last_seven(data_dir):
+    # Snapshots are daily-debounced, so the keep-ring is exercised across DAYS
+    # (one archive per calendar day; keep=7 ≈ a week of restore points).
     from ui import help as uihelp
     (data_dir / "preferences.md").write_text("profile", encoding="utf-8")
     made = []
     from datetime import datetime, timedelta
     base = datetime(2026, 7, 1, 8, 0, 0)
     for i in range(10):
-        out = uihelp.auto_backup(keep=7, when=base + timedelta(minutes=i))
+        out = uihelp.auto_backup(keep=7, when=base + timedelta(days=i))
         assert out is not None
         made.append(out)
     archives = sorted((data_dir / uihelp.BACKUP_DIR_NAME).glob("zaggregate-backup-*.zip"))
@@ -231,6 +233,20 @@ def test_auto_backup_keeps_last_seven(data_dir):
     kept_names = {p.name for p in archives}
     assert Path(made[-1]).name in kept_names
     assert Path(made[0]).name not in kept_names
+
+
+def test_auto_backup_daily_debounce(data_dir):
+    # A second snapshot on an already-backed-up day is a silent no-op: multi-lane
+    # days must not burn the keep-ring on near-identical archives.
+    from ui import help as uihelp
+    (data_dir / "preferences.md").write_text("profile", encoding="utf-8")
+    from datetime import datetime, timedelta
+    morning = datetime(2026, 7, 2, 7, 30, 0)
+    first = uihelp.auto_backup(keep=7, when=morning)
+    assert first is not None
+    assert uihelp.auto_backup(keep=7, when=morning + timedelta(hours=3)) is None
+    archives = list((data_dir / uihelp.BACKUP_DIR_NAME).glob("zaggregate-backup-*.zip"))
+    assert len(archives) == 1
 
 
 def test_make_backup_excludes_backups_and_logs(data_dir):

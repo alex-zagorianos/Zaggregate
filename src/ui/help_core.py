@@ -452,12 +452,27 @@ def guide_sections() -> list[dict]:
 
 
 # ── data backup / restore ──────────────────────────────────────────────────────
-def make_backup(dest_base: str) -> str:
-    """Zip the whole data folder to dest_base (+'.zip' if absent). Returns the zip
-    path. The single local root means one archive captures preferences, resume,
-    tracker DB, and settings.
+# Root-level entries a data backup must never include. backups/logs (a backup
+# must not nest prior backups or churn on the live log) and cache/ (regenerable
+# fetch blobs) exist in every install. The rest only exist when USER_DATA_DIR is
+# a source checkout (dev layout: repo root) — code/build/docs trees that ballooned
+# dev auto-backups to ~1 GB and ~6 minutes per daily run. In a frozen install's
+# exe-adjacent data folder none of them exist, so production archives are
+# byte-identical to before.
+_NON_DATA_ROOT_DIRS = frozenset({
+    "backups", "logs", "cache",
+    "src", "tests", "docs", "brain", "dist", "build", "production",
+    "coverage", "Executables", "graphify-out", "node_modules",
+    ".git", ".venv", ".claude", "__pycache__", ".pytest_cache",
+})
 
-    WAL-safe (critical): before mirroring, run ``tracker.db.checkpoint()`` (a
+
+def make_backup(dest_base: str) -> str:
+    """Zip the data folder to dest_base (+'.zip' if absent). Returns the zip
+    path. The single local root means one archive captures preferences, resume,
+    tracker DB, and settings; ``_NON_DATA_ROOT_DIRS`` are excluded at the root.
+
+    WAL-safe (critical): before archiving, run ``tracker.db.checkpoint()`` (a
     TRUNCATE-mode WAL checkpoint) so the on-disk ``tracker.db`` is complete on its
     own, and EXCLUDE the ``*-shm``/``*-wal`` SQLite runtime sidecars from the
     archive. Those sidecars are regenerable state, not durable data; shipping them
@@ -465,8 +480,12 @@ def make_backup(dest_base: str) -> str:
     corrupts WAL state, and on Windows the live server (which services the backup
     through an open WAL connection) can't reliably snapshot them anyway. The
     checkpoint folds every committed page into the .db file, so dropping the
-    sidecars loses nothing."""
-    import shutil
+    sidecars loses nothing.
+
+    Zips directly from the data folder (no staging mirror — the old
+    copytree-then-make_archive doubled the I/O). A file that vanishes or is
+    locked mid-walk is skipped rather than failing the whole backup."""
+    import zipfile
     base = dest_base[:-4] if dest_base.lower().endswith(".zip") else dest_base
     # Fold the WAL into the main tracker.db so the zipped .db is self-contained.
     # Best-effort (checkpoint() never raises): a checkpoint hiccup must not fail a
@@ -476,23 +495,21 @@ def make_backup(dest_base: str) -> str:
         _tracker_db.checkpoint()
     except Exception:  # noqa: BLE001 — backup must never fail on a checkpoint hiccup
         pass
-    # Exclude the backups/ and logs/ trees so a backup never nests prior backups
-    # (a self-including archive balloons on every run) or churns on the live log,
-    # AND the SQLite -shm/-wal sidecars (regenerable runtime state — see above).
     src = Path(config.USER_DATA_DIR)
-
-    def _ignore(dir_path, names):
-        drop = [n for n in names if _is_sqlite_sidecar(n)]
-        if Path(dir_path).resolve() == src.resolve():
-            drop += [n for n in names if n in ("backups", "logs")]
-        return drop
-
-    import tempfile
-    with tempfile.TemporaryDirectory() as staging:
-        mirror = Path(staging) / "data"
-        shutil.copytree(src, mirror, ignore=_ignore)
-        shutil.make_archive(base, "zip", root_dir=str(mirror))
-    return base + ".zip"
+    zpath = base + ".zip"
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(src.rglob("*")):
+            rel = p.relative_to(src)
+            if rel.parts and rel.parts[0] in _NON_DATA_ROOT_DIRS:
+                continue
+            if _is_sqlite_sidecar(p.name) or "__pycache__" in rel.parts:
+                continue
+            if p.is_file():
+                try:
+                    zf.write(p, arcname=str(rel))
+                except OSError:
+                    pass  # locked/vanished mid-walk — skip, never fail the backup
+    return zpath
 
 
 def _is_sqlite_sidecar(name: str) -> bool:
@@ -519,12 +536,22 @@ def auto_backup(keep: int = 7, when=None) -> str | None:
     path and the Help menu share one backup implementation — friends' data
     survives corruption even if they never open Help. Returns the new zip path,
     or None if the data folder doesn't exist yet. Best-effort by contract; the
-    daily-run caller wraps this so a backup hiccup never fails the run."""
+    daily-run caller wraps this so a backup hiccup never fails the run.
+
+    One snapshot per calendar day: a multi-lane day used to write several
+    near-identical archives back-to-back, so ``keep=7`` held hours — not days —
+    of restore points. If a backup dated today already exists this returns None
+    (the daily-run caller logs nothing), and ``keep=7`` again means about a week
+    of history. The Help-menu manual path calls make_backup directly and is
+    unaffected."""
     from datetime import datetime as _dt
     src = Path(config.USER_DATA_DIR)
     if not src.exists():
         return None
-    stamp = (when or _dt.now()).strftime("%Y%m%d_%H%M%S")
+    now = when or _dt.now()
+    if list(backups_dir().glob(f"zaggregate-backup-{now:%Y%m%d}_*.zip")):
+        return None  # already snapshotted today
+    stamp = now.strftime("%Y%m%d_%H%M%S")
     dest = backups_dir() / f"zaggregate-backup-{stamp}"
     out = make_backup(str(dest))
     _prune_backups(keep)
