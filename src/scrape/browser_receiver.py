@@ -513,6 +513,7 @@ def harvest():
             years_cap=cfg.get("years_cap"),
             remote_regions_ok=remote_regions_ok,
             title_context_required=cfg.get("title_context_required"),
+            suggested_excludes=cfg.get("suggested_excludes"),
         )
         init_db()
         inboxed = inbox_add_many(scored)

@@ -573,6 +573,7 @@ def main():
         years_cap=user_cfg.get("years_cap"),
         remote_regions_ok=_remote_regions_ok,
         title_context_required=user_cfg.get("title_context_required"),
+        suggested_excludes=user_cfg.get("suggested_excludes"),
     )
     min_score = args.min_score
     if min_score is None:

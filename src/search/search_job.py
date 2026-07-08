@@ -146,7 +146,8 @@ def run_search(
                    seniority_target=user_cfg.get("seniority_target"),
                    years_cap=user_cfg.get("years_cap"),
                    remote_regions_ok=remote_regions_ok,
-                   title_context_required=user_cfg.get("title_context_required"))
+                   title_context_required=user_cfg.get("title_context_required"),
+                   suggested_excludes=user_cfg.get("suggested_excludes"))
 
     return results, health
 

@@ -33,3 +33,8 @@ from .pool import (  # noqa: F401 — re-exported public API
     set_yield,
     upsert_terms,
 )
+
+# Re-export the concern submodules so callers can `from search.discovery import
+# propose, probe, mine, flag, levels` and so importing the package doubles as an
+# import smoke-test (a broken submodule fails loudly here, not deep in a caller).
+from . import flag, levels, mine, probe, propose  # noqa: F401,E402

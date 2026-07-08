@@ -357,7 +357,8 @@ class SearchTab(ttk.Frame):
                            seniority_target=self._user_cfg.get("seniority_target"),
                            years_cap=self._user_cfg.get("years_cap"),
                            remote_regions_ok=_remote_regions_ok,
-                           title_context_required=self._user_cfg.get("title_context_required"))
+                           title_context_required=self._user_cfg.get("title_context_required"),
+                           suggested_excludes=self._user_cfg.get("suggested_excludes"))
             self.after(0, self._on_done, results, bool(clients))
         except Exception as exc:
             self.after(0, self._on_error, str(exc))

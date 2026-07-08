@@ -212,6 +212,12 @@ DEFAULT_EXCLUDE_TITLES = ()      # per profile, e.g. ["ai", "machine learning", 
 EXCLUDE_TITLE_PENALTY = 30
 DEFAULT_SENIORITY_EXCLUDE = ()   # per profile, e.g. ["director", "manager", "intern"]
 SENIORITY_PENALTY = 20
+# Search Discovery "suggested excludes": a DOWNRANK-ONLY lever (never a gate/drop).
+# These are user-CONFIRMED negative keywords from the discovery/AI setup path; a
+# match nudges the job down so it sinks, but it ALWAYS stays visible in the inbox
+# (inclusion over precision — unlike gate.py's hard_no_titles, which drops). Flat
+# and gentle by design; a single tunable constant (plan open-question #2).
+SUGGESTED_EXCLUDE_PENALTY = 6
 
 # Semantic-similarity component weight (match/semantic.py, Model2Vec). Only ever
 # ACTIVE when semantic ranking is enabled AND the model loaded AND both profile &
@@ -647,6 +653,7 @@ def score_job(
     years_cap: Optional[int] = None,
     remote_regions_ok: bool = False,
     title_context_required: Optional[Iterable[str]] = None,
+    suggested_excludes: Optional[Iterable[str]] = None,
 ) -> tuple[int, str]:
     """Return (score 0-100, short breakdown string).
 
@@ -843,6 +850,18 @@ def score_job(
             score -= 30
             penalties.append(b)
 
+    # Search Discovery suggested-excludes: a bounded DOWNRANK (never a drop). Flat
+    # single deduction if ANY confirmed negative term hits the title/description,
+    # so the job sinks but stays visible. Default None/empty -> no-op, byte-
+    # identical to every pre-existing config (parity: the daily eng run is
+    # unaffected because no legacy config carries this key).
+    sugg_hits = [s for s in (t.lower().strip() for t in (suggested_excludes or ()))
+                 if s and _term_pattern(s).search(blob)]
+    if sugg_hits:
+        score -= SUGGESTED_EXCLUDE_PENALTY
+        notes_extra.append(
+            f"suggested-excl({','.join(sugg_hits)}) -{SUGGESTED_EXCLUDE_PENALTY}")
+
     score = int(max(0, min(100, round(score))))
     # #38: only report the "skills" component when skill data was actually
     # present (skill_present -- same gate the renormalization already uses to
@@ -948,6 +967,7 @@ def score_jobs(
     years_cap: Optional[int] = None,
     remote_regions_ok: bool = False,
     title_context_required: Optional[Iterable[str]] = None,
+    suggested_excludes: Optional[Iterable[str]] = None,
 ) -> list[JobResult]:
     """Score in place and return the same list sorted best-first.
 
@@ -986,6 +1006,7 @@ def score_jobs(
             semantic_profile=semantic_profile,
             seniority_target=seniority_target, years_cap=years_cap,
             remote_regions_ok=remote_regions_ok, title_context_required=ctx_req,
+            suggested_excludes=suggested_excludes,
         )
     jobs.sort(key=lambda j: j.score, reverse=True)
     return jobs

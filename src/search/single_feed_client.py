@@ -13,6 +13,7 @@ Subclasses set a ``cache_subdir`` and a ``rate_limit`` (or override ``__init__``
 to read them from ``config``), then call ``self._cached(key, fetch)`` to get the
 read-cache / fetch / write-cache template for free.
 """
+import json
 import re
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -23,6 +24,29 @@ from search.http_util import FileCache, RateLimiter, make_session
 
 # One HTML-tag stripper shared by every feed (was duplicated as _TAG_RE in each).
 _TAG_RE = re.compile(r"<[^>]+>")
+
+# Cap on recursion depth while walking a cached payload for 'title' fields —
+# real feed JSON is a few levels deep (dict-of-list-of-dicts at most); the cap
+# just stops a pathological/circular-looking structure from spinning.
+_TITLE_WALK_MAX_DEPTH = 6
+
+
+def _walk_titles(obj: Any, out: list[str], depth: int = 0) -> None:
+    """Recursively pull any string 'title' field out of a JSON-shaped payload,
+    format-agnostic across feeds (list-of-dicts, dict-of-lists, either nested
+    inside the other). Used by ``cached_titles()`` so corpus mining doesn't
+    need to know each feed's private cache shape."""
+    if depth > _TITLE_WALK_MAX_DEPTH:
+        return
+    if isinstance(obj, dict):
+        t = obj.get("title")
+        if isinstance(t, str) and t.strip():
+            out.append(t.strip())
+        for v in obj.values():
+            _walk_titles(v, out, depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            _walk_titles(item, out, depth + 1)
 
 
 class SingleFeedClient(JobAPIClient):
@@ -78,3 +102,34 @@ class SingleFeedClient(JobAPIClient):
         if self.cache_enabled:
             self.cache.put(key, data)
         return data
+
+    def cached_titles(self) -> list[str]:
+        """Best-effort: return job titles found in THIS source's on-disk cache,
+        format-agnostic. Enumerates cached payloads and pulls any 'title'-like
+        string field (dicts with a 'title' key, nested lists of such dicts).
+        Returns [] when the cache is empty/unreadable — never raises. Corpus
+        mining uses this as a secondary signal; a source that stores an opaque
+        shape simply contributes nothing.
+
+        FileCache itself has no key-enumeration API, so this reads the cache
+        subdir's *.json files directly (same layout FileCache._file() writes)
+        rather than adding one — TTL/freshness doesn't matter for mining, a
+        title from a week-old cache is still a real candidate title.
+        """
+        titles: list[str] = []
+        try:
+            cache_dir = self.cache.dir
+            if not cache_dir.exists():
+                return []
+            for path in cache_dir.glob("*.json"):
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(data, dict) and data.get("_failed") is True:
+                    continue  # negative-cache marker, not a payload
+                _walk_titles(data, titles)
+        except Exception:
+            return []
+        return titles
