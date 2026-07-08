@@ -4,6 +4,44 @@
 
 ---
 
+## Session 45 (2026-07-08) — AUTO-UPDATE PHASE 2 (Velopack) BUILT; --classic retired ✅ (push held)
+
+Alex: plan → implement beta-handoff self-update; mid-build, retire `--classic` from
+shipments. **The first self-updating release (APP_VERSION → 1.0.3).** Canonical:
+[[handoff_20260708_session45]] · plan [[plan-2026-07-08-velopack-auto-update]].
+
+- **Engine:** official `velopack` 1.2.0 PyPI SDK, wired via new **`src/updater.py`** (only
+  velopack importer). Every API fact PROBED against the real wheel — 3 design assumptions were
+  wrong and fixed: `App().run()` outside an install = safe no-op; `UpdateManager(...)` **raises
+  `RuntimeError("not properly installed")` = the managed-install detector** (no marker file);
+  `UpdateOptions` takes **2 positional args** (not kwargs).
+- **★Load-bearing:** `config._get_user_data_dir` frozen anchor is now **always
+  `%LOCALAPPDATA%\JobProgram`** (dropped `<exe>/data` + `_dir_writable`). Velopack swaps the
+  exe's folder wholesale each update, so data beside the exe would be destroyed. Existing v1.0.2
+  zip testers migrate via **backup → Setup.exe → restore** (no new code; documented).
+- **Surfaces:** `meta.py` `update-check` gains `managed` (SDK is truth when managed, else v1.0.2
+  GitHub-tag behaviour byte-identical) + `update/download|progress|apply` (apply → 200 then
+  `os._exit` on a 0.5s timer so Update.exe swaps after the flush); `settings-menu.tsx` progress
+  bar + "Restart to finish" (pure logic in tested `lib/update-flow.ts`); `gui.py` velopack
+  startup hook + `--daily` `daily.lock` interlock.
+- **Channels:** dedicated **beta** feed. Stable tag `v1.0.3` packs win+beta (same bits, carries
+  beta cohort forward); `v1.0.3-beta1` packs beta-only at the prerelease version. CI installs
+  `vpk` 1.2.0, publishes **Setup.exe + feed** (zip no longer on releases). Unsigned for the
+  closed cohort (CI signing step stubbed behind an absent `SIGNING_CERT` secret).
+- **--classic retired** from the frozen exe (accepted-and-ignored → opens desktop; scrubbed from
+  relaunch argv). Tk code stays for dev `py src\gui.py`.
+- **Verify:** Python **3302 passed/1 skip** (new: test_updater 30, test_meta_update,
+  test_velopack_packaging; userdata+launcher updated); frontend **tsc clean + vitest 257**;
+  real-wheel smoke drove updater.py through velopack 1.2.0 (supported:True, managed:False,
+  real RuntimeError→NotManaged). **NOT verifiable here (no .NET SDK):** real `vpk pack` /
+  Setup.exe install / running-exe self-swap — these prove on the first tag and MUST be
+  VM-smoked before any tester sees a real update.
+- **To ship:** push → tag `v1.0.3` (or `-beta1` dry run) → VM-smoke a real update round-trip
+  → then wider beta. Open: code signing (deferred; SignPath OSS likely), feed-manifest name
+  confirm on first vpk run.
+
+---
+
 ## Session 44b+c (2026-07-07, same conversation) — GO-LIVE EXECUTED: v1.0.2 IS THE SHIPPING RELEASE ✅
 
 Alex: "go live", then "take out the old exe… single file opens the desktop

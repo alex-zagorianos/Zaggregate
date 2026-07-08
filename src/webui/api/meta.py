@@ -16,14 +16,30 @@ Three small routes that power the Settings menu's "Check for updates" and
   is built CLIENT-side from these fields (opens the user's own mail app —
   nothing is sent from the app itself, matching the local/no-telemetry stance).
 
+Auto-update (2026-07-08, Velopack phase 2) adds three more, all origin-gated:
+
+* ``POST /api/meta/update/download``  -> starts the background download, returns state.
+* ``GET  /api/meta/update/progress``  -> ``{phase, percent, version, failure}``; poll it.
+* ``POST /api/meta/update/apply``     -> hands off to Velopack's Update.exe and exits
+  THIS process ~0.5s later, after the response has flushed.
+
+These only do anything in a Velopack-managed install. In a dev checkout or a plain
+unzipped copy ``updater.is_managed()`` is False, ``update-check`` behaves EXACTLY as
+it did in v1.0.2 (GitHub releases API + 24h cache + link-out), and download/apply
+return a benign ``{ok:false, error:"not-managed"}``. That equivalence is what lets
+the pre-existing tests in ``tests/webui/test_meta.py`` stay untouched.
+
 No telemetry: the update check is the only outbound call here, it is user-
-triggered, and it sends nothing but the standard GET (no identifiers). The
-report-a-problem zip is a tk-only helper (help_core / applog); we do NOT port it
-to the web layer — feedback is a plain mailto.
+triggered, and it sends nothing but the standard GET (no identifiers). Nothing polls
+on a timer — download and apply each need their own click, which is the promise
+``PRIVACY.md`` makes. The report-a-problem zip is a tk-only helper (help_core /
+applog); we do NOT port it to the web layer — feedback is a plain mailto.
 """
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -31,6 +47,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify
 
 import config
+import updater
 from ..security import require_local_origin
 
 meta_bp = Blueprint("webui_meta", __name__)
@@ -141,16 +158,39 @@ def meta_version():
 @meta_bp.post("/meta/update-check")
 @require_local_origin
 def meta_update_check():
-    """Check GitHub for a newer release. Returns
-    ``{ok, current, latest, url, newer}``; ``latest`` is null (and ``newer``
-    false) whenever the check couldn't complete for ANY reason — a network
-    failure is deliberately NOT an ``{ok:false}`` envelope. Cached 24h."""
+    """Check for a newer release. Returns ``{ok, current, latest, url, newer,
+    managed}``; ``latest`` is null (and ``newer`` false) whenever the check couldn't
+    complete for ANY reason — a network failure is deliberately NOT an ``{ok:false}``
+    envelope.
+
+    Two sources of truth, one per install kind:
+
+    * **Velopack-managed** — ask the SDK, which reads the ``RELEASES-<channel>`` feed
+      this install is bound to. A beta tester must not be told about a stable release
+      they cannot apply. Never cached: the SDK is local and fast, and a stale 24h
+      cache would hide a just-published hotfix.
+    * **Everything else** (dev checkout, plain zip) — the v1.0.2 behaviour verbatim:
+      GitHub's ``releases/latest`` tag, compared to APP_VERSION, cached 24h, with a
+      link-out URL for the user to download by hand.
+    """
     current = config.APP_VERSION
     releases_url = f"https://github.com/{config.UPDATE_REPO}/releases"
 
+    if updater.is_managed():
+        res = updater.check()
+        return jsonify({
+            "ok": True,
+            "managed": True,
+            "current": res.get("current") or current,
+            "latest": res.get("latest"),
+            "url": releases_url,
+            "newer": bool(res.get("newer")),
+            "pending_restart": updater.pending_restart(),
+        })
+
     cached = _read_cache()
     if cached is not None:
-        return jsonify({"ok": True, **cached})
+        return jsonify({"ok": True, "managed": False, **cached})
 
     latest = _fetch_latest_tag()
     payload = {
@@ -164,7 +204,50 @@ def meta_update_check():
     # stuck on "couldn't check" for 24h.
     if latest is not None:
         _write_cache(payload)
-    return jsonify({"ok": True, **payload})
+    return jsonify({"ok": True, "managed": False, **payload})
+
+
+@meta_bp.post("/meta/update/download")
+@require_local_origin
+def meta_update_download():
+    """Begin downloading the pending update on a background thread. Returns the
+    initial progress state; the client polls ``/meta/update/progress``. A second
+    click while a download is in flight is a harmless no-op."""
+    return jsonify({"ok": True, **updater.download_async()})
+
+
+@meta_bp.get("/meta/update/progress")
+def meta_update_progress():
+    """``{phase, percent, version, failure}``. Pure read, safe to poll. Not
+    origin-gated: it leaks nothing a cross-site page could use (the same version
+    string ``/meta/version`` already serves publicly)."""
+    return jsonify({"ok": True, **updater.progress()})
+
+
+@meta_bp.post("/meta/update/apply")
+@require_local_origin
+def meta_update_apply():
+    """Apply the downloaded update and restart.
+
+    Velopack's ``Update.exe`` waits for THIS pid to exit before swapping the app
+    folder, so we must answer the HTTP request first and exit a moment later — hence
+    the short-delay daemon timer rather than exiting inline. ``os._exit`` (not
+    ``sys.exit``) because we are on a Flask worker thread and every other thread,
+    including a pywebview UI loop, has to die with us.
+
+    Refuses (200 with ``ok:false``) when nothing is downloaded or a ``--daily``
+    scheduled run holds the lock."""
+    res = updater.apply_and_restart(updater.restart_args_for_current_process())
+    if not res.get("ok"):
+        return jsonify({"ok": False, **res})
+
+    def _exit_soon() -> None:
+        time.sleep(0.5)   # let the 200 flush through Flask + the WSGI server
+        os._exit(0)
+
+    threading.Thread(target=_exit_soon, name="zaggregate-update-exit",
+                     daemon=True).start()
+    return jsonify({"ok": True, "exiting": True})
 
 
 @meta_bp.get("/meta/feedback-target")

@@ -28,19 +28,18 @@ own AI chat.
 
 ### Starting the app
 
-**Packaged app (a friend's download):** unzip the release, open the `JobProgram`
-folder, and double-click `Zaggregate-Desktop.bat` (or `JobProgram.exe` — same
-thing): the app opens in its own window. The first time, Windows may show an
-"unknown publisher" warning because the app isn't code-signed yet —
-`FIRST-RUN.txt` in the same folder walks you past it. `Zaggregate-Web.bat`
-(= `--web`) runs the same app in your browser; the legacy Tk window is
-`JobProgram.exe --classic`.
+**Packaged app (a friend's download):** run `Setup.exe`. It installs Zaggregate
+and creates Start-menu / desktop shortcuts; from then on the app keeps itself up
+to date (Settings ▸ **Check for updates**). The first time, Windows may show an
+"unknown publisher" warning because the app isn't code-signed yet — click
+**More info ▸ Run anyway** (also in `FIRST-RUN.txt`). The app opens in its own
+window; the same build also runs in your browser via `JobProgram.exe --web`.
 
 **From source:** with Python 3.12 on Windows,
 
 ```
 py -3.12 -m pip install -r requirements.txt
-py -3.12 src\gui.py                 # classic desktop app
+py -3.12 src\gui.py                 # legacy Tk desktop app (dev only)
 cd src
 py -3.12 -m webui                   # modern web UI at 127.0.0.1:5002/app
 py -3.12 -m webui --desktop         # modern web UI in a native window

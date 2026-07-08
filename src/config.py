@@ -15,7 +15,7 @@ else:
 # dialog, last_run.json, the "Report a problem" bundle, app.spec metadata) reads
 # THIS constant so a release bumps one line. Semantic versioning; see
 # brain/review-2026-07-01-deep-product-review.md (P7 product lifecycle).
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 # ── Update check + feedback (webui/api/meta.py) ───────────────────────────────
 # The GitHub repo the optional in-app "Check for updates" queries via the public
@@ -41,18 +41,6 @@ def _is_frozen() -> bool:
     return getattr(sys, "frozen", False)
 
 
-def _dir_writable(path: Path) -> bool:
-    """True if we can create + write files under `path` (creating it if needed)."""
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-        probe = path / ".write_test"
-        probe.write_text("", encoding="ascii")
-        probe.unlink()
-        return True
-    except OSError:
-        return False
-
-
 def _get_data_dir() -> Path:
     """Read-only bundle root: _MEIPASS when frozen, else src/ (this file's own
     directory — data_static/, data_templates/, and the seed companies.json
@@ -64,17 +52,22 @@ def _get_data_dir() -> Path:
 
 def _get_user_data_dir() -> Path:
     """External, user-editable data root: experience/preferences/companies/db/
-    cache/output/secrets live here. JOBPROGRAM_DATA overrides anywhere. Frozen
-    default: <exe>/data if writable, else %LOCALAPPDATA%/JobProgram. Dev (not
-    frozen): the REPO ROOT (one level above src/) — code moved into src/ in
-    the 2026-07 restructure, user data stayed where it always was."""
+    cache/output/secrets live here. JOBPROGRAM_DATA overrides anywhere. Frozen:
+    ALWAYS %LOCALAPPDATA%/JobProgram. Dev (not frozen): the REPO ROOT (one level
+    above src/) — code moved into src/ in the 2026-07 restructure, user data
+    stayed where it always was.
+
+    The frozen anchor is deliberately NOT `<exe>/data` (as it was through v1.0.2).
+    Velopack installs the app to %LOCALAPPDATA%/Zaggregate/current/ and replaces
+    that whole folder on every update — anything beside the exe is destroyed. The
+    data folder must live outside the swap zone, so the old "<exe>/data if
+    writable" branch is gone: %LOCALAPPDATA%/JobProgram (previously only the
+    fallback) is now the one and only frozen location. See
+    brain/plan-2026-07-08-velopack-auto-update.md."""
     override = os.getenv("JOBPROGRAM_DATA")
     if override:
         return Path(override)
     if _is_frozen():
-        exe_data = Path(sys.executable).parent / "data"
-        if _dir_writable(exe_data):
-            return exe_data
         return Path(os.getenv("LOCALAPPDATA", ".")) / "JobProgram"
     return Path(__file__).resolve().parent.parent
 

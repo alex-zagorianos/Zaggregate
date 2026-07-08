@@ -36,6 +36,16 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/ui/alert-dialog";
+import {
+  applyErrorMessage,
+  checkMessage,
+  classifyCheck,
+  isTerminal,
+  POLL_INTERVAL_MS,
+  POLL_TIMEOUT_MS,
+  progressLabel,
+  shouldKeepPolling,
+} from "@/lib/update-flow";
 
 /* The high-fit notification toggle — a plain checkbox styled like the existing
  * inline Toggle idiom (tabs/companies/BuildListDialog.tsx), not a dropdown item
@@ -97,6 +107,10 @@ export function SettingsMenu() {
   const [confirmRestore, setConfirmRestore] = React.useState(false);
   const [restoring, setRestoring] = React.useState(false);
   const [checkingUpdate, setCheckingUpdate] = React.useState(false);
+  // Non-null while a Velopack download is in flight — drives the inline progress
+  // line under the "Check for updates" item. null = nothing happening.
+  const [updateLabel, setUpdateLabel] = React.useState<string | null>(null);
+  const [updatePercent, setUpdatePercent] = React.useState(0);
 
   const onDownload = () => {
     setDownloading(true);
@@ -115,29 +129,129 @@ export function SettingsMenu() {
       .finally(() => setDownloading(false));
   };
 
+  /* Poll /meta/update/progress until the download reaches a terminal phase, then
+   * offer the restart. Resolves to true when the update is staged and ready.
+   * Bounded by POLL_TIMEOUT_MS so a wedged download can't spin forever. */
+  const pollUntilReady = React.useCallback(async (): Promise<boolean> => {
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    for (;;) {
+      const p = await endpoints.updateProgress();
+      setUpdateLabel(progressLabel(p));
+      setUpdatePercent(p.percent);
+      if (isTerminal(p.phase)) return p.phase === "ready";
+      if (!shouldKeepPolling(p.phase) || Date.now() > deadline) return false;
+      await new Promise((r) => window.setTimeout(r, POLL_INTERVAL_MS));
+    }
+  }, []);
+
+  /* "Restart to finish updating": the server replies 200 and THEN exits ~0.5s later,
+   * so the window vanishes on purpose. Velopack's Update.exe swaps the app folder
+   * and relaunches us with the same argv. Nothing to reload client-side. */
+  const onApplyUpdate = React.useCallback(() => {
+    endpoints
+      .applyUpdate()
+      .then((r) => {
+        if (!r.ok) {
+          toast.error("Couldn't apply the update", {
+            description: applyErrorMessage(r),
+          });
+          return;
+        }
+        toast.success("Restarting to finish the update…", {
+          description: "The window will close and reopen on the new version.",
+          duration: 10_000,
+        });
+      })
+      .catch((e) =>
+        toast.error("Couldn't apply the update", {
+          description: e instanceof ApiError ? e.message : "Please try again.",
+        }),
+      );
+  }, []);
+
+  const offerRestart = React.useCallback(
+    (version: string) => {
+      toast.success(`Version ${version} is ready`, {
+        description: "Restart to finish updating. Your data stays where it is.",
+        duration: 30_000,
+        action: { label: "Restart now", onClick: onApplyUpdate },
+      });
+    },
+    [onApplyUpdate],
+  );
+
+  const startDownload = React.useCallback(
+    (version: string) => {
+      setUpdateLabel("Starting download…");
+      setUpdatePercent(0);
+      endpoints
+        .downloadUpdate()
+        .then(() => pollUntilReady())
+        .then((ready) => {
+          if (ready) offerRestart(version);
+          else
+            toast.error("The update didn't download", {
+              description:
+                "Your current version is untouched. Check your connection and try again.",
+            });
+        })
+        .catch((e) =>
+          toast.error("The update didn't download", {
+            description:
+              e instanceof ApiError ? e.message : "Please try again.",
+          }),
+        )
+        .finally(() => {
+          setUpdateLabel(null);
+          setUpdatePercent(0);
+        });
+    },
+    [offerRestart, pollUntilReady],
+  );
+
   const onCheckUpdates = () => {
     setCheckingUpdate(true);
     endpoints
       .checkForUpdates()
       .then((r) => {
-        if (r.latest && r.newer) {
-          toast.success(`Version ${r.latest} is available`, {
-            description: "Open the releases page to download the update.",
-            action: {
-              label: "Open releases",
-              onClick: () =>
-                window.open(r.url, "_blank", "noopener,noreferrer"),
-            },
-          });
-        } else if (r.latest) {
-          toast.success("You're up to date", {
-            description: `You're running the latest version (${r.current}).`,
-          });
-        } else {
-          // latest=null: the check couldn't complete (offline / no releases yet).
-          toast("Couldn't check for updates", {
-            description: "No connection, or there are no releases yet.",
-          });
+        const outcome = classifyCheck(r);
+        switch (outcome.kind) {
+          case "unmanaged":
+            // A plain unzipped copy can't replace itself — send them to Releases.
+            toast.success(`Version ${outcome.latest} is available`, {
+              description: "Open the releases page to download the update.",
+              action: {
+                label: "Open releases",
+                onClick: () =>
+                  window.open(outcome.url, "_blank", "noopener,noreferrer"),
+              },
+            });
+            break;
+          case "update-ready-to-download":
+            toast.success(`Version ${outcome.latest} is available`, {
+              description:
+                "Download it now? Nothing changes until you restart.",
+              duration: 30_000,
+              action: {
+                label: "Download",
+                onClick: () => startDownload(outcome.latest),
+              },
+            });
+            break;
+          case "already-downloaded":
+            offerRestart(outcome.latest);
+            break;
+          case "up-to-date":
+          case "unmanaged-current":
+            toast.success("You're up to date", {
+              description: checkMessage(outcome) ?? undefined,
+            });
+            break;
+          case "unavailable":
+            toast("Couldn't check for updates", {
+              description: checkMessage(outcome) ?? undefined,
+            });
+            break;
         }
       })
       .catch((e) =>
@@ -274,15 +388,39 @@ export function SettingsMenu() {
               e.preventDefault();
               onCheckUpdates();
             }}
-            disabled={checkingUpdate}
+            disabled={checkingUpdate || updateLabel !== null}
           >
-            {checkingUpdate ? (
+            {checkingUpdate || updateLabel !== null ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <RefreshCw className="size-4 opacity-70" />
             )}
             Check for updates
           </DropdownMenuItem>
+          {/* Inline download progress. Rendered outside a DropdownMenuItem so it is
+              not focusable and a stray Enter can't re-trigger the check. */}
+          {updateLabel !== null && (
+            <div
+              className="px-2 py-1.5"
+              role="status"
+              aria-live="polite"
+              aria-label={updateLabel}
+            >
+              <div className="text-xs text-muted-foreground">{updateLabel}</div>
+              <div
+                className="mt-1 h-1 w-full overflow-hidden rounded bg-muted"
+                role="progressbar"
+                aria-valuenow={updatePercent}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className="h-full bg-primary transition-[width] duration-200"
+                  style={{ width: `${updatePercent}%` }}
+                />
+              </div>
+            </div>
+          )}
           <DropdownMenuItem
             onSelect={(e) => {
               e.preventDefault();

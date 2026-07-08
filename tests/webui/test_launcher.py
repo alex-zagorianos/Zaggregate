@@ -177,25 +177,28 @@ def test_gui_frozen_bare_launch_opens_desktop(monkeypatch):
     assert called["argv"] == ["--desktop"]
 
 
-def test_gui_frozen_classic_flag_skips_the_desktop_default(monkeypatch):
-    """``JobProgram.exe --classic`` keeps the legacy Tk window reachable: the
-    web launcher must NOT be invoked (Tk App stubbed so no window opens)."""
+def test_gui_frozen_classic_flag_opens_desktop_not_tk(monkeypatch):
+    """The legacy Tk window is retired from the frozen exe (2026-07-08). A stale
+    shortcut carrying ``--classic`` must open the DESKTOP app, not the Tk window and
+    not a crash — the flag is accepted-and-ignored and dropped before the web
+    launcher (which would otherwise choke on it at argparse)."""
     import sys
     import gui
 
-    web_called = {"n": 0}
+    called = {"argv": None}
     monkeypatch.setattr(wm, "main",
-                        lambda argv: web_called.__setitem__("n", web_called["n"] + 1) or 0)
+                        lambda argv: called.__setitem__("argv", argv) or 0)
     monkeypatch.setattr(sys, "argv", ["JobProgram.exe", "--classic"])
     monkeypatch.setattr(sys, "frozen", True, raising=False)
 
     class _FakeApp:
         def mainloop(self):
-            return None
+            raise AssertionError("the retired Tk window must not open in a frozen exe")
     monkeypatch.setattr(gui, "App", _FakeApp)
 
     assert gui.main() == 0
-    assert web_called["n"] == 0
+    # desktop default engaged, and --classic scrubbed from the pass-through argv
+    assert called["argv"] == ["--desktop"]
 
 
 # ── desktop mode (--desktop -> pywebview native window; S36b) ─────────────────

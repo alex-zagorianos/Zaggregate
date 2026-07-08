@@ -1,13 +1,15 @@
-"""Build the Zaggregate distributable — a zip a friend unzips and runs.
+"""Build the Zaggregate distributable — the Velopack Setup.exe (and a legacy zip).
 
   1. pyinstaller app.spec     -> dist/JobProgram/ (onedir, windowed GUI)
-  2. assemble  dist/Zaggregate/ -> the app folder + a seeded data/ (templates only)
-                                 + README.txt
+  2. assemble  dist/Zaggregate/ -> the app folder + README.txt
   3. zip                      -> dist/Zaggregate.zip
 
 Run:
   py build_package.py              # full build -> the shippable zip
   py build_package.py --no-build   # reassemble from an existing dist/JobProgram
+  py build_package.py --velopack   # print the `vpk pack` argv for dist/JobProgram
+                                    #   (CI runs it; needs the .NET SDK). --channel
+                                    #   selects the update feed: win (stable) | beta.
   py build_package.py --production  # assemble a ready-to-run production/ folder
                                     #   at the repo root (exe + every runtime file
                                     #   + browser_ext/ + .env.example + QUICKSTART),
@@ -16,9 +18,10 @@ Run:
                                     #   to skip PyInstaller and reuse dist/JobProgram.
 
 Requires `pip install pyinstaller` (pinned in requirements.txt). NO personal data
-is included: data/ carries only the neutral templates from data_templates/ and the
-public starter companies.json. The .exe resolves its data folder at <exe>/data, so
-the seeded data/ is placed next to JobProgram.exe.
+is included, and (since 2026-07-08) no `data/` folder is shipped at all: the frozen
+app anchors user data at %LOCALAPPDATA%/JobProgram and seeds it at runtime via
+userdata.bootstrap(). Velopack replaces the exe's own folder on every update, so
+nothing user-owned may live beside the exe.
 
 The `production/` folder (like dist/, build/) is a BUILD ARTIFACT — gitignored.
 The deliverable is THIS script + app.spec; run one command to regenerate the folder.
@@ -44,14 +47,17 @@ DIST = ROOT / "dist"
 APP_BUILD = DIST / "JobProgram"     # PyInstaller onedir output
 PKG = DIST / "Zaggregate"             # assembled package
 PROD = ROOT / "production"           # ready-to-run production folder (gitignored)
-TEMPLATES = SRC / "data_templates"
 
-# data_templates filename -> seeded name in the user's data folder
-_SEEDS = {
-    "experience.template.md":  "experience.md",
-    "preferences.template.md": "preferences.md",
-    "preferences.json":        "preferences.json",
-}
+# ── Velopack packaging (auto-update phase 2) ──────────────────────────────────
+# The NuGet-style package id that names the install root (%LOCALAPPDATA%\Zaggregate)
+# and every Release asset. NEVER change it after the first release ships — Velopack
+# matches an installed app to its update feed by this id.
+VELOPACK_PACK_ID = "Zaggregate"
+VELOPACK_MAIN_EXE = "JobProgram.exe"
+# Update feeds. `win` is Velopack's default channel name for Windows; beta testers
+# install a build packed with `--channel beta` and stay on the beta feed forever
+# (UpdateOptions.ExplicitChannel can move them back to stable without reinstalling).
+VELOPACK_CHANNELS = ("win", "beta")
 
 README = f"""\
 Zaggregate v{APP_VERSION}
@@ -102,10 +108,18 @@ CHANGES = f"""\
 Zaggregate - CHANGES
 
 v{APP_VERSION} - {date.today().isoformat()}
+  Zaggregate now updates itself. Install once with Setup.exe; from then on
+  Settings > "Check for updates" downloads the new version and restarts into
+  it. Your data is untouched - it lives outside the app folder now, in
+  %LOCALAPPDATA%\\JobProgram.
+  Upgrading from a v1.0.2 zip? Open the old app, Settings > "Download a
+  backup", install Setup.exe, then Settings > "Restore from backup".
+  The legacy Tk window is retired: the app always opens the modern UI.
+
+v1.0.2 - 2026-07-07
   The desktop app is now the default: double-clicking JobProgram.exe (or
   Zaggregate-Desktop.bat) opens the app in its own window. Zaggregate-Web.bat
-  opens the same app in your browser. The legacy window moved behind
-  "JobProgram.exe --classic" and the old launch.bat is gone.
+  opens the same app in your browser.
 
 v1.0.1 - 2026-07-07
   Desktop mode restored in the packaged app: the Desktop launcher opens the
@@ -160,7 +174,8 @@ other program from then on.
 # a friendly line. `start "" "..."` launches and returns immediately (the
 # empty "" is start's required window title); `%~dp0` = this .bat's own
 # folder, so a shortcut still finds the exe sitting next to it. The legacy Tk
-# window ships without a launcher — `JobProgram.exe --classic` only.
+# window is no longer a shipped surface (retired 2026-07-08); the exe always
+# opens the modern UI.
 DESKTOP_BAT = """\
 @echo off
 echo Starting Zaggregate (desktop app)...
@@ -205,8 +220,6 @@ launcher for each, no typing needed:
   `JobProgram.exe` opens) — the app in its own window (no browser needed).
 - **`Zaggregate-Web.bat`** (= `JobProgram.exe --web`) — the same app in
   your default browser (loopback only — nothing is exposed off your machine).
-- `JobProgram.exe --classic` — the legacy desktop window, kept for the curious
-  (no launcher; type the flag).
 
 ## 2. Get a ranked inbox
 
@@ -266,6 +279,54 @@ def write_first_run_kit(dest_dir):
     return ["FIRST-RUN.txt", "Zaggregate-Desktop.bat", "Zaggregate-Web.bat"]
 
 
+def _normalize_pack_version(pack_version: str | None) -> str:
+    """The SemVer string Velopack packs under. Defaults to config.APP_VERSION.
+
+    A beta pre-release must pack under the FULL prerelease version (e.g. the tag
+    `v1.0.3-beta1` -> `1.0.3-beta1`), NOT the bare `1.0.3`: SemVer sorts a prerelease
+    BELOW its release, which is exactly what keeps a beta tester ahead of the stable
+    feed and lets the eventual stable `1.0.3` carry them forward. A leading `v` is
+    tolerated so the tag can be passed straight through."""
+    v = (pack_version or APP_VERSION).strip()
+    return v[1:] if v[:1] in ("v", "V") else v
+
+
+def vpk_pack_argv(channel: str = "win", *, pack_version=None,
+                  pack_dir=None, out_dir=None) -> list[str]:
+    """The exact `vpk pack` command line for the current build, as an argv list.
+
+    Single source of truth so CI can never drift from the pack id an already-installed
+    app is bound to. `vpk` is a .NET tool absent from most dev boxes, so this module
+    only BUILDS (and unit-tests) the argv; pass ``--run`` on the CLI to actually shell
+    it out (CI does that after installing vpk).
+
+    `channel` selects the update feed the produced Setup.exe is bound to:
+      * "win"  — the stable feed (Velopack's Windows default)
+      * "beta" — the closed-cohort feed, fed by `vX.Y.Z-betaN` pre-release tags
+
+    Raises ValueError on an unknown channel rather than silently packing a feed no
+    installed client will ever poll."""
+    if channel not in VELOPACK_CHANNELS:
+        raise ValueError(
+            f"unknown Velopack channel {channel!r}; expected one of {VELOPACK_CHANNELS}")
+    # Default to the ASSEMBLED app (PKG/JobProgram), not the raw PyInstaller output
+    # (APP_BUILD): the assembled copy carries browser_ext/ + claude-code/ that the
+    # in-app Guide points at. `python build_package.py` (no args) produces it via
+    # assemble() before this runs.
+    pack_dir = Path(pack_dir) if pack_dir else (PKG / "JobProgram")
+    out_dir = Path(out_dir) if out_dir else (DIST / "Releases")
+    return [
+        "vpk", "pack",
+        "--packId", VELOPACK_PACK_ID,
+        "--packVersion", _normalize_pack_version(pack_version),
+        "--packDir", str(pack_dir),
+        "--mainExe", VELOPACK_MAIN_EXE,
+        "--packTitle", VELOPACK_PACK_ID,
+        "--channel", channel,
+        "--outputDir", str(out_dir),
+    ]
+
+
 def run_pyinstaller() -> None:
     print("[1/3] PyInstaller (app.spec)...")
     # cwd=ROOT keeps PyInstaller's dist/ + build/ outputs at the repo root;
@@ -281,20 +342,16 @@ def _populate_app(app) -> dict:
     channel next to the exe. Shared by the zip package (assemble) and the
     production folder (assemble_production) so both stay byte-identical.
 
-    Returns a manifest dict (seeded names, kit files, what bundled) for the log."""
-    data = app / "data"                 # config resolves <exe>/data -> here
-    data.mkdir(parents=True, exist_ok=True)
-    created = []
-    for template_name, target in _SEEDS.items():
-        src = TEMPLATES / template_name
-        if src.exists():
-            shutil.copyfile(src, data / target)
-            created.append(target)
-    companies = SRC / "companies.json"
-    if companies.exists():
-        shutil.copyfile(companies, data / "companies.json")
-        created.append("companies.json")
+    Returns a manifest dict (kit files, what bundled) for the log.
 
+    NOTE (2026-07-08, Velopack phase 2): this function no longer seeds a `data/`
+    folder beside the exe. The frozen app now anchors user data at
+    %LOCALAPPDATA%/JobProgram (config._get_user_data_dir) because Velopack
+    replaces the exe's own folder wholesale on every update — a `data/` next to
+    the exe would look like the user's data and be destroyed on first update.
+    Seeding happens at runtime instead: every entry point calls
+    `userdata.bootstrap()` (gui.py, webui/__main__.py, daily_run.py,
+    mcp_server.py), which scaffolds from the bundled data_templates/."""
     # SmartScreen first-run helpers, next to JobProgram.exe so launch.bat's
     # relative `start "" "JobProgram.exe"` and the "Unblock" steps both line up.
     kit = write_first_run_kit(app)
@@ -326,7 +383,6 @@ def _populate_app(app) -> dict:
         req_bundled = True
 
     return {
-        "seeded": created,
         "kit": kit,
         "ext_bundled": ext_bundled,
         "cc_bundled": cc_bundled,
@@ -336,7 +392,8 @@ def _populate_app(app) -> dict:
 
 def _print_app_manifest(m: dict) -> None:
     print(f"      version: v{APP_VERSION}")
-    print(f"      data/ seeded: {', '.join(m['seeded'])}")
+    print(f"      data/ seeded: (none — runtime userdata.bootstrap() seeds "
+          f"%LOCALAPPDATA%/JobProgram)")
     print(f"      first-run kit: {', '.join(m['kit'])}")
     print(f"      browser_ext bundled: {m['ext_bundled']}")
     print(f"      claude-code bundled: {m['cc_bundled']}; "
@@ -599,7 +656,30 @@ def main() -> None:
                     help="Assemble a ready-to-run production/ folder at the repo "
                          "root (exe + runtime files + browser_ext + .env.example + "
                          "QUICKSTART) instead of the shippable zip. Gitignored artifact.")
+    ap.add_argument("--velopack", action="store_true",
+                    help="Print the `vpk pack` argv for dist/JobProgram (does not run "
+                         "vpk unless --run is given — vpk is a .NET tool).")
+    ap.add_argument("--run", action="store_true",
+                    help="With --velopack, actually execute vpk (CI, after installing "
+                         "the tool). Without it, the argv is only printed.")
+    ap.add_argument("--channel", default="win", choices=list(VELOPACK_CHANNELS),
+                    help="Velopack update feed for --velopack (default: win).")
+    ap.add_argument("--pack-version", default=None,
+                    help="Override the Velopack pack version (defaults to "
+                         "config.APP_VERSION; pass the full tag for a beta prerelease, "
+                         "e.g. 1.0.3-beta1).")
     args = ap.parse_args()
+    if args.velopack:
+        argv = vpk_pack_argv(args.channel, pack_version=args.pack_version)
+        if args.run:
+            print("[vpk]", " ".join(argv))
+            subprocess.run(argv, check=True)
+        else:
+            # Emit the argv, one token per line, so a CI shell can read it back
+            # verbatim without re-deriving the version or quoting a path with spaces.
+            for token in argv:
+                print(token)
+        return
     if not args.no_build:
         run_pyinstaller()
     if args.production:

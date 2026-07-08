@@ -86,7 +86,12 @@ datas = [
 
 # Lazy-imported optional clients; PyInstaller's static analysis misses them
 # because they're imported inside functions. Best-effort list.
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import (collect_submodules, collect_data_files,
+                                     collect_dynamic_libs)
+
+# Extra native libs to bundle (velopack.pyd's dependencies). Analysis(binaries=...)
+# below consumes this; it was an inline [] before auto-update needed a PyO3 module.
+binaries = []
 
 hiddenimports = [
     'anthropic',
@@ -141,10 +146,33 @@ for _dt in ('webview', 'clr_loader', 'pythonnet'):
         pass
 hiddenimports += ['clr']
 
+# In-app auto-update (src/updater.py). `velopack` is a PyO3 native extension: the
+# importable name is the package `velopack`, whose payload is velopack/velopack.pyd.
+# Both names are declared because updater.py and gui.py import it lazily inside
+# functions, where PyInstaller's static pass would otherwise miss it entirely.
+#
+# Unlike the stealth/pywebview seams above, a missing velopack is NOT a benign
+# degradation for a RELEASE build: the shipped exe would silently lose the ability to
+# self-update, which is precisely how v1.0.0 shipped without a native window. CI sets
+# ZAGGREGATE_REQUIRE_VELOPACK=1 so that build fails loudly instead; a local
+# `py src\build_package.py` without the wheel still builds (and says so).
+import os as _os
+try:
+    hiddenimports += ['velopack', 'velopack.velopack']
+    hiddenimports += collect_submodules('velopack')
+    binaries += collect_dynamic_libs('velopack')
+except Exception as _ve:
+    if _os.environ.get('ZAGGREGATE_REQUIRE_VELOPACK') == '1':
+        raise SystemExit(
+            f"app.spec: velopack is REQUIRED for a release build but is not "
+            f"importable ({_ve}). `pip install -r requirements.txt`.")
+    print("app.spec: velopack not present - the exe will NOT be able to "
+          "self-update (it will fall back to opening the releases page)")
+
 a = Analysis(
     ['gui.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

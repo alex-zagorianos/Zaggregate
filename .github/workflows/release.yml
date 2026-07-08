@@ -44,19 +44,54 @@ jobs:
         run: python -m pytest tests/test_smartscreen_kit.py -q
 
       - name: Build distributable
+        # Require the velopack wheel to be bundled: the whole release is an
+        # auto-updating Setup.exe, so a build that silently dropped self-update
+        # (the class of bug that shipped a browser-only v1.0.0) must fail here.
+        env:
+          ZAGGREGATE_REQUIRE_VELOPACK: "1"
         run: python src/build_package.py
+
+      - name: Install Velopack CLI (vpk)
+        # Pin vpk to the same version as the `velopack` wheel in requirements.txt so
+        # the packer and the in-app UpdateManager can never disagree on the feed format.
+        run: dotnet tool install -g vpk --version 1.2.0
+
+      - name: Velopack pack
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag.TrimStart("v")   # tag guard above already enforced v$APP_VERSION[-...]
+          # vpk_pack_argv() defaults its packDir to the assembled dist/Zaggregate/
+          # JobProgram (browser_ext + claude-code included), produced by the build step.
+          # Pre-release tag (v1.0.3-beta1) -> beta feed ONLY, at the prerelease
+          # version so beta testers stay ahead of stable. Full tag (v1.0.3) -> BOTH
+          # feeds at the same bits, so packing stable also carries the beta cohort
+          # forward onto it (otherwise a beta install would stall on the last -betaN).
+          if ($tag.Contains("-")) {
+            python src/build_package.py --velopack --run --channel beta --pack-version $ver
+            if ($LASTEXITCODE -ne 0) { throw "vpk pack (beta) failed" }
+          } else {
+            python src/build_package.py --velopack --run --channel win  --pack-version $ver
+            if ($LASTEXITCODE -ne 0) { throw "vpk pack (win) failed" }
+            python src/build_package.py --velopack --run --channel beta --pack-version $ver
+            if ($LASTEXITCODE -ne 0) { throw "vpk pack (beta) failed" }
+          }
 
       - name: Verify artifacts
         shell: pwsh
         run: |
-          $zip = Get-Item dist/Zaggregate-v*.zip
-          if (-not $zip) { throw "No zip produced under dist/" }
-          $expected = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
-          $sums = Get-Content dist/SHA256SUMS.txt -Raw
-          if ($sums -notmatch [regex]::Escape("$expected  $($zip.Name)")) {
-            throw "SHA256SUMS.txt does not match $($zip.Name)"
+          $setup = Get-Item dist/Releases/*Setup.exe
+          if (-not $setup) { throw "No Setup.exe produced under dist/Releases/" }
+          # The feed manifest each installed client polls. Velopack 1.x names it
+          # releases.<channel>.json (older: RELEASES-<channel>); accept either so a
+          # vpk minor bump doesn't silently pass with no feed.
+          $feed = Get-ChildItem dist/Releases | Where-Object {
+            $_.Name -match 'releases\..*\.json' -or $_.Name -like 'RELEASES-*'
           }
-          Write-Host "OK: $($zip.Name) ($([math]::Round($zip.Length / 1MB, 1)) MB) verified against SHA256SUMS.txt"
+          if (-not $feed) { throw "No Velopack feed manifest under dist/Releases/" }
+          Get-ChildItem dist/Releases | ForEach-Object {
+            Write-Host ("  {0}  ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB))
+          }
 
       - name: Create GitHub Release
         shell: pwsh
@@ -64,21 +99,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $zip = (Get-Item dist/Zaggregate-v*.zip).FullName
-          $zipName = Split-Path $zip -Leaf
           # No here-string here: its closing "@ must sit at column 0, which
           # would terminate this YAML block scalar. Join lines instead.
           $notes = @(
-            "Download **$zipName** below, extract it anywhere, open the ``Zaggregate/JobProgram`` folder, and double-click ``Zaggregate-Desktop.bat`` - the app opens in its own window (``Zaggregate-Web.bat`` runs it in your browser instead; plain ``JobProgram.exe`` opens the desktop app too). No Python install needed.",
+            "Download **Setup.exe** below and run it. Zaggregate installs and then keeps itself up to date - from any release on, **Settings -> Check for updates** downloads the new version and restarts into it. No Python install needed.",
             "",
-            'First launch: Windows may warn about an "unknown publisher" (the app is unsigned) - click **More info -> Run anyway**, or see `JobProgram/FIRST-RUN.txt`.',
+            'First launch: Windows may warn about an "unknown publisher" (the app is unsigned) - click **More info -> Run anyway**.',
             "",
-            "Verify your download against ``SHA256SUMS.txt`` (``certutil -hashfile $zipName SHA256`` on Windows)."
+            "Your data lives in ``%LOCALAPPDATA%\JobProgram`` and is never touched by an update. Coming from a v1.0.2 zip? Open the old app, **Settings -> Download a backup**, run Setup.exe, then **Settings -> Restore from backup**.",
+            "",
+            "The other files below (``*.nupkg``, ``releases.*.json``) are the update feed - the app downloads these itself; you do not need them."
           ) -join "`n"
           $ghArgs = @("release", "create", $tag, "--verify-tag",
                       "--title", "Zaggregate $tag", "--notes", $notes)
           # A hyphenated tag (v1.2.3-beta1) publishes as a pre-release; the
           # update check and the /releases/latest link only follow full releases.
           if ($tag.Contains("-")) { $ghArgs += "--prerelease" } else { $ghArgs += "--latest" }
-          gh @ghArgs $zip dist/SHA256SUMS.txt
+          # Upload every Velopack output (Setup.exe + the channel nupkgs + feed
+          # manifests). GithubSource reads these assets off the release directly.
+          $assets = (Get-ChildItem dist/Releases | ForEach-Object { $_.FullName })
+          gh @ghArgs $assets
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

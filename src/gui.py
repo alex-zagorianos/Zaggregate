@@ -1308,9 +1308,38 @@ def _run_headless_daily(argv) -> int:
     ap.add_argument("--project", type=str, default=None)
     args, _unknown = ap.parse_known_args(argv)
     slug = args.project or workspace.active_slug()
-    # run_daily_ingest pins/unpins and calls daily_run.run_main(); no on_line so
-    # the pipeline prints straight through to the redirected stdout.
-    return run_daily_ingest(slug)
+    # Hold the daily lock for the whole run so an in-app "restart to finish
+    # updating" can't swap the exe (and its _internal/) out from under a live
+    # ingest. updater.daily_run_active() reads this file; a stale lock expires
+    # after 6h so a crashed run never wedges updates permanently.
+    with _daily_lock():
+        # run_daily_ingest pins/unpins and calls daily_run.run_main(); no on_line so
+        # the pipeline prints straight through to the redirected stdout.
+        return run_daily_ingest(slug)
+
+
+@contextlib.contextmanager
+def _daily_lock():
+    """Best-effort PID lock at <USER_DATA_DIR>/daily.lock for the duration of a
+    headless daily run. A filesystem failure must never stop the ingest — the lock
+    is advisory (it gates the in-app updater, nothing else)."""
+    import os
+    import config as _config
+    import updater
+    path = _config.USER_DATA_DIR / updater.DAILY_LOCK_NAME
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(os.getpid()), encoding="ascii")
+    except OSError:
+        path = None
+    try:
+        yield
+    finally:
+        if path is not None:
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
 
 def _web_smoke(port: int | None = None) -> dict:
@@ -1456,26 +1485,48 @@ def main() -> int:
         print(_json.dumps(res))
         return 0 if res.get("ok") else 1
 
+    # Velopack startup hook. MUST run before any real work and before argv is
+    # interpreted: on an install/update/uninstall the Update.exe relaunches us with
+    # `--veloapp-*` flags, and run() services them and exits the process. In a normal
+    # launch it is a cheap no-op that returns.
+    #
+    # Deliberately placed AFTER the web-smoke early-return: outside a Velopack install
+    # run() logs "NotInstalled" to stderr, and the smoke contract is a clean stdout.
+    # Frozen-only + fully swallowed: a broken/absent velopack wheel must never stop
+    # the app from starting. (velopack 1.2.0: run() outside an install is a verified
+    # no-op — it does not raise and does not exit.)
+    if getattr(sys, "frozen", False):
+        try:
+            import velopack
+            velopack.App().run()
+        except Exception:
+            pass
+
     # Web-UI mode: `--web` (browser) / `--desktop` (native pywebview window)
     # delegate to the headless `py -m webui` launcher BEFORE any Tk import/window,
     # so a friend can run the modern web UI from the same single exe. The
     # PyInstaller entry stays gui.py, so the frozen bundle gets both for free
     # (app.spec only needs the pywebview hidden imports for --desktop).
     #
-    # The PACKAGED exe defaults to the DESKTOP app (S44c): double-clicking
-    # JobProgram.exe bare opens the modern UI in its own native window (browser
-    # fallback if the runtime is missing) — testers should never land in the
-    # legacy Tk window by accident. `--classic` keeps it reachable; a dev
-    # `py src\gui.py` keeps the Tk default (tests and muscle memory intact).
+    # The PACKAGED exe is DESKTOP-ONLY for interactive use (2026-07-08): the legacy
+    # Tk window is no longer a shipped surface. `--classic` is accepted-and-ignored in
+    # a frozen build (it opens the desktop app) rather than erroring, so a tester who
+    # kept an old shortcut or an old Zaggregate-Classic.bat still lands somewhere
+    # sensible instead of seeing a crash. The Tk GUI remains fully functional for a
+    # dev `py src\gui.py`, which still defaults to Tk — tests and muscle memory intact.
     args = sys.argv[1:]
+    frozen = getattr(sys, "frozen", False)
     frozen_default_desktop = (
-        getattr(sys, "frozen", False)
-        and not any(f in args for f in ("--classic", "--daily", "--web", "--desktop"))
+        frozen and not any(f in args for f in ("--daily", "--web", "--desktop"))
     )
     if "--web" in args or "--desktop" in args or frozen_default_desktop:
         try:
             from webui.__main__ import main as _web_main
-            return _web_main(["--desktop", *args] if frozen_default_desktop else args)
+            # Drop `--classic` before handing off: it means nothing to the web layer,
+            # and a stale shortcut carrying it must not reach argparse there.
+            passthrough = [a for a in args if a != "--classic"]
+            return _web_main(["--desktop", *passthrough] if frozen_default_desktop
+                             else passthrough)
         except Exception as e:
             _log_fatal(e)
             return 1

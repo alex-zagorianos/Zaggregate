@@ -638,6 +638,17 @@ export const endpoints = {
   // Origin-gated POST (it may write the 24h cache file). `latest` is null when the
   // check couldn't complete — the UI treats that as "couldn't check", not an error.
   checkForUpdates: () => api.post<UpdateCheckResponse>("/meta/update-check"),
+  // Auto-update (Velopack). Only meaningful when `checkForUpdates()` reported
+  // `managed: true`. Each is user-clicked — nothing here runs on a timer, which is
+  // the promise PRIVACY.md makes. `downloadUpdate` returns immediately; poll
+  // `updateProgress` until phase is "ready" (or "error"), then `applyUpdate`.
+  downloadUpdate: () =>
+    api.post<UpdateProgressResponse>("/meta/update/download"),
+  updateProgress: () =>
+    api.get<UpdateProgressResponse>("/meta/update/progress"),
+  // Exits the app ~0.5s after replying, then Velopack's Update.exe swaps the folder
+  // and relaunches with the same argv. The window WILL disappear — say so first.
+  applyUpdate: () => api.post<UpdateApplyResponse>("/meta/update/apply"),
   feedbackTarget: () =>
     api.get<FeedbackTargetResponse>("/meta/feedback-target"),
 
@@ -1426,6 +1437,35 @@ export interface UpdateCheckResponse extends ApiEnvelope {
   /** The GitHub releases page to open when an update is available. */
   url: string;
   newer: boolean;
+  /** True when the app runs from a Velopack install and can update ITSELF.
+   * False in a dev checkout or a plain unzipped copy — the UI must then fall back
+   * to opening `url` and letting the user install by hand. */
+  managed: boolean;
+  /** An update is already downloaded and waiting for a restart (possibly staged by
+   * a previous run of the app). Only present when `managed`. */
+  pending_restart?: boolean;
+}
+
+/** The auto-update download state machine (GET /api/meta/update/progress). */
+export type UpdatePhase =
+  "idle" | "checking" | "downloading" | "ready" | "error";
+
+export interface UpdateProgressResponse extends ApiEnvelope {
+  phase: UpdatePhase;
+  /** 0..100, clamped server-side. */
+  percent: number;
+  version: string | null;
+  /** Why the download died, when `phase === "error"`. Deliberately NOT called
+   * `error`: the envelope reserves that for "the request failed", and a dead
+   * download still rides on `ok: true`. */
+  failure: string | null;
+}
+
+/** POST /api/meta/update/apply. `ok:false` carries a machine-readable `error`:
+ * "not-managed" | "daily-run-active" | "nothing-downloaded" | an SDK failure. */
+export interface UpdateApplyResponse extends ApiEnvelope {
+  exiting?: boolean;
+  error?: string;
 }
 
 export interface FeedbackTargetResponse extends ApiEnvelope {

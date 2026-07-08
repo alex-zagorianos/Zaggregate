@@ -38,11 +38,14 @@ specific, user-controlled ways:
   feeds), plus the company career pages you add. Each fetch runs from your
   computer, on your behalf, using your own free keys — the same requests your
   browser would make visiting those sites.
-- **An optional update check.** If you use **Settings → Check for updates**, the
-  app makes a single request to GitHub's public releases API to compare your
-  version against the latest release. It sends no personal data — just the
-  standard request GitHub sees from any download. You can ignore this feature
-  and nothing ever calls out for updates.
+- **Updates you ask for.** If you use **Settings → Check for updates**, the app
+  asks GitHub's public releases API whether a newer version exists. If one does and
+  you choose **Download**, it downloads that release from GitHub; when you then
+  choose **Restart to finish**, it installs the update and reopens. Every step is a
+  separate click — the app never checks, downloads, or installs on its own, on a
+  timer or in the background. It sends no personal data, just the standard request
+  GitHub sees from any download. Ignore the feature and nothing ever calls out for
+  updates. Your data folder is never part of an update — it lives outside the app.
 - **The AI you already use (only if you ask).** The clipboard AI ranking is
   copy-and-paste: the app never contacts an AI itself — _you_ paste a prompt
   into your own chat. If you opt into the hands-off AI features by adding your

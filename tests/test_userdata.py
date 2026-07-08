@@ -19,12 +19,41 @@ def test_user_data_dir_dev_is_repo_root(monkeypatch):
     assert config._get_user_data_dir() == Path(config.__file__).resolve().parent.parent
 
 
-def test_user_data_dir_frozen_prefers_exe_data(monkeypatch, tmp_path):
-    """Frozen: ./data beside the exe when that dir is writable."""
+def test_user_data_dir_frozen_is_localappdata(monkeypatch, tmp_path):
+    """Frozen: ALWAYS %LOCALAPPDATA%/JobProgram — never beside the exe.
+
+    Velopack swaps the whole `current/` folder that holds the exe on every
+    update, so `<exe>/data` (the pre-v1.0.3 anchor) would be destroyed. This is
+    the invariant the entire auto-update design rests on."""
     monkeypatch.delenv("JOBPROGRAM_DATA", raising=False)
     monkeypatch.setattr(config, "_is_frozen", lambda: True)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
     monkeypatch.setattr(sys, "executable", str(tmp_path / "JobProgram.exe"))
-    assert config._get_user_data_dir() == tmp_path / "data"
+    assert config._get_user_data_dir() == tmp_path / "AppData" / "Local" / "JobProgram"
+
+
+def test_user_data_dir_frozen_ignores_writable_exe_data(monkeypatch, tmp_path):
+    """Regression guard for the swap-zone bug: even when a writable `data/` dir
+    already sits beside the exe (an old v1.0.2 zip install), the frozen app must
+    NOT adopt it — that folder lives inside Velopack's swap zone."""
+    monkeypatch.delenv("JOBPROGRAM_DATA", raising=False)
+    monkeypatch.setattr(config, "_is_frozen", lambda: True)
+    exe_dir = tmp_path / "current"
+    (exe_dir / "data").mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
+    monkeypatch.setattr(sys, "executable", str(exe_dir / "JobProgram.exe"))
+    resolved = config._get_user_data_dir()
+    assert resolved == tmp_path / "AppData" / "Local" / "JobProgram"
+    assert (exe_dir / "data") not in resolved.parents and resolved != exe_dir / "data"
+
+
+def test_user_data_dir_env_override_beats_frozen(monkeypatch, tmp_path):
+    """JOBPROGRAM_DATA still wins when frozen (used by the --daily scheduled task
+    and by testers relocating their data off a sync folder)."""
+    monkeypatch.setattr(config, "_is_frozen", lambda: True)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "Local"))
+    monkeypatch.setenv("JOBPROGRAM_DATA", str(tmp_path / "elsewhere"))
+    assert config._get_user_data_dir() == tmp_path / "elsewhere"
 
 
 def test_workspace_roots_under_user_data_dir():

@@ -6,17 +6,24 @@ against what _you_ said you want, and helps you keep track of your applications.
 There's no account to create, nothing you type ever leaves your computer, and it
 will **never apply to a job for you** — you always click Submit yourself.
 
-## 1. Install (really just unzip)
+## 1. Install (run Setup.exe once)
 
-1. Unzip the release anywhere (Desktop or Documents is fine).
-2. Open the **JobProgram** folder inside.
-3. Double-click **Zaggregate-Desktop.bat** — or **JobProgram.exe** (same thing:
-   the app opens in its own window).
+1. Download **Setup.exe** from the release and run it. It installs Zaggregate and
+   makes a Start-menu / desktop shortcut; the app opens in its own window.
+2. **First time only:** Windows may show a blue "Windows protected your PC"
+   warning, just because the app isn't code-signed yet — it's safe. Click
+   **More info**, then **Run anyway**.
 
-**First time only:** Windows may show a blue "Windows protected your PC"
-warning. That's just because the app isn't code-signed yet — it's safe. Click
-**More info**, then **Run anyway**. (`FIRST-RUN.txt` in the same folder has
-these steps written out.)
+**Updating is automatic from here on.** When a new build is out, open
+**Settings ▸ Check for updates** — the app downloads it and, when you click
+**Restart to finish**, reopens on the new version. You never re-download by hand,
+and **your data is never touched** (it lives in `%LOCALAPPDATA%\JobProgram`,
+outside the app folder).
+
+> **Coming from an earlier `.zip` copy (v1.0.2 or older)?** Do this once so your
+> jobs and settings come along: open your old app, **Settings ▸ Download a
+> backup**, run the new **Setup.exe**, then in the new app **Settings ▸ Restore
+> from backup** and pick that file. After that, updates are automatic.
 
 ## 2. First run — the fastest setup
 

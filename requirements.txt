@@ -22,6 +22,14 @@ ttkbootstrap==1.20.4
 # box that skips this line silently produces a browser-fallback-only exe
 # (bit the v1.0.0 CI release; fixed in v1.0.1). Pulls pythonnet + clr_loader.
 pywebview==6.2.1
+# In-app auto-update (src/updater.py). The official Velopack Python SDK: a PyO3
+# native extension (velopack.pyd) over the same Rust core as the `vpk` CLI that packs
+# Setup.exe. Required at BUILD time — without it the frozen exe cannot self-update and
+# silently falls back to "open the releases page", exactly the class of trap that
+# shipped a browser-fallback-only v1.0.0 when pywebview was missing from CI. At
+# RUNTIME it degrades safely (see updater.py's degradation contract). Keep this pin in
+# lockstep with the `vpk` version installed in .github/workflows/release.yml.
+velopack==1.2.0
 # Optional stealth/JS fetch fallback (scrape/stealth_fetch.py). Browser binaries
 # are a separate one-time `scrapling install`; absent package => graceful no-op.
 # Pinned (was unpinned) so an upgrade can't silently change the default stealth
