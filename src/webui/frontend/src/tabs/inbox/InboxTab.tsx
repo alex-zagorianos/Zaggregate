@@ -933,35 +933,38 @@ interface ColSpec {
   resizable: boolean;
   headClass?: string;
 }
+/* Defaults sum to 918px so all seven columns fit the ~950px the list gets while
+ * the detail rail is open — the common case. Anything wider pushed Actions off
+ * screen on first launch. Extra room goes to the spacer; a narrower pane scrolls. */
 const COLUMNS: ColSpec[] = [
   {
     id: "fit",
     label: "Fit",
-    defaultWidth: 64,
+    defaultWidth: 56,
     resizable: false,
     headClass: "text-center",
   },
-  { id: "role", label: "Role", defaultWidth: 320, resizable: true },
-  { id: "location", label: "Location", defaultWidth: 200, resizable: true },
+  { id: "role", label: "Role", defaultWidth: 272, resizable: true },
+  { id: "location", label: "Location", defaultWidth: 168, resizable: true },
   {
     id: "salary",
     label: "Salary",
-    defaultWidth: 132,
+    defaultWidth: 130,
     resizable: true,
     headClass: "zg-num text-right",
   },
-  { id: "source", label: "Source", defaultWidth: 110, resizable: true },
+  { id: "source", label: "Source", defaultWidth: 92, resizable: true },
   {
     id: "posted",
     label: "Posted",
-    defaultWidth: 100,
+    defaultWidth: 76,
     resizable: true,
     headClass: "zg-num text-right",
   },
   {
     id: "actions",
     label: "Actions",
-    defaultWidth: 136,
+    defaultWidth: 124,
     resizable: false,
     headClass: "text-right",
   },
