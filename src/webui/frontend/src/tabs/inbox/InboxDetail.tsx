@@ -266,14 +266,31 @@ function formatNoteValue(value: unknown): string {
   }
   if (typeof value === "boolean") return value ? "yes" : "no";
   if (Array.isArray(value)) {
-    return value
-      .map((v) =>
-        typeof v === "object" && v !== null ? JSON.stringify(v) : String(v),
-      )
-      .join(", ");
+    return value.map(formatNoteItem).join(", ");
   }
-  if (typeof value === "object" && value !== null) return JSON.stringify(value);
+  if (typeof value === "object" && value !== null) return formatNoteItem(value);
   return String(value);
+}
+
+/** One structured score-note entry, human-readable. Recognizes the shapes
+ * match/scorer.py::score_breakdown emits — a weighted component
+ * {label, pct, weight}, the confidence pair {present, total}, and a penalty
+ * {label, value} — and falls back to JSON for anything unrecognized so an
+ * unknown future shape still renders (never throws / never blank). */
+function formatNoteItem(v: unknown): string {
+  if (typeof v !== "object" || v === null) return String(v);
+  const o = v as Record<string, unknown>;
+  if (typeof o.pct === "number" && typeof o.label === "string") {
+    const w = typeof o.weight === "number" ? ` ·w${o.weight}` : "";
+    return `${o.label} ${Math.round(o.pct * 100)}%${w}`;
+  }
+  if (typeof o.present === "number" && typeof o.total === "number") {
+    return `${o.present}/${o.total} signals`;
+  }
+  if (typeof o.label === "string" && typeof o.value === "number") {
+    return `${o.label} ${o.value > 0 ? `+${o.value}` : o.value}`;
+  }
+  return JSON.stringify(v);
 }
 
 /** The ghost/staleness warning banner — shown when the ghost checker flagged a

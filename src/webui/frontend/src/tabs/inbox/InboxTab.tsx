@@ -737,16 +737,18 @@ function InboxTable({
 
   return (
     <div className="border-border bg-card overflow-hidden rounded-lg border">
-      <div className="relative w-full overflow-x-auto">
-        <table className="w-full caption-bottom text-sm">
+      <div className="@container relative w-full overflow-x-auto">
+        <table className="w-full table-fixed caption-bottom text-sm">
           <thead className="[&_tr]:border-b">
             <tr className="border-border/70 border-b">
               <Th className="w-16 text-center">Fit</Th>
-              <Th className="min-w-[15rem]">Role</Th>
-              <Th className="hidden md:table-cell">Location</Th>
-              <Th className="zg-num hidden text-right lg:table-cell">Salary</Th>
-              <Th className="hidden sm:table-cell">Source</Th>
-              <Th className="hidden text-right xl:table-cell">Posted</Th>
+              <Th>Role</Th>
+              <Th className="@2xl:table-cell hidden w-44">Location</Th>
+              <Th className="zg-num @4xl:table-cell hidden w-32 text-right">
+                Salary
+              </Th>
+              <Th className="@lg:table-cell hidden w-24">Source</Th>
+              <Th className="@5xl:table-cell hidden w-24 text-right">Posted</Th>
               <Th className="w-[8.5rem] text-right">Actions</Th>
             </tr>
           </thead>
@@ -865,8 +867,11 @@ const InboxTableRow = React.memo(function InboxTableRow({
           </div>
         </div>
       </td>
-      <td className="text-muted-foreground hidden px-3 py-2.5 align-middle text-sm md:table-cell">
-        <span className="inline-flex items-center gap-1.5">
+      <td className="text-muted-foreground @2xl:table-cell hidden max-w-[240px] px-3 py-2.5 align-middle text-sm">
+        <span
+          className="flex min-w-0 max-w-[220px] items-center gap-1.5"
+          title={row.location || undefined}
+        >
           <span className="truncate">{row.location || "—"}</span>
           {isRemote(row) && (
             <span className="border-primary/40 bg-primary/10 text-primary rounded-[var(--radius-chip)] border px-1 py-0.5 text-[0.65rem] font-medium">
@@ -875,13 +880,13 @@ const InboxTableRow = React.memo(function InboxTableRow({
           )}
         </span>
       </td>
-      <td className="zg-num text-muted-foreground hidden px-3 py-2.5 text-right align-middle text-xs lg:table-cell">
+      <td className="zg-num text-muted-foreground @4xl:table-cell hidden truncate px-3 py-2.5 text-right align-middle text-xs">
         {row.salary_text || "—"}
       </td>
-      <td className="text-muted-foreground hidden px-3 py-2.5 align-middle text-xs capitalize sm:table-cell">
+      <td className="text-muted-foreground @lg:table-cell hidden truncate px-3 py-2.5 align-middle text-xs capitalize">
         {row.source || "—"}
       </td>
-      <td className="zg-num text-muted-foreground hidden px-3 py-2.5 text-right align-middle text-xs xl:table-cell">
+      <td className="zg-num text-muted-foreground @5xl:table-cell hidden px-3 py-2.5 text-right align-middle text-xs">
         {postedLabel(row)}
       </td>
       <td className="px-3 py-2.5 text-right align-middle">
