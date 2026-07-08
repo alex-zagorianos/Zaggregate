@@ -133,6 +133,33 @@ def test_build_manager_passes_update_options_positionally(monkeypatch):
     assert seen["source"][2] is True
 
 
+def test_update_feed_env_override_uses_http_source(monkeypatch):
+    """ZAGGREGATE_UPDATE_FEED redirects the updater off GitHub to a static
+    file/HTTP feed (self-host / air-gap / local pre-release smoke). It must build an
+    HttpSource(feed) and NOT touch GithubSource."""
+    seen = {}
+
+    def _http_source(url):
+        seen["http"] = url
+        return object()
+
+    def _github_source(*a, **k):
+        raise AssertionError("GithubSource must not be built when the feed is overridden")
+
+    fake = types.SimpleNamespace(
+        HttpSource=_http_source,
+        GithubSource=_github_source,
+        UpdateOptions=lambda *a, **k: object(),
+        UpdateManager=lambda source, options: types.SimpleNamespace(_ok=True),
+    )
+    monkeypatch.setitem(sys.modules, "velopack", fake)
+    monkeypatch.setenv("ZAGGREGATE_UPDATE_FEED", "http://127.0.0.1:8099/")
+
+    mgr = updater._build_manager()
+    assert mgr._ok is True
+    assert seen["http"] == "http://127.0.0.1:8099/"
+
+
 # ── restart argv preservation ─────────────────────────────────────────────────
 
 @pytest.mark.parametrize("argv,expected", [
