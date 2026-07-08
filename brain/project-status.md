@@ -4,6 +4,35 @@
 
 ---
 
+## Search Discovery (2026-07-08) — keyword-pool search UX BUILT ✅ (push held; parallel to S45)
+
+Alex: reexamine search UX (hard to set up even w/ AI; the AI prompt caps findable
+jobs; want a large selectable keyword pool + experience levels — "search
+discovery"). Research → plan → parallel-subagent buildout. Canonical:
+[[handoff_20260708_search-discovery]] · plan [[search-discovery-plan]].
+
+- **P1 (AI ceiling):** `ai_setup.py` prompt now asks for tiered **UNCAPPED**
+  `keywords.core/adjacent/exploratory` + **free-text field** (25-token gate gone;
+  generic fields → full reach). Legacy `target_titles` still parses.
+- **P2 (no-AI vocab gap):** new **`search/discovery/`** package — `propose` (offline
+  O*NET tiers; **reverse-SOC fallback** so eng fields resolve), `probe` (opt-in
+  Adzuna yield, 10/day), `mine` (opt-in corpus, gated by `discovery_enabled`),
+  `flag` (low-activity nudges, never auto-drops), `levels` (entry/mid variants;
+  **senior/exec = ∅**). API `webui/api/discovery.py` (9 routes, gated). UIs: web
+  `KeywordPoolPanel.tsx` (SearchTab + RolesStep) + Tk `DiscoverKeywordsDialog`.
+- **P3 (inert level):** `levels.py` feeds keywords; rubric path byte-identical.
+- **Data:** `onet_related_occupations.tsv` (1.35 MB / 18,460 rows, O*NET 30.3,
+  **CC-BY 4.0**), **schema v7→v8** `keyword_pool` table.
+- **Scorer:** `suggested_excludes` = bounded **−6 downrank, never a drop**;
+  `None`-default → byte-identical parity; threaded through all 7 `score_jobs` sites.
+- **★Contract:** `cfg['keywords']` stays the search source of truth; active pool
+  terms mirror it. **Inclusion over precision held** — nothing here drops a job.
+- **Verify:** Python suite **3388 green**; frontend `tsc --noEmit` clean + **272
+  vitest**. Open items (probe budget, daily_run auto-mine hook, skill chips, human
+  UI smoke) in the handoff §Open.
+
+---
+
 ## Session 45 (2026-07-08) — AUTO-UPDATE PHASE 2 (Velopack) BUILT; --classic retired ✅ (push held)
 
 Alex: plan → implement beta-handoff self-update; mid-build, retire `--classic` from
