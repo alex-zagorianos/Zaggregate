@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "jobscout": {
+    "zaggregate": {
       "command": "py",
       "args": ["src/mcp_server.py"]
     }

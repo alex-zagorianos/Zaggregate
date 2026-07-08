@@ -82,6 +82,9 @@ datas = [
     # resolves this to <_MEIPASS>/webui/static when frozen, so register_webui()
     # serves /app + assets from inside the exe bundle (no sibling folder).
     ('webui/static', 'webui/static'),
+    # The Claude Code channel's find-jobs skill, so agentchannel.ensure_agent_folder()
+    # can copy it into Documents\Zaggregate from inside the frozen exe.
+    ('claude-code', 'claude-code'),
 ]
 
 # Lazy-imported optional clients; PyInstaller's static analysis misses them
@@ -169,6 +172,24 @@ except Exception as _ve:
     print("app.spec: velopack not present - the exe will NOT be able to "
           "self-update (it will fall back to opening the releases page)")
 
+# AI agent channel: bundle the `mcp` SDK so the packaged app can serve MCP over stdio
+# (via the Zaggregate-MCP.exe companion below) with no separate Python or repo clone.
+# Like velopack, a missing `mcp` is a silent capability loss for a release, so CI sets
+# ZAGGREGATE_REQUIRE_MCP=1 to fail loudly; a local build without it just skips the
+# companion exe (the second EXE is guarded on _have_mcp).
+_have_mcp = False
+try:
+    hiddenimports += ['mcp'] + collect_submodules('mcp')
+    datas += collect_data_files('mcp')
+    _have_mcp = True
+except Exception as _me:
+    if _os.environ.get('ZAGGREGATE_REQUIRE_MCP') == '1':
+        raise SystemExit(
+            f"app.spec: mcp is REQUIRED for a release build but is not importable "
+            f"({_me}). `pip install -r requirements.txt`.")
+    print("app.spec: mcp not present - the Zaggregate-MCP.exe agent companion will "
+          "NOT be built (the Claude Code channel is unavailable in this build)")
+
 a = Analysis(
     ['gui.py'],
     pathex=[],
@@ -216,8 +237,52 @@ exe = EXE(
     icon='data_static/zaggregate.ico',   # Z mark (scripts/make_icon.py)
 )
 
+# The console MCP companion (Zaggregate-MCP.exe), built from the same module graph so
+# it shares the collected _internal (one runtime copy, one small extra exe). console=True
+# guarantees real stdio for the MCP protocol; when an MCP client spawns it as a
+# subprocess no console window appears. Only built when `mcp` bundled (see _have_mcp).
+_collect_extra = []
+if _have_mcp:
+    b = Analysis(
+        ['mcp_entry.py'],
+        pathex=[],
+        binaries=binaries,
+        datas=datas,
+        hiddenimports=hiddenimports,
+        hookspath=[],
+        hooksconfig={},
+        runtime_hooks=[],
+        excludes=['numpy', 'tokenizers', 'hf_xet', 'safetensors',
+                  'huggingface_hub', 'model2vec', 'statsmodels'],
+        win_no_prefer_redirects=False,
+        win_private_assemblies=False,
+        cipher=block_cipher,
+        noarchive=False,
+    )
+    pyz_b = PYZ(b.pure, b.zipped_data, cipher=block_cipher)
+    exe_mcp = EXE(
+        pyz_b,
+        b.scripts,
+        [],
+        exclude_binaries=True,
+        name='Zaggregate-MCP',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=True,   # stdio MUST be real for MCP; a windowed exe has null stdio
+        disable_windowed_traceback=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+        version=_version_file,
+        icon='data_static/zaggregate.ico',
+    )
+    _collect_extra = [exe_mcp, b.binaries, b.zipfiles, b.datas]
+
 coll = COLLECT(
     exe,
+    *_collect_extra,
     a.binaries,
     a.zipfiles,
     a.datas,
