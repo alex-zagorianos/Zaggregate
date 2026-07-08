@@ -1,13 +1,13 @@
 # Just want to run the app? Download it here.
 
-The ready-to-run Windows app — Zaggregate v1.0.2 — is a free download
+The ready-to-run Windows app — Zaggregate v1.0.3 — is a free download
 on the **[latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest)**
 page. No Python, no build tools, no source code needed.
 
 ## Get the app (about 2 minutes)
 
 1. Open the [latest release](https://github.com/alex-zagorianos/Zaggregate/releases/latest)
-   and, under **Assets**, download **`Zaggregate-v1.0.2.zip`**.
+   and, under **Assets**, download **`Zaggregate-v1.0.3.zip`**.
 2. Extract it anywhere (right-click → *Extract All…*).
 3. Open the extracted `Zaggregate/JobProgram` folder and **double-click
    `Zaggregate-Desktop.bat`** — the app opens in its own window.
