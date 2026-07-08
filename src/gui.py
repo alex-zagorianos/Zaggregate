@@ -1501,6 +1501,14 @@ def main() -> int:
             velopack.App().run()
         except Exception:
             pass
+        # Scaffold Documents\Zaggregate (the Claude Code agent channel) so a user can
+        # drive the app from Claude Code with no repo clone or Python. Idempotent,
+        # frozen-only, never raises — a scaffolding hiccup must not stop startup.
+        try:
+            import agentchannel
+            agentchannel.ensure_agent_folder()
+        except Exception:
+            pass
 
     # Web-UI mode: `--web` (browser) / `--desktop` (native pywebview window)
     # delegate to the headless `py -m webui` launcher BEFORE any Tk import/window,

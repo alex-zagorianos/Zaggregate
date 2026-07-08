@@ -30,6 +30,13 @@ pywebview==6.2.1
 # RUNTIME it degrades safely (see updater.py's degradation contract). Keep this pin in
 # lockstep with the `vpk` version installed in .github/workflows/release.yml.
 velopack==1.2.0
+# AI agent channel (src/mcp_server.py -> Zaggregate-MCP.exe). The official MCP SDK
+# (ships FastMCP). Promoted from requirements-mcp.txt into the main build because the
+# packaged app now bundles a console MCP-server exe so a user can drive Zaggregate from
+# Claude Code with NO repo clone or Python install. Build-required (app.spec bundles it,
+# guarded by ZAGGREGATE_REQUIRE_MCP); requirements-mcp.txt stays as a pointer for source
+# users. Keep this the single source of the pin.
+mcp>=1.2.0
 # Optional stealth/JS fetch fallback (scrape/stealth_fetch.py). Browser binaries
 # are a separate one-time `scrapling install`; absent package => graceful no-op.
 # Pinned (was unpinned) so an upgrade can't silently change the default stealth
