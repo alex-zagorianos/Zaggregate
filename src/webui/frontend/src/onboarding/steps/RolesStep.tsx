@@ -1,21 +1,27 @@
 import { Briefcase } from "lucide-react";
 
 import {
-  FIELD_PRESETS,
   FIELD_OTHER,
   parseRoles,
   type WizardAnswers,
 } from "@/lib/wizard-steps";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  KeywordPoolPanel,
+  mergeTermsCsv,
+} from "@/tabs/search/KeywordPoolPanel";
 import { StepHead } from "./StepHead";
 
-/* Step 3 — Roles. The one gating step: needs ≥1 role. A comma-separated roles box
- * (with a live chip preview so the user sees how it splits) plus a validated field
- * picker that emits a canonical industry token (or "Other" → a free-text box). The
- * field preset turns on non-generic source routing + query synonyms server-side. */
+/* Step 3 — Roles. The one gating step: needs ≥1 role. A comma-separated roles
+ * box (with a live chip preview so the user sees how it splits) as the direct,
+ * typed-by-hand path, plus the KeywordPoolPanel (Search Discovery,
+ * search-discovery-plan.md §4.4) as the DEFAULT keyword-picking view — the
+ * richer, guided alternative that replaces the old fixed field-preset <select>.
+ * Activating a chip there folds into `roles` (union merge, never clobbers what
+ * was typed); submitting a field there sets `industry` directly from the free
+ * text (industry_profile.resolve() isn't limited to a fixed list either). */
 
 export function RolesStep({
   answers,
@@ -25,7 +31,10 @@ export function RolesStep({
   patch: (p: Partial<WizardAnswers>) => void;
 }) {
   const roleChips = parseRoles(answers.roles);
-  const isOther = answers.industry === FIELD_OTHER;
+  const initialField =
+    answers.industry === FIELD_OTHER
+      ? answers.industryOther
+      : answers.industry || parseRoles(answers.roles)[0] || "";
 
   return (
     <div className="max-w-2xl">
@@ -66,38 +75,23 @@ export function RolesStep({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="wiz-field" className="text-foreground text-sm">
-            Your field{" "}
+          <Label className="text-foreground text-sm">
+            Find keywords for your field{" "}
             <span className="text-muted-foreground font-normal">
               (optional)
             </span>
           </Label>
-          <Select
-            id="wiz-field"
-            value={answers.industry}
-            onChange={(e) => patch({ industry: e.target.value })}
-            className="h-11"
-          >
-            <option value="">Choose a field…</option>
-            {FIELD_PRESETS.map((p) => (
-              <option key={p.token} value={p.token}>
-                {p.label}
-              </option>
-            ))}
-            <option value={FIELD_OTHER}>Other (type your own)…</option>
-          </Select>
-          <p className="text-muted-foreground text-xs">
-            Picking a field turns on smarter, field-specific job sources.
-          </p>
-          {isOther && (
-            <Input
-              value={answers.industryOther}
-              onChange={(e) => patch({ industryOther: e.target.value })}
-              placeholder="Type your field, e.g. biomedical engineering"
-              autoComplete="off"
-              className="mt-2"
-            />
-          )}
+          <KeywordPoolPanel
+            alwaysOpen
+            initialField={initialField}
+            resumeText={answers.resumeText}
+            onFieldChange={(field) =>
+              patch({ industry: field, industryOther: "" })
+            }
+            onActiveTermsChange={(csv) =>
+              patch({ roles: mergeTermsCsv(answers.roles, csv) })
+            }
+          />
         </div>
       </div>
     </div>
