@@ -735,51 +735,36 @@ function InboxTable({
     if (next) rowHadFocus.current = false;
   }, []);
 
-  const colWidths = useColWidths();
+  const cols = useColResize();
 
   return (
     <div className="border-border bg-card overflow-hidden rounded-lg border">
-      <div className="@container relative w-full overflow-x-auto">
+      <div className="relative w-full overflow-x-auto">
         <table className="w-full table-fixed caption-bottom text-sm">
+          <colgroup>
+            {COLUMNS.map((c) => (
+              <col key={c.id} style={{ width: cols.widths[c.id] }} />
+            ))}
+            {/* trailing spacer column: absorbs leftover width so real columns
+                keep their exact size, and collapses to 0 (→ horizontal scroll)
+                when they outgrow the pane */}
+            <col aria-hidden />
+          </colgroup>
           <thead className="[&_tr]:border-b">
             <tr className="border-border/70 border-b">
-              <Th colId="fit" cols={colWidths} className="text-center">
-                Fit
-              </Th>
-              <Th colId="role" cols={colWidths}>
-                Role
-              </Th>
-              <Th
-                colId="location"
-                cols={colWidths}
-                className="@2xl:table-cell hidden"
-              >
-                Location
-              </Th>
-              <Th
-                colId="salary"
-                cols={colWidths}
-                className="zg-num @4xl:table-cell hidden text-right"
-              >
-                Salary
-              </Th>
-              <Th
-                colId="source"
-                cols={colWidths}
-                className="@lg:table-cell hidden"
-              >
-                Source
-              </Th>
-              <Th
-                colId="posted"
-                cols={colWidths}
-                className="@5xl:table-cell hidden text-right"
-              >
-                Posted
-              </Th>
-              <Th colId="actions" cols={colWidths} className="text-right">
-                Actions
-              </Th>
+              {COLUMNS.map((c) => (
+                <Th key={c.id} className={c.headClass}>
+                  {c.label}
+                  {c.resizable && (
+                    <ColResizeHandle
+                      onStart={(e) => cols.startResize(c.id, e)}
+                      onReset={() => cols.reset(c.id)}
+                      onNudge={(d) => cols.nudge(c.id, d)}
+                    />
+                  )}
+                </Th>
+              ))}
+              <th aria-hidden />
             </tr>
           </thead>
           <tbody className="[&_tr:last-child]:border-0">
@@ -804,7 +789,7 @@ function InboxTable({
 
             {moreToLoad && (
               <tr ref={sentinelRef} aria-hidden>
-                <td colSpan={7} className="px-3 py-4 text-center">
+                <td colSpan={8} className="px-3 py-4 text-center">
                   <span className="text-muted-foreground inline-flex items-center gap-2 text-xs">
                     <Loader2 className="size-3.5 animate-spin" />
                     Loading more…
@@ -897,26 +882,26 @@ const InboxTableRow = React.memo(function InboxTableRow({
           </div>
         </div>
       </td>
-      <td className="text-muted-foreground @2xl:table-cell hidden px-3 py-2.5 align-middle text-sm">
+      <td className="text-muted-foreground px-3 py-2.5 align-middle text-sm">
         <span
           className="flex min-w-0 items-center gap-1.5"
           title={row.location || undefined}
         >
           <span className="truncate">{row.location || "—"}</span>
           {isRemote(row) && (
-            <span className="border-primary/40 bg-primary/10 text-primary rounded-[var(--radius-chip)] border px-1 py-0.5 text-[0.65rem] font-medium">
+            <span className="border-primary/40 bg-primary/10 text-primary shrink-0 rounded-[var(--radius-chip)] border px-1 py-0.5 text-[0.65rem] font-medium">
               Remote
             </span>
           )}
         </span>
       </td>
-      <td className="zg-num text-muted-foreground @4xl:table-cell hidden truncate px-3 py-2.5 text-right align-middle text-xs">
+      <td className="zg-num text-muted-foreground truncate px-3 py-2.5 text-right align-middle text-xs">
         {row.salary_text || "—"}
       </td>
-      <td className="text-muted-foreground @lg:table-cell hidden truncate px-3 py-2.5 align-middle text-xs capitalize">
+      <td className="text-muted-foreground truncate px-3 py-2.5 align-middle text-xs capitalize">
         {row.source || "—"}
       </td>
-      <td className="zg-num text-muted-foreground @5xl:table-cell hidden px-3 py-2.5 text-right align-middle text-xs">
+      <td className="zg-num text-muted-foreground truncate px-3 py-2.5 text-right align-middle text-xs">
         {postedLabel(row)}
       </td>
       <td className="px-3 py-2.5 text-right align-middle">
@@ -927,134 +912,241 @@ const InboxTableRow = React.memo(function InboxTableRow({
           onOpen={onOpen}
         />
       </td>
+      <td aria-hidden />
     </tr>
   );
 });
 
-/* ── user-resizable columns ─────────────────────────────────────────────────
- * The table is table-fixed, so header cell widths dictate the whole column
- * grid. Widths live in component state seeded from localStorage; dragging a
- * header's right-edge handle updates them live and persists on the fly.
- * "role" ships width-less (auto) so it absorbs leftover space until the user
- * explicitly sizes it. Double-click a handle to reset that column. */
-const COL_DEFAULTS: Record<string, number | undefined> = {
-  fit: 64,
-  role: undefined,
-  location: 176,
-  salary: 128,
-  source: 96,
-  posted: 96,
-  actions: 136,
-};
+/* ── user-resizable inbox columns ───────────────────────────────────────────
+ * Spreadsheet model. A <colgroup> is the single source of truth for column
+ * widths and a trailing auto "spacer" column soaks up any leftover space — so
+ * resizing ONE column never redistributes the others (the table just grows and
+ * the pane scrolls horizontally once the columns outgrow it). Widths persist
+ * per-browser in localStorage. Drags commit through requestAnimationFrame, and
+ * because the row component is memoized on primitive props, the visible rows
+ * never re-render mid-drag. Double-click a handle (or press Enter) resets that
+ * column; ← / → nudge it while the handle is focused. */
+interface ColSpec {
+  id: string;
+  label: string;
+  defaultWidth: number;
+  resizable: boolean;
+  headClass?: string;
+}
+const COLUMNS: ColSpec[] = [
+  {
+    id: "fit",
+    label: "Fit",
+    defaultWidth: 64,
+    resizable: false,
+    headClass: "text-center",
+  },
+  { id: "role", label: "Role", defaultWidth: 320, resizable: true },
+  { id: "location", label: "Location", defaultWidth: 200, resizable: true },
+  {
+    id: "salary",
+    label: "Salary",
+    defaultWidth: 132,
+    resizable: true,
+    headClass: "zg-num text-right",
+  },
+  { id: "source", label: "Source", defaultWidth: 110, resizable: true },
+  {
+    id: "posted",
+    label: "Posted",
+    defaultWidth: 100,
+    resizable: true,
+    headClass: "zg-num text-right",
+  },
+  {
+    id: "actions",
+    label: "Actions",
+    defaultWidth: 136,
+    resizable: false,
+    headClass: "text-right",
+  },
+];
+const COL_BY_ID: Record<string, ColSpec> = Object.fromEntries(
+  COLUMNS.map((c) => [c.id, c]),
+);
 const COL_MIN = 56;
 const COL_MAX = 640;
 const COL_STORE_KEY = "zg.inbox.colWidths";
 
-type ColWidths = {
-  widths: Record<string, number>;
-  set: (id: string, w: number | null) => void;
-};
+const clampWidth = (w: number) =>
+  Math.min(COL_MAX, Math.max(COL_MIN, Math.round(w)));
 
-function loadColWidths(): Record<string, number> {
+type WidthMap = Record<string, number>;
+
+function loadColWidths(): WidthMap {
+  const widths: WidthMap = {};
+  for (const c of COLUMNS) widths[c.id] = c.defaultWidth;
   try {
     const raw: unknown = JSON.parse(
       localStorage.getItem(COL_STORE_KEY) || "{}",
     );
-    const out: Record<string, number> = {};
     if (raw && typeof raw === "object") {
       for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-        if (k in COL_DEFAULTS && typeof v === "number" && Number.isFinite(v)) {
-          out[k] = Math.min(COL_MAX, Math.max(COL_MIN, v));
+        if (k in COL_BY_ID && typeof v === "number" && Number.isFinite(v)) {
+          widths[k] = clampWidth(v);
         }
       }
     }
-    return out;
   } catch {
-    return {};
+    /* unreadable storage — fall back to defaults */
+  }
+  return widths;
+}
+
+function persistColWidths(widths: WidthMap) {
+  try {
+    // persist only the columns the user actually changed, so a later tweak to a
+    // default still reaches anyone who never touched that column
+    const diff: WidthMap = {};
+    for (const c of COLUMNS) {
+      if (widths[c.id] !== c.defaultWidth) diff[c.id] = widths[c.id];
+    }
+    localStorage.setItem(COL_STORE_KEY, JSON.stringify(diff));
+  } catch {
+    /* storage blocked/full — resizing still works for this session */
   }
 }
 
-function useColWidths(): ColWidths {
-  const [widths, setWidths] =
-    React.useState<Record<string, number>>(loadColWidths);
-  const set = React.useCallback((id: string, w: number | null) => {
+interface ColResize {
+  widths: WidthMap;
+  startResize: (id: string, e: React.PointerEvent<HTMLElement>) => void;
+  reset: (id: string) => void;
+  nudge: (id: string, delta: number) => void;
+}
+
+function useColResize(): ColResize {
+  const [widths, setWidths] = React.useState<WidthMap>(loadColWidths);
+  const widthsRef = React.useRef(widths);
+  React.useEffect(() => {
+    widthsRef.current = widths;
+  }, [widths]);
+
+  const apply = React.useCallback((id: string, w: number) => {
+    const cw = clampWidth(w);
     setWidths((prev) => {
-      const next = { ...prev };
-      if (w === null) delete next[id];
-      else next[id] = Math.min(COL_MAX, Math.max(COL_MIN, Math.round(w)));
-      try {
-        localStorage.setItem(COL_STORE_KEY, JSON.stringify(next));
-      } catch {
-        /* storage full/blocked — resizing still works for the session */
-      }
+      if (prev[id] === cw) return prev;
+      const next = { ...prev, [id]: cw };
+      persistColWidths(next);
       return next;
     });
   }, []);
-  return { widths, set };
+
+  const reset = React.useCallback(
+    (id: string) => apply(id, COL_BY_ID[id].defaultWidth),
+    [apply],
+  );
+
+  const nudge = React.useCallback(
+    (id: string, delta: number) => apply(id, widthsRef.current[id] + delta),
+    [apply],
+  );
+
+  const startResize = React.useCallback(
+    (id: string, e: React.PointerEvent<HTMLElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handle = e.currentTarget;
+      const startX = e.clientX;
+      const startW = widthsRef.current[id];
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture unsupported — the listeners below still track the drag */
+      }
+      const prevCursor = document.body.style.cursor;
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      let raf = 0;
+      let latest = startW;
+      const onMove = (ev: PointerEvent) => {
+        latest = startW + (ev.clientX - startX);
+        if (!raf) {
+          raf = requestAnimationFrame(() => {
+            raf = 0;
+            apply(id, latest);
+          });
+        }
+      };
+      const finish = () => {
+        if (raf) cancelAnimationFrame(raf);
+        apply(id, latest);
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", finish);
+        handle.removeEventListener("pointercancel", finish);
+        document.body.style.cursor = prevCursor;
+        document.body.style.userSelect = prevSelect;
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", finish);
+      handle.addEventListener("pointercancel", finish);
+    },
+    [apply],
+  );
+
+  return { widths, startResize, reset, nudge };
 }
 
 function ColResizeHandle({
-  colId,
-  setWidth,
+  onStart,
+  onReset,
+  onNudge,
 }: {
-  colId: string;
-  setWidth: ColWidths["set"];
+  onStart: (e: React.PointerEvent<HTMLElement>) => void;
+  onReset: () => void;
+  onNudge: (delta: number) => void;
 }) {
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const th = e.currentTarget.closest("th");
-    if (!th) return;
-    const startX = e.clientX;
-    const startW = th.getBoundingClientRect().width;
-    const move = (ev: PointerEvent) =>
-      setWidth(colId, startW + (ev.clientX - startX));
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
   return (
     <div
       role="separator"
       aria-orientation="vertical"
+      aria-label="Resize column"
+      tabIndex={0}
       title="Drag to resize · double-click to reset"
-      onPointerDown={onPointerDown}
+      onPointerDown={onStart}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        setWidth(colId, null);
+        onReset();
       }}
-      className="hover:bg-primary/50 active:bg-primary absolute top-0 -right-[3px] z-10 h-full w-1.5 cursor-col-resize touch-none select-none"
-    />
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          onNudge(-16);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          onNudge(16);
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onReset();
+        }
+      }}
+      className="group/resize absolute top-0 -right-2 z-20 flex h-full w-4 cursor-col-resize touch-none items-center justify-center select-none"
+    >
+      <span className="bg-border/70 group-hover/resize:bg-primary group-focus-visible/resize:bg-primary h-4 w-px rounded-full transition-[background-color,width] group-hover/resize:w-0.5" />
+    </div>
   );
 }
 
 function Th({
   className,
   children,
-  colId,
-  cols,
 }: {
   className?: string;
   children: React.ReactNode;
-  colId?: string;
-  cols?: ColWidths;
 }) {
-  const width = colId
-    ? (cols?.widths[colId] ?? COL_DEFAULTS[colId])
-    : undefined;
   return (
     <th
-      style={width !== undefined ? { width } : undefined}
       className={cn(
         "text-muted-foreground relative h-10 px-3 text-left align-middle text-xs font-semibold tracking-wide uppercase whitespace-nowrap",
         className,
       )}
     >
       {children}
-      {colId && cols && <ColResizeHandle colId={colId} setWidth={cols.set} />}
     </th>
   );
 }
