@@ -27,7 +27,7 @@ DB_PATH = None
 # v7 (D1 application-cycle): new interview_rounds table; status_history.note
 # column (per-stage timestamped notes + note-only events); applications offer_*
 # columns via the _EXTRA_COLUMNS ALTER pattern. All additive/backfill-free.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def current_db_path() -> Path:
@@ -617,6 +617,31 @@ def init_db() -> bool:
             """)
         except sqlite3.OperationalError:
             pass  # FTS5 not compiled into this SQLite build
+        # Search Discovery (v8): the candidate-keyword pool. One row per term the
+        # user has ever been shown (offline taxonomy tiers, AI-suggested,
+        # corpus-mined, level variants, or manual), with its tier, provenance,
+        # activation status, and last-known live yield. Purely additive — no
+        # existing table or scoring path reads it; `cfg['keywords']` stays the
+        # source of truth for what is actually searched (an `active` row here
+        # mirrors, never replaces, that list). `term` is unique per project DB so
+        # re-proposing a term upserts rather than duplicating.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS keyword_pool (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                term               TEXT NOT NULL UNIQUE,
+                tier               TEXT NOT NULL,   -- core | adjacent | exploratory | negative
+                source             TEXT NOT NULL,   -- onet | related_soc | corpus | ai | manual | level_variant | resume
+                status             TEXT NOT NULL DEFAULT 'suggested',  -- suggested | active | inactive
+                yield_count        INTEGER,         -- last live-probed count, nullable
+                yield_source       TEXT,            -- e.g. 'adzuna:us-oh-cincinnati'
+                yield_date         TEXT,
+                first_seen         TEXT NOT NULL,
+                last_seen          TEXT NOT NULL,
+                activated_at       TEXT             -- NULL until activated; drives the min-age flag guard
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_keyword_pool_status "
+                     "ON keyword_pool(status)")
         conn.execute("PRAGMA user_version = %d" % SCHEMA_VERSION)
         conn.commit()
         return True
