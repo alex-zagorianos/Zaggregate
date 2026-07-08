@@ -90,6 +90,7 @@ def rescore(db_path=None, cfg=None, dry_run=False):
         years_cap=cfg.get("years_cap"),
         remote_regions_ok=_remote_regions_ok(),
         title_context_required=cfg.get("title_context_required"),
+        suggested_excludes=cfg.get("suggested_excludes"),
     )
 
     after = []

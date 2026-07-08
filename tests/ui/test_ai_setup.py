@@ -26,15 +26,23 @@ def isolated(tmp_path, monkeypatch):
 
 # ── prompt generation ─────────────────────────────────────────────────────────
 def test_setup_prompt_is_static_and_documents_vocab():
+    # P1 (search-discovery-plan §5): the OLD prompt capped recall by asking
+    # for "1-5 real job titles" into a flat target_titles list and gating
+    # field to a fixed vocabulary. The NEW prompt asks for a free-text field
+    # and a TIERED, UNCAPPED keywords object instead.
     p = ai_setup.build_setup_prompt()
     assert "```json" in p
-    for key in ("field", "target_titles", "location", "salary_floor",
-                "seniority", "radius_miles", "preferences_md", "remote_ok"):
+    for key in ("field", "keywords", "core", "adjacent", "exploratory",
+                "negatives", "location", "remote_ok", "min_salary",
+                "experience_level"):
         assert key in p
-    # The canonical field vocabulary is enumerated so the AI can only pick valid
-    # tokens (kills the free-text routing bug at the source).
-    for tok in ("data analytics", "nursing", "warehouse", "consulting", "other"):
-        assert tok in p
+    assert "1-5" not in p
+    assert "MAXIMUM RECALL" in p
+    low = p.lower()
+    assert "no length limit" in low
+    assert "free text" in low
+    # The old canonical-field pick-list is gone -- field is free text now.
+    assert "chosen only from this list" not in low
 
 
 def test_setup_prompt_calls_no_llm_and_reads_nothing(isolated):
@@ -116,12 +124,14 @@ def test_parse_bad_input_raises_actionable(text, needle):
     assert needle in str(ei.value)
 
 
-def test_parse_unknown_field_lists_the_vocabulary():
+def test_parse_offlist_field_is_now_accepted_not_rejected():
+    # P1: CANONICAL_FIELDS is no longer a rejection gate. A field that resolves
+    # to a "generic" (no-routing) industry_profile is accepted as free text,
+    # full-reach -- never blocked (dedicated coverage in
+    # tests/ui/test_ai_setup_discovery.py::test_ai_setup_field_no_longer_gated_by_canonical_list).
     block = dict(_GOOD, field="quantum astrology")
-    with pytest.raises(ai_setup.SetupBlockError) as ei:
-        ai_setup.parse_setup_block(json.dumps(block))
-    msg = str(ei.value)
-    assert "Unknown field" in msg and "nursing" in msg   # vocab listed
+    parsed = ai_setup.parse_setup_block(json.dumps(block))
+    assert parsed["answers"]["industry"] == "quantum astrology"
 
 
 def test_parse_missing_field_is_actionable():
@@ -235,13 +245,13 @@ def test_seed_prompt_is_safe_with_blank_field_and_metro():
 def test_full_setup_prompt_carries_both_contracts():
     p = ai_setup.build_full_setup_prompt("nurse", "Boise, ID")
     # The config half is the SAME json contract build_setup_prompt uses (shared
-    # body — no forked vocabulary): every documented key + the canonical fields.
+    # body — no forked vocabulary): every documented key, tiered/uncapped (P1).
     assert "```json" in p
-    for key in ("field", "target_titles", "location", "salary_floor",
-                "seniority", "radius_miles", "preferences_md", "remote_ok"):
+    for key in ("field", "keywords", "core", "adjacent", "exploratory",
+                "negatives", "location", "remote_ok", "min_salary",
+                "experience_level"):
         assert key in p
-    for tok in ("data analytics", "nursing", "warehouse", "consulting", "other"):
-        assert tok in p
+    assert "1-5" not in p
     # The seeds half is the careers-page ask (lifted from build_seed_prompt),
     # wrapped in a ```seeds fence, careers-PAGE not slug.
     low = p.lower()

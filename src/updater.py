@@ -90,7 +90,15 @@ def _build_manager() -> Any:
     except Exception as e:  # wheel missing / broken native module
         raise NotManaged(f"velopack unavailable: {e}") from e
     try:
-        source = velopack.GithubSource(_repo_url(), None, True)
+        # ZAGGREGATE_UPDATE_FEED points the updater at a static file/HTTP feed
+        # instead of GitHub — for a self-hosted fork, an air-gapped mirror, or a
+        # local pre-release smoke test (a directory of `vpk pack` output served
+        # over HTTP). Absent (the norm) → the public GitHub releases feed.
+        feed = os.getenv("ZAGGREGATE_UPDATE_FEED")
+        if feed:
+            source = velopack.HttpSource(feed)
+        else:
+            source = velopack.GithubSource(_repo_url(), None, True)
         # UpdateOptions takes 2 REQUIRED positional args (verified against 1.2.0):
         # (AllowVersionDowngrade, MaximumDeltasBeforeFallback[, ExplicitChannel]).
         # Downgrade is allowed so pulling a bad release from GitHub rolls testers

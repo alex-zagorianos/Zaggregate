@@ -30,6 +30,7 @@ def build_api_blueprint() -> Blueprint:
     from .network import network_bp  # B4: referral network import / summary / match
     from .insights import insights_bp  # B6: funnel + channel conversion + cadence
     from .recommend import recommend_bp  # EXPERIMENTAL Discover — 1 line to remove
+    from .discovery import discovery_bp  # Search Discovery — keyword pool
 
     # Nested blueprints inherit the /api prefix; each submodule declares its own
     # leaf paths (e.g. /status, /toppicks, /inbox/<id>/track, /settings/theme,
@@ -51,4 +52,5 @@ def build_api_blueprint() -> Blueprint:
     api.register_blueprint(network_bp)  # B4: referral network import / summary / match
     api.register_blueprint(insights_bp)  # B6: funnel + channel conversion + cadence
     api.register_blueprint(recommend_bp)  # EXPERIMENTAL Discover
+    api.register_blueprint(discovery_bp)  # Search Discovery — keyword pool
     return api

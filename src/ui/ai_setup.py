@@ -9,10 +9,13 @@ preferences.{json,md}.
 
 Two prompt/parse pairs live here:
 
-  1. PROFILE setup (§6.3): résumé + intent -> a config block (field token,
-     target titles, location, salary floor, seniority, remote pref, radius, plus
-     a natural-language preferences.md profile). `build_setup_prompt()` /
-     `parse_setup_block()` / `apply_setup()`.
+  1. PROFILE setup (§6.3, P1-tiered per search-discovery-plan §5): résumé +
+     intent -> a config block (free-text field, TIERED/UNCAPPED keywords —
+     core/adjacent/exploratory, negatives, location, min salary, experience
+     level). `build_setup_prompt()` / `parse_setup_block()` / `apply_setup()`.
+     Backward-compatible with the pre-P1 flat schema (`target_titles`,
+     `seniority`, `salary_floor`, `radius_miles`, `preferences_md`) for a stale
+     cached prompt or an older client.
 
   2. COMPANY seeding (§6.7 / SB-2a): the persona tests proved AI slug-guessing is
      ~50% wrong but careers-PAGE URLs are what AIs get right, so the seeding
@@ -33,10 +36,12 @@ import workspace
 
 
 # ── the config-block vocabulary ───────────────────────────────────────────────
-# The canonical FIELD tokens the AI must choose from. Sourced from the shipped
-# industry_profile seed rules so a returned token routes sources/rankings
-# correctly (the wizard's fragile free-text field is exactly what caused the
-# multi-word routing bug). "other" is the escape hatch -> generic full reach.
+# P1 (search-discovery-plan §5): "field" is now free text in the prompt -- this
+# list is a NORMALIZATION HINT only (a reply that matches one of these tokens
+# comes back in this exact spacing so industry_profile/company_registry keys
+# keep matching), NOT a validation gate. It is no longer shown to the AI as an
+# enumerated pick-list (that enumeration was never the ceiling problem; the
+# titles cap was). See _canonical_field: any non-blank free text is accepted.
 CANONICAL_FIELDS: list[str] = [
     "software engineering", "engineering", "data analytics", "marketing",
     "digital marketing", "finance", "sales", "healthcare", "nursing",
@@ -68,37 +73,53 @@ def _config_block_body() -> str:
     ``build_full_setup_prompt`` (config + seeds) share ONE vocabulary — the field
     list, key schema, and rules can never drift between the two prompts (the whole
     point of the S40 refactor). Ends WITHOUT a trailing paste-line so the caller
-    decides what follows (the résumé line, or a second seeds block)."""
-    fields = ", ".join(CANONICAL_FIELDS)
+    decides what follows (the résumé line, or a second seeds block).
+
+    P1 (search-discovery-plan §5): the OLD body asked for "1-5 real job titles"
+    into a flat ``target_titles`` list and gated ``field`` to CANONICAL_FIELDS —
+    both were arbitrary ceilings with no downstream cap to justify them. This
+    body instead asks for MAXIMUM RECALL: a free-text ``field``, and a TIERED,
+    UNCAPPED ``keywords`` object (core/adjacent/exploratory) so a weak or a
+    strong AI both err toward giving more candidates, not fewer. Parsed by
+    ``parse_setup_block`` / ``_parse_keywords_block`` (which still accepts the
+    OLD ``target_titles`` shape for a stale cached prompt or older client)."""
     return (
+        "I want MAXIMUM RECALL, not narrow precision — I will personally review "
+        "and prune anything irrelevant, so it is far better to give me too many "
+        "candidate titles than too few. Do not limit yourself to any fixed list "
+        "of industries, and do not limit yourself to a small number of titles.\n\n"
         "Read them and return ONLY a single fenced code block (```json ... ```) "
         "with EXACTLY these keys — no prose before or after:\n\n"
         "```json\n"
         "{\n"
-        '  "field": "<ONE token, chosen ONLY from this list: ' + fields + '>",\n'
-        '  "target_titles": ["<job title I should search for>", "..."],\n'
-        '  "location": "<City, ST>  (or "Remote" if I want remote-only)",\n'
-        '  "remote_ok": true,\n'
-        '  "radius_miles": 50,\n'
-        '  "salary_floor": 0,\n'
-        '  "seniority": "<one of: entry, mid, senior, manager>",\n'
-        '  "preferences_md": "<2-5 sentences, first person, describing the roles '
-        "I want, what I love, and any dealbreakers — this is read by an AI to "
-        'rank jobs to my taste>"\n'
+        '  "field": "<2-6 words describing my field/industry in plain language — '
+        'NOT limited to any fixed list, just describe it>",\n'
+        '  "experience_level": "<one of: entry, mid, senior, manager>",\n'
+        '  "keywords": {\n'
+        '    "core": ["<3-8 job titles I\'d confidently search on day one, using '
+        'the exact phrasing a real job posting would use>"],\n'
+        '    "adjacent": ["<5-15 related or nearby titles — a different team, a '
+        'different seniority framing, or a closely related discipline I probably '
+        'qualify for. Cast a wide net.>"],\n'
+        '    "exploratory": ["<3-10 genuinely creative longer-shot titles — '
+        'cross-industry roles, alternate names for the same job, emerging role '
+        'names I might not have thought of. Be bold here; these are for me to '
+        'consider, not commit to.>"]\n'
+        "  },\n"
+        '  "negatives": ["<0-10 terms that would clearly disqualify a posting for '
+        "ME specifically, e.g. 'unpaid' or 'commission only'. Leave empty if none "
+        'apply.>"],\n'
+        '  "location": {"city": "...", "state": "...", "remote_ok": true},\n'
+        '  "min_salary": <number or null>\n'
         "}\n"
         "```\n\n"
         "Rules:\n"
-        "- \"field\" MUST be exactly one token from the list above. Pick the "
-        "closest fit; if my occupation isn't obviously one of them (e.g. a skilled "
-        "trade, a niche role), use \"other\" rather than forcing a wrong token.\n"
-        "- \"target_titles\": 1-5 real job titles, as a JSON array of strings "
-        "(e.g. [\"Forklift Operator\", \"Warehouse Associate\"]).\n"
-        "- \"location\": my metro. Use \"City, ST\" for US, \"City, Country\" "
-        "outside the US, or the literal \"Remote\" for remote-only.\n"
-        "- \"salary_floor\": my minimum acceptable ANNUAL salary as a plain whole "
-        "number (e.g. 140000, not \"$140k\"); use 0 if I don't care.\n"
-        "- \"radius_miles\": how far from my location I'll commute, as a whole "
-        "number (e.g. 50).\n"
+        "- \"field\" is free text — do not pick from a fixed list, just describe "
+        "it.\n"
+        "- \"keywords.core/adjacent/exploratory\": be generous, not conservative. "
+        "There is no length limit — more titles is always better than fewer.\n"
+        "- \"negatives\": suggestions only. Nothing will be auto-excluded from my "
+        "search; I will review and confirm each one before it does anything.\n"
         "- Return the block ONLY. Do not invent facts not supported by my résumé "
         "or sentence.\n"
     )
@@ -118,35 +139,34 @@ def build_setup_prompt() -> str:
 
 # ── strict parser + validation (profile setup) ────────────────────────────────
 def _canonical_field(raw: str) -> str:
-    """Validate/normalize the AI's field token against the canonical vocabulary
-    (via the registry's _normalize_industry + industry_profile). Returns the
-    matched canonical token, or raises SetupBlockError with an actionable list.
-    'other' is accepted as the explicit generic-reach escape hatch."""
-    from scrape.company_registry import _normalize_industry
+    """Normalize the AI's free-text field. P1 (search-discovery-plan §5):
+    CANONICAL_FIELDS is a normalization HINT, not a rejection gate — a token
+    that maps onto it comes back in that exact canonical spacing (so
+    industry_profile/company_registry keys keep matching); ANY OTHER non-blank
+    free text is accepted as-is (lowered/stripped). "field" is now an
+    open-ended description, so a value industry_profile.resolve() can't route
+    (source='generic', full-reach/no routing) is still ACCEPTED, never an
+    error — MAXIMUM RECALL means a niche/off-list occupation, or an outright
+    typo, is the user's call to fix later, not a hard block at parse time.
+    Only a genuinely blank field raises (there's nothing to search on)."""
     val = (raw or "").strip()
     if not val:
         raise SetupBlockError(
             "The config block is missing a 'field'. Re-run the prompt, or set "
             "your field manually in Setup.")
+    from scrape.company_registry import _normalize_industry
     norm = _normalize_industry(val)                       # e.g. "Data Analytics" -> data_analytics
     canon_norm = {_normalize_industry(c): c for c in CANONICAL_FIELDS}
     if norm in canon_norm:
         return canon_norm[norm]
-    # Accept a token that resolves to a known NON-generic profile (so a close
-    # synonym like "registered nurse" or "management consulting", or a real
-    # blue-collar occupation the O*NET tier recognizes like "machinist" /
-    # "barista" / "welder", is tolerated). Only "generic" (a typo like "quantum
-    # astrology" that matches nothing) is rejected — accepting an O*NET-routed
-    # occupation is a strict breadth win and keeps the trades audience unblocked.
+    # Off-vocabulary free text: resolve() still runs (warms routing for a
+    # seed/onet/eng match), but its verdict is consultative only — even a
+    # "generic" (no-routing) result is accepted full-reach, never rejected.
     try:
-        prof = industry_profile.resolve(val)
+        industry_profile.resolve(val)
     except Exception:
-        prof = None
-    if prof is not None and prof.source in ("seed", "user", "onet"):
-        return val.strip().lower()
-    raise SetupBlockError(
-        f"Unknown field {raw!r}. Ask your AI to pick ONE token from: "
-        + ", ".join(CANONICAL_FIELDS))
+        pass
+    return val.lower()
 
 
 def _coerce_number(raw, *, allow_k: bool = True) -> float | None:
@@ -239,9 +259,64 @@ def _validate_seniority(raw) -> str:
 
 # Keys the config block is expected to carry — used to pick the RIGHT object when
 # a weak AI emits more than one JSON block (a partial example then the real one).
+# Union of the NEW tiered schema and the OLD flat schema so scoring favors the
+# complete block under either shape (backward compat, P1).
 _EXPECTED_CFG_KEYS = frozenset({
-    "field", "target_titles", "location", "remote_ok", "radius_miles",
-    "salary_floor", "seniority", "preferences_md"})
+    "field", "target_titles", "keywords", "experience_level", "seniority",
+    "negatives", "location", "remote_ok", "radius_miles", "salary_floor",
+    "min_salary", "preferences_md"})
+
+
+def _parse_keywords_block(payload: dict) -> tuple[list[str], list[str]]:
+    """Split the reply's keyword ask into ``(active, suggested_exploratory)``.
+
+    NEW tiered shape (``keywords: {core, adjacent, exploratory}``): ``active``
+    = dedupe(core + adjacent) — these become ``cfg['keywords']`` UNCAPPED;
+    ``suggested`` = exploratory — these are NEVER written to the live query
+    set, only offered into the keyword_pool for the user to promote later
+    (``apply_setup``'s job).
+
+    LEGACY shape (``target_titles: [...]``, no ``keywords`` key — a stale
+    cached prompt or an older client): ``active`` = ``_validate_titles``,
+    ``suggested`` = [] (a flat list carries no tier signal to seed the pool
+    with). Nothing that worked before this change breaks.
+
+    Only a non-array tier value is ever rejected — length is NEVER a rejection
+    reason (that's the whole P1 fix: no length cap anywhere)."""
+    kw = payload.get("keywords")
+    if isinstance(kw, dict):
+        def _tier(name: str) -> list[str]:
+            raw = kw.get(name) or []
+            if isinstance(raw, str):
+                raw = [p.strip() for p in re.split(r"[,;\n]+", raw) if p.strip()]
+            if not isinstance(raw, list):
+                raise SetupBlockError(
+                    f"'keywords.{name}' must be a list of job-title strings.")
+            return [str(t).strip() for t in raw if str(t).strip()]
+
+        core = _tier("core")
+        adjacent = _tier("adjacent")
+        exploratory = _tier("exploratory")
+        active = list(dict.fromkeys(core + adjacent))
+        if not active:
+            raise SetupBlockError(
+                "'keywords.core'/'keywords.adjacent' are both empty — the AI "
+                "must return at least one job title.")
+        return active, exploratory
+    # Legacy flat shape.
+    return _validate_titles(payload.get("target_titles")), []
+
+
+def _parse_negatives(raw) -> list[str]:
+    """AI-suggested dealbreaker terms — DOWNRANK-only suggestions the user
+    reviews before anything happens (never an auto-exclude, never written to
+    the hard-drop ``hard_no_titles`` list). Optional: unlike keywords, a blank/
+    missing/malformed value is just "no suggestions", never an error."""
+    if isinstance(raw, str):
+        raw = [p.strip() for p in re.split(r"[,;\n]+", raw) if p.strip()]
+    if not isinstance(raw, list):
+        return []
+    return [str(t).strip() for t in raw if str(t).strip()]
 
 
 def _normalize_pasted(text: str) -> str:
@@ -298,7 +373,15 @@ def parse_setup_block(text: str) -> dict:
     """Parse + STRICTLY validate the pasted config block into a wizard `answers`
     dict (so apply_setup can reuse setup_wizard.build_preferences/_search_config
     — one contract, no drift). Raises SetupBlockError with an actionable message
-    on any problem. Never partially applies (pure parse; caller applies)."""
+    on any problem. Never partially applies (pure parse; caller applies).
+
+    P1 (search-discovery-plan §5): accepts the NEW tiered schema (``keywords:
+    {core,adjacent,exploratory}``, ``experience_level``, ``negatives``,
+    ``location`` as ``{city,state,remote_ok}``, ``min_salary``) AND the OLD flat
+    schema (``target_titles``, ``seniority``, ``location`` as a string +
+    top-level ``remote_ok``, ``salary_floor``) — a stale cached prompt or an
+    older client keeps working unchanged. New-key names win when both are
+    present; old names are the fallback."""
     if not (text or "").strip():
         raise SetupBlockError("Nothing pasted — copy your AI's reply first.")
     payload = _best_config_object(_normalize_pasted(text))
@@ -311,21 +394,35 @@ def parse_setup_block(text: str) -> dict:
             "The config block must be a JSON object with the documented keys.")
 
     field = _canonical_field(payload.get("field", ""))
-    titles = _validate_titles(payload.get("target_titles"))
-    location_raw = str(payload.get("location") or "").strip()
+    active_terms, suggested_terms = _parse_keywords_block(payload)
+
+    # location: NEW {"city","state","remote_ok"} dict, or OLD "City, ST" string
+    # + a top-level remote_ok. Either way a literal "Remote" collapses to the
+    # remote-only sentinel the search config records.
+    location_val = payload.get("location")
+    if isinstance(location_val, dict):
+        city = str(location_val.get("city") or "").strip()
+        state = str(location_val.get("state") or "").strip()
+        location_raw = ", ".join(p for p in (city, state) if p)
+        remote_ok_raw = location_val.get("remote_ok", True)
+    else:
+        location_raw = str(location_val or "").strip()
+        remote_ok_raw = payload.get("remote_ok", True)
     remote_only = location_raw.lower() in ("remote", "remote-only", "remote only")
     # remote_ok defaults True; a remote-only location implies remote_ok.
-    remote_ok = bool(payload.get("remote_ok", True)) or remote_only
-    salary = _validate_salary(payload.get("salary_floor"))
+    remote_ok = bool(remote_ok_raw) or remote_only
+
+    salary = _validate_salary(payload.get("min_salary", payload.get("salary_floor")))
     radius = _validate_radius(payload.get("radius_miles"))
-    level = _validate_seniority(payload.get("seniority"))
+    level = _validate_seniority(payload.get("experience_level", payload.get("seniority")))
     about = str(payload.get("preferences_md") or "").strip()
+    negatives = _parse_negatives(payload.get("negatives"))
 
     # Map to the wizard's `answers` contract (build_preferences/_search_config).
     # The industry token is the canonical `field` (routes sources/rankings); a
     # remote-only location is stored as "Remote" so the search config records it.
     answers = {
-        "roles": titles,
+        "roles": active_terms,
         "location": "Remote" if remote_only else location_raw,
         "remote_ok": remote_ok,
         "salary_min": salary,
@@ -333,9 +430,12 @@ def parse_setup_block(text: str) -> dict:
         "level": level,
         "about": about,
     }
-    # Non-`answers` extras the AI-setup applies directly to config.json.
+    # Non-`answers` extras the AI-setup applies directly to config.json / the
+    # keyword_pool. `suggested_exploratory`/`negatives` are new (P1) — never
+    # written to cfg['keywords']/hard_no_titles, see apply_setup.
     extras = {"radius": radius, "remote_only": remote_only,
-              "field_token": field, "target_titles": titles}
+              "field_token": field, "target_titles": active_terms,
+              "suggested_exploratory": suggested_terms, "negatives": negatives}
     return {"answers": answers, "extras": extras}
 
 
@@ -345,7 +445,18 @@ def apply_setup(text: str, *, mark_onboarded: bool = True) -> dict:
     helpers the wizard uses (setup_wizard.build_preferences/_search_config +
     workspace.scaffold_preferences), so the AI path and the wizard produce an
     identical on-disk contract. Returns a small summary dict for the UI. Raises
-    SetupBlockError (unapplied) on any validation problem."""
+    SetupBlockError (unapplied) on any validation problem.
+
+    P1 (search-discovery-plan §5): `answers["roles"]` is now core+adjacent
+    (uncapped) — unchanged wiring, `_search_config` still writes it straight to
+    `cfg['keywords']`. Two NEW side-effects beyond the existing contract:
+      * `extras['suggested_exploratory']` upserts into the `keyword_pool`
+        (source='ai', status='suggested') instead of the live query set — the
+        user promotes these later from the SAME Discovery panel the manual
+        path uses.
+      * `extras['negatives']` folds into `cfg['suggested_excludes']` — a
+        DOWNRANK-only list a separate scorer lever consumes. NEVER written to
+        `hard_no_titles` (that is a literal hard-drop)."""
     # Use the Tk-free core (build_preferences/_search_config/mark_onboarded live
     # there since the S36 split) so the web AI-setup express lane never imports
     # tkinter. The tk setup_wizard re-exports these same objects, so behavior is
@@ -362,7 +473,21 @@ def apply_setup(text: str, *, mark_onboarded: bool = True) -> dict:
     cfg = setup_wizard._search_config(answers, workspace.load_config())
     if extras.get("radius"):
         cfg["radius"] = extras["radius"]
+    if extras.get("negatives"):
+        # Suggestions only — a separate scorer lever downranks these, they are
+        # never a hard drop (hard_no_titles is untouched).
+        cfg["suggested_excludes"] = list(extras["negatives"])
     workspace.save_config(cfg)
+
+    if extras.get("suggested_exploratory"):
+        # Longer-shot titles the user didn't commit to — offered into the
+        # keyword_pool (not the live query set) for later promotion via the
+        # Discovery panel.
+        from search.discovery import pool
+        pool.upsert_terms([
+            {"term": t, "tier": "exploratory", "source": "ai", "status": "suggested"}
+            for t in extras["suggested_exploratory"]
+        ])
 
     if mark_onboarded:
         setup_wizard.mark_onboarded()
@@ -380,6 +505,8 @@ def apply_setup(text: str, *, mark_onboarded: bool = True) -> dict:
         "seniority": answers["level"],
         "radius": extras.get("radius"),
         "profile_chars": len(prefs["profile_md"]),
+        "suggested_exploratory": extras.get("suggested_exploratory", []),
+        "suggested_excludes": extras.get("negatives", []),
     }
 
 

@@ -111,11 +111,14 @@ def test_offlist_trade_field_resolved_via_onet_is_accepted():
     assert parsed["extras"]["field_token"] == "machinist"
 
 
-def test_pure_typo_field_still_rejected():
-    # The generic-reach typo guard must survive: a nonsense field that resolves to
-    # 'generic' (no routing) is still rejected, so a real mistake is caught.
-    with pytest.raises(ai_setup.SetupBlockError):
-        ai_setup.parse_setup_block(_block({"field": "quantum astrology"}))
+def test_offlist_field_is_accepted_not_rejected():
+    # Search-discovery §5: the field is now FREE TEXT — an off-vocabulary field
+    # that resolves to 'generic' is ACCEPTED (full-reach search), never rejected.
+    # Inclusion over precision: the old typo-rejection gate silently blocked real
+    # occupations (niche/trades) the 25-token list didn't name, so it is gone. A
+    # blank field is still the one remaining gate (tested in test_ai_setup.py).
+    parsed = ai_setup.parse_setup_block(_block({"field": "quantum astrology"}))
+    assert parsed["answers"]["industry"] == "quantum astrology"
 
 
 # ── seed parser: parse_line must rescue formats and reject prose ───────────────

@@ -89,7 +89,8 @@ def search_jobs(keywords: list[str] | None = None, location: str = "",
                seniority_target=cfg.get("seniority_target"),
                years_cap=cfg.get("years_cap"),
                remote_regions_ok=_remote_regions_ok,
-               title_context_required=cfg.get("title_context_required"))
+               title_context_required=cfg.get("title_context_required"),
+               suggested_excludes=cfg.get("suggested_excludes"))
     db.init_db()
     added = db.inbox_add_many(
         results, per_company_cap=int(cfg.get("max_per_company", 15) or 0))

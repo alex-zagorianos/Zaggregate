@@ -15,6 +15,100 @@ from ui import theme
 from ui import tab_search_core as _search_core
 from ui.common import safe_url, db_guard, set_status
 from ui.companies_dialogs import AddCompaniesDialog, BuildCompanyListDialog
+from search.discovery import flag, levels, mine, pool, probe, propose
+
+
+# ── Search Discovery — pure helpers (Phase 9 Tk dialog) ─────────────────────────
+# Tk-free on purpose: DiscoverKeywordsDialog below is a thin wiring layer over
+# these, so tests exercise the data logic without constructing any widget (Tk
+# can't run headless in CI reliably). Mirrors webui.api.discovery's contract
+# byte-for-byte (same activate/deactivate/openings rules) so the Tk and web
+# surfaces never drift apart.
+
+def discovery_tier_rows(result: dict) -> list[dict]:
+    """Flatten a propose() result's core/adjacent/exploratory tiers into rows
+    shaped for BOTH the Treeview and pool.upsert_terms: {term, tier, source,
+    status:'suggested'}. Blank terms are skipped; tier order matches propose()
+    (core, adjacent, exploratory). Never raises."""
+    rows = []
+    for tier in ("core", "adjacent", "exploratory"):
+        for item in (result or {}).get(tier) or []:
+            term = str((item or {}).get("term") or "").strip()
+            if not term:
+                continue
+            rows.append({"term": term, "tier": tier,
+                        "source": str((item or {}).get("source") or "onet"),
+                        "status": "suggested"})
+    return rows
+
+
+def discovery_active_or_core_terms(active_terms: list[str],
+                                   tier_rows: list[dict]) -> list[str]:
+    """Terms to level-phrase-vary: the pool's currently ACTIVE terms if any
+    exist, else the core tier from the last propose() call. Never raises."""
+    if active_terms:
+        return list(active_terms)
+    return [r["term"] for r in (tier_rows or []) if r.get("tier") == "core"]
+
+
+def discovery_format_openings(pool_row: dict | None,
+                              low_activity_terms: set | None = None) -> str:
+    """Openings cell text for a pool row: the last checked count, or an
+    em-dash when never checked -- inclusion over precision means a low/zero
+    count is always SHOWN, never a reason to hide the row. Appends a gentle,
+    plain-English nudge when the term is in flag.low_activity_terms() (an
+    active term that hasn't found much lately). Never raises."""
+    if not pool_row:
+        return "—"
+    count = pool_row.get("yield_count")
+    text = "—" if count is None else str(count)
+    if low_activity_terms and pool_row.get("term") in low_activity_terms:
+        text += "  (hasn't found much lately)"
+    return text
+
+
+def discovery_pool_rows(pool_rows: list[dict],
+                        low_activity_terms: set | None = None) -> list[dict]:
+    """Shape raw pool.get_pool() rows for the Treeview: {term, tier, status,
+    openings}. Order is preserved (pool.get_pool() is newest-first)."""
+    return [{"term": r["term"], "tier": r["tier"], "status": r["status"],
+             "openings": discovery_format_openings(r, low_activity_terms)}
+            for r in (pool_rows or [])]
+
+
+def discovery_activate(cfg: dict, term: str, tier: str = "core",
+                       source: str = "manual") -> bool:
+    """Activate a suggestion: upsert + mark the pool row 'active', and mirror
+    the term into cfg['keywords'] (the search source of truth), flipping
+    cfg['discovery_enabled'] True -- mirrors webui.api.discovery's activate
+    route exactly so the Tk and web surfaces agree. Mutates cfg in place.
+    Blank term -> False, cfg untouched (never raises)."""
+    term = (term or "").strip()
+    if not term:
+        return False
+    pool.upsert_terms([{"term": term, "tier": tier or "core",
+                        "source": source or "manual", "status": "suggested"}])
+    pool.set_status(term, "active")
+    kws = list(cfg.get("keywords") or [])
+    if term not in kws:
+        kws.append(term)
+    cfg["keywords"] = kws
+    cfg["discovery_enabled"] = True
+    return True
+
+
+def discovery_deactivate(cfg: dict, term: str) -> bool:
+    """Deactivate a term: mark the pool row 'inactive' and remove it from
+    cfg['keywords']. Never drops anything already tracked/inboxed -- it just
+    stops searching that term going forward. Mutates cfg in place. Blank term
+    -> False, cfg untouched (never raises)."""
+    term = (term or "").strip()
+    if not term:
+        return False
+    pool.set_status(term, "inactive")
+    cfg["keywords"] = [k for k in (cfg.get("keywords") or []) if k != term]
+    return True
+
 
 class SearchTab(ttk.Frame):
     """Run a multi-source search without leaving the app; Track or Dismiss each
@@ -54,6 +148,9 @@ class SearchTab(ttk.Frame):
             self, default_industry=self._user_cfg.get("industry", ""),
             default_metro=self._user_cfg.get("location", ""))
 
+    def _open_discovery(self):
+        DiscoverKeywordsDialog(self)
+
     def _build(self):
         hdr = theme.header_bar(self, "Job Search",
                                "Search many job boards at once.")
@@ -65,6 +162,11 @@ class SearchTab(ttk.Frame):
                   "Auto-build your target-company list for your field — harvest "
                   "from your Inbox, AI-suggest more, verify live jobs.").pack(
                       side="right", padx=(10, 0), pady=8)
+        theme.tip(theme.btn(hdr, "Discover keywords\N{HORIZONTAL ELLIPSIS}",
+                            self._open_discovery, "ghost"),
+                  "Suggest keywords for any field, check live openings, and mine "
+                  "your own search history for more — no title vocabulary "
+                  "needed.").pack(side="right", padx=(10, 0), pady=8)
         theme.tip_strip(
             self, "Enter keywords and a location, then click Search. Every result "
                   "is scored 0–100 for fit — Track the good ones, Dismiss the rest.")
@@ -357,7 +459,8 @@ class SearchTab(ttk.Frame):
                            seniority_target=self._user_cfg.get("seniority_target"),
                            years_cap=self._user_cfg.get("years_cap"),
                            remote_regions_ok=_remote_regions_ok,
-                           title_context_required=self._user_cfg.get("title_context_required"))
+                           title_context_required=self._user_cfg.get("title_context_required"),
+                           suggested_excludes=self._user_cfg.get("suggested_excludes"))
             self.after(0, self._on_done, results, bool(clients))
         except Exception as exc:
             self.after(0, self._on_error, str(exc))
@@ -491,4 +594,217 @@ class SearchTab(ttk.Frame):
             u = safe_url(j.url)
             if u:
                 webbrowser.open(u)
+
+
+class DiscoverKeywordsDialog(tk.Toplevel):
+    """'Discover keywords' (Search Discovery Phase 9) — turn a free-typed field
+    into a rich keyword pool without the user needing to know their industry's
+    title vocabulary. Calls search.discovery directly, in-process, the same
+    pattern SearchTab uses for search_job.run_search(); the web Discovery panel
+    (built in parallel) shares the exact same Tk-free backend + activate/
+    deactivate contract (webui/api/discovery.py) so the two surfaces agree.
+
+    No SOC codes or the words "probe"/"yield" ever reach this UI -- labels stay
+    plain (Openings / Check openings / hasn't found much lately); a low/zero
+    count is always shown, never a reason to hide or drop a row."""
+
+    _COLS = [("term", "Term", 280, "w"), ("tier", "Tier", 90, "center"),
+             ("status", "Status", 90, "center"), ("openings", "Openings", 170, "w")]
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("Discover keywords")
+        self.geometry("760x560")
+        self.configure(bg=theme.WINDOW)
+        self.transient(parent)
+        self.grab_set()
+        self._parent = parent
+        # Core terms from the last propose() call -- the fallback term set for
+        # the experience-level dropdown when nothing is active yet.
+        self._last_tier_rows: list[dict] = []
+        self._build()
+        self._refresh_tree()
+
+    def _build(self):
+        tk.Label(self, justify="left", wraplength=720, fg=theme.INK, bg=theme.WINDOW,
+                 text="Type any field — you don't need to know the exact job-title "
+                      "vocabulary. We'll suggest core, adjacent, and exploratory "
+                      "keywords; activate the ones you want to search."
+                 ).pack(fill="x", padx=12, pady=(12, 6))
+
+        row = tk.Frame(self, bg=theme.WINDOW)
+        row.pack(fill="x", padx=12, pady=4)
+        tk.Label(row, text="Field:", bg=theme.WINDOW, fg=theme.INK).pack(side="left")
+        self._field = tk.StringVar()
+        ttk.Entry(row, textvariable=self._field, width=30).pack(
+            side="left", padx=(4, 8))
+        theme.btn(row, "Suggest", self._on_suggest, "accent").pack(side="left")
+        tk.Label(row, text="  Experience level:", bg=theme.WINDOW,
+                 fg=theme.INK).pack(side="left", padx=(16, 0))
+        self._level = tk.StringVar()
+        level_box = ttk.Combobox(row, textvariable=self._level, width=14,
+                                 state="readonly",
+                                 values=["", "Entry", "Mid", "Senior", "Manager/Exec"])
+        level_box.pack(side="left", padx=6)
+        level_box.bind("<<ComboboxSelected>>", self._on_level_change)
+
+        tf = ttk.Frame(self)
+        tf.pack(fill="both", expand=True, padx=12, pady=(4, 4))
+        self._tree = ttk.Treeview(tf, columns=[c[0] for c in self._COLS],
+                                  show="headings", selectmode="extended")
+        for col, label, width, anchor in self._COLS:
+            self._tree.heading(col, text=label)
+            self._tree.column(col, width=width, anchor=anchor, minwidth=45)
+        theme.zebra(self._tree)
+        vsb = ttk.Scrollbar(tf, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=vsb.set)
+        self._tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        btnrow = tk.Frame(self, bg=theme.WINDOW, pady=6)
+        btnrow.pack(fill="x", padx=12)
+        theme.btn(btnrow, "Activate", self._on_activate, "accent").pack(
+            side="left", padx=2)
+        theme.btn(btnrow, "Deactivate", self._on_deactivate, "ghost").pack(
+            side="left", padx=2)
+        self._probe_btn = theme.btn(btnrow, "Check openings", self._on_probe, "ghost")
+        self._probe_btn.pack(side="left", padx=(12, 2))
+        theme.btn(btnrow, "From my history", self._on_mine, "ghost").pack(
+            side="left", padx=2)
+        theme.btn(btnrow, "Close", self.destroy, "ghost").pack(side="right")
+
+        self._status = tk.Label(self, text="", fg=theme.MUTED, bg=theme.WINDOW,
+                                anchor="w")
+        self._status.pack(fill="x", padx=12, pady=(0, 10))
+
+    # ── data refresh ─────────────────────────────────────────────────────────
+    def _refresh_tree(self):
+        if not self.winfo_exists():
+            return
+        try:
+            rows = pool.get_pool()
+            low = {r["term"] for r in flag.low_activity_terms()}
+        except Exception:
+            rows, low = [], set()
+        shaped = discovery_pool_rows(rows, low)
+        for iid in self._tree.get_children():
+            self._tree.delete(iid)
+        for i, r in enumerate(shaped):
+            iid = r["term"]
+            if self._tree.exists(iid):
+                continue  # defensive: pool terms are unique, but never crash on a dupe
+            self._tree.insert("", "end", iid=iid, tags=(theme.row_tag(i),),
+                              values=(r["term"], r["tier"], r["status"], r["openings"]))
+
+    def _selected_terms(self) -> list[str]:
+        return list(self._tree.selection())
+
+    def _sync_parent_cfg(self, cfg):
+        """Keep the Search tab's own keyword field/config in step with a pool
+        activation change made from this dialog, so Search picks it up without
+        a restart. Best-effort -- the parent may not be a SearchTab (e.g. a
+        bare Tk root in a widget-construction test)."""
+        try:
+            self._parent._user_cfg = cfg
+            self._parent._kw.set(", ".join(cfg.get("keywords", [])))
+        except (AttributeError, tk.TclError):
+            pass
+
+    # ── actions ──────────────────────────────────────────────────────────────
+    def _on_suggest(self):
+        field = self._field.get().strip()
+        if not field:
+            set_status(self._status, "Type a field first.", "err")
+            return
+        result = propose.propose(field)
+        rows = discovery_tier_rows(result)
+        self._last_tier_rows = rows
+        if rows:
+            pool.upsert_terms(rows)
+        self._refresh_tree()
+        set_status(self._status, f'{len(rows)} suggestion(s) for "{field}".', "ok")
+
+    def _on_activate(self):
+        terms = self._selected_terms()
+        if not terms:
+            set_status(self._status, "Select row(s) first.", "err")
+            return
+        cfg = workspace.load_config()
+        slug = workspace.active_slug()
+        workspace.pin_active(slug)   # pin BEFORE the config write (S27-safe pattern)
+        try:
+            for term in terms:
+                tier = self._tree.set(term, "tier") or "core"
+                discovery_activate(cfg, term, tier=tier, source="manual")
+            workspace.save_config(cfg)
+        finally:
+            workspace.unpin_active()
+        self._sync_parent_cfg(cfg)
+        self._refresh_tree()
+        set_status(self._status, f"Activated {len(terms)} term(s).", "ok")
+
+    def _on_deactivate(self):
+        terms = self._selected_terms()
+        if not terms:
+            set_status(self._status, "Select row(s) first.", "err")
+            return
+        cfg = workspace.load_config()
+        slug = workspace.active_slug()
+        workspace.pin_active(slug)
+        try:
+            for term in terms:
+                discovery_deactivate(cfg, term)
+            workspace.save_config(cfg)
+        finally:
+            workspace.unpin_active()
+        self._sync_parent_cfg(cfg)
+        self._refresh_tree()
+        set_status(self._status, f"Deactivated {len(terms)} term(s).", "muted")
+
+    def _on_probe(self):
+        terms = self._selected_terms()
+        if not terms:
+            set_status(self._status, "Select row(s) first.", "err")
+            return
+        location = workspace.load_config().get("location") or DEFAULT_LOCATION
+        self._probe_btn.config(state="disabled")
+        set_status(self._status, "Checking openings\N{HORIZONTAL ELLIPSIS}", "work")
+        threading.Thread(target=self._probe_worker, args=(terms, location),
+                         daemon=True).start()
+
+    def _probe_worker(self, terms, location):
+        try:
+            probe.probe_terms(terms, location)
+        except Exception:
+            pass
+        remaining = probe.probes_remaining()
+        self.after(0, self._probe_done, remaining)
+
+    def _probe_done(self, remaining):
+        if not self.winfo_exists():
+            return  # GUI-7: dialog closed while the probe ran
+        self._probe_btn.config(state="normal")
+        self._refresh_tree()
+        set_status(self._status,
+                  f"Openings updated. {remaining} check(s) left today.", "ok")
+
+    def _on_mine(self):
+        summary = mine.mine_corpus(enabled=True)
+        self._refresh_tree()
+        set_status(
+            self._status,
+            f"Found {summary.get('mined', 0)} title(s) from your history "
+            f"({summary.get('upserted', 0)} new).", "ok")
+
+    def _on_level_change(self, _event=None):
+        level = self._level.get()
+        terms = discovery_active_or_core_terms(pool.active_terms(), self._last_tier_rows)
+        variants = levels.level_query_variants(terms, level)
+        if variants:
+            pool.upsert_terms(variants)
+        self._refresh_tree()
+        if variants:
+            set_status(self._status, f"{len(variants)} phrasing variant(s) added.", "ok")
+        else:
+            set_status(self._status, "No phrasing variants for that level.", "muted")
 

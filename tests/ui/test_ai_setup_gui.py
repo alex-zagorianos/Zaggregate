@@ -37,8 +37,9 @@ def test_ai_setup_dialog_builds_and_shows_prompt(root):
     dlg = gui.AiSetupDialog(root)
     root.update_idletasks()
     # The prompt box is populated with the documented block and is read-only.
+    # (Search Discovery §5: the tiered `keywords` schema replaced `preferences_md`.)
     text = dlg._prompt_box.get("1.0", "end-1c")
-    assert "```json" in text and "preferences_md" in text
+    assert "```json" in text and "keywords" in text
     assert str(dlg._prompt_box.cget("state")) == "disabled"
     dlg.destroy()
 

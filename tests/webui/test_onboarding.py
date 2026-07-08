@@ -266,7 +266,9 @@ def test_ai_setup_prompt_static(client):
     body = client.get("/api/ai-setup/prompt").get_json()
     assert body["ok"] is True
     assert "```json" in body["prompt"]
-    assert "target_titles" in body["prompt"]
+    # P1 (search-discovery-plan §5): the flat target_titles ask was replaced by
+    # a tiered, uncapped keywords object.
+    assert "keywords" in body["prompt"]
 
 
 def test_ai_setup_prompt_full_flag_serves_combined(client):
@@ -281,7 +283,7 @@ def test_ai_setup_prompt_full_flag_serves_combined(client):
     assert full["prompt"] == build_full_setup_prompt()
     # Both contracts present: the config json block AND the seeds fence.
     assert "```json" in full["prompt"]
-    assert "target_titles" in full["prompt"]
+    assert "keywords" in full["prompt"]
     assert "```seeds" in full["prompt"]
 
     # Default (no flag) is unchanged — the config-only prompt, no seeds fence.

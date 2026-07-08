@@ -45,6 +45,11 @@ export const queryKeys = {
   recommend: ["recommend"] as const,
   networkSummary: ["network-summary"] as const,
   insights: ["insights"] as const,
+  discoveryPool: (params?: { status?: string; tier?: string }) =>
+    ["discovery-pool", params ?? {}] as const,
+  discoveryPoolAll: ["discovery-pool"] as const,
+  discoveryKeywordSuggest: (q: string, limit?: number) =>
+    ["discovery-keywords", q, limit ?? null] as const,
 };
 
 /* ── Coherent cross-tab invalidation ──────────────────────────────────────────
@@ -771,5 +776,133 @@ export function useNetworkClear() {
       qc.invalidateQueries({ queryKey: ["inbox-detail"] });
       qc.invalidateQueries({ queryKey: ["application"] });
     },
+  });
+}
+
+// ── Search Discovery (Phase 8) — keyword-pool cold start + live yield ────────
+/* The KeywordPoolPanel (tabs/search/KeywordPoolPanel.tsx) is the single web
+ * surface for all of this — shared by the Search tab and the onboarding wizard's
+ * Roles step. One read (the full pool, bucketed client-side by `tier`) plus a
+ * typeahead read, and five mutations that all funnel through the same
+ * `invalidateDiscoveryViews` so the pool re-renders coherently after any of
+ * them (propose/mine/levels persist NEW suggested rows; activate/deactivate
+ * flip a row's status and mirror cfg['keywords']). */
+
+function invalidateDiscoveryViews(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: queryKeys.discoveryPoolAll });
+}
+
+/** The project's full keyword pool (every tier/status) + low-activity nudges.
+ * The panel buckets rows by `tier` client-side rather than issuing three
+ * separate filtered requests — one read, one cache entry. `params` mirrors the
+ * GET route's optional status/tier filters for callers that want a narrower
+ * read; the panel itself calls this with no params (wants everything). */
+export function useDiscoveryPool(params?: { status?: string; tier?: string }) {
+  return useQuery({
+    queryKey: queryKeys.discoveryPool(params),
+    queryFn: () => endpoints.discoveryPool(params),
+    staleTime: 10_000,
+  });
+}
+
+/** Typeahead over the O*NET field/title vocabulary (exact + prefix, never
+ * fuzzy). Enabled only once the caller passes >=2 trimmed characters — the
+ * panel debounces the field text itself before it flows in here, same
+ * discipline as the Inbox search box (InboxFilterBar). */
+export function useDiscoveryTypeahead(q: string, limit = 8) {
+  return useQuery({
+    queryKey: queryKeys.discoveryKeywordSuggest(q, limit),
+    queryFn: () => endpoints.discoveryKeywordSuggest(q, limit),
+    enabled: q.trim().length >= 2,
+    staleTime: 30_000,
+  });
+}
+
+/** Trigger the offline "propose" lookup for a free-typed field (+ optional
+ * résumé text to help resolve a blank field). A GET under the hood, but modeled
+ * as a mutation — react-query's sanctioned "lazy fetch" shape — because it's
+ * explicitly USER-TRIGGERED (typing a field + hitting search, or picking a
+ * typeahead hit) rather than auto-refetched on render, and it has a real
+ * side effect server-side (the route upserts the returned tiers into the pool
+ * as `suggested` rows). The response itself isn't rendered directly — the
+ * panel re-reads the pool (already updated by the time this resolves), so
+ * `onSuccess` just invalidates it. */
+export function useProposeMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { field: string; resume?: string }) =>
+      endpoints.discoveryPropose(vars.field, vars.resume),
+    onSuccess: () => invalidateDiscoveryViews(qc),
+  });
+}
+
+/** "Check current openings" — a small batch of live Adzuna yield probes
+ * (shared 10/day budget). Also (ab)used with an EMPTY terms list to peek the
+ * remaining daily budget for free — the route's own short-circuit for
+ * `terms: []` never touches the network or the counter. */
+export function useProbeMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { terms: string[]; location?: string }) =>
+      endpoints.discoveryProbe(vars.terms, vars.location),
+    onSuccess: () => invalidateDiscoveryViews(qc),
+  });
+}
+
+/** "From my résumé / history" — corpus-mine the user's own inbox/applications
+ * titles + feed caches into the pool as `source=corpus` suggestions. Gated
+ * server-side (search/discovery/mine.py); safe to call any time. */
+export function useMineMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => endpoints.discoveryMine(),
+    onSuccess: () => invalidateDiscoveryViews(qc),
+  });
+}
+
+/** Experience-level phrasing variants (junior/associate/"Title I" for
+ * entry/mid; senior/manager/exec deliberately generate none — see
+ * search/discovery/levels.py). Upserted as exploratory suggestions
+ * server-side; `terms` defaults to cfg['keywords'] when omitted. */
+export function useLevelsMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { level: string; terms?: string[] }) =>
+      endpoints.discoveryLevels(vars.level, vars.terms),
+    onSuccess: () => invalidateDiscoveryViews(qc),
+  });
+}
+
+/** Turn a chip ON: marks the pool row `active` and mirrors it into
+ * cfg['keywords'] server-side (the search source of truth) — this IS the "add
+ * to my search" action, no separate apply step. */
+export function useActivateKeywordMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { term: string; tier?: string; source?: string }) =>
+      endpoints.discoveryActivateKeyword(vars.term, vars.tier, vars.source),
+    onSuccess: () => invalidateDiscoveryViews(qc),
+  });
+}
+
+/** Turn a chip OFF: marks the pool row `inactive` and removes it from
+ * cfg['keywords']. Never drops anything from the inbox — it just stops
+ * searching that term going forward. */
+export function useDeactivateKeywordMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (term: string) => endpoints.discoveryDeactivateKeyword(term),
+    onSuccess: () => invalidateDiscoveryViews(qc),
+  });
+}
+
+/** Add/remove a user-confirmed suggested-exclude term (feeds the scorer's
+ * DOWNRANK-only lever, never gate.py's hard drop). No cached read exists for
+ * this list — there's no GET route for it — so the caller uses the returned
+ * `suggested_excludes` directly rather than invalidating a query. */
+export function useExcludesMutation() {
+  return useMutation({
+    mutationFn: (vars: { term: string; action: "add" | "remove" }) =>
+      endpoints.discoveryExcludes(vars.term, vars.action),
   });
 }

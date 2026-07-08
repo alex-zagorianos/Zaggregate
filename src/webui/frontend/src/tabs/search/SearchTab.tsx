@@ -40,6 +40,7 @@ import { useCompaniesFlows } from "@/tabs/companies/CompaniesFlows";
 import { AiSetupDialog } from "@/components/ai-setup-dialog";
 import { SearchRunConsole } from "./SearchRunConsole";
 import { SourceHealthStrip } from "./SourceHealthStrip";
+import { KeywordPoolPanel, mergeTermsCsv } from "./KeywordPoolPanel";
 
 /* Search — run a multi-source job search without leaving the app, score every
  * result 0–100, then Track / Dismiss / Add-to-Inbox each row.
@@ -250,6 +251,16 @@ export function SearchTab() {
       .finally(() => setAddingAll(false));
   }, [rows, qc]);
 
+  // Fold the keyword pool's active ("searching now") terms into the keyword
+  // box — a union merge (never clobbers anything typed by hand; see
+  // KeywordPoolPanel's mergeTermsCsv doc). The pool mutations already persist
+  // to cfg['keywords'] server-side regardless, so this is purely a convenience
+  // so the form visibly reflects what the panel has turned on.
+  const onPoolActiveTermsChange = React.useCallback(
+    (csv: string) => setKeywords((prev) => mergeTermsCsv(prev, csv)),
+    [],
+  );
+
   // ── palette commands ────────────────────────────────────────────────────────
   const paletteCommands = React.useMemo<AppCommand[]>(
     () => [
@@ -326,10 +337,19 @@ export function SearchTab() {
         </div>
       </div>
 
+      {/* Keyword discovery — a collapsible tool for turning a free-typed field
+          into a rich, reviewable keyword set (with or without AI). Activating a
+          chip mirrors into cfg['keywords'] server-side AND (via the callback
+          below) into the keyword box, so "Search now" picks it up either way. */}
+      <KeywordPoolPanel
+        className="mt-5"
+        onActiveTermsChange={onPoolActiveTermsChange}
+      />
+
       {/* Form card */}
       <form
         onSubmit={onSubmit}
-        className="border-border bg-card mt-5 rounded-lg border p-4"
+        className="border-border bg-card mt-4 rounded-lg border p-4"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-12">
           <div className="space-y-1.5 sm:col-span-6">

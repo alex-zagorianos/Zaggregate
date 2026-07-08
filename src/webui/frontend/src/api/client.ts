@@ -676,6 +676,42 @@ export const endpoints = {
       json: { text, source },
     }),
   networkClear: () => api.post<NetworkClearResponse>("/network/clear"),
+
+  // ── Search Discovery (Phase 8) — keyword-pool cold start + live yield ──────
+  discoveryPropose: (field: string, resume?: string) =>
+    api.get<DiscoveryProposeResponse>("/discovery/propose", {
+      params: { field, resume: resume || undefined },
+    }),
+  discoveryKeywordSuggest: (q: string, limit?: number) =>
+    api.get<DiscoveryKeywordsResponse>("/discovery/keywords", {
+      params: { q, limit },
+    }),
+  discoveryPool: (args?: { status?: string; tier?: string }) =>
+    api.get<DiscoveryPoolResponse>("/discovery/pool", {
+      params: { status: args?.status, tier: args?.tier },
+    }),
+  discoveryProbe: (terms: string[], location?: string) =>
+    api.post<DiscoveryProbeResponse>("/discovery/probe", {
+      json: { terms, location: location || undefined },
+    }),
+  discoveryMine: () => api.post<DiscoveryMineResponse>("/discovery/mine"),
+  discoveryLevels: (level: string, terms?: string[]) =>
+    api.post<DiscoveryLevelsResponse>("/discovery/levels", {
+      json: terms && terms.length ? { level, terms } : { level },
+    }),
+  discoveryActivateKeyword: (term: string, tier?: string, source?: string) =>
+    api.post<DiscoveryKeywordsMutateResponse>("/discovery/keywords/activate", {
+      json: { term, tier, source },
+    }),
+  discoveryDeactivateKeyword: (term: string) =>
+    api.post<DiscoveryKeywordsMutateResponse>(
+      "/discovery/keywords/deactivate",
+      { json: { term } },
+    ),
+  discoveryExcludes: (term: string, action: "add" | "remove") =>
+    api.post<DiscoveryExcludesResponse>("/discovery/excludes", {
+      json: { term, action },
+    }),
 };
 
 /** Import AI scores — multipart (file) OR JSON (pasted text). We build the
@@ -1501,6 +1537,127 @@ export interface RecommendPromptResponse extends ApiEnvelope {
 export interface RecommendApplyResponse extends ApiEnvelope {
   added: string[];
   keywords: string[];
+}
+
+// ── Search Discovery (Phase 8) — keyword-pool cold start + live yield ────────
+/** ``keyword_pool`` row shape (search/discovery/pool.py::_COLUMNS). ``tier``
+ * drives which chip section a term renders in; ``status`` drives whether its
+ * chip shows checked ("active") or not. ``negative`` is a valid tier but never
+ * populated by any route this panel calls — it simply won't appear. */
+export type DiscoveryTier = "core" | "adjacent" | "exploratory" | "negative";
+export type DiscoveryStatus = "suggested" | "active" | "inactive";
+
+export interface DiscoveryPoolRow {
+  id: number;
+  term: string;
+  tier: DiscoveryTier;
+  source: string;
+  status: DiscoveryStatus;
+  yield_count: number | null;
+  yield_source: string | null;
+  /** Set the first time this term was live-probed; null = never probed (the UI
+   * shows no "~N openings" annotation until this is set). */
+  yield_date: string | null;
+  first_seen: string;
+  last_seen: string;
+  activated_at: string | null;
+}
+
+/** search/discovery/flag.py::low_activity_terms — an ACTIVE term whose last
+ * probed yield looks marginal. UI-nudge only; never changes status itself. */
+export interface LowActivityTerm {
+  term: string;
+  eligible: boolean;
+  low_activity: boolean;
+  age_days: number;
+  yield_count: number | null;
+  reason: string;
+}
+
+export interface DiscoveryPoolResponse extends ApiEnvelope {
+  pool: DiscoveryPoolRow[];
+  low_activity: LowActivityTerm[];
+}
+
+/** One offline-tier candidate from GET /discovery/propose (search/discovery/
+ * propose.py::propose). The route itself upserts these into the pool as
+ * `suggested` rows before returning — the panel re-reads the pool rather than
+ * rendering this shape directly (see queries.ts useProposeMutation). */
+export interface DiscoveryTierItem {
+  term: string;
+  source: string;
+  status?: string;
+  tier_hint?: string;
+}
+
+export interface DiscoveryProposeResponse extends ApiEnvelope {
+  core: DiscoveryTierItem[];
+  adjacent: DiscoveryTierItem[];
+  exploratory: DiscoveryTierItem[];
+  /** Deferred (onet_technology_skills.tsv not bundled yet) — always []. */
+  skills: DiscoveryTierItem[];
+  resolved_soc: string | null;
+  source: string;
+}
+
+/** GET /discovery/keywords typeahead hit (propose.py::keyword_suggest). */
+export interface DiscoveryKeywordSuggestion {
+  term: string;
+  soc: string | null;
+  kind: "field" | "title";
+}
+
+export interface DiscoveryKeywordsResponse extends ApiEnvelope {
+  suggestions: DiscoveryKeywordSuggestion[];
+}
+
+/** One term's result from POST /discovery/probe (search/discovery/probe.py::
+ * probe_yield). `skipped` is true for a budget/no_key/error outcome — the UI
+ * never hides the chip either way, it just skips the "~N openings" copy. */
+export interface DiscoveryProbeResult {
+  term: string;
+  yield_count: number | null;
+  yield_source: string;
+  probes_remaining_today: number;
+  skipped: boolean;
+  reason: "" | "budget" | "no_key" | "error";
+}
+
+export interface DiscoveryProbeResponse extends ApiEnvelope {
+  results: DiscoveryProbeResult[];
+  probes_remaining_today: number;
+}
+
+export interface DiscoveryMineResponse extends ApiEnvelope {
+  mined: number;
+  upserted: number;
+  skipped: boolean;
+  reason: string;
+}
+
+/** One experience-phrasing variant from POST /discovery/levels
+ * (search/discovery/levels.py::level_query_variants). Always `tier:
+ * "exploratory"` — senior/manager/exec levels generate none (recall-collapse
+ * guard), which the route returns as an empty `variants` array. */
+export interface DiscoveryLevelVariant {
+  term: string;
+  tier: DiscoveryTier;
+  source: string;
+  status: string;
+}
+
+export interface DiscoveryLevelsResponse extends ApiEnvelope {
+  variants: DiscoveryLevelVariant[];
+}
+
+/** POST /discovery/keywords/activate|deactivate — both echo the resulting
+ * cfg['keywords'] list (the search source of truth these routes mirror into). */
+export interface DiscoveryKeywordsMutateResponse extends ApiEnvelope {
+  keywords: string[];
+}
+
+export interface DiscoveryExcludesResponse extends ApiEnvelope {
+  suggested_excludes: string[];
 }
 
 // ── Backup / restore (Phase 5) ────────────────────────────────────────────────
